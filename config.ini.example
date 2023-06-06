@@ -1,0 +1,22 @@
+[Discord]
+DISCORD_TOKEN = <your_discord_bot_token>
+ALLOWED_CHANNELS = <allowed_channel_id_1>, <allowed_channel_id_2>, ...
+BOT_PRESENCE = online
+# ACTIVITY_TYPE Options
+# playing, streaming, listening, watching, custom, competing
+ACTIVITY_TYPE=listening
+ACTIVITY_STATUS=Humans
+
+[OpenAI]
+OPENAI_API_KEY = <your_openai_api_key>
+OPENAI_TIMEOUT=30
+GPT_MODEL=gpt-3.5-turbo
+GPT_TOKENS=3072
+SYSTEM_MESSAGE = You are a helpful AI assistant.
+
+[Limits]
+RATE_LIMIT = 2
+RATE_LIMIT_PER = 10
+
+[Logging]
+LOG_FILE = bot.log
