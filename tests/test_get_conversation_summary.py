@@ -1,5 +1,6 @@
 from bot import get_conversation_summary
 
+
 def test_get_conversation_summary():
     conversation = [
         {"role": "user", "content": "Hello"},
