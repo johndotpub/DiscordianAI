@@ -1,2 +1,6 @@
 discord.py==2.2.3
 openai==0.27.8
+
+pytest==7.2.0
+flake8==5.0.4
+pyflakes==2.5.0
