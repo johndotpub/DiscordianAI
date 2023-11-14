@@ -1,18 +1,19 @@
+# Standard library imports
 import argparse
 import asyncio
 import configparser
 import logging
-import time
 import os
+import time
 from logging.handlers import RotatingFileHandler
 
+# Third-party imports
 import discord
-import openai
-from discord.errors import ConnectionClosed
-
+from openai import OpenAI
+from websockets.exceptions import ConnectionClosed
 
 # Define the function to parse command-line arguments
-def parse_arguments():
+def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='GPT-based Discord bot.')
     parser.add_argument('--conf', help='Configuration file path')
     args = parser.parse_args()
@@ -20,7 +21,7 @@ def parse_arguments():
 
 
 # Define the function to load the configuration
-def load_configuration(config_file):
+def load_configuration(config_file: str) -> configparser.ConfigParser:
     config = configparser.ConfigParser()
 
     # Check if the configuration file exists
@@ -35,8 +36,28 @@ def load_configuration(config_file):
     return config
 
 
+def set_activity_status(activity_type: str, activity_status: str) -> discord.Activity:
+    """
+    Return discord.Activity object with specified activity type and status
+    """
+    activity_types = {
+        'playing': discord.ActivityType.playing,
+        'streaming': discord.ActivityType.streaming,
+        'listening': discord.ActivityType.listening,
+        'watching': discord.ActivityType.watching,
+        'custom': discord.ActivityType.custom,
+        'competing': discord.ActivityType.competing
+    }
+    return discord.Activity(
+        type=activity_types.get(
+            activity_type, discord.ActivityType.listening
+        ),
+        name=activity_status
+    )
+
+
 # Define the function to get the conversation summary
-def get_conversation_summary(conversation):
+def get_conversation_summary(conversation: list[dict]) -> list[dict]:
     """
     Conversation summary from combining user messages and assistant responses
     """
@@ -58,7 +79,7 @@ def get_conversation_summary(conversation):
     return summary
 
 
-async def check_rate_limit(user):
+async def check_rate_limit(user: discord.User) -> bool:
     """
     Check if a user has exceeded the rate limit for sending messages.
     """
@@ -76,6 +97,79 @@ async def check_rate_limit(user):
         return True
     logger.info(f"Rate limit exceeded for user: {user}")
     return False
+
+
+async def process_input_message(input_message: str, user: discord.User, conversation_summary: list[dict]) -> str:
+    """
+    Process an input message using OpenAI's GPT model.
+    """
+    try:
+        logger.info("Sending prompt to OpenAI API.")
+
+        conversation = conversation_history.get(user.id, [])
+        conversation.append({"role": "user", "content": input_message})
+
+        conversation_tokens = sum(
+            len(message["content"].split()) for message in conversation
+        )
+
+        if conversation_tokens >= GPT_TOKENS * 0.8:
+            conversation_summary = get_conversation_summary(conversation)
+            conversation_tokens_summary = sum(
+                len(message["content"].split())
+                for message in conversation_summary
+            )
+            max_tokens = GPT_TOKENS - conversation_tokens_summary
+        else:
+            max_tokens = GPT_TOKENS - conversation_tokens
+
+        # Log the current conversation history
+        # logger.info(f"Current conversation history: {conversation}")
+
+        response = client.chat.completions.create(
+            model=GPT_MODEL,
+            messages=[
+                {"role": "system", "content": SYSTEM_MESSAGE},
+                *conversation_summary,
+                {"role": "user", "content": input_message}
+            ],
+            max_tokens=max_tokens,
+            temperature=0.7
+        )
+
+        try:
+            # Extracting the response content from the new API response format
+            if response.choices:
+                response_content = response.choices[0].message.content.strip()
+            else:
+                response_content = None
+        except AttributeError:
+            logger.error("Failed to get response from OpenAI API: Invalid response format.")
+            return "Sorry, an error occurred while processing the message."
+
+        if response_content:
+            logger.info("Received response from OpenAI API.")
+            # Debugging: Log the raw response
+            # logger.info(f"Raw API response: {response}")
+            logger.info(f"Sent the response: {response_content}")
+
+            conversation.append({"role": "assistant", "content": response_content})
+            conversation_history[user.id] = conversation
+
+            return response_content
+        else:
+            logger.error("Failed to get response from OpenAI API: No text in response.")
+            return "Sorry, I didn't get that. Could you rephrase or ask something else?"
+
+    except ConnectionClosed as error:
+        logger.error(f"WebSocket connection closed: {error}")
+        logger.info("Reconnecting in 5 seconds...")
+        await asyncio.sleep(5)
+        await bot.login(DISCORD_TOKEN)
+        await bot.connect(reconnect=True)
+    except Exception as error:
+        logger.error("An error processing message: %s", error)
+        return "An error occurred while processing the message."
 
 
 # Execute the argparse code only when the file is run directly
@@ -102,9 +196,9 @@ if __name__ == "__main__":
         )
 
     OPENAI_API_KEY = config.get('OpenAI', 'OPENAI_API_KEY')
-    OPENAI_TIMEOUT = config.get('OpenAI', 'OPENAI_TIMEOUT', fallback='30')
-    GPT_MODEL = config.get('OpenAI', 'GPT_MODEL', fallback='gpt-3.5-turbo')
-    GPT_TOKENS = config.getint('OpenAI', 'GPT_TOKENS', fallback=60)
+    OPENAI_TIMEOUT = config.getint('OpenAI', 'OPENAI_TIMEOUT', fallback='30')
+    GPT_MODEL = config.get('OpenAI', 'GPT_MODEL', fallback='gpt-3.5-turbo-1106')
+    GPT_TOKENS = config.getint('OpenAI', 'GPT_TOKENS', fallback=4096)
     SYSTEM_MESSAGE = config.get(
         'OpenAI', 'SYSTEM_MESSAGE', fallback='You are a helpful assistant.'
     )
@@ -134,9 +228,6 @@ if __name__ == "__main__":
     intents.typing = False
     intents.presences = False
 
-    # Set your OpenAI API key
-    openai.api_key = OPENAI_API_KEY
-
     # Create a dictionary to store the last command timestamp for each user
     last_command_timestamps = {}
     last_command_count = {}
@@ -144,27 +235,13 @@ if __name__ == "__main__":
     # Create a dictionary to store conversation history for each user
     conversation_history = {}
 
-    def set_activity_status(activity_type, activity_status):
-        """
-        Return discord.Activity object with specified activity type and status
-        """
-        activity_types = {
-            'playing': discord.ActivityType.playing,
-            'streaming': discord.ActivityType.streaming,
-            'listening': discord.ActivityType.listening,
-            'watching': discord.ActivityType.watching,
-            'custom': discord.ActivityType.custom,
-            'competing': discord.ActivityType.competing
-        }
-        return discord.Activity(
-            type=activity_types.get(
-                activity_type, discord.ActivityType.listening
-            ),
-            name=activity_status
-        )
-
     # Create the bot instance
     bot = discord.Client(intents=intents)
+
+    # Create the OpenAI client instance
+    client = OpenAI(
+        api_key=OPENAI_API_KEY
+    )
 
     @bot.event
     async def on_ready():
@@ -233,72 +310,6 @@ if __name__ == "__main__":
                     message.content, message.author, conversation_summary
                 )
                 await message.channel.send(response)
-
-    async def process_input_message(input_message, user, conversation_summary):
-        """
-        Process an input message using OpenAI's GPT model.
-        """
-        try:
-            logger.info("Sending prompt to OpenAI API...")
-
-            conversation = conversation_history.get(user.id, [])
-            conversation.append({"role": "user", "content": input_message})
-
-            conversation_tokens = sum(
-                len(message["content"].split()) for message in conversation
-            )
-
-            if conversation_tokens >= GPT_TOKENS * 0.8:
-                conversation_summary = get_conversation_summary(conversation)
-                conversation_tokens_summary = sum(
-                    len(message["content"].split())
-                    for message in conversation_summary
-                )
-                max_tokens = GPT_TOKENS - conversation_tokens_summary
-            else:
-                max_tokens = GPT_TOKENS - conversation_tokens
-
-            logger.info("Current conversation history:")
-            logger.info(conversation)  # Log the current conversation history
-
-            response = openai.ChatCompletion.create(
-                model=GPT_MODEL,
-                messages=[
-                    {"role": "system", "content": SYSTEM_MESSAGE},
-                    *conversation_summary,
-                    {"role": "user", "content": input_message},
-                ],
-                max_tokens=max_tokens,
-                timeout=OPENAI_TIMEOUT,
-            )
-
-            if "choices" in response and response.choices:
-                response_content = response.choices[0].message.content.strip()
-                logger.info("Received response from OpenAI API.")
-                logger.info(f"Sent the response: {response_content}")
-
-                conversation.append(
-                    {"role": "assistant", "content": response_content}
-                )
-                conversation_history[user.id] = conversation
-
-                return response_content
-            else:
-                logger.error("Failed to get response from OpenAI API.")
-                return "Sorry, an error occurred while processing the message."
-
-        except ConnectionClosed as error:
-            logger.error(f"WebSocket connection closed: {error}")
-            logger.info("Reconnecting in 5 seconds...")
-            await asyncio.sleep(5)
-            await bot.login(DISCORD_TOKEN)
-            await bot.connect(reconnect=True)
-        except openai.api_error.ApiError as error:
-            logger.error(f"An error occurred during OpenAI API call: {error}")
-            return "Sorry, an error occurred while processing the message."
-        except Exception as error:
-            logger.error("An error processing message: %s", error)
-            return "An error occurred while processing the message."
 
     # Run the bot
     bot.run(DISCORD_TOKEN)
