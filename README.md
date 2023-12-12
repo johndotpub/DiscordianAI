@@ -1,3 +1,5 @@
+<a href="https://github.com/rlywtf/DiscordianAI"><img alt="GitHub Stars" src="https://badgen.net/github/stars/rlywtf/DiscordianAI?icon=github" /></a> [![CodeQL](https://github.com/rlywtf/DiscordianAI/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/rlywtf/DiscordianAI/actions/workflows/github-code-scanning/codeql) [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](http://unlicense.org/)
+
 # Description
 
 This is a Python script for a Discord bot that uses OpenAI's GPT API to generate responses to user messages. The bot can be configured to listen to specific channels and respond to direct messages. The bot also has a rate limit to prevent spamming and can maintain a per user conversational history to improve response quality which is only limited by the `GPT_TOKENS` value.
