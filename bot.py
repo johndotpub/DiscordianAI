@@ -12,6 +12,7 @@ import discord
 from openai import OpenAI
 from websockets.exceptions import ConnectionClosed
 
+
 # Define the function to parse command-line arguments
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='GPT-based Discord bot.')
@@ -36,7 +37,10 @@ def load_configuration(config_file: str) -> configparser.ConfigParser:
     return config
 
 
-def set_activity_status(activity_type: str, activity_status: str) -> discord.Activity:
+def set_activity_status(
+    activity_type: str,
+    activity_status: str
+) -> discord.Activity:
     """
     Return discord.Activity object with specified activity type and status
     """
@@ -79,7 +83,12 @@ def get_conversation_summary(conversation: list[dict]) -> list[dict]:
     return summary
 
 
-async def check_rate_limit(user: discord.User) -> bool:
+async def check_rate_limit(
+    user: discord.User,
+    logger: logging.Logger = None
+) -> bool:
+    if logger is None:
+        logger = logging.getLogger(__name__)
     """
     Check if a user has exceeded the rate limit for sending messages.
     """
@@ -99,7 +108,11 @@ async def check_rate_limit(user: discord.User) -> bool:
     return False
 
 
-async def process_input_message(input_message: str, user: discord.User, conversation_summary: list[dict]) -> str:
+async def process_input_message(
+    input_message: str,
+    user: discord.User,
+    conversation_summary: list[dict]
+) -> str:
     """
     Process an input message using OpenAI's GPT model.
     """
@@ -144,7 +157,10 @@ async def process_input_message(input_message: str, user: discord.User, conversa
             else:
                 response_content = None
         except AttributeError:
-            logger.error("Failed to get response from OpenAI API: Invalid response format.")
+            logger.error(
+                "Failed to get response from OpenAI API: "
+                "Invalid response format."
+            )
             return "Sorry, an error occurred while processing the message."
 
         if response_content:
@@ -153,13 +169,15 @@ async def process_input_message(input_message: str, user: discord.User, conversa
             # logger.info(f"Raw API response: {response}")
             logger.info(f"Sent the response: {response_content}")
 
-            conversation.append({"role": "assistant", "content": response_content})
+            conversation.append(
+                {"role": "assistant", "content": response_content}
+            )
             conversation_history[user.id] = conversation
 
             return response_content
         else:
-            logger.error("Failed to get response from OpenAI API: No text in response.")
-            return "Sorry, I didn't get that. Could you rephrase or ask something else?"
+            logger.error("OpenAI API error: No response text.")
+            return "Sorry, I didn't get that. Can you rephrase or ask again?"
 
     except ConnectionClosed as error:
         logger.error(f"WebSocket connection closed: {error}")
@@ -197,7 +215,9 @@ if __name__ == "__main__":
 
     OPENAI_API_KEY = config.get('OpenAI', 'OPENAI_API_KEY')
     OPENAI_TIMEOUT = config.getint('OpenAI', 'OPENAI_TIMEOUT', fallback='30')
-    GPT_MODEL = config.get('OpenAI', 'GPT_MODEL', fallback='gpt-3.5-turbo-1106')
+    GPT_MODEL = config.get(
+        'OpenAI', 'GPT_MODEL', fallback='gpt-3.5-turbo-1106'
+    )
     GPT_TOKENS = config.getint('OpenAI', 'GPT_TOKENS', fallback=4096)
     SYSTEM_MESSAGE = config.get(
         'OpenAI', 'SYSTEM_MESSAGE', fallback='You are a helpful assistant.'
