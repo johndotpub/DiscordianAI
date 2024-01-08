@@ -6,9 +6,11 @@ This is a Python script for a Discord bot that uses OpenAI's GPT API to generate
 
 # Requirements
 
-- Python 3.6 or higher
-- discord.py
-- openai
+- Bash
+- Python 3.6 or Higher
+- Python Modules
+  - discord.py
+  - openai
 
 # Installation
 
@@ -91,6 +93,35 @@ python bot.py --conf config.ini
 ```
 
 The bot will log in to Discord and start listening for messages in the configured channels. When a message is received, the bot will send the message to the OpenAI API and wait for a response. The response will be sent back to the user who sent the message.
+
+# Daemon Control Script
+
+`discordian.sh` is a bash script for launching a DiscordianAI bot with customizable configurations. It is suitable for both manual execution and running via crontab.
+
+### Features
+
+- Strict error checking: The script exits on any error and recognizes failures in pipelines.
+- Logging: The script logs events with timestamps for better tracking.
+- Customizable configurations: The script allows for different modes of operation and configurations.
+- Error Handling: It logs errors and exits on failure.
+- Process Handling: It terminates existing instances of the bot before starting a new one.
+
+### Usage
+
+The script accepts the following command line arguments:
+
+- `-d` or `--daemon`: Runs the bot in daemon mode with no output to the terminal.
+- `-b` or `--background`: Runs the bot in background mode with output redirected to `nohup.out`.
+- `-c` or `--config`: Allows the use of a custom configuration file. The next argument should be the path to the configuration file.
+- `-f` or `--folder`: Allows the use of a base folder. The next argument should be the path to the base folder.
+
+### Daemon Example
+
+```bash
+./discordian.sh -d -c /path/to/config.ini -f /path/to/base/folder
+```
+
+This command will run the bot in daemon mode, using the configuration file at `/path/to/config.ini` and the base folder at `/path/to/base/folder`.
 
 # Contributing
 
