@@ -4,5 +4,5 @@ websockets==12.0
 
 pytest==7.4.4
 flake8==6.1.0
-pyflakes==3.1.0
+pyflakes==3.2.0
 pytest-asyncio==0.23.2
