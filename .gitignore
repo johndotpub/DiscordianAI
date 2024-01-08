@@ -1,5 +1,7 @@
-# Test Bot
+# Test Bot Files
 bender.ini
+nohup.out
+bot.log
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
