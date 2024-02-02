@@ -32,11 +32,6 @@ while [[ "$#" -gt 0 ]]; do
             output="/dev/null"
             log "Running in daemon mode. Output redirected to $output"
             ;;
-        -b|--background)
-            # Background mode: Output to nohup.out
-            output="nohup.out"
-            log "Running in background mode. Output redirected to $output"
-            ;;
         -c|--config)
             # Custom configuration file: Ensure argument is provided
             if [[ -n "$2" && ! "$2" =~ ^- ]]; then
@@ -88,7 +83,7 @@ if [[ -z $output ]]; then
     # Normal execution
     eval "$command"
 else
-    # Background or daemon execution
+    # Daemon execution
     log "Running command in background: $command > $output 2>&1 &"
     if ! ($command > "$output" 2>&1 &); then
         log "Error: Failed to execute command."
