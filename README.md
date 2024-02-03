@@ -111,7 +111,6 @@ The bot will log in to Discord and start listening for messages in the configure
 The script accepts the following command line arguments:
 
 - `-d` or `--daemon`: Runs the bot in daemon mode with no output to the terminal.
-- `-b` or `--background`: Runs the bot in background mode with output redirected to `nohup.out`.
 - `-c` or `--config`: Allows the use of a custom configuration file. The next argument should be the path to the configuration file.
 - `-f` or `--folder`: Allows the use of a base folder. The next argument should be the path to the base folder.
 
