@@ -7,7 +7,7 @@ This is a Python script for a Discord bot that uses OpenAI's GPT API to generate
 # Requirements
 
 - Bash
-- Python 3.6 or Higher
+- Python 3.8 or Higher
 - Python Modules
   - discord.py
   - openai
@@ -88,11 +88,21 @@ To use this bot, you will need to create a Discord bot and invite it to your ser
 
 To start the bot, run the following command:
 
-```
+```bash
 python bot.py --conf config.ini
 ```
 
 The bot will log in to Discord and start listening for messages in the configured channels. When a message is received, the bot will send the message to the OpenAI API and wait for a response. The response will be sent back to the user who sent the message.
+
+# Container-based deployment
+
+To run the bot in a container, you will need to check out this repository and run the following commands:
+```bash
+docker build . -t discordianai:latest
+docker run --restart always discordianai:latest
+```
+
+This will execute forever, unless manually stopped.
 
 # Daemon Control Script
 

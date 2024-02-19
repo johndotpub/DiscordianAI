@@ -13,7 +13,7 @@ from logging.handlers import RotatingFileHandler
 import discord
 from openai import OpenAI
 from websockets.exceptions import ConnectionClosed
-
+from typing import List, Dict
 
 # Define the function to parse command-line arguments
 def parse_arguments() -> argparse.Namespace:
@@ -75,7 +75,7 @@ def set_activity_status(
 
 
 # Define the function to get the conversation summary
-def get_conversation_summary(conversation: list[dict]) -> list[dict]:
+def get_conversation_summary(conversation: List[Dict]) -> List[Dict]:
     """
     Conversation summary from combining user messages and assistant responses
     """
@@ -138,7 +138,7 @@ async def check_rate_limit(
 async def process_input_message(
     input_message: str,
     user: discord.User,
-    conversation_summary: list[dict]
+    conversation_summary: List[Dict]
 ) -> str:
     """
     Process an input message using OpenAI's GPT model.
