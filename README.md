@@ -139,7 +139,7 @@ Contributions are welcome! Please open an issue or pull request on the GitHub re
 
 # Contact
 
-If you have any questions or concerns, please contact us at code@rly.wtf
+If you have any questions or concerns, please contact github@john.pub
 
 # License
 
