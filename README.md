@@ -7,7 +7,7 @@ This is a Python script for a Discord bot that uses OpenAI's GPT API to generate
 # Requirements
 
 - Bash
-- Python 3.6 or Higher
+- Python 3.8 or Higher
 - Python Modules
   - discord.py
   - openai
@@ -33,15 +33,15 @@ The `config.ini` file contains the following configuration sections:
 ### OpenAI
 
 - `OPENAI_API_KEY`: The OpenAI API key.
-- `OPENAI_TIMEOUT`: The OpenAI API timeout in seconds. (default: 30)
-- `GPT_MODEL`: The GPT model to use (default: gpt-3.5-turbo).
-- `GPT_TOKENS`: The maximum number of tokens to generate in the GPT response (default: 3072).
+- `OPENAI_TIMEOUT`: The OpenAI API timeout in seconds. (default: `30`)
+- `GPT_MODEL`: The GPT model to use (default: `gpt-3.5-turbo`).
+- `GPT_TOKENS`: The maximum number of tokens to generate in the GPT response (default: `3072`).
 - `SYSTEM_MESSAGE`: The message to send to the GPT model before the user's message.
 
 ### Limits
 
-- `RATE_LIMIT`: The number of messages a user can send within `RATE_LIMIT_PER` seconds (default: 2).
-- `RATE_LIMIT_PER`: The time period in seconds for the rate limit (default: 10).
+- `RATE_LIMIT`: The number of messages a user can send within `RATE_LIMIT_PER` seconds (default: `2`).
+- `RATE_LIMIT_PER`: The time period in seconds for the rate limit (default: `10`).
 
 ### Logging
 
@@ -88,11 +88,22 @@ To use this bot, you will need to create a Discord bot and invite it to your ser
 
 To start the bot, run the following command:
 
-```
+```bash
 python bot.py --conf config.ini
 ```
 
 The bot will log in to Discord and start listening for messages in the configured channels. When a message is received, the bot will send the message to the OpenAI API and wait for a response. The response will be sent back to the user who sent the message.
+
+# Run in container
+
+To run the bot in a container, you will need to check out this repository, rename the `config.ini.example` to `config.ini` and fill it in appropriately.
+Then, run the following commands:
+```bash
+docker build . -t discordianai:latest
+docker run --restart always discordianai:latest
+```
+
+This will execute forever, unless manually stopped.
 
 # Daemon Control Script
 
