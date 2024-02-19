@@ -114,6 +114,17 @@ The script accepts the following command line arguments:
 - `-c` or `--config`: Allows the use of a custom configuration file. The next argument should be the path to the configuration file.
 - `-f` or `--folder`: Allows the use of a base folder. The next argument should be the path to the base folder.
 
+### How to run bot in Docker container
+- Rename `config.ini.example` to `config.ini` and fill in the required configuration details.
+- Build the docker image using below command 
+  ```bash
+  docker build -t discordianai:latest .
+  ```
+- Spin up the discordianai docker container 
+  ```bash
+  docker run discordianai:latest 
+  ```
+
 ### Daemon Example
 
 ```bash
