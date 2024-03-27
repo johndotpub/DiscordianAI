@@ -7,7 +7,7 @@ This is a Python script for a Discord bot that uses OpenAI's GPT API to generate
 # Requirements
 
 - Bash
-- Python 3.8 or Higher
+- Python 3.12 or Higher
 - Python Modules
   - discord.py
   - openai
