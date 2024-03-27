@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Doing this after installing the dependencies allows Docker to cache the
 # installed dependencies separately from your code
 COPY . .
-RUN rm config.ini
+RUN if [ -f config.ini ]; then rm config.ini; fi
 
 # Set the command to run the bot
 # The ENTRYPOINT instruction allows the container to be run as an executable
