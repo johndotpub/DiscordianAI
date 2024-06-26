@@ -1,17 +1,18 @@
 # Standard library imports
-import argparse
 import asyncio
-import configparser
 import logging
-import os
 import re
-import sys
 import time
-from logging.handlers import RotatingFileHandler
 
 # Third-party imports
-import discord
 from openai import OpenAI
+
+
+# Local application imports
+from .conversations import get_conversation_summary
+from .discord_bot import set_activity_status
+from .rate_limits import check_rate_limit
+from .config import GPT_MODEL, GPT_TOKENS, OPENAI_API_KEY, SYSTEM_MESSAGE
 
 
 class RateLimiter:
@@ -449,3 +450,75 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
 
     # Run the bot
     bot.run(DISCORD_TOKEN)
+
+
+    async def process_dm_message(message):
+        """
+        Process a direct message.
+        """
+        logger.info(
+            f'Received DM from {message.author}: {message.content}'
+        )
+
+        if not await check_rate_limit(message.author):
+            await message.channel.send(
+                f"{message.author.mention} Exceeded the Rate Limit! Please slow down!"
+            )
+            logger.warning(f"Rate Limit Exceed by DM from {message.author}")
+            return
+
+        conversation_summary = get_conversation_summary(
+            conversation_history.get(message.author.id, [])
+        )
+        response = await process_input_message(
+            message.content, message.author, conversation_summary
+        )
+        await send_split_message(message.channel, response)
+
+    async def process_channel_message(message):
+        """
+        Process a message in a channel.
+        """
+        logger.info(
+            'Received message in {} from {}: {}'.format(
+                str(message.channel),
+                str(message.author),
+                re.sub(r'<@\d+>', '', message.content)
+            )
+        )
+
+        if not await check_rate_limit(message.author):
+            await message.channel.send(
+                f"{message.author.mention} Exceeded the Rate Limit! Please slow down!"
+            )
+            logger.warning(f"Rate Limit Exceeded in {message.channel} by {message.author}")
+            return
+
+        conversation_summary = get_conversation_summary(
+            conversation_history.get(message.author.id, [])
+        )
+        response = await process_input_message(
+            message.content, message.author, conversation_summary
+        )
+        await send_split_message(message.channel, response)
+
+    async def send_split_message(channel, message):
+        """
+        Send a message to a channel. If the message is longer than 2000 characters,
+        it is split into multiple messages at the nearest newline character around
+        the middle of the message.
+        """
+        if len(message) <= 2000:
+            await channel.send(message)
+        else:
+            # Find the nearest newline character around the middle of the message
+            middle_index = len(message) // 2
+            split_index = message.rfind('\n', 0, middle_index)
+            if split_index == -1:  # No newline character found
+                split_index = middle_index  # Split at the middle of the message
+            # Split the message into two parts
+            message_part1 = message[:split_index]
+            message_part2 = message[split_index:]
+            # Send the two parts as separate messages
+            await channel.send(message_part1)
+            await channel.send(message_part2)
