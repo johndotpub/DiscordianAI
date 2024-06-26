@@ -114,16 +114,15 @@ python bot.py --conf config.ini
 
 The bot will log in to Discord and start listening for messages in the configured channels. When a message is received, the bot will send the message to the OpenAI API and wait for a response. The response will be sent back to the user who sent the message.
 
-# Run in container
+## Detailed Documentation
 
-To run the bot in a container, you will need to check out this repository, rename the `config.ini.example` to `config.ini` and fill it in appropriately.
-Then, run the following commands:
+For more in-depth information about the DiscordianAI project, please refer to the following documentation files in the `docs/` directory:
 
-```bash
-docker build . -t discordianai:latest
-docker run --restart always -v $(pwd)/config.ini:/app/config.ini discordianai:latest
-```
-This will execute forever, unless manually stopped. The `-v` option is used to mount the `config.ini` file from your current directory on the host machine to the `/app/config.ini` file in the Docker container. Replace `$(pwd)/config.ini` with the actual path to your `config.ini` file if it’s not in your current directory. Remember to include the trailing slash in the path. This ensures that Docker treats this as a file and not as a directory.
+- [Configuration](./docs/Configuration.md) : Detailed instructions on how to configure the Discord bot and OpenAI GPT API settings.
+- [Daemon](./docs/Daemon.md) : Information on how to run the Discord bot as a daemon.
+- [Docker](./docs/Docker.md) : Instructions on how to containerize the Discord bot using Docker.
+- [OpenAI](./docs/OpenAI.md) : Information on how the Discord bot uses the OpenAI GPT API to generate responses.
+- [Setup](./docs/Setup.md) : Step-by-step guide on how to set up and run the Discord bot.
 
 # Daemon Control Script
 
