@@ -18,72 +18,6 @@ This is a Python script for a Discord bot that uses OpenAI's GPT API to generate
 2. Install the required packages using pip: `pip install -r requirements.txt`
 3. Rename `config.ini.example` to `config.ini` and fill in the required configuration details.
 
-# Configuration
-
-The `config.ini` file contains the following configuration sections:
-
-### Discord
-
-- `DISCORD_TOKEN`: The Discord bot token.
-- `ALLOWED_CHANNELS`: A comma-separated list of channel names that the bot is allowed to listen to.
-- `BOT_PRESENCE`: The presence of the bot (e.g. online, offline, idle).
-- `ACTIVITY_TYPE`: The type of activity for the bot (e.g. playing, streaming, listening, watching, custom, competing).
-- `ACTIVITY_STATUS`: The activity status of the bot (e.g. Humans).
-
-### OpenAI
-
-- `OPENAI_API_KEY`: The OpenAI API key.
-- `OPENAI_TIMEOUT`: The OpenAI API timeout in seconds. (default: `30`)
-- `GPT_MODEL`: The GPT model to use (default: `gpt-3.5-turbo`).
-- `GPT_TOKENS`: The maximum number of tokens to generate in the GPT response (default: `3072`).
-- `SYSTEM_MESSAGE`: The message to send to the GPT model before the user's message.
-
-### Limits
-
-- `RATE_LIMIT`: The number of messages a user can send within `RATE_LIMIT_PER` seconds (default: `2`).
-- `RATE_LIMIT_PER`: The time period in seconds for the rate limit (default: `10`).
-
-### Logging
-
-- `LOG_FILE`: The path to the log file (default: bot.log).
-
-Here is an example `config.ini` file:
-
-```ini
-[Discord]
-DISCORD_TOKEN = <your_discord_bot_token>
-ALLOWED_CHANNELS = <allowed_channel_id_1>, <allowed_channel_id_2>, ...
-BOT_PRESENCE = online
-# ACTIVITY_TYPE Options
-# playing, streaming, listening, watching, custom, competing
-ACTIVITY_TYPE=listening
-ACTIVITY_STATUS=Humans
-
-[OpenAI]
-OPENAI_API_KEY = <your_openai_api_key>
-OPENAI_TIMEOUT=30
-GPT_MODEL=gpt-3.5-turbo
-GPT_TOKENS=3072
-SYSTEM_MESSAGE = You are a helpful AI assistant.
-
-[Limits]
-RATE_LIMIT = 2
-RATE_LIMIT_PER = 10
-
-[Logging]
-LOG_FILE = bot.log
-```
-
-# Discord Bot Setup
-
-To use this bot, you will need to create a Discord bot and invite it to your server. Here are the steps to do so:
-
-1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and create a new application.
-2. Click on the "Bot" tab and then click "Add Bot".
-3. Copy the bot token and paste it into the `DISCORD_TOKEN` field in the `config.ini` file.
-4. Under the "OAuth2" tab, select the "bot" scope and then select the permissions you want the bot to have.
-5. Copy the generated OAuth2 URL and paste it into your web browser. This will allow you to invite the bot to your server.
-
 # Usage
 
 To start the bot, run the following command:
@@ -94,44 +28,17 @@ python bot.py --conf config.ini
 
 The bot will log in to Discord and start listening for messages in the configured channels. When a message is received, the bot will send the message to the OpenAI API and wait for a response. The response will be sent back to the user who sent the message.
 
-# Run in container
+## Detailed Documentation
 
-To run the bot in a container, you will need to check out this repository, rename the `config.ini.example` to `config.ini` and fill it in appropriately.
-Then, run the following commands:
+For more in-depth information about the DiscordianAI project, please refer to the following documentation files in the `docs/` directory:
 
-```bash
-docker build . -t discordianai:latest
-docker run --restart always -v $(pwd)/config.ini:/app/config.ini discordianai:latest
-```
-This will execute forever, unless manually stopped. The `-v` option is used to mount the `config.ini` file from your current directory on the host machine to the `/app/config.ini` file in the Docker container. Replace `$(pwd)/config.ini` with the actual path to your `config.ini` file if it’s not in your current directory. Remember to include the trailing slash in the path. This ensures that Docker treats this as a file and not as a directory.
+- [Configuration](./docs/Configuration.md) : Detailed instructions on how to configure the Discord bot and OpenAI GPT API settings.
+- [Daemon](./docs/Daemon.md) : Information on how to run the Discord bot as a daemon.
+- [Docker](./docs/Docker.md) : Instructions on how to containerize the Discord bot using Docker.
+- [OpenAI](./docs/OpenAI.md) : Information on how the Discord bot uses the OpenAI GPT API to generate responses.
+- [Setup](./docs/Setup.md) : Step-by-step guide on how to set up and run the Discord bot.
 
-# Daemon Control Script
-
-`discordian.sh` is a bash script for launching a DiscordianAI bot with customizable configurations. It is suitable for both manual execution and running via crontab.
-
-### Features
-
-- Strict error checking: The script exits on any error and recognizes failures in pipelines.
-- Logging: The script logs events with timestamps for better tracking.
-- Customizable configurations: The script allows for different modes of operation and configurations.
-- Error Handling: It logs errors and exits on failure.
-- Process Handling: It terminates existing instances of the bot before starting a new one.
-
-### Usage
-
-The script accepts the following command line arguments:
-
-- `-d` or `--daemon`: Runs the bot in daemon mode with no output to the terminal.
-- `-c` or `--config`: Allows the use of a custom configuration file. The next argument should be the path to the configuration file.
-- `-f` or `--folder`: Allows the use of a base folder. The next argument should be the path to the base folder.
-
-### Daemon Example
-
-```bash
-./discordian.sh -d -c /path/to/config.ini -f /path/to/base/folder
-```
-
-This command will run the bot in daemon mode, using the configuration file at `/path/to/config.ini` and the base folder at `/path/to/base/folder`.
+Please ensure to read through these documents to understand how to effectively use and manage the DiscordianAI bot.
 
 # Contributing
 
