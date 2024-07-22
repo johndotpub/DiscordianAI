@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools >= 61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "DiscordianAI"
+version = "0.1.0"
+description = "A Discord bot that uses OpenAI's GPT API to generate responses."
+authors = [{name = "johndotpub", email = "github@john.pub"}]
+license = {file = "LICENSE"}
+dependencies = [
+    "discord.py",
+    "openai",
+    "python-dotenv"
+]
+requires-python = ">=3.12"
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+
+[tool.isort]
+profile = "black"
+
+[tool.mypy]
+python_version = 3.12
