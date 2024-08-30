@@ -14,6 +14,7 @@ logger.addHandler(handler)
 RATE_LIMIT = 10
 RATE_LIMIT_PER = 60
 
+
 def run_test(user, rate_limiter):
     # Simulate first command
     result = rate_limiter.check_rate_limit(user.id, RATE_LIMIT, RATE_LIMIT_PER, logger)
@@ -31,6 +32,7 @@ def run_test(user, rate_limiter):
     result = rate_limiter.check_rate_limit(user.id, RATE_LIMIT, RATE_LIMIT_PER, logger)
     assert result is True
     assert rate_limiter.last_command_count.get(user.id, 0) == 1
+
 
 @pytest.mark.asyncio
 async def test_check_rate_limit():

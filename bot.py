@@ -14,12 +14,20 @@ import discord
 from openai import OpenAI
 from websockets.exceptions import ConnectionClosed
 
+
+# Define the RateLimiter class
 class RateLimiter:
     def __init__(self):
         self.last_command_timestamps = {}
         self.last_command_count = {}
 
-    def check_rate_limit(self, user_id: int, rate_limit: int, rate_limit_per: int, logger: logging.Logger) -> bool:
+    def check_rate_limit(
+        self,
+        user_id: int,
+        rate_limit: int,
+        rate_limit_per: int,
+        logger: logging.Logger
+    ) -> bool:
         current_time = time.time()
         last_command_timestamp = self.last_command_timestamps.get(user_id, 0)
         last_command_count_user = self.last_command_count.get(user_id, 0)
@@ -38,6 +46,7 @@ class RateLimiter:
         logger.info(f"Rate limit exceeded for user: {user_id}")
         return False
 
+
 # Define the function to parse command-line arguments
 def parse_arguments() -> argparse.Namespace:
     try:
@@ -48,6 +57,7 @@ def parse_arguments() -> argparse.Namespace:
     except Exception as e:
         logger.error(f"Error parsing arguments: {e}")
         raise
+
 
 # Define the function to load the configuration
 def load_configuration(config_file: str) -> configparser.ConfigParser:
@@ -67,6 +77,7 @@ def load_configuration(config_file: str) -> configparser.ConfigParser:
     except Exception as e:
         logger.error(f"Error loading configuration: {e}")
         raise
+
 
 def set_activity_status(
     activity_type: str,
@@ -94,6 +105,7 @@ def set_activity_status(
         logger.error(f"Error setting activity status: {e}")
         raise
 
+
 # Define the function to get the conversation summary
 def get_conversation_summary(conversation: list[dict]) -> list[dict]:
     """
@@ -120,6 +132,7 @@ def get_conversation_summary(conversation: list[dict]) -> list[dict]:
         logger.error(f"Error getting conversation summary: {e}")
         raise
 
+
 async def check_rate_limit(
     user: discord.User,
     rate_limiter: RateLimiter,
@@ -139,6 +152,7 @@ async def check_rate_limit(
         logger.error(f"Error checking rate limit: {e}")
         raise
 
+
 async def process_input_message(
     input_message: str,
     user: discord.User,
@@ -152,35 +166,18 @@ async def process_input_message(
 
         INPUT_PROMPT = {"role": "user", "content": input_message}
 
-        conversation = conversation_history.get(user.id, [])
-        conversation.append({"role": "user", "content": input_message})
-
-        conversation_tokens = sum(
-            len(message["content"].split()) for message in conversation
-        )
-
-        if conversation_tokens >= GPT_TOKENS * 0.8:
-            conversation_summary = get_conversation_summary(conversation)
-            conversation_tokens_summary = sum(
-                len(message["content"].split())
-                for message in conversation_summary
-            )
-            max_tokens = GPT_TOKENS - conversation_tokens_summary
-        else:
-            max_tokens = GPT_TOKENS - conversation_tokens
-
-        # Log the current conversation history
-        # logger.info(f"Current conversation history: {conversation}")
+        conversation = CONVERSATION_HISTORY.get(user.id, [])
+        conversation.append(INPUT_PROMPT)
 
         def call_openai_api():
             return client.chat.completions.create(
                 model=GPT_MODEL,
                 messages=[
-                    {"role": "system", "content": SYSTEM_MESSAGE},
+                    SYSTEM_PROMPT,
                     *conversation_summary,
-                    {"role": "user", "content": input_message}
+                    INPUT_PROMPT
                 ],
-                max_tokens=max_tokens,
+                max_tokens=OUTPUT_TOKENS,
                 temperature=0.7
             )
 
@@ -201,14 +198,12 @@ async def process_input_message(
 
         if response_content:
             logger.info("Received response from the API.")
-            # Debugging: Log the raw response
-            # logger.info(f"Raw API response: {response}")
             logger.info(f"Sent the response: {response_content}")
 
             conversation.append(
                 {"role": "assistant", "content": response_content}
             )
-            conversation_history[user.id] = conversation
+            CONVERSATION_HISTORY[user.id] = conversation
 
             return response_content
         else:
@@ -254,13 +249,14 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
         'Default', 'API_URL', fallback='https://api.openai.com/v1/'
     )
     GPT_MODEL = config.get(
-        'Default', 'GPT_MODEL', fallback='gpt-3.5-turbo-1106'
+        'Default', 'GPT_MODEL', fallback='gpt-4o-mini'
     )
-    GPT_TOKENS = config.getint('Default', 'GPT_TOKENS', fallback=4096)
+    INPUT_TOKENS = config.getint('Default', 'INPUT_TOKENS', fallback=120000)
+    OUTPUT_TOKENS = config.getint('Default', 'OUTPUT_TOKENS', fallback=8000)
+    CONTEXT_WINDOW = config.getint('Default', 'CONTEXT_WINDOW', fallback=128000)
     SYSTEM_MESSAGE = config.get(
         'Default', 'SYSTEM_MESSAGE', fallback='You are a helpful assistant.'
     )
-
     RATE_LIMIT = config.getint('Limits', 'RATE_LIMIT', fallback=10)
     RATE_LIMIT_PER = config.getint('Limits', 'RATE_LIMIT_PER', fallback=60)
 
@@ -298,11 +294,11 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
     intents.presences = False
 
     # Create a dictionary to store conversation history for each user
-    conversation_history = {}
+    CONVERSATION_HISTORY = {}
 
     # Setup the Bot's Personality
     SYSTEM_PROMPT = {"role": "system", "content": SYSTEM_MESSAGE}
-    
+
     # Create the bot instance
     bot = discord.Client(intents=intents)
 
@@ -387,7 +383,7 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
             return
 
         conversation_summary = get_conversation_summary(
-            conversation_history.get(message.author.id, [])
+            CONVERSATION_HISTORY.get(message.author.id, [])
         )
         response = await process_input_message(
             message.content, message.author, conversation_summary
@@ -414,7 +410,7 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
             return
 
         conversation_summary = get_conversation_summary(
-            conversation_history.get(message.author.id, [])
+            CONVERSATION_HISTORY.get(message.author.id, [])
         )
         response = await process_input_message(
             message.content, message.author, conversation_summary

@@ -10,9 +10,9 @@ ACTIVITY_STATUS=Humans
 [Default]
 API_URL=https://api.openai.com/v1/
 API_KEY = <your_api_key>
-GPT_MODEL=gpt-4o
-INPUT_TOKENS=124000
-OUTPUT_TOKENS=4000
+GPT_MODEL=gpt-4o-mini
+INPUT_TOKENS=120000
+OUTPUT_TOKENS=8000
 CONTEXT_WINDOW=128000
 SYSTEM_MESSAGE = You are a helpful AI assistant.
 
