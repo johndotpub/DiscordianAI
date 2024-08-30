@@ -14,6 +14,29 @@ import discord
 from openai import OpenAI
 from websockets.exceptions import ConnectionClosed
 
+class RateLimiter:
+    def __init__(self):
+        self.last_command_timestamps = {}
+        self.last_command_count = {}
+
+    def check_rate_limit(self, user_id: int, rate_limit: int, rate_limit_per: int, logger: logging.Logger) -> bool:
+        current_time = time.time()
+        last_command_timestamp = self.last_command_timestamps.get(user_id, 0)
+        last_command_count_user = self.last_command_count.get(user_id, 0)
+
+        if current_time - last_command_timestamp > rate_limit_per:
+            self.last_command_timestamps[user_id] = current_time
+            self.last_command_count[user_id] = 1
+            logger.info(f"Rate limit passed for user: {user_id}")
+            return True
+
+        if last_command_count_user < rate_limit:
+            self.last_command_count[user_id] += 1
+            logger.info(f"Rate limit passed for user: {user_id}")
+            return True
+
+        logger.info(f"Rate limit exceeded for user: {user_id}")
+        return False
 
 # Define the function to parse command-line arguments
 def parse_arguments() -> argparse.Namespace:
@@ -25,7 +48,6 @@ def parse_arguments() -> argparse.Namespace:
     except Exception as e:
         logger.error(f"Error parsing arguments: {e}")
         raise
-
 
 # Define the function to load the configuration
 def load_configuration(config_file: str) -> configparser.ConfigParser:
@@ -45,7 +67,6 @@ def load_configuration(config_file: str) -> configparser.ConfigParser:
     except Exception as e:
         logger.error(f"Error loading configuration: {e}")
         raise
-
 
 def set_activity_status(
     activity_type: str,
@@ -73,7 +94,6 @@ def set_activity_status(
         logger.error(f"Error setting activity status: {e}")
         raise
 
-
 # Define the function to get the conversation summary
 def get_conversation_summary(conversation: list[dict]) -> list[dict]:
     """
@@ -100,9 +120,11 @@ def get_conversation_summary(conversation: list[dict]) -> list[dict]:
         logger.error(f"Error getting conversation summary: {e}")
         raise
 
-
 async def check_rate_limit(
     user: discord.User,
+    rate_limiter: RateLimiter,
+    rate_limit: int,
+    rate_limit_per: int,
     logger: logging.Logger = None
 ) -> bool:
     """
@@ -112,28 +134,10 @@ async def check_rate_limit(
         logger = logging.getLogger(__name__)
 
     try:
-        current_time = time.time()
-        last_command_timestamp = last_command_timestamps.get(user.id, 0)
-        last_command_count_user = last_command_count.get(user.id, 0)
-
-        if current_time - last_command_timestamp > RATE_LIMIT_PER:
-            last_command_timestamps[user.id] = current_time
-            last_command_count[user.id] = 1
-            logger.info(f"Rate limit passed for user: {user}")
-            return True
-
-        if last_command_count_user < RATE_LIMIT:
-            last_command_count[user.id] += 1
-            logger.info(f"Rate limit passed for user: {user}")
-            return True
-
-        logger.info(f"Rate limit exceeded for user: {user}")
-        return False
-
+        return rate_limiter.check_rate_limit(user.id, rate_limit, rate_limit_per, logger)
     except Exception as e:
         logger.error(f"Error checking rate limit: {e}")
         raise
-
 
 async def process_input_message(
     input_message: str,
@@ -145,6 +149,8 @@ async def process_input_message(
     """
     try:
         logger.info("Sending prompt to the API.")
+
+        INPUT_PROMPT = {"role": "user", "content": input_message}
 
         conversation = conversation_history.get(user.id, [])
         conversation.append({"role": "user", "content": input_message})
@@ -219,7 +225,6 @@ async def process_input_message(
         logger.error("An error processing message: %s", error)
         return "An error occurred while processing the message."
 
-
 # Executes the argparse code only when the file is run directly
 if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
     # Parse command-line arguments
@@ -292,13 +297,12 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
     intents.typing = False
     intents.presences = False
 
-    # Create a dictionary to store the last command timestamp for each user
-    last_command_timestamps = {}
-    last_command_count = {}
-
     # Create a dictionary to store conversation history for each user
     conversation_history = {}
 
+    # Setup the Bot's Personality
+    SYSTEM_PROMPT = {"role": "system", "content": SYSTEM_MESSAGE}
+    
     # Create the bot instance
     bot = discord.Client(intents=intents)
 
@@ -307,6 +311,9 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
         api_key=API_KEY,
         api_base=API_URL
     )
+
+    # Initialize rate limiter
+    rate_limiter = RateLimiter()
 
     @bot.event
     async def on_ready():
@@ -372,7 +379,7 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
             f'Received DM from {message.author}: {message.content}'
         )
 
-        if not await check_rate_limit(message.author):
+        if not await check_rate_limit(message.author, rate_limiter, RATE_LIMIT, RATE_LIMIT_PER):
             await message.channel.send(
                 f"{message.author.mention} Exceeded the Rate Limit! Please slow down!"
             )
@@ -399,7 +406,7 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
             )
         )
 
-        if not await check_rate_limit(message.author):
+        if not await check_rate_limit(message.author, rate_limiter, RATE_LIMIT, RATE_LIMIT_PER):
             await message.channel.send(
                 f"{message.author.mention} Exceeded the Rate Limit! Please slow down!"
             )
