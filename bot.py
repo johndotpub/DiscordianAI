@@ -141,10 +141,10 @@ async def process_input_message(
     conversation_summary: list[dict]
 ) -> str:
     """
-    Process an input message using OpenAI's GPT model.
+    Process an input message using the GPT model.
     """
     try:
-        logger.info("Sending prompt to OpenAI API.")
+        logger.info("Sending prompt to the API.")
 
         conversation = conversation_history.get(user.id, [])
         conversation.append({"role": "user", "content": input_message})
@@ -188,13 +188,13 @@ async def process_input_message(
                 response_content = None
         except AttributeError:
             logger.error(
-                "Failed to get response from OpenAI API: "
+                "Failed to get response from the API: "
                 "Invalid response format."
             )
             return "Sorry, an error occurred while processing the message."
 
         if response_content:
-            logger.info("Received response from OpenAI API.")
+            logger.info("Received response from the API.")
             # Debugging: Log the raw response
             # logger.info(f"Raw API response: {response}")
             logger.info(f"Sent the response: {response_content}")
@@ -206,7 +206,7 @@ async def process_input_message(
 
             return response_content
         else:
-            logger.error("OpenAI API error: No response text.")
+            logger.error("API error: No response text.")
             return "Sorry, I didn't get that. Can you rephrase or ask again?"
 
     except ConnectionClosed as error:
@@ -243,14 +243,17 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
         'Discord', 'ACTIVITY_STATUS', fallback='Humans'
         )
 
-    OPENAI_API_KEY = config.get('OpenAI', 'OPENAI_API_KEY')
-    OPENAI_TIMEOUT = config.getint('OpenAI', 'OPENAI_TIMEOUT', fallback='30')
-    GPT_MODEL = config.get(
-        'OpenAI', 'GPT_MODEL', fallback='gpt-3.5-turbo-1106'
+    # Set your Defaults
+    API_KEY = config.get('Default', 'API_KEY')
+    API_URL = config.get(
+        'Default', 'API_URL', fallback='https://api.openai.com/v1/'
     )
-    GPT_TOKENS = config.getint('OpenAI', 'GPT_TOKENS', fallback=4096)
+    GPT_MODEL = config.get(
+        'Default', 'GPT_MODEL', fallback='gpt-3.5-turbo-1106'
+    )
+    GPT_TOKENS = config.getint('Default', 'GPT_TOKENS', fallback=4096)
     SYSTEM_MESSAGE = config.get(
-        'OpenAI', 'SYSTEM_MESSAGE', fallback='You are a helpful assistant.'
+        'Default', 'SYSTEM_MESSAGE', fallback='You are a helpful assistant.'
     )
 
     RATE_LIMIT = config.getint('Limits', 'RATE_LIMIT', fallback=10)
@@ -299,9 +302,10 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
     # Create the bot instance
     bot = discord.Client(intents=intents)
 
-    # Create the OpenAI client instance
+    # Create the API client instance
     client = OpenAI(
-        api_key=OPENAI_API_KEY
+        api_key=API_KEY,
+        api_base=API_URL
     )
 
     @bot.event
