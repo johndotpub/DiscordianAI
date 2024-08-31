@@ -1,12 +1,8 @@
-from contextlib import contextmanager
 import time
-from unittest.mock import AsyncMock
-import pytest
 import logging
-
-import bot
-from bot import check_rate_limit
-
+import pytest
+from unittest.mock import AsyncMock
+from bot import RateLimiter
 
 # Define a placeholder logger
 logger = logging.getLogger('pytest_logger')
@@ -18,56 +14,29 @@ logger.addHandler(handler)
 RATE_LIMIT = 10
 RATE_LIMIT_PER = 60
 
-last_command_count = {}
-last_command_timestamps = {}
 
+def run_test(user, rate_limiter):
+    # Simulate first command
+    result = rate_limiter.check_rate_limit(user.id, RATE_LIMIT, RATE_LIMIT_PER, logger)
+    assert result is True
+    assert rate_limiter.last_command_count.get(user.id, 0) == 1
 
-@contextmanager
-def patch_variables(module, variable_name, value):
-    """Temporarily patches a variable in a module with a given value."""
-    original_value = getattr(module, variable_name, None)
-    setattr(module, variable_name, value)
-    try:
-        yield
-    finally:
-        setattr(module, variable_name, original_value)
+    # Simulate reaching rate limit
+    rate_limiter.last_command_count[user.id] = RATE_LIMIT
+    result = rate_limiter.check_rate_limit(user.id, RATE_LIMIT, RATE_LIMIT_PER, logger)
+    assert result is False
+    assert rate_limiter.last_command_count.get(user.id, 0) == RATE_LIMIT
 
-
-async def run_test(user):
-    with patch_variables(
-        bot,
-        'last_command_timestamps',
-        {user.id: time.time() - 60}
-    ), patch_variables(
-        bot,
-        'last_command_count',
-        {user.id: 0}
-    ), patch_variables(
-        bot,
-        'RATE_LIMIT_PER',
-        RATE_LIMIT_PER
-    ), patch_variables(
-        bot,
-        'RATE_LIMIT',
-        RATE_LIMIT
-    ):
-        result = await check_rate_limit(user, logger)
-        assert result is True
-        assert bot.last_command_count.get(user.id, 0) == 1
-
-        bot.last_command_count[user.id] = RATE_LIMIT
-        result = await check_rate_limit(user, logger)
-        assert result is False
-        assert bot.last_command_count.get(user.id, 0) == RATE_LIMIT
-
-        bot.last_command_timestamps[user.id] = time.time() - RATE_LIMIT_PER - 1
-        result = await check_rate_limit(user, logger)
-        assert result is True
-        assert bot.last_command_count.get(user.id, 0) == 1
+    # Simulate time passing to reset rate limit
+    rate_limiter.last_command_timestamps[user.id] = time.time() - RATE_LIMIT_PER - 1
+    result = rate_limiter.check_rate_limit(user.id, RATE_LIMIT, RATE_LIMIT_PER, logger)
+    assert result is True
+    assert rate_limiter.last_command_count.get(user.id, 0) == 1
 
 
 @pytest.mark.asyncio
 async def test_check_rate_limit():
     user = AsyncMock()
     user.id = 123
-    await run_test(user)
+    rate_limiter = RateLimiter()
+    run_test(user, rate_limiter)

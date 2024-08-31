@@ -7,11 +7,13 @@ BOT_PRESENCE = online
 ACTIVITY_TYPE=listening
 ACTIVITY_STATUS=Humans
 
-[OpenAI]
-OPENAI_API_KEY = <your_openai_api_key>
-OPENAI_TIMEOUT=30
-GPT_MODEL=gpt-3.5-turbo
-GPT_TOKENS=3072
+[Default]
+API_URL=https://api.openai.com/v1/
+API_KEY = <your_api_key>
+GPT_MODEL=gpt-4o-mini
+INPUT_TOKENS=120000
+OUTPUT_TOKENS=8000
+CONTEXT_WINDOW=128000
 SYSTEM_MESSAGE = You are a helpful AI assistant.
 
 [Limits]

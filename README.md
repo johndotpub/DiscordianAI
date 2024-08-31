@@ -2,7 +2,7 @@
 
 # Description
 
-This is a Python script for a Discord bot that uses OpenAI's GPT API to generate responses to user messages. The bot can be configured to listen to specific channels and respond to direct messages. The bot also has a rate limit to prevent spamming and can maintain a per user conversational history to improve response quality which is only limited by the `GPT_TOKENS` value.
+This is a Python script for a Discord bot that uses either OpenAI's GPT API, or any compatible API such as Perplexity to generate responses to user messages. The bot can be configured to listen to specific channels and respond to direct messages. The bot also has a rate limit to prevent spamming and can maintain a per user conversational history to improve response quality which is only limited by the `GPT_TOKENS` value.
 
 # Requirements
 
@@ -30,12 +30,14 @@ The `config.ini` file contains the following configuration sections:
 - `ACTIVITY_TYPE`: The type of activity for the bot (e.g. playing, streaming, listening, watching, custom, competing).
 - `ACTIVITY_STATUS`: The activity status of the bot (e.g. Humans).
 
-### OpenAI
+### Default Configs
 
-- `OPENAI_API_KEY`: The OpenAI API key.
-- `OPENAI_TIMEOUT`: The OpenAI API timeout in seconds. (default: `30`)
-- `GPT_MODEL`: The GPT model to use (default: `gpt-3.5-turbo`).
-- `GPT_TOKENS`: The maximum number of tokens to generate in the GPT response (default: `3072`).
+- `API_URL`: The backend API URL. (default: `https://api.openai.com/v1/`)
+- `API_KEY`: The API key for your backend. (default: `None`)
+- `GPT_MODEL`: The GPT model to use (default: `gpt-4o-mini`)
+- `INPUT_TOKENS`: Your response input size. (default: `120000`)
+- `OUTPUT_TOKENS`: The maximum number of tokens to generate in the GPT response (default: `8000`)
+- `CONTEXT_WINDOW`: The maximum number of tokens to keep in the context window. (default: `128000`)
 - `SYSTEM_MESSAGE`: The message to send to the GPT model before the user's message.
 
 ### Limits
@@ -59,11 +61,13 @@ BOT_PRESENCE = online
 ACTIVITY_TYPE=listening
 ACTIVITY_STATUS=Humans
 
-[OpenAI]
-OPENAI_API_KEY = <your_openai_api_key>
-OPENAI_TIMEOUT=30
-GPT_MODEL=gpt-3.5-turbo
-GPT_TOKENS=3072
+[Default]
+API_URL=https://api.openai.com/v1/
+API_KEY = <your_api_key>
+GPT_MODEL=gpt-4o-mini
+INPUT_TOKENS=120000
+OUTPUT_TOKENS=8000
+CONTEXT_WINDOW=128000
 SYSTEM_MESSAGE = You are a helpful AI assistant.
 
 [Limits]
@@ -116,6 +120,14 @@ This will execute forever, unless manually stopped. The `-v` option is used to m
 - Customizable configurations: The script allows for different modes of operation and configurations.
 - Error Handling: It logs errors and exits on failure.
 - Process Handling: It terminates existing instances of the bot before starting a new one.
+- Rate Limiting: Implements rate limiting to prevent users from spamming commands.
+- Conversation History: Maintains conversation history for each user to provide context-aware responses.
+- Activity Status: Configurable activity status to display what the bot is doing.
+- Direct Message Handling: Processes direct messages separately from channel messages.
+- Channel Message Handling: Processes messages in specific channels where the bot is mentioned.
+- Automatic Message Splitting: Automatically splits long messages to fit within Discord's message length limits.
+- Global Exception Handling: Catches and logs unhandled exceptions to prevent crashes.
+- Shard Support: Supports sharding for better scalability and performance.
 
 ### Usage
 
