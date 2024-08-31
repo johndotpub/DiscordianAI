@@ -12,7 +12,6 @@ from logging.handlers import RotatingFileHandler
 # Third-party imports
 import discord
 from openai import OpenAI
-from websockets.exceptions import ConnectionClosed
 
 
 class RateLimiter:
@@ -68,14 +67,9 @@ def parse_arguments() -> argparse.Namespace:
     Returns:
         argparse.Namespace: Parsed command-line arguments.
     """
-    try:
-        parser = argparse.ArgumentParser(description='GPT-based Discord bot.')
-        parser.add_argument('--conf', help='Configuration file path')
-        args = parser.parse_args()
-        return args
-    except Exception as e:
-        logger.error(f"Error parsing arguments: {e}")
-        raise
+    parser = argparse.ArgumentParser(description='GPT-based Discord bot.')
+    parser.add_argument('--conf', help='Configuration file path')
+    return parser.parse_args()
 
 
 def load_configuration(config_file: str) -> configparser.ConfigParser:
@@ -88,18 +82,14 @@ def load_configuration(config_file: str) -> configparser.ConfigParser:
     Returns:
         configparser.ConfigParser: Loaded configuration.
     """
-    try:
-        config = configparser.ConfigParser()
+    config = configparser.ConfigParser()
 
-        if os.path.exists(config_file):
-            config.read(config_file)
-        else:
-            config.read_dict({section: dict(os.environ) for section in config.sections()})
+    if os.path.exists(config_file):
+        config.read(config_file)
+    else:
+        config.read_dict({section: dict(os.environ) for section in config.sections()})
 
-        return config
-    except Exception as e:
-        logger.error(f"Error loading configuration: {e}")
-        raise
+    return config
 
 
 def set_activity_status(activity_type: str, activity_status: str) -> discord.Activity:
@@ -113,22 +103,18 @@ def set_activity_status(activity_type: str, activity_status: str) -> discord.Act
     Returns:
         discord.Activity: The activity object.
     """
-    try:
-        activity_types = {
-            'playing': discord.ActivityType.playing,
-            'streaming': discord.ActivityType.streaming,
-            'listening': discord.ActivityType.listening,
-            'watching': discord.ActivityType.watching,
-            'custom': discord.ActivityType.custom,
-            'competing': discord.ActivityType.competing
-        }
-        return discord.Activity(
-            type=activity_types.get(activity_type, discord.ActivityType.listening),
-            name=activity_status
-        )
-    except Exception as e:
-        logger.error(f"Error setting activity status: {e}")
-        raise
+    activity_types = {
+        'playing': discord.ActivityType.playing,
+        'streaming': discord.ActivityType.streaming,
+        'listening': discord.ActivityType.listening,
+        'watching': discord.ActivityType.watching,
+        'custom': discord.ActivityType.custom,
+        'competing': discord.ActivityType.competing
+    }
+    return discord.Activity(
+        type=activity_types.get(activity_type, discord.ActivityType.listening),
+        name=activity_status
+    )
 
 
 def get_conversation_summary(conversation: list[dict]) -> list[dict]:
@@ -141,19 +127,15 @@ def get_conversation_summary(conversation: list[dict]) -> list[dict]:
     Returns:
         list[dict]: The summarized conversation.
     """
-    try:
-        summary = []
-        user_messages = [msg for msg in conversation if msg["role"] == "user"]
-        assistant_responses = [msg for msg in conversation if msg["role"] == "assistant"]
+    summary = []
+    user_messages = [msg for msg in conversation if msg["role"] == "user"]
+    assistant_responses = [msg for msg in conversation if msg["role"] == "assistant"]
 
-        for user_msg, assistant_resp in zip(user_messages, assistant_responses):
-            summary.append(user_msg)
-            summary.append(assistant_resp)
+    for user_msg, assistant_resp in zip(user_messages, assistant_responses):
+        summary.append(user_msg)
+        summary.append(assistant_resp)
 
-        return summary
-    except Exception as e:
-        logger.error(f"Error getting conversation summary: {e}")
-        raise
+    return summary
 
 
 async def check_rate_limit(
@@ -179,11 +161,7 @@ async def check_rate_limit(
     if logger is None:
         logger = logging.getLogger(__name__)
 
-    try:
-        return rate_limiter.check_rate_limit(user.id, rate_limit, rate_limit_per, logger)
-    except Exception as e:
-        logger.error(f"Error checking rate limit: {e}")
-        raise
+    return rate_limiter.check_rate_limit(user.id, rate_limit, rate_limit_per, logger)
 
 
 async def process_input_message(
@@ -202,61 +180,51 @@ async def process_input_message(
     Returns:
         str: The response from the GPT model.
     """
+    logger.info("Sending prompt to the API.")
+
+    conversation = CONVERSATION_HISTORY.get(user.id, [])
+    conversation.append({"role": "user", "content": input_message})
+
+    def call_openai_api():
+        logger.debug(f"GPT_MODEL: {GPT_MODEL}")
+        logger.debug(f"SYSTEM_MESSAGE: {SYSTEM_MESSAGE}")
+        logger.debug(f"conversation_summary: {conversation_summary}")
+        logger.debug(f"input_message: {input_message}")
+
+        return client.chat.completions.create(
+            model=GPT_MODEL,
+            messages=[
+                {"role": "system", "content": SYSTEM_MESSAGE},
+                *conversation_summary,
+                {"role": "user", "content": input_message}
+            ],
+            max_tokens=OUTPUT_TOKENS,
+            temperature=0.7
+        )
+
+    response = await asyncio.to_thread(call_openai_api)
+    logger.debug(f"Full API response: {response}")
+
     try:
-        logger.info("Sending prompt to the API.")
-
-        conversation = CONVERSATION_HISTORY.get(user.id, [])
-        conversation.append({"role": "user", "content": input_message})
-
-        def call_openai_api():
-            logger.debug(f"GPT_MODEL: {GPT_MODEL}")
-            logger.debug(f"SYSTEM_MESSAGE: {SYSTEM_MESSAGE}")
-            logger.debug(f"conversation_summary: {conversation_summary}")
-            logger.debug(f"input_message: {input_message}")
-
-            return client.chat.completions.create(
-                model=GPT_MODEL,
-                messages=[
-                    {"role": "system", "content": SYSTEM_MESSAGE},
-                    *conversation_summary,
-                    {"role": "user", "content": input_message}
-                ],
-                max_tokens=OUTPUT_TOKENS,
-                temperature=0.7
-            )
-
-        response = await asyncio.to_thread(call_openai_api)
-
-        try:
-            if response.choices:
-                response_content = response.choices[0].message.content.strip()
-            else:
-                response_content = None
-        except AttributeError as e:
-            logger.error(f"Failed to get response from the API: {e}")
-            return "Sorry, an error occurred while processing the message."
-
-        if response_content:
-            logger.info("Received response from the API.")
-            logger.info(f"Sent the response: {response_content}")
-
-            conversation.append({"role": "assistant", "content": response_content})
-            CONVERSATION_HISTORY[user.id] = conversation
-
-            return response_content
+        if response.choices:
+            response_content = response.choices[0].message.content.strip()
         else:
-            logger.error("API error: No response text.")
-            return "Sorry, I didn't get that. Can you rephrase or ask again?"
+            response_content = None
+    except AttributeError as e:
+        logger.error(f"Failed to get response from the API: {e}")
+        return "Sorry, an error occurred while processing the message."
 
-    except ConnectionClosed as error:
-        logger.error(f"WebSocket connection closed: {error}")
-        logger.info("Reconnecting in 5 seconds...")
-        await asyncio.sleep(5)
-        await bot.login(DISCORD_TOKEN)
-        await bot.connect(reconnect=True)
-    except Exception as error:
-        logger.error("An error processing message: %s", error)
-        return "An error occurred while processing the message."
+    if response_content:
+        logger.info("Received response from the API.")
+        logger.info(f"Sent the response: {response_content}")
+
+        conversation.append({"role": "assistant", "content": response_content})
+        CONVERSATION_HISTORY[user.id] = conversation
+
+        return response_content
+    else:
+        logger.error("API error: No response text.")
+        return "Sorry, I didn't get that. Can you rephrase or ask again?"
 
 
 async def process_dm_message(message: discord.Message):
