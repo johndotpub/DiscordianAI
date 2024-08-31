@@ -164,24 +164,29 @@ async def process_input_message(
     try:
         logger.info("Sending prompt to the API.")
 
-        INPUT_PROMPT = {"role": "user", "content": input_message}
-
         conversation = CONVERSATION_HISTORY.get(user.id, [])
-        conversation.append(INPUT_PROMPT)
+        conversation.append({"role": "user", "content": input_message})
 
         def call_openai_api():
+            logger.debug(f"GPT_MODEL: {GPT_MODEL}")
+            logger.debug(f"SYSTEM_MESSAGE: {SYSTEM_MESSAGE}")
+            logger.debug(f"conversation_summary: {conversation_summary}")
+            logger.debug(f"input_message: {input_message}")
+
             return client.chat.completions.create(
                 model=GPT_MODEL,
                 messages=[
-                    SYSTEM_PROMPT,
+                    {"role": "system", "content": SYSTEM_MESSAGE},
                     *conversation_summary,
-                    INPUT_PROMPT
+                    {"role": "user", "content": input_message}
                 ],
                 max_tokens=OUTPUT_TOKENS,
                 temperature=0.7
             )
 
         response = await asyncio.to_thread(call_openai_api)
+        # Debugging: Log the raw response
+        # logger.info(f"Raw API response: {response}")
 
         try:
             # Extracting the response content from the new API response format
@@ -189,15 +194,14 @@ async def process_input_message(
                 response_content = response.choices[0].message.content.strip()
             else:
                 response_content = None
-        except AttributeError:
-            logger.error(
-                "Failed to get response from the API: "
-                "Invalid response format."
-            )
+        except AttributeError as e:
+            logger.error(f"Failed to get response from the API: {e}")
             return "Sorry, an error occurred while processing the message."
 
         if response_content:
             logger.info("Received response from the API.")
+            # Debugging: Log the raw response
+            # logger.info(f"Raw API response: {response}")
             logger.info(f"Sent the response: {response_content}")
 
             conversation.append(
@@ -219,6 +223,78 @@ async def process_input_message(
     except Exception as error:
         logger.error("An error processing message: %s", error)
         return "An error occurred while processing the message."
+
+
+async def process_dm_message(message: discord.Message):
+    """
+    Process a direct message.
+    """
+    logger.info(f'Received DM from {message.author}: {message.content}')
+
+    if not await check_rate_limit(message.author, rate_limiter, RATE_LIMIT, RATE_LIMIT_PER):
+        await message.channel.send(
+            f"{message.author.mention} Exceeded the Rate Limit! Please slow down!"
+        )
+        logger.warning(f"Rate Limit Exceeded by DM from {message.author}")
+        return
+
+    conversation_summary = get_conversation_summary(
+        CONVERSATION_HISTORY.get(message.author.id, [])
+    )
+    response = await process_input_message(
+        message.content, message.author, conversation_summary
+    )
+    await send_split_message(message.channel, response)
+
+
+async def process_channel_message(message: discord.Message):
+    """
+    Process a message in a channel.
+    """
+    logger.info(
+        'Received message in {} from {}: {}'.format(
+            str(message.channel),
+            str(message.author),
+            re.sub(r'<@\d+>', '', message.content)
+        )
+    )
+
+    if not await check_rate_limit(message.author, rate_limiter, RATE_LIMIT, RATE_LIMIT_PER):
+        await message.channel.send(
+            f"{message.author.mention} Exceeded the Rate Limit! Please slow down!"
+        )
+        logger.warning(f"Rate Limit Exceeded in {message.channel} by {message.author}")
+        return
+
+    conversation_summary = get_conversation_summary(
+        CONVERSATION_HISTORY.get(message.author.id, [])
+    )
+    response = await process_input_message(
+        message.content, message.author, conversation_summary
+    )
+    await send_split_message(message.channel, response)
+
+
+async def send_split_message(channel: discord.abc.Messageable, message: str):
+    """
+    Send a message to a channel. If the message is longer than 2000 characters,
+    it is split into multiple messages at the nearest newline character around
+    the middle of the message.
+    """
+    if len(message) <= 2000:
+        await channel.send(message)
+    else:
+        # Find the nearest newline character around the middle of the message
+        middle_index = len(message) // 2
+        split_index = message.rfind('\n', 0, middle_index)
+        if split_index == -1:  # No newline character found
+            split_index = middle_index  # Split at the middle of the message
+        # Split the message into two parts
+        message_part1 = message[:split_index]
+        message_part2 = message[split_index:]
+        # Send the two parts as separate messages
+        await channel.send(message_part1)
+        await channel.send(message_part2)
 
 # Executes the argparse code only when the file is run directly
 if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
@@ -296,17 +372,11 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
     # Create a dictionary to store conversation history for each user
     CONVERSATION_HISTORY = {}
 
-    # Setup the Bot's Personality
-    SYSTEM_PROMPT = {"role": "system", "content": SYSTEM_MESSAGE}
-
     # Create the bot instance
     bot = discord.Client(intents=intents)
 
-    # Create the API client instance
-    client = OpenAI(
-        api_key=API_KEY,
-        api_base=API_URL
-    )
+    # Set the API key and base URL
+    client = OpenAI(api_key=API_KEY, base_url=API_URL)
 
     # Initialize rate limiter
     rate_limiter = RateLimiter()
@@ -348,7 +418,7 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
         logger.info(f'Shard {shard_id} is ready')
 
     @bot.event
-    async def on_message(message):
+    async def on_message(message: discord.Message):
         """
         Event handler for when a message is received.
         """
@@ -366,77 +436,6 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
                 await process_channel_message(message)
         except Exception as e:
             logger.error(f"An error occurred in on_message: {e}")
-
-    async def process_dm_message(message):
-        """
-        Process a direct message.
-        """
-        logger.info(
-            f'Received DM from {message.author}: {message.content}'
-        )
-
-        if not await check_rate_limit(message.author, rate_limiter, RATE_LIMIT, RATE_LIMIT_PER):
-            await message.channel.send(
-                f"{message.author.mention} Exceeded the Rate Limit! Please slow down!"
-            )
-            logger.warning(f"Rate Limit Exceed by DM from {message.author}")
-            return
-
-        conversation_summary = get_conversation_summary(
-            CONVERSATION_HISTORY.get(message.author.id, [])
-        )
-        response = await process_input_message(
-            message.content, message.author, conversation_summary
-        )
-        await send_split_message(message.channel, response)
-
-    async def process_channel_message(message):
-        """
-        Process a message in a channel.
-        """
-        logger.info(
-            'Received message in {} from {}: {}'.format(
-                str(message.channel),
-                str(message.author),
-                re.sub(r'<@\d+>', '', message.content)
-            )
-        )
-
-        if not await check_rate_limit(message.author, rate_limiter, RATE_LIMIT, RATE_LIMIT_PER):
-            await message.channel.send(
-                f"{message.author.mention} Exceeded the Rate Limit! Please slow down!"
-            )
-            logger.warning(f"Rate Limit Exceeded in {message.channel} by {message.author}")
-            return
-
-        conversation_summary = get_conversation_summary(
-            CONVERSATION_HISTORY.get(message.author.id, [])
-        )
-        response = await process_input_message(
-            message.content, message.author, conversation_summary
-        )
-        await send_split_message(message.channel, response)
-
-    async def send_split_message(channel, message):
-        """
-        Send a message to a channel. If the message is longer than 2000 characters,
-        it is split into multiple messages at the nearest newline character around
-        the middle of the message.
-        """
-        if len(message) <= 2000:
-            await channel.send(message)
-        else:
-            # Find the nearest newline character around the middle of the message
-            middle_index = len(message) // 2
-            split_index = message.rfind('\n', 0, middle_index)
-            if split_index == -1:  # No newline character found
-                split_index = middle_index  # Split at the middle of the message
-            # Split the message into two parts
-            message_part1 = message[:split_index]
-            message_part2 = message[split_index:]
-            # Send the two parts as separate messages
-            await channel.send(message_part1)
-            await channel.send(message_part2)
 
     # Run the bot
     bot.run(DISCORD_TOKEN)
