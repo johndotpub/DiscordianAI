@@ -12,6 +12,22 @@ This is a Python script for a Discord bot that uses either OpenAI's GPT API, or 
   - discord.py
   - openai
 
+### Features
+
+- Strict error checking: The control script exits on any error and recognizes failures in pipelines.
+- Customizable configurations: The control script allows for different modes of operation and configurations.
+- Error Handling: The control script logs errors and exits on failure.
+- Process Handling: The control script terminates existing instances of the bot before starting a new one.
+- Logging: The app logs events with timestamps for better tracking.
+- Rate Limiting: Implements rate limiting to prevent users from spamming commands.
+- Conversation History: Maintains conversation history for each user to provide context-aware responses.
+- Activity Status: Configurable activity status to display what the bot is doing.
+- Direct Message Handling: Processes direct messages separately from channel messages.
+- Channel Message Handling: Processes messages in specific channels where the bot is mentioned.
+- Automatic Message Splitting: Automatically splits long messages to fit within Discord's message length limits.
+- Global Exception Handling: Catches and logs unhandled exceptions to prevent crashes.
+- Shard Support: Supports sharding for better scalability and performance.
+
 # Installation
 
 1. Clone the repository to your local machine.
@@ -112,22 +128,6 @@ This will execute forever, unless manually stopped. The `-v` option is used to m
 # Daemon Control Script
 
 `discordian.sh` is a bash script for launching a DiscordianAI bot with customizable configurations. It is suitable for both manual execution and running via crontab.
-
-### Features
-
-- Strict error checking: The script exits on any error and recognizes failures in pipelines.
-- Logging: The script logs events with timestamps for better tracking.
-- Customizable configurations: The script allows for different modes of operation and configurations.
-- Error Handling: It logs errors and exits on failure.
-- Process Handling: It terminates existing instances of the bot before starting a new one.
-- Rate Limiting: Implements rate limiting to prevent users from spamming commands.
-- Conversation History: Maintains conversation history for each user to provide context-aware responses.
-- Activity Status: Configurable activity status to display what the bot is doing.
-- Direct Message Handling: Processes direct messages separately from channel messages.
-- Channel Message Handling: Processes messages in specific channels where the bot is mentioned.
-- Automatic Message Splitting: Automatically splits long messages to fit within Discord's message length limits.
-- Global Exception Handling: Catches and logs unhandled exceptions to prevent crashes.
-- Shard Support: Supports sharding for better scalability and performance.
 
 ### Usage
 
