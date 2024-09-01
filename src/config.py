@@ -5,38 +5,38 @@ import logging
 import sys
 from logging.handlers import RotatingFileHandler
 
-# Define the function to parse command-line arguments
 def parse_arguments() -> argparse.Namespace:
-    try:
-        parser = argparse.ArgumentParser(description='GPT-based Discord bot.')
-        parser.add_argument('--conf', help='Configuration file path')
-        args = parser.parse_args()
-        return args
-    except Exception as e:
-        logger.error(f"Error parsing arguments: {e}")
-        raise
+    """
+    Parse command-line arguments.
+
+    Returns:
+        argparse.Namespace: Parsed command-line arguments.
+    """
+    parser = argparse.ArgumentParser(description='GPT-based Discord bot.')
+    parser.add_argument('--conf', help='Configuration file path')
+    return parser.parse_args()
 
 
-# Define the function to load the configuration
 def load_configuration(config_file: str) -> configparser.ConfigParser:
-    try:
-        config = configparser.ConfigParser()
+    """
+    Load the configuration from a file or environment variables.
 
-        # Check if the configuration file exists
-        if os.path.exists(config_file):
-            config.read(config_file)
-        else:
-            # Fall back to environment variables
-            config.read_dict(
-                {section: dict(os.environ) for section in config.sections()}
-            )
+    Args:
+        config_file (str): Path to the configuration file.
 
-        return config
-    except Exception as e:
-        logger.error(f"Error loading configuration: {e}")
-        raise
+    Returns:
+        configparser.ConfigParser: Loaded configuration.
+    """
+    config = configparser.ConfigParser()
 
-# Executes the argparse code only when the file is run directly
+    if os.path.exists(config_file):
+        config.read(config_file)
+    else:
+        config.read_dict({section: dict(os.environ) for section in config.sections()})
+
+    return config
+
+
 if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
     # Parse command-line arguments
     args = parse_arguments()
@@ -46,32 +46,20 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
 
     # Retrieve configuration details from the configuration file
     DISCORD_TOKEN = config.get('Discord', 'DISCORD_TOKEN')
-    ALLOWED_CHANNELS = config.get(
-        'Discord', 'ALLOWED_CHANNELS', fallback=''
-        ).split(',')
+    ALLOWED_CHANNELS = config.get('Discord', 'ALLOWED_CHANNELS', fallback='').split(',')
     BOT_PRESENCE = config.get('Discord', 'BOT_PRESENCE', fallback='online')
-
-    # ACTIVITY_TYPE playing, streaming, listening, watching, custom, competing
-    ACTIVITY_TYPE = config.get(
-        'Discord', 'ACTIVITY_TYPE', fallback='listening'
-        )
-    ACTIVITY_STATUS = config.get(
-        'Discord', 'ACTIVITY_STATUS', fallback='Humans'
-        )
-
-    OPENAI_API_KEY = config.get('OpenAI', 'OPENAI_API_KEY')
-    OPENAI_TIMEOUT = config.getint('OpenAI', 'OPENAI_TIMEOUT', fallback='30')
-    GPT_MODEL = config.get(
-        'OpenAI', 'GPT_MODEL', fallback='gpt-3.5-turbo-1106'
-    )
-    GPT_TOKENS = config.getint('OpenAI', 'GPT_TOKENS', fallback=4096)
+    ACTIVITY_TYPE = config.get('Discord', 'ACTIVITY_TYPE', fallback='listening')
+    ACTIVITY_STATUS = config.get('Discord', 'ACTIVITY_STATUS', fallback='Humans')
+    API_KEY = config.get('Default', 'API_KEY')
+    API_URL = config.get('Default', 'API_URL', fallback='https://api.openai.com/v1/')
+    GPT_MODEL = config.get('Default', 'GPT_MODEL', fallback='gpt-4o-mini')
+    INPUT_TOKENS = config.getint('Default', 'INPUT_TOKENS', fallback=120000)
+    OUTPUT_TOKENS = config.getint('Default', 'OUTPUT_TOKENS', fallback=8000)
+    CONTEXT_WINDOW = config.getint('Default', 'CONTEXT_WINDOW', fallback=128000)
     SYSTEM_MESSAGE = config.get(
-        'OpenAI', 'SYSTEM_MESSAGE', fallback='You are a helpful assistant.'
-    )
-
+        'Default', 'SYSTEM_MESSAGE', fallback='You are a helpful assistant.')
     RATE_LIMIT = config.getint('Limits', 'RATE_LIMIT', fallback=10)
     RATE_LIMIT_PER = config.getint('Limits', 'RATE_LIMIT_PER', fallback=60)
-
     LOG_FILE = config.get('Logging', 'LOG_FILE', fallback='bot.log')
     LOG_LEVEL = config.get('Logging', 'LOG_LEVEL', fallback='INFO')
 
@@ -80,13 +68,9 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
     logger.setLevel(getattr(logging, LOG_LEVEL.upper()))
 
     # File handler
-    file_handler = RotatingFileHandler(
-        LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5
-    )
+    file_handler = RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5)
     file_handler.setLevel(getattr(logging, LOG_LEVEL.upper()))
-    file_formatter = logging.Formatter(
-        '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
-    )
+    file_formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
     file_handler.setFormatter(file_formatter)
     logger.addHandler(file_handler)
 

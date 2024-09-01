@@ -1,26 +1,19 @@
-
-# Define the function to get the conversation summary
 def get_conversation_summary(conversation: list[dict]) -> list[dict]:
     """
-    Conversation summary from combining user messages and assistant responses
+    Get a summary of the conversation.
+
+    Args:
+        conversation (list[dict]): The conversation history.
+
+    Returns:
+        list[dict]: The summarized conversation.
     """
-    try:
-        summary = []
-        user_messages = [
-            message for message in conversation if message["role"] == "user"
-        ]
-        assistant_responses = [
-            message for message in conversation if message["role"] == "assistant"
-        ]
+    summary = []
+    user_messages = [msg for msg in conversation if msg["role"] == "user"]
+    assistant_responses = [msg for msg in conversation if msg["role"] == "assistant"]
 
-        # Combine user messages and assistant responses into a summary
-        for user_message, assistant_response in zip(
-            user_messages, assistant_responses
-        ):
-            summary.append(user_message)
-            summary.append(assistant_response)
+    for user_msg, assistant_resp in zip(user_messages, assistant_responses):
+        summary.append(user_msg)
+        summary.append(assistant_resp)
 
-        return summary
-    except Exception as e:
-        logger.error(f"Error getting conversation summary: {e}")
-        raise
+    return summary
