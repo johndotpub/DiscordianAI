@@ -1,6 +1,6 @@
 discord.py==2.4.0
 openai==1.54.3
-websockets==13.1
+websockets==14.0
 
 pytest==8.3.3
 flake8==7.1.1
