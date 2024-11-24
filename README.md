@@ -1,7 +1,4 @@
-[![Github Stars](https://badgen.net/github/stars/johndotpub/DiscordianAI?icon=github)](https://github.com/johndotpub/DiscordianAI)
-[![Flake8 and Pytest](https://github.com/johndotpub/DiscordianAI/actions/workflows/flake8-pytest.yml/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/flake8-pytest.yml)
-[![CodeQL](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql)
-[![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](http://unlicense.org/)
+[![Github Stars](https://badgen.net/github/stars/johndotpub/DiscordianAI?icon=github)](https://github.com/johndotpub/DiscordianAI) [![Flake8 and Pytest](https://github.com/johndotpub/DiscordianAI/actions/workflows/flake8-pytest.yml/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/flake8-pytest.yml) [![CodeQL](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql) [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](http://unlicense.org/)
 
 # Description
 
