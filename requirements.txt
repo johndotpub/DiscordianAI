@@ -2,7 +2,7 @@ discord.py==2.4.0
 openai==1.55.3
 websockets==14.1
 
-pytest==8.3.3
+pytest==8.3.4
 flake8==7.1.1
 pyflakes==3.2.0
 pytest-asyncio==0.24.0
