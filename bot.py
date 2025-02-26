@@ -343,8 +343,10 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
     INPUT_TOKENS = config.getint('Default', 'INPUT_TOKENS', fallback=120000)
     OUTPUT_TOKENS = config.getint('Default', 'OUTPUT_TOKENS', fallback=8000)
     CONTEXT_WINDOW = config.getint('Default', 'CONTEXT_WINDOW', fallback=128000)
-    SYSTEM_MESSAGE = config.get(
+    base_system_message = config.get(
         'Default', 'SYSTEM_MESSAGE', fallback='You are a helpful assistant.')
+    discord_formatting = " Format your responses using Discord-compatible Markdown: use **bold**, *italics*, __underline__, ~~strikethrough~~, `code`, and ```language\\ncode blocks``` for proper rendering. Keep code blocks properly fenced and ensure they have syntax highlighting by specifying the language."
+    SYSTEM_MESSAGE = base_system_message + discord_formatting
     RATE_LIMIT = config.getint('Limits', 'RATE_LIMIT', fallback=10)
     RATE_LIMIT_PER = config.getint('Limits', 'RATE_LIMIT_PER', fallback=60)
     LOG_FILE = config.get('Logging', 'LOG_FILE', fallback='bot.log')
