@@ -23,11 +23,7 @@ class RateLimiter:
         self.last_command_count = {}
 
     def check_rate_limit(
-        self,
-        user_id: int,
-        rate_limit: int,
-        rate_limit_per: int,
-        logger: logging.Logger
+        self, user_id: int, rate_limit: int, rate_limit_per: int, logger: logging.Logger
     ) -> bool:
         """
         Check if a user has exceeded the rate limit.
@@ -67,8 +63,8 @@ def parse_arguments() -> argparse.Namespace:
     Returns:
         argparse.Namespace: Parsed command-line arguments.
     """
-    parser = argparse.ArgumentParser(description='GPT-based Discord bot.')
-    parser.add_argument('--conf', help='Configuration file path')
+    parser = argparse.ArgumentParser(description="GPT-based Discord bot.")
+    parser.add_argument("--conf", help="Configuration file path")
     return parser.parse_args()
 
 
@@ -104,16 +100,16 @@ def set_activity_status(activity_type: str, activity_status: str) -> discord.Act
         discord.Activity: The activity object.
     """
     activity_types = {
-        'playing': discord.ActivityType.playing,
-        'streaming': discord.ActivityType.streaming,
-        'listening': discord.ActivityType.listening,
-        'watching': discord.ActivityType.watching,
-        'custom': discord.ActivityType.custom,
-        'competing': discord.ActivityType.competing
+        "playing": discord.ActivityType.playing,
+        "streaming": discord.ActivityType.streaming,
+        "listening": discord.ActivityType.listening,
+        "watching": discord.ActivityType.watching,
+        "custom": discord.ActivityType.custom,
+        "competing": discord.ActivityType.competing,
     }
     return discord.Activity(
         type=activity_types.get(activity_type, discord.ActivityType.listening),
-        name=activity_status
+        name=activity_status,
     )
 
 
@@ -143,7 +139,7 @@ async def check_rate_limit(
     rate_limiter: RateLimiter,
     rate_limit: int,
     rate_limit_per: int,
-    logger: logging.Logger = None
+    logger: logging.Logger = None,
 ) -> bool:
     """
     Check if a user has exceeded the rate limit for sending messages.
@@ -165,9 +161,7 @@ async def check_rate_limit(
 
 
 async def process_input_message(
-    input_message: str,
-    user: discord.User,
-    conversation_summary: list[dict]
+    input_message: str, user: discord.User, conversation_summary: list[dict]
 ) -> str:
     """
     Process an input message using the GPT model.
@@ -196,10 +190,10 @@ async def process_input_message(
             messages=[
                 {"role": "system", "content": SYSTEM_MESSAGE},
                 *conversation_summary,
-                {"role": "user", "content": input_message}
+                {"role": "user", "content": input_message},
             ],
             max_tokens=OUTPUT_TOKENS,
-            temperature=0.7
+            temperature=0.7,
         )
 
     response = await asyncio.to_thread(call_openai_api)
@@ -234,9 +228,11 @@ async def process_dm_message(message: discord.Message):
     Args:
         message (discord.Message): The direct message received.
     """
-    logger.info(f'Received DM from {message.author}: {message.content}')
+    logger.info(f"Received DM from {message.author}: {message.content}")
 
-    if not await check_rate_limit(message.author, rate_limiter, RATE_LIMIT, RATE_LIMIT_PER):
+    if not await check_rate_limit(
+        message.author, rate_limiter, RATE_LIMIT, RATE_LIMIT_PER
+    ):
         await message.channel.send(
             f"{message.author.mention} Exceeded the Rate Limit! Please slow down!"
         )
@@ -260,14 +256,16 @@ async def process_channel_message(message: discord.Message):
         message (discord.Message): The message received in a channel.
     """
     logger.info(
-        'Received message in {} from {}: {}'.format(
+        "Received message in {} from {}: {}".format(
             str(message.channel),
             str(message.author),
-            re.sub(r'<@\d+>', '', message.content)
+            re.sub(r"<@\d+>", "", message.content),
         )
     )
 
-    if not await check_rate_limit(message.author, rate_limiter, RATE_LIMIT, RATE_LIMIT_PER):
+    if not await check_rate_limit(
+        message.author, rate_limiter, RATE_LIMIT, RATE_LIMIT_PER
+    ):
         await message.channel.send(
             f"{message.author.mention} Exceeded the Rate Limit! Please slow down!"
         )
@@ -298,7 +296,7 @@ async def send_split_message(channel: discord.abc.Messageable, message: str):
         middle_index = len(message) // 2
 
         # Find the nearest newline before the middle index
-        split_index = message.rfind('\n', 0, middle_index)
+        split_index = message.rfind("\n", 0, middle_index)
         if split_index == -1:
             split_index = middle_index
 
@@ -307,9 +305,9 @@ async def send_split_message(channel: discord.abc.Messageable, message: str):
         after_split = message[split_index:]
 
         # Check if the split occurs within a code block
-        if before_split.count('```') % 2 != 0:
+        if before_split.count("```") % 2 != 0:
             # Find the next newline after the middle index
-            split_index = message.find('\n', middle_index)
+            split_index = message.find("\n", middle_index)
             if split_index == -1:
                 split_index = middle_index
 
@@ -332,34 +330,42 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
     config = load_configuration(args.conf)
 
     # Retrieve configuration details from the configuration file
-    DISCORD_TOKEN = config.get('Discord', 'DISCORD_TOKEN')
-    ALLOWED_CHANNELS = config.get('Discord', 'ALLOWED_CHANNELS', fallback='').split(',')
-    BOT_PRESENCE = config.get('Discord', 'BOT_PRESENCE', fallback='online')
-    ACTIVITY_TYPE = config.get('Discord', 'ACTIVITY_TYPE', fallback='listening')
-    ACTIVITY_STATUS = config.get('Discord', 'ACTIVITY_STATUS', fallback='Humans')
-    API_KEY = config.get('Default', 'API_KEY')
-    API_URL = config.get('Default', 'API_URL', fallback='https://api.openai.com/v1/')
-    GPT_MODEL = config.get('Default', 'GPT_MODEL', fallback='gpt-4o-mini')
-    INPUT_TOKENS = config.getint('Default', 'INPUT_TOKENS', fallback=120000)
-    OUTPUT_TOKENS = config.getint('Default', 'OUTPUT_TOKENS', fallback=8000)
-    CONTEXT_WINDOW = config.getint('Default', 'CONTEXT_WINDOW', fallback=128000)
+    DISCORD_TOKEN = config.get("Discord", "DISCORD_TOKEN")
+    ALLOWED_CHANNELS = config.get("Discord", "ALLOWED_CHANNELS", fallback="").split(",")
+    BOT_PRESENCE = config.get("Discord", "BOT_PRESENCE", fallback="online")
+    ACTIVITY_TYPE = config.get("Discord", "ACTIVITY_TYPE", fallback="listening")
+    ACTIVITY_STATUS = config.get("Discord", "ACTIVITY_STATUS", fallback="Humans")
+    API_KEY = config.get("Default", "API_KEY")
+    API_URL = config.get("Default", "API_URL", fallback="https://api.openai.com/v1/")
+    GPT_MODEL = config.get("Default", "GPT_MODEL", fallback="gpt-4o-mini")
+    INPUT_TOKENS = config.getint("Default", "INPUT_TOKENS", fallback=120000)
+    OUTPUT_TOKENS = config.getint("Default", "OUTPUT_TOKENS", fallback=8000)
+    CONTEXT_WINDOW = config.getint("Default", "CONTEXT_WINDOW", fallback=128000)
     base_system_message = config.get(
-        'Default', 'SYSTEM_MESSAGE', fallback='You are a helpful assistant.')
-    discord_formatting = " Format your responses using Discord-compatible Markdown: use **bold**, *italics*, __underline__, ~~strikethrough~~, `code`, and ```language\\ncode blocks``` for proper rendering. Keep code blocks properly fenced and ensure they have syntax highlighting by specifying the language."
-    SYSTEM_MESSAGE = base_system_message + discord_formatting
-    RATE_LIMIT = config.getint('Limits', 'RATE_LIMIT', fallback=10)
-    RATE_LIMIT_PER = config.getint('Limits', 'RATE_LIMIT_PER', fallback=60)
-    LOG_FILE = config.get('Logging', 'LOG_FILE', fallback='bot.log')
-    LOG_LEVEL = config.get('Logging', 'LOG_LEVEL', fallback='INFO')
+        "Default", "SYSTEM_MESSAGE", fallback="You are a helpful assistant."
+    )
+    DISCORD_FORMATTING_MESSAGE = (
+        " Format responses with Discord Markdown: **bold**, *italics*, __underline__, "
+        "~~strikethrough~~, `code`, ```blocks```"
+    )
+    SYSTEM_MESSAGE = base_system_message + DISCORD_FORMATTING_MESSAGE
+    RATE_LIMIT = config.getint("Limits", "RATE_LIMIT", fallback=10)
+    RATE_LIMIT_PER = config.getint("Limits", "RATE_LIMIT_PER", fallback=60)
+    LOG_FILE = config.get("Logging", "LOG_FILE", fallback="bot.log")
+    LOG_LEVEL = config.get("Logging", "LOG_LEVEL", fallback="INFO")
 
     # Set up logging
-    logger = logging.getLogger('discord')
+    logger = logging.getLogger("discord")
     logger.setLevel(getattr(logging, LOG_LEVEL.upper()))
 
     # File handler
-    file_handler = RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5)
+    file_handler = RotatingFileHandler(
+        LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5
+    )
     file_handler.setLevel(getattr(logging, LOG_LEVEL.upper()))
-    file_formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+    file_formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    )
     file_handler.setFormatter(file_formatter)
     logger.addHandler(file_handler)
 
@@ -369,7 +375,9 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
             return
 
-        logger.error("Unhandled exception", exc_info=(exc_type, exc_value, exc_traceback))
+        logger.error(
+            "Unhandled exception", exc_info=(exc_type, exc_value, exc_traceback)
+        )
 
     sys.excepthook = handle_unhandled_exception
 
@@ -395,26 +403,28 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
         """
         Event handler for when the bot is ready to receive messages.
         """
-        logger.info(f'We have logged in as {bot.user}')
-        logger.info(f'Configured bot presence: {BOT_PRESENCE}')
-        logger.info(f'Configured activity type: {ACTIVITY_TYPE}')
-        logger.info(f'Configured activity status: {ACTIVITY_STATUS}')
+        logger.info(f"We have logged in as {bot.user}")
+        logger.info(f"Configured bot presence: {BOT_PRESENCE}")
+        logger.info(f"Configured activity type: {ACTIVITY_TYPE}")
+        logger.info(f"Configured activity status: {ACTIVITY_STATUS}")
         activity = set_activity_status(ACTIVITY_TYPE, ACTIVITY_STATUS)
-        await bot.change_presence(activity=activity, status=discord.Status(BOT_PRESENCE))
+        await bot.change_presence(
+            activity=activity, status=discord.Status(BOT_PRESENCE)
+        )
 
     @bot.event
     async def on_disconnect():
         """
         Event handler for when the bot disconnects from the Discord server.
         """
-        logger.info('Bot has disconnected')
+        logger.info("Bot has disconnected")
 
     @bot.event
     async def on_resumed():
         """
         Event handler for when the bot resumes its session.
         """
-        logger.info('Bot has resumed session')
+        logger.info("Bot has resumed session")
 
     @bot.event
     async def on_shard_ready(shard_id):
@@ -424,7 +434,7 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
         Args:
             shard_id: The ID of the shard.
         """
-        logger.info(f'Shard {shard_id} is ready')
+        logger.info(f"Shard {shard_id} is ready")
 
     @bot.event
     async def on_message(message: discord.Message):
