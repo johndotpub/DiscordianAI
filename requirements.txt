@@ -1,5 +1,5 @@
 discord.py==2.5.2
-openai==1.86.0
+openai==1.90.0
 websockets==15.0.1
 
 pytest==8.4.0
