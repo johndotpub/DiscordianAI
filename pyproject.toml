@@ -42,6 +42,7 @@ dev = [
 
 [tool.flake8]
 max-line-length = 99
+max-complexity = 16
 
 [tool.pytest.ini_options]
 addopts = "-ra -q"
