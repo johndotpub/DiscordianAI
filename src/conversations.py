@@ -3,11 +3,16 @@ def get_conversation_summary(conversation: list[dict]) -> list[dict]:
     Get a summary of the conversation.
 
     Args:
-        conversation (list[dict]): The conversation history.
+        conversation (list[dict]): The conversation history. Must not be None.
 
     Returns:
         list[dict]: The summarized conversation.
+
+    Raises:
+        ValueError: If conversation is None.
     """
+    if conversation is None:
+        raise ValueError("conversation must not be None")
     summary = []
     user_messages = [msg for msg in conversation if msg["role"] == "user"]
     assistant_responses = [msg for msg in conversation if msg["role"] == "assistant"]

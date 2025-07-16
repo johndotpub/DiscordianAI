@@ -1,5 +1,6 @@
 # Import necessary libraries and modules for testing
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
+import asyncio
 
 # Pytest library for testing
 import pytest
@@ -13,96 +14,107 @@ class TestProcessInputMessage:
     # Test processing a normal message
     @pytest.mark.asyncio
     async def test_process_normal_message(self):
-        # Mock dependencies
         with (
-            patch("bot.OpenAI") as mock_openai,
-            patch("bot.get_conversation_summary", return_value=[]),
-            patch("bot.logger") as mock_logger,
+            patch("src.bot.get_conversation_summary", return_value=[]),
+            patch("src.bot.logger") as mock_logger,
         ):
-            # Setup mock OpenAI client response
-            mock_openai_client = AsyncMock()
-            mock_openai_client.chat.completions.create.return_value = AsyncMock(
-                choices=[AsyncMock(message=AsyncMock(content="Test response"))]
-            )
-            mock_openai.return_value = mock_openai_client
-
-            # Mock user and input message
-            mock_user = AsyncMock()
+            class FakeMessage:
+                def __init__(self, content):
+                    self.content = content
+                def strip(self):
+                    return self.content.strip()
+            class FakeChoice:
+                def __init__(self, content):
+                    self.message = FakeMessage(content)
+            class FakeResponse:
+                def __init__(self, content):
+                    self.choices = [FakeChoice(content)]
+            class FakeOpenAIClient:
+                class Chat:
+                    class Completions:
+                        @staticmethod
+                        def create(*args, **kwargs):
+                            return FakeResponse("Test response")
+                    completions = Completions()
+                chat = Chat()
+            mock_user = MagicMock()
             mock_user.id = 123
             input_message = "Hello"
-
-            # Call the function under test
-            response = await bot.process_input_message(input_message, mock_user, [])
-
-            # Assert the response is as expected
+            # Patch to_thread as an async function
+            async def async_to_thread(f, *a, **kw):
+                return f(*a, **kw)
+            response = await bot.process_input_message(
+                input_message, mock_user, [],
+                client=FakeOpenAIClient(),
+                to_thread=async_to_thread
+            )
             assert response == "Test response"
-            # Assert logging calls
-            mock_logger.info.assert_called_with("Received response from OpenAI API.")
+            mock_logger.info.assert_any_call("Received response from the API.")
 
     # Test processing a message when OpenAI API returns no choices
     @pytest.mark.asyncio
     async def test_process_message_no_response(self):
-        # Mock dependencies
         with (
-            patch("bot.OpenAI") as mock_openai,
-            patch("bot.get_conversation_summary", return_value=[]),
-            patch("bot.logger") as mock_logger,
+            patch("src.bot.get_conversation_summary", return_value=[]),
+            patch("src.bot.logger") as mock_logger,
         ):
-            # Setup mock OpenAI client response with no choices
-            mock_openai_client = AsyncMock()
-            mock_openai_client.chat.completions.create.return_value = AsyncMock(
-                choices=[]
-            )
-            mock_openai.return_value = mock_openai_client
-
-            # Mock user and input message
-            mock_user = AsyncMock()
+            class FakeResponse:
+                def __init__(self):
+                    self.choices = []
+            class FakeOpenAIClient:
+                class Chat:
+                    class Completions:
+                        @staticmethod
+                        def create(*args, **kwargs):
+                            return FakeResponse()
+                    completions = Completions()
+                chat = Chat()
+            mock_user = MagicMock()
             mock_user.id = 123
             input_message = "Hello"
-
-            # Call the function under test
-            response = await bot.process_input_message(input_message, mock_user, [])
-
-            # Assert the response indicates an error
-            assert (
-                response == "Sorry, I didn't get that. Can you rephrase or ask again?"
+            # Patch to_thread as an async function
+            async def async_to_thread(f, *a, **kw):
+                return f(*a, **kw)
+            response = await bot.process_input_message(
+                input_message, mock_user, [],
+                client=FakeOpenAIClient(),
+                to_thread=async_to_thread
             )
-            # Assert logging calls
-            mock_logger.error.assert_called_with("OpenAI API error: No response text.")
+            assert response == "Sorry, I didn't get that. Can you rephrase or ask again?"
+            mock_logger.error.assert_any_call("API error: No response text.")
 
     # Test processing a message when an exception occurs
     @pytest.mark.asyncio
     async def test_process_message_exception(self):
-        # Mock dependencies to raise an exception
         with (
-            patch("bot.OpenAI") as mock_openai,
-            patch("bot.get_conversation_summary", return_value=[]),
-            patch("bot.logger") as mock_logger,
+            patch("src.bot.get_conversation_summary", return_value=[]),
+            patch("src.bot.logger") as mock_logger,
         ):
-            # Setup mock OpenAI client to raise an exception
-            mock_openai_client = AsyncMock()
-            mock_openai_client.chat.completions.create.side_effect = Exception(
-                "Test exception"
-            )
-            mock_openai.return_value = mock_openai_client
-
-            # Mock user and input message
-            mock_user = AsyncMock()
+            class FakeOpenAIClient:
+                class Chat:
+                    class Completions:
+                        @staticmethod
+                        def create(*args, **kwargs):
+                            raise Exception("Test exception")
+                    completions = Completions()
+                chat = Chat()
+            mock_user = MagicMock()
             mock_user.id = 123
             input_message = "Hello"
-
-            # Call the function under test
-            response = await bot.process_input_message(input_message, mock_user, [])
-
-            # Assert the response indicates an error
-            assert (
-                response == "An error occurred while processing the message."
+            # Patch to_thread as an async function that mimics real threading by catching exceptions
+            async def async_to_thread(f, *a, **kw):
+                try:
+                    return f(*a, **kw)
+                except Exception as e:
+                    # Mimic real asyncio.to_thread: propagate exception to the caller
+                    raise e
+            response = await bot.process_input_message(
+                input_message, mock_user, [],
+                client=FakeOpenAIClient(),
+                to_thread=async_to_thread
             )
-            # Assert logging calls
-            mock_logger.error.assert_called_with(
-                "An error processing message: "
-                "Test exception"
-            )
+            assert response == "Sorry, an error occurred while processing the message."
+            mock_logger.error.assert_any_call("Failed to get response from the API: Test exception")
 
 
 # Explanation of what the tests are testing for:

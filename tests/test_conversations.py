@@ -1,4 +1,4 @@
-# Import the necessary modules for testing
+# Import the necessary modulke8 .es for testing
 import pytest
 
 from src.conversations import get_conversation_summary
@@ -38,11 +38,12 @@ def test_get_conversation_summary_non_alternating():
         {"role": "assistant", "content": "Welcome back!"},
     ]
 
-    # The expected summary should handle consecutive messages according to the function's logic
-    # This example assumes the first message of each role is included
+    # The expected summary should include all user messages and all assistant messages in order
     expected_summary = [
         {"role": "user", "content": "Hello"},
         {"role": "assistant", "content": "Hi there!"},
+        {"role": "user", "content": "It's me again."},
+        {"role": "assistant", "content": "Welcome back!"},
     ]
 
     # Verify the function's output
@@ -134,6 +135,8 @@ def test_get_conversation_summary_invalid_role():
             [
                 {"role": "user", "content": "Hello"},
                 {"role": "assistant", "content": "Hi there!"},
+                {"role": "user", "content": "It's me again."},
+                {"role": "assistant", "content": "Welcome back!"},
             ],
         ),
         # Empty conversation

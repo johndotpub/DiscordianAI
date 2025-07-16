@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from bot import RateLimiter
+from src.rate_limits import RateLimiter
 
 # Define a placeholder logger
 logger = logging.getLogger("pytest_logger")

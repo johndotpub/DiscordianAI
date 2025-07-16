@@ -32,7 +32,8 @@ logger = logging.getLogger(__name__)
 
 
 async def process_input_message(
-    input_message: str, user: discord.User, conversation_summary: list[dict]
+    input_message: str, user: discord.User, conversation_summary: list[dict],
+    client=client, to_thread=asyncio.to_thread
 ) -> str:
     """
     Process an input message using the GPT model.
@@ -41,6 +42,8 @@ async def process_input_message(
         input_message (str): The input message from the user.
         user (discord.User): The user who sent the message.
         conversation_summary (list[dict]): The conversation summary.
+        client: The OpenAI client to use (default: global client).
+        to_thread: The threading function to use (default: asyncio.to_thread).
 
     Returns:
         str: The response from the GPT model.
@@ -67,15 +70,14 @@ async def process_input_message(
             temperature=0.7,
         )
 
-    response = await asyncio.to_thread(call_openai_api)
-    logger.debug(f"Full API response: {response}")
-
     try:
+        response = await to_thread(call_openai_api)
+        logger.debug(f"Full API response: {response}")
         if response.choices:
             response_content = response.choices[0].message.content.strip()
         else:
             response_content = None
-    except AttributeError as e:
+    except Exception as e:
         logger.error(f"Failed to get response from the API: {e}")
         return "Sorry, an error occurred while processing the message."
 

@@ -44,6 +44,22 @@ def load_configuration(config_file: str) -> configparser.ConfigParser:
     return config
 
 
+# Define config constants for import by other modules
+GPT_MODEL = os.environ.get("GPT_MODEL", "gpt-4o-mini")
+OUTPUT_TOKENS = int(os.environ.get("OUTPUT_TOKENS", 8000))
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+SYSTEM_MESSAGE = os.environ.get("SYSTEM_MESSAGE", "You are a helpful assistant.")
+API_KEY = os.environ.get("API_KEY", "")
+API_URL = os.environ.get("API_URL", "https://api.openai.com/v1/")
+ALLOWED_CHANNELS = os.environ.get("ALLOWED_CHANNELS", "").split(",")
+BOT_PRESENCE = os.environ.get("BOT_PRESENCE", "online")
+ACTIVITY_TYPE = os.environ.get("ACTIVITY_TYPE", "listening")
+ACTIVITY_STATUS = os.environ.get("ACTIVITY_STATUS", "Humans")
+DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "")
+RATE_LIMIT = int(os.environ.get("RATE_LIMIT", 10))
+RATE_LIMIT_PER = int(os.environ.get("RATE_LIMIT_PER", 60))
+
+
 if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
     # Parse command-line arguments
     args = parse_arguments()
@@ -52,22 +68,22 @@ if __name__ == "__main__":  # noqa: C901 (ignore complexity in main function)
     config = load_configuration(args.conf)
 
     # Retrieve configuration details from the configuration file
-    DISCORD_TOKEN = config.get("Discord", "DISCORD_TOKEN")
-    ALLOWED_CHANNELS = config.get("Discord", "ALLOWED_CHANNELS", fallback="").split(",")
-    BOT_PRESENCE = config.get("Discord", "BOT_PRESENCE", fallback="online")
-    ACTIVITY_TYPE = config.get("Discord", "ACTIVITY_TYPE", fallback="listening")
-    ACTIVITY_STATUS = config.get("Discord", "ACTIVITY_STATUS", fallback="Humans")
-    API_KEY = config.get("Default", "API_KEY")
-    API_URL = config.get("Default", "API_URL", fallback="https://api.openai.com/v1/")
-    GPT_MODEL = config.get("Default", "GPT_MODEL", fallback="gpt-4o-mini")
-    INPUT_TOKENS = config.getint("Default", "INPUT_TOKENS", fallback=120000)
-    OUTPUT_TOKENS = config.getint("Default", "OUTPUT_TOKENS", fallback=8000)
-    CONTEXT_WINDOW = config.getint("Default", "CONTEXT_WINDOW", fallback=128000)
-    SYSTEM_MESSAGE = config.get(
-        "Default", "SYSTEM_MESSAGE", fallback="You are a helpful assistant."
-    )
-    RATE_LIMIT = config.getint("Limits", "RATE_LIMIT", fallback=10)
-    RATE_LIMIT_PER = config.getint("Limits", "RATE_LIMIT_PER", fallback=60)
+    # DISCORD_TOKEN = config.get("Discord", "DISCORD_TOKEN") # This line is now redundant
+    # ALLOWED_CHANNELS = config.get("Discord", "ALLOWED_CHANNELS", fallback="").split(",") # This line is now redundant
+    # BOT_PRESENCE = config.get("Discord", "BOT_PRESENCE", fallback="online") # This line is now redundant
+    # ACTIVITY_TYPE = config.get("Discord", "ACTIVITY_TYPE", fallback="listening") # This line is now redundant
+    # ACTIVITY_STATUS = config.get("Discord", "ACTIVITY_STATUS", fallback="Humans") # This line is now redundant
+    # API_KEY = config.get("Default", "API_KEY") # This line is now redundant
+    # API_URL = config.get("Default", "API_URL", fallback="https://api.openai.com/v1/") # This line is now redundant
+    # GPT_MODEL = config.get("Default", "GPT_MODEL", fallback="gpt-4o-mini") # This line is now redundant
+    # INPUT_TOKENS = config.getint("Default", "INPUT_TOKENS", fallback=120000) # This line is now redundant
+    # OUTPUT_TOKENS = config.getint("Default", "OUTPUT_TOKENS", fallback=8000) # This line is now redundant
+    # CONTEXT_WINDOW = config.getint("Default", "CONTEXT_WINDOW", fallback=128000) # This line is now redundant
+    # SYSTEM_MESSAGE = config.get(
+    #     "Default", "SYSTEM_MESSAGE", fallback="You are a helpful assistant."
+    # ) # This line is now redundant
+    # RATE_LIMIT = config.getint("Limits", "RATE_LIMIT", fallback=10) # This line is now redundant
+    # RATE_LIMIT_PER = config.getint("Limits", "RATE_LIMIT_PER", fallback=60) # This line is now redundant
     LOG_FILE = config.get("Logging", "LOG_FILE", fallback="bot.log")
     LOG_LEVEL = config.get("Logging", "LOG_LEVEL", fallback="INFO")
 
