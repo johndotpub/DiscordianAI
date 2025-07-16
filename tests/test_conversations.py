@@ -1,7 +1,7 @@
 # Import the necessary modules for testing
 import pytest
 
-from conversations import get_conversation_summary
+from src.conversations import get_conversation_summary
 
 # The purpose of this test suite is to validate the functionality of the get_conversation_summary
 # function from the conversations module. This function is expected to process a list of
