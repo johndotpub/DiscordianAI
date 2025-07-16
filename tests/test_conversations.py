@@ -1,4 +1,4 @@
-# Import the necessary modulke8 .es for testing
+# Import the necessary modules for testing
 import pytest
 
 from src.conversations import get_conversation_summary
