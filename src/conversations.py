@@ -16,4 +16,7 @@ def get_conversation_summary(conversation: list[dict]) -> list[dict]:
         summary.append(user_msg)
         summary.append(assistant_resp)
 
+    # Include any unmatched user messages in the summary
+    if len(user_messages) > len(assistant_responses):
+        summary.extend(user_messages[len(assistant_responses):])
     return summary
