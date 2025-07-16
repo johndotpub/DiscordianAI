@@ -1,19 +1,16 @@
-from .bot import bot
-from .config import load_configuration, parse_arguments
+from .config import load_config, parse_arguments
+from .bot import run_bot
 
 
 def main():
     # Parse command-line arguments
     args = parse_arguments()
 
-    # Load configuration
-    config = load_configuration(args.conf)
+    # Load configuration (file, env, defaults)
+    config = load_config(args.conf)
 
-    # Retrieve DISCORD_TOKEN from configuration
-    DISCORD_TOKEN = config.get("Discord", "DISCORD_TOKEN")
-
-    # Run the bot
-    bot.run(DISCORD_TOKEN)
+    # Start the bot with the loaded config
+    run_bot(config)
 
 
 if __name__ == "__main__":

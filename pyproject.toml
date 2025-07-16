@@ -37,7 +37,8 @@ dev = [
     "flake8",
     "pytest",
     "pytest-asyncio",
-    "tox"
+    "tox",
+    "autopep8"
 ]
 
 [tool.flake8]
