@@ -14,14 +14,14 @@ def set_activity_status(activity_type: str, activity_status: str) -> discord.Act
         discord.Activity: The activity object.
     """
     activity_types = {
-        'playing': discord.ActivityType.playing,
-        'streaming': discord.ActivityType.streaming,
-        'listening': discord.ActivityType.listening,
-        'watching': discord.ActivityType.watching,
-        'custom': discord.ActivityType.custom,
-        'competing': discord.ActivityType.competing
+        "playing": discord.ActivityType.playing,
+        "streaming": discord.ActivityType.streaming,
+        "listening": discord.ActivityType.listening,
+        "watching": discord.ActivityType.watching,
+        "custom": discord.ActivityType.custom,
+        "competing": discord.ActivityType.competing,
     }
     return discord.Activity(
         type=activity_types.get(activity_type, discord.ActivityType.listening),
-        name=activity_status
+        name=activity_status,
     )

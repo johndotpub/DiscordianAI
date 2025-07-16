@@ -6,21 +6,44 @@ build-backend = "setuptools.build_meta"
 name = "DiscordianAI"
 version = "0.1.0"
 description = "A Discord bot that uses OpenAI's GPT API to generate responses."
-authors = [{name = "johndotpub", email = "github@john.pub"}]
+readme = "README.md"
 license = {file = "LICENSE"}
-dependencies = [
-    "discord.py",
-    "openai",
-    "python-dotenv"
-]
+authors = [{name = "johndotpub", email = "github@john.pub"}]
 requires-python = ">=3.12"
+dependencies = [
+    "discord.py>=1.7.3",
+    "openai>=0.10.2",
+    "python-dotenv>=0.19.0"
+]
+urls = {"Homepage" = "https://github.com/johndotpub/DiscordianAI"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: The Unlicense (Unlicense)",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Communications :: Chat",
+    "Topic :: Software Development :: Libraries :: Python Modules"
+]
 
-[tool.black]
-line-length = 88
-target-version = ['py312']
+[project.scripts]
+discordianai = "src.main:main"
 
-[tool.isort]
-profile = "black"
+[project.optional-dependencies]
+dev = [
+    "isort",
+    "black",
+    "flake8",
+    "pytest",
+    "pytest-asyncio",
+    "tox"
+]
 
-[tool.mypy]
-python_version = 3.12
+[tool.flake8]
+max-line-length = 99
+
+[tool.pytest.ini_options]
+addopts = "-ra -q"
+asyncio_default_fixture_loop_scope = "function"
+

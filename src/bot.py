@@ -1,23 +1,34 @@
 # Standard library imports
-import argparse
-import asyncio
-import configparser
-import logging
-import os
 import re
-import sys
-import time
-from logging.handlers import RotatingFileHandler
+import asyncio
 
 # Third-party imports
 import discord
 from openai import OpenAI
-
-# Local application imports
+from .config import (
+    GPT_MODEL,
+    SYSTEM_MESSAGE,
+    OUTPUT_TOKENS,
+    API_KEY,
+    API_URL,
+    ALLOWED_CHANNELS,
+    BOT_PRESENCE,
+    ACTIVITY_TYPE,
+    ACTIVITY_STATUS,
+    DISCORD_TOKEN,
+    RATE_LIMIT,
+    RATE_LIMIT_PER,
+)
+from .rate_limits import check_rate_limit, RateLimiter
 from .conversations import get_conversation_summary
 from .discord_bot import set_activity_status
-from .rate_limits import check_rate_limit
-from .config import GPT_MODEL, GPT_TOKENS, OPENAI_API_KEY, SYSTEM_MESSAGE
+import logging
+
+# Define globals at module level
+CONVERSATION_HISTORY = {}
+client = OpenAI(api_key=API_KEY, base_url=API_URL)
+rate_limiter = RateLimiter()
+logger = logging.getLogger(__name__)
 
 
 async def process_input_message(
@@ -181,23 +192,13 @@ async def send_split_message(channel: discord.abc.Messageable, message: str):
         await channel.send(message_part1)
         await send_split_message(channel, message_part2)
 
-
     # Set the intents for the bot
     intents = discord.Intents.default()
     intents.typing = False
     intents.presences = False
 
-    # Create a dictionary to store conversation history for each user
-    CONVERSATION_HISTORY = {}
-
     # Create the bot instance
     bot = discord.Client(intents=intents)
-
-    # Set the API key and base URL
-    client = OpenAI(api_key=API_KEY, base_url=API_URL)
-
-    # Initialize rate limiter
-    rate_limiter = RateLimiter()
 
     @bot.event
     async def on_ready():

@@ -1,11 +1,13 @@
-import time
 import logging
-import pytest
+import time
 from unittest.mock import AsyncMock
+
+import pytest
+
 from bot import RateLimiter
 
 # Define a placeholder logger
-logger = logging.getLogger('pytest_logger')
+logger = logging.getLogger("pytest_logger")
 logger.setLevel(logging.DEBUG)
 handler = logging.StreamHandler()
 handler.setLevel(logging.DEBUG)

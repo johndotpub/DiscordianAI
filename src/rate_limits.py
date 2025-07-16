@@ -1,3 +1,8 @@
+import logging
+import time
+import discord
+
+
 class RateLimiter:
     """Class to handle rate limiting for users."""
 
@@ -7,11 +12,7 @@ class RateLimiter:
         self.last_command_count = {}
 
     def check_rate_limit(
-        self,
-        user_id: int,
-        rate_limit: int,
-        rate_limit_per: int,
-        logger: logging.Logger
+        self, user_id: int, rate_limit: int, rate_limit_per: int, logger: logging.Logger
     ) -> bool:
         """
         Check if a user has exceeded the rate limit.
@@ -49,7 +50,7 @@ async def check_rate_limit(
     rate_limiter: RateLimiter,
     rate_limit: int,
     rate_limit_per: int,
-    logger: logging.Logger = None
+    logger: logging.Logger = None,
 ) -> bool:
     """
     Check if a user has exceeded the rate limit for sending messages.
