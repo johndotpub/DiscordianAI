@@ -47,3 +47,6 @@ max-line-length = 99
 addopts = "-ra -q"
 asyncio_default_fixture_loop_scope = "function"
 
+[tool.black]
+line-length = 99
+
