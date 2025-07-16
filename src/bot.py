@@ -152,45 +152,50 @@ async def process_channel_message(message: discord.Message):
     await send_split_message(message.channel, response)
 
 
+def find_split_index(message, middle_index):
+    """Find the nearest newline before the middle index, or use the middle index."""
+    split_index = message.rfind("\n", 0, middle_index)
+    if split_index == -1:
+        split_index = middle_index
+    return split_index
+
+def adjust_for_code_block(message, before_split, middle_index):
+    """
+    If splitting would break a code block (odd number of triple backticks before the split),
+    try to split at the next newline after the middle index. If not found, use the middle index.
+    """
+    if before_split.count("```") % 2 != 0:
+        split_index = message.find("\n", middle_index)
+        if split_index == -1:
+            split_index = middle_index
+        before_split = message[:split_index]
+        after_split = message[split_index:]
+        return before_split, after_split
+    else:
+        after_split = message[len(before_split):]
+        return before_split, after_split
+
 async def send_split_message(channel: discord.abc.Messageable, message: str):
     """
     Send a message to a channel, splitting it if necessary.
-
-    Args:
-        channel (discord.abc.Messageable): The channel to send the message to.
-        message (str): The message to send.
     """
     if len(message) <= 2000:
         await channel.send(message)
-    else:
-        # Find the middle index
-        middle_index = len(message) // 2
+        return
 
-        # Find the nearest newline before the middle index
-        split_index = message.rfind("\n", 0, middle_index)
-        if split_index == -1:
-            split_index = middle_index
+    middle_index = len(message) // 2
+    split_index = find_split_index(message, middle_index)
+    before_split = message[:split_index]
+    after_split = message[split_index:]
 
-        # Adjust split index to avoid splitting code blocks
-        before_split = message[:split_index]
-        after_split = message[split_index:]
+    before_split, after_split = adjust_for_code_block(message, before_split, middle_index)
 
-        # Check if the split occurs within a code block
-        if before_split.count("```") % 2 != 0:
-            # Find the next newline after the middle index
-            split_index = message.find("\n", middle_index)
-            if split_index == -1:
-                split_index = middle_index
+    # Ensure no leading/trailing whitespace
+    message_part1 = before_split.strip()
+    message_part2 = after_split.strip()
 
-            before_split = message[:split_index]
-            after_split = message[split_index:]
-
-        # Ensure no leading/trailing whitespace
-        message_part1 = before_split.strip()
-        message_part2 = after_split.strip()
-
-        await channel.send(message_part1)
-        await send_split_message(channel, message_part2)
+    await channel.send(message_part1)
+    await send_split_message(channel, message_part2)
 
     # Set the intents for the bot
     intents = discord.Intents.default()
