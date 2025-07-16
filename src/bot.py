@@ -159,6 +159,7 @@ def find_split_index(message, middle_index):
         split_index = middle_index
     return split_index
 
+
 def adjust_for_code_block(message, before_split, middle_index):
     """
     If splitting would break a code block (odd number of triple backticks before the split),
@@ -174,6 +175,7 @@ def adjust_for_code_block(message, before_split, middle_index):
     else:
         after_split = message[len(before_split):]
         return before_split, after_split
+
 
 async def send_split_message(channel: discord.abc.Messageable, message: str):
     """
