@@ -33,7 +33,13 @@ def load_configuration(config_file: str) -> configparser.ConfigParser:
     if os.path.exists(config_file):
         config.read(config_file)
     else:
-        config.read_dict({section: dict(os.environ) for section in config.sections()})
+        default_sections = {
+            'Default': dict(os.environ),
+            'Discord': dict(os.environ),
+            'Limits': dict(os.environ),
+            'Logging': dict(os.environ),
+        }
+        config.read_dict(default_sections)
 
     return config
 
