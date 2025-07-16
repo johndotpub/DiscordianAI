@@ -64,10 +64,9 @@ done
 # Construct the command with the base folder and config file.
 # If base_folder is set, prepend it to both bot.py and config file paths.
 if [[ -n $base_folder ]]; then
-    config_file="$base_folder/$config_file"
-    command="$python3 $base_folder/bot.py --conf $config_file"
+    command="$python3 -m src.main --conf $config_file --folder $base_folder"
 else
-    command="$python3 bot.py --conf $config_file"
+    command="$python3 -m src.main --conf $config_file"
 fi
 log "Command to execute: $command"
 
@@ -76,7 +75,7 @@ trap 'log "An error occurred. Exiting..."; exit 1' ERR
 
 # Terminate existing instances of the bot
 log "Killing existing instances of the bot..."
-pkill -f "bot.py --conf" || true
+pkill -f "src.main --conf" || true
 
 # Decide execution mode based on output setting
 if [[ -z $output ]]; then

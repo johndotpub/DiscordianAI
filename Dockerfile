@@ -22,5 +22,5 @@ RUN if [ -f config.ini ]; then rm config.ini; fi
 # Set the command to run the bot
 # The ENTRYPOINT instruction allows the container to be run as an executable
 # The CMD instruction provides default arguments that can be overridden
-ENTRYPOINT ["python", "bot.py"]
+ENTRYPOINT ["python", "-m", "src.bot"]
 CMD ["--conf", "config.ini"]
