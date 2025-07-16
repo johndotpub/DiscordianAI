@@ -23,6 +23,13 @@ def main():
     # Load configuration (file, env, defaults)
     config = load_config(args.conf, getattr(args, "folder", None))
 
+    # Set up logging output to file
+    logging.basicConfig(
+        filename=config["LOG_FILE"],
+        level=getattr(logging, config["LOG_LEVEL"].upper(), logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
     # Start the bot with the loaded config
     run_bot(config)
 
