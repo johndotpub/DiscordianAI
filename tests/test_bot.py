@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 # Import the module to be tested
-import bot
+import src.bot as bot
 
 
 # Test the process_input_message function for various scenarios
