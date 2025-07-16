@@ -41,10 +41,6 @@ dev = [
     "autopep8"
 ]
 
-[tool.flake8]
-max-line-length = 99
-max-complexity = 16
-
 [tool.pytest.ini_options]
 addopts = "-ra -q"
 asyncio_default_fixture_loop_scope = "function"

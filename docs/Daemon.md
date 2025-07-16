@@ -25,3 +25,5 @@ The script accepts the following command line arguments:
 ```
 
 This command will run the bot in daemon mode, using the configuration file at `/path/to/config.ini` and the base folder at `/path/to/base/folder`.
+
+> **Note:** Daemon/background mode is handled by the `discordian.sh` shell script, which supports `-d/--daemon`, `-c/--config`, and `-f/--folder` arguments. The Python code now supports `--folder` for base directory resolution of config and log files.

@@ -1,8 +1,9 @@
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
-import logging
-import asyncio
+
 from src.openai_processing import process_input_message
+
 
 @pytest.mark.asyncio
 async def test_process_input_message_normal():
@@ -15,19 +16,24 @@ async def test_process_input_message_normal():
     class FakeMessage:
         def __init__(self, content):
             self.content = content
+
     class FakeChoice:
         def __init__(self, content):
             self.message = FakeMessage(content)
+
     class FakeResponse:
         def __init__(self, content):
             self.choices = [FakeChoice(content)]
+
     class FakeOpenAIClient:
         class Chat:
             class Completions:
                 @staticmethod
                 def create(*args, **kwargs):
                     return FakeResponse("Test response")
+
             completions = Completions()
+
         chat = Chat()
 
     response = await process_input_message(
@@ -45,6 +51,7 @@ async def test_process_input_message_normal():
     assert conversation_history[mock_user.id][-1]["role"] == "assistant"
     assert conversation_history[mock_user.id][-1]["content"] == "Test response"
 
+
 @pytest.mark.asyncio
 async def test_process_input_message_no_response():
     mock_user = MagicMock()
@@ -56,13 +63,16 @@ async def test_process_input_message_no_response():
     class FakeResponse:
         def __init__(self):
             self.choices = []
+
     class FakeOpenAIClient:
         class Chat:
             class Completions:
                 @staticmethod
                 def create(*args, **kwargs):
                     return FakeResponse()
+
             completions = Completions()
+
         chat = Chat()
 
     response = await process_input_message(
@@ -80,6 +90,7 @@ async def test_process_input_message_no_response():
     # Should not add assistant message to history
     assert mock_user.id not in conversation_history
 
+
 @pytest.mark.asyncio
 async def test_process_input_message_exception():
     mock_user = MagicMock()
@@ -94,7 +105,9 @@ async def test_process_input_message_exception():
                 @staticmethod
                 def create(*args, **kwargs):
                     raise Exception("API failure!")
+
             completions = Completions()
+
         chat = Chat()
 
     response = await process_input_message(
@@ -112,6 +125,7 @@ async def test_process_input_message_exception():
     # Should not add assistant message to history
     assert mock_user.id not in conversation_history
 
+
 @pytest.mark.asyncio
 async def test_process_input_message_to_thread_override():
     mock_user = MagicMock()
@@ -124,12 +138,15 @@ async def test_process_input_message_to_thread_override():
     class FakeMessage:
         def __init__(self, content):
             self.content = content
+
     class FakeChoice:
         def __init__(self, content):
             self.message = FakeMessage(content)
+
     class FakeResponse:
         def __init__(self, content):
             self.choices = [FakeChoice(content)]
+
     class FakeOpenAIClient:
         class Chat:
             class Completions:
@@ -137,7 +154,9 @@ async def test_process_input_message_to_thread_override():
                 def create(*args, **kwargs):
                     called["used"] = True
                     return FakeResponse("Threaded response")
+
             completions = Completions()
+
         chat = Chat()
 
     async def fake_to_thread(fn, *args, **kwargs):
@@ -158,6 +177,7 @@ async def test_process_input_message_to_thread_override():
     assert response == "Threaded response"
     assert called["used"] is True
 
+
 @pytest.mark.asyncio
 async def test_process_input_message_empty_input():
     mock_user = MagicMock()
@@ -169,19 +189,24 @@ async def test_process_input_message_empty_input():
     class FakeMessage:
         def __init__(self, content):
             self.content = content
+
     class FakeChoice:
         def __init__(self, content):
             self.message = FakeMessage(content)
+
     class FakeResponse:
         def __init__(self, content):
             self.choices = [FakeChoice(content)]
+
     class FakeOpenAIClient:
         class Chat:
             class Completions:
                 @staticmethod
                 def create(*args, **kwargs):
                     return FakeResponse("")
+
             completions = Completions()
+
         chat = Chat()
 
     response = await process_input_message(

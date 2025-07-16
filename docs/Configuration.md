@@ -53,3 +53,12 @@ RATE_LIMIT_PER = 10
 [Logging]
 LOG_FILE = bot.log
 ```
+
+## CLI Arguments
+
+- `--conf`: Path to the configuration file (relative to base folder if --folder is used).
+- `--folder`: (Optional) Base folder for config and logs. If provided, config and log file paths are resolved relative to this folder unless absolute.
+
+## Error Handling
+
+A global exception handler is set up to log any unhandled exceptions, ensuring robust error reporting and easier debugging.

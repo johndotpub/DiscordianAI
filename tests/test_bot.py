@@ -1,8 +1,10 @@
 # Import necessary libraries and modules for testing
-from unittest.mock import patch, MagicMock
-import pytest
-from src.openai_processing import process_input_message
 import logging
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from src.openai_processing import process_input_message
 
 
 # Test the process_input_message function for various scenarios

@@ -109,10 +109,21 @@ To use this bot, you will need to create a Discord bot and invite it to your ser
 To start the bot, run the following command:
 
 ```bash
-python bot.py --conf config.ini
+python -m src.main --conf config.ini --folder /path/to/base/folder
 ```
 
+- `--conf`: Path to the configuration file (relative to base folder if --folder is used).
+- `--folder`: (Optional) Base folder for config and logs. If provided, config and log file paths are resolved relative to this folder unless absolute.
+
 The bot will log in to Discord and start listening for messages in the configured channels. When a message is received, the bot will send the message to the OpenAI API and wait for a response. The response will be sent back to the user who sent the message.
+
+## Error Handling
+
+A global exception handler is set up to log any unhandled exceptions, ensuring robust error reporting and easier debugging.
+
+## Daemon Mode
+
+Daemon/background mode is handled by the `discordian.sh` shell script, which supports `-d/--daemon`, `-c/--config`, and `-f/--folder` arguments. See the Daemon section below for details.
 
 ## Detailed Documentation
 
@@ -123,6 +134,62 @@ For more in-depth information about the DiscordianAI project, please refer to th
 - [Docker](./docs/Docker.md) : Instructions on how to containerize the Discord bot using Docker.
 - [OpenAI](./docs/OpenAI.md) : Information on how the Discord bot uses the OpenAI GPT API to generate responses.
 - [Setup](./docs/Setup.md) : Step-by-step guide on how to set up and run the Discord bot.
+
+## Development & Testing
+
+### Install Dev Dependencies
+
+```bash
+pip install -e .[dev]
+```
+
+### Run Tests
+
+```bash
+pytest
+```
+
+### Linting & Formatting
+
+- **flake8:**
+  ```bash
+  flake8 .
+  ```
+- **black (check only):**
+  ```bash
+  black --check .
+  ```
+- **isort (check only):**
+  ```bash
+  isort --check .
+  ```
+- **autopep8 (auto-fix):**
+  ```bash
+  autopep8 -r . --in-place
+  ```
+
+### Full Workflow
+
+To run all checks and tests:
+
+```bash
+flake8 .
+black --check .
+isort --check .
+pytest
+```
+
+To auto-fix formatting:
+
+```bash
+black .
+isort .
+autopep8 -r . --in-place
+```
+
+### Continuous Integration
+
+All pushes and pull requests are automatically checked with flake8 and pytest via GitHub Actions.
 
 # Daemon Control Script
 

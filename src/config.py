@@ -10,17 +10,13 @@ def parse_arguments() -> argparse.Namespace:
     Returns:
         argparse.Namespace: Parsed command-line arguments.
     """
-    parser = argparse.ArgumentParser(
-        description="GPT-based Discord bot."
-    )
-    parser.add_argument(
-        "--conf",
-        help="Configuration file path"
-    )
+    parser = argparse.ArgumentParser(description="GPT-based Discord bot.")
+    parser.add_argument("--conf", help="Configuration file path")
+    parser.add_argument("--folder", help="Base folder for config and logs")
     return parser.parse_args()
 
 
-def load_config(config_file: str = None) -> Dict[str, Any]:
+def load_config(config_file: str = None, base_folder: str = None) -> Dict[str, Any]:
     """
     Load configuration from a file (if provided), then environment variables,
     with a clear hierarchy.
@@ -31,6 +27,11 @@ def load_config(config_file: str = None) -> Dict[str, Any]:
     """
     config = configparser.ConfigParser()
     config_data = {}
+
+    # If base_folder is provided, resolve config_file and log file paths
+    if base_folder:
+        if config_file and not os.path.isabs(config_file):
+            config_file = os.path.join(base_folder, config_file)
 
     # 1. Load from file if provided and exists
     if config_file and os.path.exists(config_file):
@@ -62,6 +63,8 @@ def load_config(config_file: str = None) -> Dict[str, Any]:
         config_data["RATE_LIMIT_PER"] = config.getint("Limits", "RATE_LIMIT_PER", fallback=60)
         # Logging section
         config_data["LOG_FILE"] = config.get("Logging", "LOG_FILE", fallback="bot.log")
+        if base_folder and not os.path.isabs(config_data["LOG_FILE"]):
+            config_data["LOG_FILE"] = os.path.join(base_folder, config_data["LOG_FILE"])
         config_data["LOG_LEVEL"] = config.get("Logging", "LOG_LEVEL", fallback="INFO")
 
     # 2. Override with environment variables if set
