@@ -1,54 +1,208 @@
+"""OpenAI API processing with thread-safe conversation management and enhanced error handling.
+
+This module handles all OpenAI API interactions including GPT-5 specific parameters,
+conversation state management, and comprehensive error recovery.
+"""
+
 import asyncio
+import logging
+
+from .caching import cached_response, deduplicated_request
+from .conversation_manager import ThreadSafeConversationManager
+from .error_handling import RetryConfig, retry_with_backoff
 
 
-async def process_input_message(
-    input_message: str,
+@cached_response(ttl=300.0)  # Cache for 5 minutes
+@deduplicated_request()  # Prevent duplicate simultaneous requests
+async def process_openai_message(
+    message: str,
     user,
     conversation_summary: list[dict],
-    conversation_history: dict,
-    logger,
-    client,
+    conversation_manager: ThreadSafeConversationManager,
+    logger: logging.Logger,
+    openai_client,
     gpt_model: str,
     system_message: str,
     output_tokens: int,
-    to_thread=asyncio.to_thread,
-) -> str:
-    logger.info("Sending prompt to the API.")
-    conversation = conversation_history.get(user.id, [])
-    conversation.append({"role": "user", "content": input_message})
+    reasoning_effort: str | None = None,
+    verbosity: str | None = None,
+) -> str | None:
+    """Process message using OpenAI API with thread-safe conversation management.
 
-    def call_openai_api():
-        logger.debug(f"GPT_MODEL: {gpt_model}")
-        logger.debug(f"SYSTEM_MESSAGE: {system_message}")
-        logger.debug(f"conversation_summary: {conversation_summary}")
-        logger.debug(f"input_message: {input_message}")
-        return client.chat.completions.create(
-            model=gpt_model,
-            messages=[
-                {"role": "system", "content": system_message},
-                *conversation_summary,
-                {"role": "user", "content": input_message},
-            ],
-            max_tokens=output_tokens,
-            temperature=0.7,
+    Handles conversation state updates, API calls, error recovery, and
+    GPT-5 specific parameters in a production-ready manner.
+
+    Args:
+        message (str): User's input message
+        user: Discord user object
+        conversation_summary (list[dict]): Conversation summary for context
+        conversation_manager (ThreadSafeConversationManager): Thread-safe conversation manager
+        logger (logging.Logger): Logger for API events
+        openai_client: OpenAI client instance
+        gpt_model (str): GPT model identifier (e.g., 'gpt-5', 'gpt-4')
+        system_message (str): System prompt for the AI
+        output_tokens (int): Maximum tokens to generate
+        reasoning_effort (str, optional): GPT-5 reasoning effort ('low', 'medium', 'high')
+        verbosity (str, optional): GPT-5 verbosity level ('low', 'medium', 'high')
+
+    Returns:
+        Optional[str]: Generated response text, or None if generation failed
+
+    Side Effects:
+        - Updates user's conversation history via thread-safe manager
+        - Logs API calls and responses
+        - Handles rate limiting and error recovery
+    """
+    try:
+        logger.info(f"Processing OpenAI request for user {user.id} with model {gpt_model}")
+
+        # Note: We'll add user message to conversation history only after successful response
+        # to maintain consistency and allow rollback on failures
+
+        # Prepare API call in a separate function for better error handling
+        async def call_openai_api_async():
+            logger.debug(f"API Call - Model: {gpt_model}, System: {system_message[:100]}...")
+            logger.debug(f"Conversation summary length: {len(conversation_summary)} messages")
+            logger.debug(f"User message length: {len(message)} characters")
+
+            # Build API parameters dynamically
+            api_params = {
+                "model": gpt_model,
+                "messages": [
+                    {"role": "system", "content": system_message},
+                    *conversation_summary,
+                    {"role": "user", "content": message},
+                ],
+                "max_completion_tokens": output_tokens,
+            }
+
+            # Add GPT-5 specific parameters if provided and model supports them
+            if reasoning_effort:
+                if gpt_model.startswith("gpt-5"):
+                    if reasoning_effort in ["minimal", "low", "medium", "high"]:
+                        api_params["reasoning_effort"] = reasoning_effort
+                        logger.debug(f"Using GPT-5 reasoning_effort: {reasoning_effort}")
+                    else:
+                        logger.warning(
+                            f"Invalid reasoning_effort '{reasoning_effort}' for {gpt_model}, "
+                            f"ignoring"
+                        )
+                else:
+                    logger.info(
+                        f"reasoning_effort '{reasoning_effort}' only supported for GPT-5 models, "
+                        f"ignoring for {gpt_model}"
+                    )
+
+            if verbosity:
+                if gpt_model.startswith("gpt-5"):
+                    if verbosity in ["low", "medium", "high"]:
+                        api_params["verbosity"] = verbosity
+                        logger.debug(f"Using GPT-5 verbosity: {verbosity}")
+                    else:
+                        logger.warning(
+                            f"Invalid verbosity '{verbosity}' for {gpt_model}, ignoring"
+                        )
+                else:
+                    logger.info(
+                        f"verbosity '{verbosity}' only supported for GPT-5 models, "
+                        f"ignoring for {gpt_model}"
+                    )
+
+            logger.debug(f"Making OpenAI API call with {len(api_params['messages'])} messages")
+            return openai_client.chat.completions.create(**api_params)
+
+        # Define the wrapped API call function for retry
+        async def api_call_with_retry():
+            return await asyncio.to_thread(
+                lambda: openai_client.chat.completions.create(
+                    **{
+                        "model": gpt_model,
+                        "messages": [
+                            {"role": "system", "content": system_message},
+                            *conversation_summary,
+                            {"role": "user", "content": message},
+                        ],
+                        "max_completion_tokens": output_tokens,
+                        **(
+                            {"reasoning_effort": reasoning_effort}
+                            if reasoning_effort
+                            and gpt_model.startswith("gpt-5")
+                            and reasoning_effort in ["minimal", "low", "medium", "high"]
+                            else {}
+                        ),
+                        **(
+                            {"verbosity": verbosity}
+                            if verbosity
+                            and gpt_model.startswith("gpt-5")
+                            and verbosity in ["low", "medium", "high"]
+                            else {}
+                        ),
+                    }
+                )
+            )
+
+        # Make API call with enhanced error handling and retries
+        logger.debug("Executing OpenAI API call with retry logic")
+        retry_config = RetryConfig(max_attempts=2, base_delay=1.0, max_delay=30.0)
+
+        try:
+            response = await retry_with_backoff(api_call_with_retry, retry_config, logger)
+        except Exception:
+            logger.exception("OpenAI API call failed after retries")
+            return None
+
+        # Log response metadata
+        logger.debug(f"OpenAI API response received - ID: {getattr(response, 'id', 'unknown')}")
+        if hasattr(response, "usage"):
+            usage = response.usage
+            logger.info(
+                f"Token usage - Prompt: {getattr(usage, 'prompt_tokens', 'unknown')}, "
+                f"Completion: {getattr(usage, 'completion_tokens', 'unknown')}, "
+                f"Total: {getattr(usage, 'total_tokens', 'unknown')}"
+            )
+
+        # Extract and validate response
+        if response.choices and response.choices[0].message.content:
+            response_content = response.choices[0].message.content.strip()
+
+            if not response_content:
+                logger.warning("OpenAI returned empty response content")
+                return None
+
+            logger.info(
+                f"OpenAI response generated successfully: {len(response_content)} characters, "
+                f"finish_reason: {getattr(response.choices[0], 'finish_reason', 'unknown')}"
+            )
+            logger.debug(f"Response preview: {response_content[:200]}...")
+
+            # Add both user and assistant messages to conversation history (thread-safe)
+            # Only add after successful response to maintain consistency
+            conversation_manager.add_message(user.id, "user", message)
+            conversation_manager.add_message(
+                user.id,
+                "assistant",
+                response_content,
+                metadata={"ai_service": "openai", "model": gpt_model},
+            )
+
+            return response_content
+
+        logger.error(f"OpenAI API returned invalid response structure: {response}")
+        return None
+
+    except TimeoutError:
+        logger.exception(f"OpenAI API call timed out for user {user.id}")
+        return None
+
+    except Exception as e:
+        logger.error(
+            f"OpenAI API call failed for user {user.id}: {type(e).__name__}: {e}", exc_info=True
         )
 
-    try:
-        response = await to_thread(call_openai_api)
-        logger.debug(f"Full API response: {response}")
-        if response.choices:
-            response_content = response.choices[0].message.content.strip()
-        else:
-            response_content = None
-    except Exception as e:
-        logger.error(f"Failed to get response from the API: {e}")
-        return "Sorry, an error occurred while processing the message."
-    if response_content:
-        logger.info("Received response from the API.")
-        logger.info(f"Sent the response: {response_content}")
-        conversation.append({"role": "assistant", "content": response_content})
-        conversation_history[user.id] = conversation
-        return response_content
-    else:
-        logger.error("API error: No response text.")
-        return "Sorry, I didn't get that. Can you rephrase or ask again?"
+        # Log additional context for debugging
+        logger.debug(
+            f"Failed API call context - Model: {gpt_model}, Message length: {len(message)}"
+        )
+
+        # Don't add failed responses to conversation history
+        return None

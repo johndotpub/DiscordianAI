@@ -4,14 +4,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.openai_processing import process_input_message
+from src.conversation_manager import ThreadSafeConversationManager
+from src.openai_processing import process_openai_message
 
 
-# Test the process_input_message function for various scenarios
-class TestProcessInputMessage:
+# Test the process_openai_message function for various scenarios
+class TestProcessOpenAIMessage:
     @pytest.mark.asyncio
     async def test_process_normal_message(self):
-        with patch("src.bot.get_conversation_summary", return_value=[]):
+        with patch(
+            "src.conversation_manager.ThreadSafeConversationManager."
+            "get_conversation_summary_formatted",
+            return_value=[],
+        ):
 
             class FakeMessage:
                 def __init__(self, content):
@@ -42,29 +47,35 @@ class TestProcessInputMessage:
             mock_user = MagicMock()
             mock_user.id = 123
             input_message = "Hello"
-            conversation_history = {}
+            conversation_manager = ThreadSafeConversationManager()
             logger = logging.getLogger("test_logger")
 
-            async def async_to_thread(f, *a, **kw):
-                return f(*a, **kw)
-
-            response = await process_input_message(
+            response = await process_openai_message(
                 input_message,
                 mock_user,
                 [],
-                conversation_history,
+                conversation_manager,
                 logger,
                 FakeOpenAIClient(),
                 "gpt-4o-mini",
                 "You are a helpful assistant.",
                 8000,
-                to_thread=async_to_thread,
             )
             assert response == "Test response"
 
     @pytest.mark.asyncio
     async def test_process_message_no_response(self):
-        with patch("src.bot.get_conversation_summary", return_value=[]):
+        # Clear caches to ensure test isolation
+        from src.caching import conversation_cache, response_cache
+
+        conversation_cache.clear()
+        response_cache.cache.clear()
+
+        with patch(
+            "src.conversation_manager.ThreadSafeConversationManager."
+            "get_conversation_summary_formatted",
+            return_value=[],
+        ):
 
             class FakeResponse:
                 def __init__(self):
@@ -84,29 +95,29 @@ class TestProcessInputMessage:
             mock_user = MagicMock()
             mock_user.id = 123
             input_message = "Hello"
-            conversation_history = {}
+            conversation_manager = ThreadSafeConversationManager()
             logger = logging.getLogger("test_logger")
 
-            async def async_to_thread(f, *a, **kw):
-                return f(*a, **kw)
-
-            response = await process_input_message(
+            response = await process_openai_message(
                 input_message,
                 mock_user,
                 [],
-                conversation_history,
+                conversation_manager,
                 logger,
                 FakeOpenAIClient(),
                 "gpt-4o-mini",
                 "You are a helpful assistant.",
                 8000,
-                to_thread=async_to_thread,
             )
-            assert response == "Sorry, I didn't get that. Can you rephrase or ask again?"
+            assert response is None  # Updated to match new function behavior
 
     @pytest.mark.asyncio
     async def test_process_message_exception(self):
-        with patch("src.bot.get_conversation_summary", return_value=[]):
+        with patch(
+            "src.conversation_manager.ThreadSafeConversationManager."
+            "get_conversation_summary_formatted",
+            return_value=[],
+        ):
 
             class FakeOpenAIClient:
                 class Chat:
@@ -122,28 +133,21 @@ class TestProcessInputMessage:
             mock_user = MagicMock()
             mock_user.id = 123
             input_message = "Hello"
-            conversation_history = {}
+            conversation_manager = ThreadSafeConversationManager()
             logger = logging.getLogger("test_logger")
 
-            async def async_to_thread(f, *a, **kw):
-                try:
-                    return f(*a, **kw)
-                except Exception as e:
-                    raise e
-
-            response = await process_input_message(
+            response = await process_openai_message(
                 input_message,
                 mock_user,
                 [],
-                conversation_history,
+                conversation_manager,
                 logger,
                 FakeOpenAIClient(),
                 "gpt-4o-mini",
                 "You are a helpful assistant.",
                 8000,
-                to_thread=async_to_thread,
             )
-            assert response == "Sorry, an error occurred while processing the message."
+            assert response is None  # Updated to match new function behavior
 
 
 # Explanation of what the tests are testing for:

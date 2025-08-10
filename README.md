@@ -2,15 +2,52 @@
 
 # Description
 
-This is a Python script for a Discord bot that uses either OpenAI's GPT API, or any compatible API such as Perplexity to generate responses to user messages. The bot can be configured to listen to specific channels and respond to direct messages. The bot also has a rate limit to prevent spamming and can maintain a per user conversational history to improve response quality which is only limited by the `GPT_TOKENS` value.
+DiscordianAI is an **advanced Discord bot** with sophisticated AI orchestration, conversation consistency, and production-grade thread-safe architecture. It intelligently uses multiple AI services to provide the best responses with **three operation modes**:
+
+1. **🧠 Smart Hybrid Mode** - Automatically chooses between OpenAI's GPT-5 and Perplexity's web search with conversation consistency
+2. **🤖 OpenAI Only** - Uses GPT-5 for all responses  
+3. **🔍 Perplexity Only** - Uses web search for all responses with proper citations
+
+## ✨ Advanced Features
+
+### 🔄 **AI Service Consistency System**
+- **Follow-up Detection**: Automatically detects when users ask follow-up questions
+- **Context Preservation**: Routes follow-ups to the same AI service for conversational continuity  
+- **Metadata Tracking**: Stores AI service information with each response for intelligent routing
+
+### 🎯 **Smart AI Orchestration**
+- **Semantic Analysis**: Advanced pattern matching to determine optimal AI service
+- **Entity Detection**: Recognizes proper nouns, companies, and specific topics for routing
+- **Time Sensitivity**: Automatically detects time-sensitive queries for web search
+- **Configurable Intelligence**: Fine-tune routing behavior with advanced configuration options
+
+### 🔗 **Enhanced Discord Integration** 
+- **Clickable Citations**: Converts numbered citations [1], [2] to clickable Discord hyperlinks
+- **Smart Embed Suppression**: Prevents link preview clutter with multiple citations
+- **Message Splitting**: Intelligently splits long responses while preserving formatting
+- **Thread-Safe Operations**: Handles concurrent users safely without data corruption
+
+### 🛡️ **Production-Grade Architecture**
+- **Thread Safety**: Per-user locking prevents race conditions in concurrent scenarios
+- **Memory Management**: Automatic cleanup of inactive user data to prevent memory leaks
+- **Error Recovery**: Comprehensive error handling with graceful fallbacks
+- **Performance Optimization**: Pre-compiled regex patterns and optimized data structures
 
 # Requirements
 
 - Bash
-- Python 3.12 or Higher
+- Python 3.10 or Higher
 - Python Modules
   - discord.py
   - openai
+  - websockets
+
+## API Keys (Choose Your Mode)
+
+- **OpenAI API Key** (for GPT-5): Get from [OpenAI Platform](https://platform.openai.com/api-keys)
+- **Perplexity API Key** (for web search): Get from [Perplexity](https://www.perplexity.ai/settings/api)
+
+*You can use one or both keys depending on your preferred operation mode*
 
 ### Features
 
@@ -36,62 +73,119 @@ This is a Python script for a Discord bot that uses either OpenAI's GPT API, or 
 
 # Configuration
 
-The `config.ini` file contains the following configuration sections:
+The `config.ini` file supports all three operation modes with comprehensive configuration options:
 
-### Discord
+## Operation Modes
 
-- `DISCORD_TOKEN`: The Discord bot token.
-- `ALLOWED_CHANNELS`: A comma-separated list of channel names that the bot is allowed to listen to.
-- `BOT_PRESENCE`: The presence of the bot (e.g. online, offline, idle).
-- `ACTIVITY_TYPE`: The type of activity for the bot (e.g. playing, streaming, listening, watching, custom, competing).
-- `ACTIVITY_STATUS`: The activity status of the bot (e.g. Humans).
+### 🧠 Smart Hybrid Mode (Recommended)
+The bot automatically analyzes each message and chooses the best AI service:
+- **Time-sensitive questions** → Perplexity (web search)
+- **Creative/coding requests** → GPT-5  
+- **Factual queries** → Perplexity
+- **Conversations** → GPT-5
 
-### Default Configs
+```ini
+OPENAI_API_KEY=your_openai_key_here
+PERPLEXITY_API_KEY=your_perplexity_key_here
+```
 
-- `API_URL`: The backend API URL. (default: `https://api.openai.com/v1/`)
-- `API_KEY`: The API key for your backend. (default: `None`)
-- `GPT_MODEL`: The GPT model to use (default: `gpt-4o-mini`)
-- `INPUT_TOKENS`: Your response input size. (default: `120000`)
-- `OUTPUT_TOKENS`: The maximum number of tokens to generate in the GPT response (default: `8000`)
-- `CONTEXT_WINDOW`: The maximum number of tokens to keep in the context window. (default: `128000`)
-- `SYSTEM_MESSAGE`: The message to send to the GPT model before the user's message.
+### 🤖 OpenAI Only Mode
+Uses GPT-5 for all responses:
+```ini
+OPENAI_API_KEY=your_openai_key_here
+PERPLEXITY_API_KEY=
+```
 
-### Limits
+### 🔍 Perplexity Only Mode  
+Uses web search for all responses with citations:
+```ini
+OPENAI_API_KEY=
+PERPLEXITY_API_KEY=your_perplexity_key_here
+```
 
-- `RATE_LIMIT`: The number of messages a user can send within `RATE_LIMIT_PER` seconds (default: `2`).
-- `RATE_LIMIT_PER`: The time period in seconds for the rate limit (default: `10`).
+## Configuration Sections
 
-### Logging
+### Discord Settings
+- `DISCORD_TOKEN`: Your Discord bot token
+- `ALLOWED_CHANNELS`: Comma-separated channel names where bot responds
+- `BOT_PRESENCE`: Bot status (online, idle, dnd, invisible)
+- `ACTIVITY_TYPE`: Activity type (playing, streaming, listening, watching, competing)
+- `ACTIVITY_STATUS`: Custom activity message
 
-- `LOG_FILE`: The path to the log file (default: bot.log).
+### AI Configuration
+- `OPENAI_API_KEY`: OpenAI API key for GPT models (leave blank to disable)
+- `OPENAI_API_URL`: OpenAI API endpoint (default: https://api.openai.com/v1/)
+- `GPT_MODEL`: OpenAI model (gpt-4o-mini, gpt-4o, gpt-4, gpt-4-turbo, gpt-5)
+- `PERPLEXITY_API_KEY`: Perplexity API key for web search (leave blank to disable)
+- `PERPLEXITY_API_URL`: Perplexity API endpoint (default: https://api.perplexity.ai)
+- `PERPLEXITY_MODEL`: Perplexity model (sonar-pro, sonar)
 
-Here is an example `config.ini` file:
+### GPT-5 Advanced Parameters
+- `REASONING_EFFORT`: Thinking depth (minimal, low, medium, high)
+- `VERBOSITY`: Response length (low, medium, high)
+
+### Token & Rate Limits
+- `INPUT_TOKENS`: Maximum input context size (default: 120000)
+- `OUTPUT_TOKENS`: Maximum response tokens (default: 8000)
+- `CONTEXT_WINDOW`: Context window size (default: 128000)
+- `RATE_LIMIT`: Messages per time period (default: 10)  
+- `RATE_LIMIT_PER`: Time period in seconds (default: 60)
+
+### System & Logging
+- `SYSTEM_MESSAGE`: AI personality/instructions
+- `LOG_FILE`: Log file path (default: bot.log)
+- `LOG_LEVEL`: Logging verbosity (INFO, DEBUG, etc.)
+
+## Smart Detection Examples
+
+The bot automatically knows what to do - no manual commands needed!
+
+**Automatically uses web search for:**
+- "What's happening in AI today?" ← Time-sensitive
+- "How's Tesla stock doing?" ← Financial data
+- "Tell me about the recent SpaceX launch" ← Current events
+- "What's the weather like in Tokyo?" ← Current information
+
+**Automatically uses GPT-5 for:**
+- "Write me a poem about robots" ← Creative
+- "How do I fix this Python error?" ← Technical  
+- "What do you think about philosophy?" ← Conversational
+- "Hello! How are you?" ← Greeting
+
+Here is the unified `config.ini` example:
 
 ```ini
 [Discord]
-DISCORD_TOKEN = <your_discord_bot_token>
-ALLOWED_CHANNELS = <allowed_channel_id_1>, <allowed_channel_id_2>, ...
-BOT_PRESENCE = online
-# ACTIVITY_TYPE Options
-# playing, streaming, listening, watching, custom, competing
-ACTIVITY_TYPE=listening
-ACTIVITY_STATUS=Humans
+DISCORD_TOKEN=your_discord_bot_token_here
+ALLOWED_CHANNELS=general,bot-testing
+BOT_PRESENCE=online
+ACTIVITY_TYPE=watching
+ACTIVITY_STATUS=you bite my shiny metal ass!
 
 [Default]
-API_URL=https://api.openai.com/v1/
-API_KEY = <your_api_key>
+# Both APIs for smart hybrid mode
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_API_URL=https://api.openai.com/v1/
 GPT_MODEL=gpt-4o-mini
+PERPLEXITY_API_KEY=your_perplexity_api_key_here
+PERPLEXITY_MODEL=sonar-pro
+
 INPUT_TOKENS=120000
 OUTPUT_TOKENS=8000
 CONTEXT_WINDOW=128000
-SYSTEM_MESSAGE = You are a helpful AI assistant.
+SYSTEM_MESSAGE=You are Bender from Futurama. You automatically know when to search for current information.
+
+# GPT-5 advanced parameters
+REASONING_EFFORT=medium
+VERBOSITY=medium
 
 [Limits]
-RATE_LIMIT = 2
-RATE_LIMIT_PER = 10
+RATE_LIMIT=10
+RATE_LIMIT_PER=60
 
 [Logging]
-LOG_FILE = bot.log
+LOG_FILE=bot.log
+LOG_LEVEL=INFO
 ```
 
 # Discord Bot Setup
@@ -129,11 +223,12 @@ Daemon/background mode is handled by the `discordian.sh` shell script, which sup
 
 For more in-depth information about the DiscordianAI project, please refer to the following documentation files in the `docs/` directory:
 
-- [Configuration](./docs/Configuration.md) : Detailed instructions on how to configure the Discord bot and OpenAI GPT API settings.
-- [Daemon](./docs/Daemon.md) : Information on how to run the Discord bot as a daemon.
-- [Docker](./docs/Docker.md) : Instructions on how to containerize the Discord bot using Docker.
-- [OpenAI](./docs/OpenAI.md) : Information on how the Discord bot uses the OpenAI GPT API to generate responses.
-- [Setup](./docs/Setup.md) : Step-by-step guide on how to set up and run the Discord bot.
+- **[Smart AI Mode](./docs/HybridMode.md)** : Complete guide to intelligent multi-AI operation with smart detection
+- [Configuration](./docs/Configuration.md) : Detailed instructions on how to configure the Discord bot and AI API settings  
+- [Daemon](./docs/Daemon.md) : Information on how to run the Discord bot as a daemon
+- [Docker](./docs/Docker.md) : Instructions on how to containerize the Discord bot using Docker
+- [OpenAI](./docs/OpenAI.md) : Information on how the Discord bot uses the OpenAI GPT API to generate responses
+- [Setup](./docs/Setup.md) : Step-by-step guide on how to set up and run the Discord bot
 
 ## Development & Testing
 
