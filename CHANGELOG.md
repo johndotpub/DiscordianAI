@@ -5,73 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.2.5] - 2025-08-10
 
 ### Added
 - **Extended Python Version Support**: Added official support for Python 3.10 and 3.13
-- **Comprehensive Tox Testing**: Multi-version testing across Python 3.10, 3.11, 3.12, and 3.13
-- **Enhanced CI/CD**: Streamlined linting pipeline with black + ruff for all Python versions
+- **GPT-5 Model Family**: Complete migration to GPT-5 variants (gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-chat)
+- **Smart AI Orchestration**: Intelligent routing between OpenAI and Perplexity based on query analysis
+- **Thread-Safe Conversation Management**: Robust conversation history with metadata tracking
+- **Comprehensive Error Handling**: Circuit breaker pattern, exponential backoff, and graceful degradation
+- **Health Monitoring**: Real-time API health checks and performance metrics
+- **Advanced Caching**: Response caching with TTL and request deduplication
+- **Rate Limiting**: Per-user rate limiting with configurable thresholds
+- **Message Processing**: Intelligent message splitting and Discord formatting
+- **API Validation**: Startup parameter validation and configuration checks
+- **Performance Monitoring**: Built-in performance tracking and optimization
+- **Tox Multi-Version Testing**: Comprehensive testing across Python 3.10, 3.11, 3.12, and 3.13
 
 ### Changed
-- **Python Version Requirements**: Expanded from Python 3.11-3.12 to Python 3.10-3.13
-- **Tox Configuration**: Added dedicated test environments for each Python version
-- **Documentation**: Updated all documentation to reflect expanded Python version support
+- **Linting Workflow**: Streamlined from 4 tools (isort + black + ruff + flake8) to 2 tools (black + ruff)
+- **GPT Model Default**: Changed from gpt-4o-mini to gpt-5-mini for cost-effectiveness
+- **Model Validation**: Updated to support new GPT-5 model family
+- **CI/CD Pipeline**: Enhanced GitHub Actions with multi-version testing matrix
+- **Configuration Management**: Centralized constants and improved validation
+- **Error Recovery**: Enhanced retry logic and user-friendly error messages
+- **Conversation Handling**: Improved context management and summarization
+- **Documentation Structure**: Reorganized and expanded documentation with new guides and examples
 
 ### Technical Improvements
-- **Type Annotation Compatibility**: Ensured all modern type hints work across Python 3.10+
-- **Dependency Compatibility**: Verified all dependencies work with Python 3.10-3.13
+- **Type Annotation Compatibility**: Ensured all modern type hints work across supported Python versions
+- **Dependency Compatibility**: Verified all dependencies work with supported Python versions
 - **Testing Matrix**: Comprehensive testing across all supported Python versions
+- **Code Quality**: Removed unused variables, cleaned up deprecated parameters
+- **Performance**: Pre-compiled regex patterns and optimized data structures
+- **Memory Management**: Efficient conversation pruning and cleanup
+- **Async Operations**: Proper async/await patterns throughout codebase
+- **Security**: Input sanitization and Discord markdown protection
+- **Logging**: Structured logging with configurable levels and file output
+- **Testing**: 25+ integration tests with comprehensive coverage
 
-
-## [v0.2.5] - 2025-08-10
-
-### Added - Major Release: Enterprise-Grade QE Tests & Production Enhancements
-- **Complete GPT-5 + Perplexity Dual-Stack Architecture**: Intelligent service selection with smart orchestrator
-- **Smart Query Routing**: Time-sensitive query detection, factual query classification, smart embed suppression
-- **Web Search Capabilities**: Perplexity API integration with Discord-compatible citation handling
-- **Hybrid Operation Modes**: GPT-only, Perplexity-only, or smart hybrid mode with intelligent switching
-- **New Modules**: Created 8 new modules (caching.py, health_checks.py, utilities)
-
-- **Advanced Performance Optimizations**: 
-  - ThreadSafe LRU caching system with TTL support (reduces API calls by 50-80%)
-  - Request deduplication preventing redundant simultaneous calls
-  - Performance monitoring with real-time dashboards and resource analytics
-  - Background cache cleanup and optimization tasks
-- **Production-Grade Health Monitoring**: 
-  - Real-time API health checks for OpenAI, Perplexity, and Discord APIs (every 5 minutes)
-  - Proactive monitoring with configurable alerting thresholds
-  - Comprehensive health metrics and startup validation with graceful degradation
-- **Enhanced Error Handling**: 
-  - Consistent @handle_api_error decorators across all API functions
-  - Circuit breakers with intelligent failure thresholds
-  - Exponential backoff with jitter for optimal retry patterns
-- **Modern Development Infrastructure**:
-  - Streamlined 2-stage linting pipeline (black → ruff) with complete CI/CD integration
-  - 25+ integration tests for API interactions using mocks and realistic scenarios
-  - API parameter validation module with startup integration
-
-### Changed - Code Quality & Reliability Improvements  
-- **Dependencies Updated**: OpenAI 1.98.0 → 1.99.6, discord.py/websockets to latest stable versions
-- **API Consistency**: Renamed `API_KEY`/`API_URL` to `OPENAI_API_KEY`/`OPENAI_API_URL` for future expansion
-- **Model Support**: Updated to support official GPT-4 series models and sonar/sonar-pro models
-- **Function Naming**: Removed "_new" suffixes and improved parameter clarity
-- **GitHub Actions**: Enhanced CI workflows with automated performance benchmarks and dependency caching
-
-### Technical Achievements & Statistics
-- **Massive Scale**: 50+ files changed, 14k+ insertions, 800+ deletions across entire project
-- **Test Coverage Revolution**: Expanded from 34% → 85%+ with 420 comprehensive tests
-- **Thread-Safety**: All conversation management and rate limiting now fully thread-safe (zero race conditions)
-- **Code Quality**: Reduced function complexity from 19 → ≤16, improved type hints and documentation
-
-### Fixed - Production Quality Standards
-- **Test Reliability**: Fixed all test failures in coverage, conversation manager, and orchestrator suites
-- **API Integration**: Resolved modular architecture issues and improved error handling for service fallbacks
-- **Citation Formatting**: Fixed Discord link compatibility and removed deprecated functions
-- **Centralized Configuration**: Consolidated all constants into config.py for better maintainability
-
-### Removed
-- **Unsupported Parameters**: Removed all references to unofficial parameters such as `reasoning_effort` and `verbosity`; standardized on official OpenAI API parameters (e.g., `max_tokens`)
-- **Outdated Support**: Cleaned up references to unsupported legacy models
+### Fixed
+- **OpenAI API 400 Error**: Resolved by using supported GPT-5 model variants
+- **Linting Conflicts**: Eliminated endless loop between isort and ruff
+- **Test Failures**: Fixed all test failures related to GPT-5 model migration
+- **Documentation**: Updated all model cards and configuration examples
+- **CI Failures**: Resolved all GitHub Actions workflow issues
+- **Code Comments**: Cleaned up leftover development comments and unused code
+- **Parameter Validation**: Fixed API parameter validation for new models
 
 ## [v0.2.0] - 2025-07-16
 
