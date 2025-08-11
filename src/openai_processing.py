@@ -59,86 +59,54 @@ async def process_openai_message(
         # Note: We'll add user message to conversation history only after successful response
         # to maintain consistency and allow rollback on failures
 
-        # Prepare API call in a separate function for better error handling
-        async def call_openai_api_async():
-            logger.debug(f"API Call - Model: {gpt_model}, System: {system_message[:100]}...")
-            logger.debug(f"Conversation summary length: {len(conversation_summary)} messages")
-            logger.debug(f"User message length: {len(message)} characters")
+        # Build API parameters dynamically
+        api_params = {
+            "model": gpt_model,
+            "messages": [
+                {"role": "system", "content": system_message},
+                *conversation_summary,
+                {"role": "user", "content": message},
+            ],
+            "max_completion_tokens": output_tokens,
+        }
 
-            # Build API parameters dynamically
-            api_params = {
-                "model": gpt_model,
-                "messages": [
-                    {"role": "system", "content": system_message},
-                    *conversation_summary,
-                    {"role": "user", "content": message},
-                ],
-                "max_completion_tokens": output_tokens,
-            }
-
-            # Add GPT-5 specific parameters if provided and model supports them
-            if reasoning_effort:
-                if gpt_model.startswith("gpt-5"):
-                    if reasoning_effort in ["minimal", "low", "medium", "high"]:
-                        api_params["reasoning_effort"] = reasoning_effort
-                        logger.debug(f"Using GPT-5 reasoning_effort: {reasoning_effort}")
-                    else:
-                        logger.warning(
-                            f"Invalid reasoning_effort '{reasoning_effort}' for {gpt_model}, "
-                            f"ignoring"
-                        )
+        # Add GPT-5 specific parameters if provided and model supports them
+        if reasoning_effort:
+            if gpt_model.startswith("gpt-5"):
+                if reasoning_effort in ["minimal", "low", "medium", "high"]:
+                    api_params["reasoning_effort"] = reasoning_effort
+                    logger.debug(f"Using GPT-5 reasoning_effort: {reasoning_effort}")
                 else:
-                    logger.info(
-                        f"reasoning_effort '{reasoning_effort}' only supported for GPT-5 models, "
-                        f"ignoring for {gpt_model}"
+                    logger.warning(
+                        f"Invalid reasoning_effort '{reasoning_effort}' for {gpt_model}, "
+                        f"ignoring"
                     )
+            else:
+                logger.info(
+                    f"reasoning_effort '{reasoning_effort}' only supported for GPT-5 models, "
+                    f"ignoring for {gpt_model}"
+                )
 
-            if verbosity:
-                if gpt_model.startswith("gpt-5"):
-                    if verbosity in ["low", "medium", "high"]:
-                        api_params["verbosity"] = verbosity
-                        logger.debug(f"Using GPT-5 verbosity: {verbosity}")
-                    else:
-                        logger.warning(
-                            f"Invalid verbosity '{verbosity}' for {gpt_model}, ignoring"
-                        )
+        if verbosity:
+            if gpt_model.startswith("gpt-5"):
+                if verbosity in ["low", "medium", "high"]:
+                    api_params["verbosity"] = verbosity
+                    logger.debug(f"Using GPT-5 verbosity: {verbosity}")
                 else:
-                    logger.info(
-                        f"verbosity '{verbosity}' only supported for GPT-5 models, "
-                        f"ignoring for {gpt_model}"
-                    )
+                    logger.warning(f"Invalid verbosity '{verbosity}' for {gpt_model}, ignoring")
+            else:
+                logger.info(
+                    f"verbosity '{verbosity}' only supported for GPT-5 models, "
+                    f"ignoring for {gpt_model}"
+                )
 
-            logger.debug(f"Making OpenAI API call with {len(api_params['messages'])} messages")
-            return openai_client.chat.completions.create(**api_params)
+        logger.debug(f"Making OpenAI API call with {len(api_params['messages'])} messages")
+        logger.debug(f"API parameters: {api_params}")
 
-        # Define the wrapped API call function for retry
+        # Define the API call function for retry
         async def api_call_with_retry():
             return await asyncio.to_thread(
-                lambda: openai_client.chat.completions.create(
-                    **{
-                        "model": gpt_model,
-                        "messages": [
-                            {"role": "system", "content": system_message},
-                            *conversation_summary,
-                            {"role": "user", "content": message},
-                        ],
-                        "max_completion_tokens": output_tokens,
-                        **(
-                            {"reasoning_effort": reasoning_effort}
-                            if reasoning_effort
-                            and gpt_model.startswith("gpt-5")
-                            and reasoning_effort in ["minimal", "low", "medium", "high"]
-                            else {}
-                        ),
-                        **(
-                            {"verbosity": verbosity}
-                            if verbosity
-                            and gpt_model.startswith("gpt-5")
-                            and verbosity in ["low", "medium", "high"]
-                            else {}
-                        ),
-                    }
-                )
+                lambda: openai_client.chat.completions.create(**api_params)
             )
 
         # Make API call with enhanced error handling and retries

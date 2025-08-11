@@ -411,6 +411,75 @@ async def send_split_message(
         )
 
 
+async def _handle_incoming_message(
+    message: discord.Message, deps: dict[str, Any], bot: discord.Client
+) -> None:
+    """Handle incoming message with comprehensive routing and error handling.
+
+    Args:
+        message: The Discord message to process
+        deps: Dependency injection container
+        bot: The Discord bot client
+    """
+    logger = deps["logger"]
+
+    try:
+        # Ignore messages from the bot itself
+        if message.author == bot.user:
+            return
+
+        # Handle direct messages
+        if isinstance(message.channel, discord.DMChannel):
+            await process_dm_message(message, deps)
+            return
+
+        # Handle channel messages where bot is mentioned
+        if isinstance(message.channel, discord.TextChannel):
+            channel_name = message.channel.name
+            is_allowed_channel = channel_name in deps["ALLOWED_CHANNELS"]
+            is_mentioned = bot.user in message.mentions
+
+            logger.debug(
+                f"Channel message in #{channel_name} from {message.author.name}: "
+                f"allowed={is_allowed_channel}, mentioned={is_mentioned}, "
+                f"allowed_channels={deps['ALLOWED_CHANNELS']}"
+            )
+
+            if is_allowed_channel and is_mentioned:
+                await process_channel_message(message, deps)
+                return
+            elif is_allowed_channel and not is_mentioned:
+                logger.debug(f"Message in allowed channel #{channel_name} but bot not mentioned")
+            elif not is_allowed_channel:
+                logger.debug(
+                    f"Channel #{channel_name} not in allowed channels: "
+                    f"{deps['ALLOWED_CHANNELS']}"
+                )
+
+        # Log ignored messages at debug level
+        logger.debug(
+            f"Ignored message from {message.author.name} in #{message.channel.name} "
+            f"(not mentioned or allowed)"
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Unhandled error in message processing for message from "
+            f"{message.author.name}: {e}",
+            exc_info=True,
+        )
+        # Attempt to send error message if possible
+        try:
+            if isinstance(message.channel, discord.DMChannel | discord.TextChannel):
+                await message.channel.send(
+                    "🔧 An unexpected error occurred. The issue has been logged "
+                    "for investigation."
+                )
+        except Exception:
+            # If even the error message fails, just log it
+            logger.exception("Failed to send error notification to user")
+
+
 def register_event_handlers(bot: discord.Client, deps: dict[str, Any]) -> None:
     """Register all Discord event handlers with comprehensive error handling.
 
@@ -436,6 +505,9 @@ def register_event_handlers(bot: discord.Client, deps: dict[str, Any]) -> None:
             logger.info(
                 f"Configured activity: {deps['ACTIVITY_TYPE']} - {deps['ACTIVITY_STATUS']}"
             )
+            logger.info(f"Allowed channels: {deps['ALLOWED_CHANNELS']}")
+            logger.info(f"Bot will respond in channels: {deps['ALLOWED_CHANNELS']}")
+            logger.info("Note: Bot must be mentioned (@botname) in allowed channels to respond")
 
             # Set bot presence and activity
             activity = set_activity_status(deps["ACTIVITY_TYPE"], deps["ACTIVITY_STATUS"])
@@ -486,47 +558,7 @@ def register_event_handlers(bot: discord.Client, deps: dict[str, Any]) -> None:
         Routes messages to appropriate handlers based on channel type and mentions,
         with full error recovery and logging.
         """
-        try:
-            # Ignore messages from the bot itself
-            if message.author == bot.user:
-                return
-
-            # Handle direct messages
-            if isinstance(message.channel, discord.DMChannel):
-                await process_dm_message(message, deps)
-                return
-
-            # Handle channel messages where bot is mentioned
-            if (
-                isinstance(message.channel, discord.TextChannel)
-                and message.channel.name in deps["ALLOWED_CHANNELS"]
-                and bot.user in message.mentions
-            ):
-                await process_channel_message(message, deps)
-                return
-
-            # Log ignored messages at debug level
-            logger.debug(
-                f"Ignored message from {message.author.name} in #{message.channel.name} "
-                f"(not mentioned or allowed)"
-            )
-
-        except Exception as e:
-            logger.error(
-                f"Unhandled error in message processing for message from "
-                f"{message.author.name}: {e}",
-                exc_info=True,
-            )
-            # Attempt to send error message if possible
-            try:
-                if isinstance(message.channel, discord.DMChannel | discord.TextChannel):
-                    await message.channel.send(
-                        "🔧 An unexpected error occurred. The issue has been logged "
-                        "for investigation."
-                    )
-            except Exception:
-                # If even the error message fails, just log it
-                logger.exception("Failed to send error notification to user")
+        await _handle_incoming_message(message, deps, bot)
 
 
 def run_bot(config: dict[str, Any]) -> None:
