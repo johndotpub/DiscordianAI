@@ -37,8 +37,6 @@ class TestRoutingFunctions:
         assert is_factual_query("What is the capital of France?")
         assert is_factual_query("How many planets are in the solar system?")
         assert is_factual_query("When was Python created?")
-        # Test basic functionality works
-
     def test_is_factual_query_not_factual(self):
         """Test non-factual queries."""
         assert not is_factual_query("Tell me a story")
