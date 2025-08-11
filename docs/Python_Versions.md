@@ -7,15 +7,13 @@ DiscordianAI is designed to work across multiple Python versions with comprehens
 | Version | Status | Notes |
 |---------|--------|-------|
 | **Python 3.10** | ✅ **Fully Supported** | Minimum supported version |
-| **Python 3.11** | ✅ **Fully Supported** | Recommended for development |
 | **Python 3.12** | ✅ **Fully Supported** | Latest stable release |
-| **Python 3.13** | ✅ **Fully Supported** | Latest development release |
 
 ## Version Requirements
 
 - **Minimum**: Python 3.10+
-- **Recommended**: Python 3.11 or 3.12
-- **Development**: Python 3.13 (for testing future compatibility)
+- **Maximum**: Python 3.12
+- **Recommended**: Python 3.12 (latest stable)
 
 ## Modern Python Features Used
 
@@ -65,7 +63,7 @@ class HealthCheckResult:
 
 ## Testing Across Versions
 
-We use `tox` to ensure compatibility across all supported Python versions:
+We use `tox` to ensure compatibility across supported Python versions:
 
 ```bash
 # Test all versions
@@ -73,9 +71,7 @@ tox
 
 # Test specific version
 tox -e py310  # Python 3.10
-tox -e py311  # Python 3.11
 tox -e py312  # Python 3.12
-tox -e py313  # Python 3.13
 
 # Run linting
 tox -e lint
@@ -87,14 +83,14 @@ tox -e format
 ## CI/CD Testing
 
 Our GitHub Actions workflow automatically tests:
-- **All Python versions** (3.10, 3.11, 3.12, 3.13)
+- **Python versions** (3.10 and 3.12)
 - **Linting and formatting** with black + ruff
 - **Unit tests** with pytest
 - **Full tox suite** for comprehensive validation
 
 ## Dependency Compatibility
 
-All project dependencies are verified to work with Python 3.10+:
+All project dependencies are verified to work with Python 3.10-3.12:
 
 - **discord.py**: ✅ Python 3.8+
 - **openai**: ✅ Python 3.7+

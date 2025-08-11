@@ -4,7 +4,7 @@ This guide explains the modern development workflow for DiscordianAI using strea
 
 ## Python Version Support
 
-DiscordianAI officially supports **Python 3.10, 3.11, 3.12, and 3.13**. The codebase uses modern Python features including:
+DiscordianAI officially supports **Python 3.10 and 3.12**. The codebase uses modern Python features including:
 
 - **Generic Type Annotations** (Python 3.9+): `list[dict[str, str]]`, `dict[str, Any]`
 - **Union Types with |** (Python 3.10+): `str | None`, `dict[str, Any] | None`
@@ -13,17 +13,15 @@ DiscordianAI officially supports **Python 3.10, 3.11, 3.12, and 3.13**. The code
 
 ## Multi-Version Testing with Tox
 
-We use `tox` to test across all supported Python versions:
+We use `tox` to ensure compatibility across supported Python versions:
 
 ```bash
-# Test all Python versions
+# Test all versions
 tox
 
-# Test specific Python version
+# Test specific version
 tox -e py310  # Python 3.10
-tox -e py311  # Python 3.11
 tox -e py312  # Python 3.12
-tox -e py313  # Python 3.13
 
 # Run linting only
 tox -e lint

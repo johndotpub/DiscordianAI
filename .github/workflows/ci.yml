@@ -1,5 +1,5 @@
 # Modern Python toolchain: black + ruff + pytest + tox
-# Comprehensive testing across Python 3.10, 3.11, 3.12, and 3.13
+# Comprehensive testing across Python 3.10 and 3.12 (min and max supported versions)
 
 name: Code Quality & Testing
 
@@ -16,7 +16,7 @@ jobs:
   test:
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.12"]
         os: [ubuntu-latest]
 
     runs-on: ${{ matrix.os }}

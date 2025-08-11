@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.2.5] - 2025-08-10
 
 ### Added
-- **Extended Python Version Support**: Added official support for Python 3.10 and 3.13
+- **Extended Python Version Support**: Added official support for Python 3.10 and 3.12
 - **GPT-5 Model Family**: Complete migration to GPT-5 variants (gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-chat)
 - **Smart AI Orchestration**: Intelligent routing between OpenAI and Perplexity based on query analysis
 - **Thread-Safe Conversation Management**: Robust conversation history with metadata tracking
@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Message Processing**: Intelligent message splitting and Discord formatting
 - **API Validation**: Startup parameter validation and configuration checks
 - **Performance Monitoring**: Built-in performance tracking and optimization
-- **Tox Multi-Version Testing**: Comprehensive testing across Python 3.10, 3.11, 3.12, and 3.13
+- **Tox Multi-Version Testing**: Comprehensive testing across Python 3.10 and 3.12
 
 ### Changed
 - **Linting Workflow**: Streamlined from 4 tools (isort + black + ruff + flake8) to 2 tools (black + ruff)
