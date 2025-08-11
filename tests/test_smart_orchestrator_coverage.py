@@ -331,7 +331,7 @@ class TestProcessingModes:
         except Exception:
             # Even if it fails, we've exercised the code path
             logger.exception("Exception occurred in test_process_hybrid_mode_basic")
-
+            raise
 
 class TestMainOrchestrator:
     @pytest.mark.asyncio
