@@ -13,7 +13,7 @@ class TestThreadSafeConversationManager:
     def _assert_conversation_equal(self, actual, expected):
         """Helper method to assert two conversations are equal."""
         assert len(actual) == len(expected), f"Length mismatch: {len(actual)} != {len(expected)}"
-        for i, (actual_msg, expected_msg) in enumerate(zip(actual, expected, strict=False)):
+        for i, (actual_msg, expected_msg) in enumerate(zip(actual, expected, strict=True)):
             assert actual_msg["role"] == expected_msg["role"], f"Role mismatch at index {i}"
             assert (
                 actual_msg["content"] == expected_msg["content"]
