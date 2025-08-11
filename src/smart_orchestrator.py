@@ -175,39 +175,64 @@ def should_use_web_search(
         5. Long specific queries with entities -> True (use web search)
         6. Default -> False (use ChatGPT)
     """
+    # Debug logging to understand routing decisions
+    import logging
+    logger = logging.getLogger("discordianai.smart_orchestrator")
+    logger.debug(f"Analyzing message for web search routing: {message[:100]}...")
+    
     # Check conversation context for ongoing topics to maintain consistency
     if conversation_manager and user_id:
         # Check for follow-up indicators using pre-compiled patterns
         has_follow_up = any(pattern.search(message) for pattern in _FOLLOW_UP_PATTERNS)
+        logger.debug(f"Follow-up detection: {has_follow_up}")
 
         if has_follow_up:
             # Use metadata-based service detection instead of fragile heuristics
             recent_ai_service = conversation_manager.get_recent_ai_service(
                 user_id, lookback_messages=lookback_messages
             )
+            logger.debug(f"Recent AI service: {recent_ai_service}")
 
             if recent_ai_service:
                 # Maintain consistency with previous AI choice for follow-ups
-                return recent_ai_service == "perplexity"
+                result = recent_ai_service == "perplexity"
+                logger.debug(f"Maintaining consistency with {recent_ai_service}: {result}")
+                return result
 
     # If it's clearly conversational or creative, don't use web search
-    if is_conversational_or_creative(message):
+    is_conv = is_conversational_or_creative(message)
+    logger.debug(f"Conversational/creative detection: {is_conv}")
+    if is_conv:
+        logger.debug("Message classified as conversational - routing to OpenAI")
         return False
 
     # If it has time sensitivity, definitely use web search
-    if has_time_sensitivity(message):
+    is_time_sensitive = has_time_sensitivity(message)
+    logger.debug(f"Time sensitivity detection: {is_time_sensitive}")
+    if is_time_sensitive:
+        logger.debug("Message classified as time-sensitive - routing to Perplexity")
         return True
 
     # If it's a factual query, lean towards web search
-    if is_factual_query(message):
+    is_factual = is_factual_query(message)
+    logger.debug(f"Factual query detection: {is_factual}")
+    if is_factual:
+        logger.debug("Message classified as factual - routing to Perplexity")
         return True
 
     # Check message length and complexity
     # (longer, more specific questions often benefit from web search)
-    if len(message.split()) > entity_detection_min_words:
-        return any(pattern.search(message) for pattern in _ENTITY_PATTERNS)
+    word_count = len(message.split())
+    logger.debug(f"Message word count: {word_count} (threshold: {entity_detection_min_words})")
+    if word_count > entity_detection_min_words:
+        has_entities = any(pattern.search(message) for pattern in _ENTITY_PATTERNS)
+        logger.debug(f"Entity detection: {has_entities}")
+        if has_entities:
+            logger.debug("Message has entities and is long - routing to Perplexity")
+            return True
 
     # Default to False for general conversation
+    logger.debug("No specific patterns matched - defaulting to OpenAI")
     return False
 
 
@@ -349,9 +374,12 @@ async def _process_hybrid_mode(
         lookback_messages=lookback_messages,
         entity_detection_min_words=entity_min_words,
     )
+    
+    logger.info(f"Smart routing decision: needs_web_search = {needs_web}")
 
     # Try Perplexity first if web search is beneficial
     if needs_web:
+        logger.info("Routing to Perplexity for web search")
         perplexity_model = config.get("PERPLEXITY_MODEL", "sonar-pro") if config else "sonar-pro"
         response_content, suppress_embeds = await _try_perplexity_with_fallback(
             message,
@@ -369,6 +397,7 @@ async def _process_hybrid_mode(
         logger.info("Message analysis suggests conversational AI is optimal - using OpenAI")
 
     # Use OpenAI (either as first choice or fallback)
+    logger.info("Routing to OpenAI")
     fresh_conversation_summary = conversation_manager.get_conversation_summary_formatted(user.id)
     try:
         response_content = await process_openai_message(

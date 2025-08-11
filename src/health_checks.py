@@ -99,13 +99,23 @@ class APIHealthMonitor:
                 )
 
             # Make minimal API call
+            # Use appropriate token parameter based on model
+            api_params = {
+                "model": model,
+                "messages": test_messages,
+                "timeout": 30,  # Quick timeout for health check
+            }
+
+            # Use appropriate token parameter based on model
+            if model.startswith("gpt-5"):
+                # Newer GPT-5 models use max_completion_tokens
+                api_params["max_completion_tokens"] = 10  # Minimal response
+            else:
+                # Older models use max_tokens
+                api_params["max_tokens"] = 10  # Minimal response
+
             response = await asyncio.to_thread(
-                lambda: openai_client.chat.completions.create(
-                    model=model,
-                    messages=test_messages,
-                    max_tokens=10,  # Minimal response
-                    timeout=30,  # Quick timeout for health check
-                )
+                lambda: openai_client.chat.completions.create(**api_params)
             )
 
             response_time_ms = (time.time() - start_time) * 1000
