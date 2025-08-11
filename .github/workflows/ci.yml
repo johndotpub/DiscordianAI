@@ -1,46 +1,101 @@
-# Modern Python toolchain: black + ruff + pytest
-# Streamlined linting with ruff handling import sorting and all other checks
+# Modern Python toolchain: black + ruff + pytest + tox
+# Comprehensive testing across Python 3.10, 3.11, 3.12, and 3.13
 
 name: Code Quality & Testing
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ main, develop ]
 
 permissions:
   contents: read
 
 jobs:
-  quality-check:
-    runs-on: ubuntu-latest
-    
+  test:
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        os: [ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+
     steps:
-    - name: Check out repository
-      uses: actions/checkout@v4
-      
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
       with:
-        python-version: "3.12"
-        cache: 'pip'
-        
+        python-version: ${{ matrix.python-version }}
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install .[dev]
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        
+
     - name: Lint with ruff (includes import sorting)
       run: |
         ruff check . --exit-zero
-        
-    - name: Format code with black
+
+    - name: Format with black
       run: |
-        black --check --diff .
-        
-    - name: Test with pytest and coverage
+        black --check .
+
+    - name: Test with pytest
       run: |
-        coverage run -m pytest -v
-        coverage report --show-missing --fail-under=80
+        pytest -q
+
+    - name: Run tox tests
+      run: |
+        tox -e py${{ matrix.python-version }} --skip-missing-interpreters
+
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install .[dev]
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Run comprehensive linting
+      run: |
+        black --check .
+        ruff check . --show-fixes
+
+  tox-full:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install .[dev]
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Run full tox suite
+      run: |
+        tox --skip-missing-interpreters

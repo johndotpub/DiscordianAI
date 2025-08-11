@@ -2,6 +2,36 @@
 
 This guide explains the modern development workflow for DiscordianAI using streamlined linting tools.
 
+## Python Version Support
+
+DiscordianAI officially supports **Python 3.10, 3.11, 3.12, and 3.13**. The codebase uses modern Python features including:
+
+- **Generic Type Annotations** (Python 3.9+): `list[dict[str, str]]`, `dict[str, Any]`
+- **Union Types with |** (Python 3.10+): `str | None`, `dict[str, Any] | None`
+- **Dataclasses** (Python 3.7+): `@dataclass` decorators
+- **Modern Type Hints**: No legacy `typing.Union` or `typing.Optional` needed
+
+## Multi-Version Testing with Tox
+
+We use `tox` to test across all supported Python versions:
+
+```bash
+# Test all Python versions
+tox
+
+# Test specific Python version
+tox -e py310  # Python 3.10
+tox -e py311  # Python 3.11
+tox -e py312  # Python 3.12
+tox -e py313  # Python 3.13
+
+# Run linting only
+tox -e lint
+
+# Run formatting only
+tox -e format
+```
+
 ## Modern Development Workflow
 
 ### Recommended Approach: Black + Ruff
@@ -31,26 +61,19 @@ Ruff is a fast Python linter written in Rust that replaces multiple tools:
 
 ### Complete Workflow
 
-#### For Development:
-```bash
-# Auto-fix everything
-black .
-ruff check --fix .
+To run all checks and tests:
 
-# Run tests
-pytest
+```bash
+black --check .
+ruff check .
+pytest -q
 ```
 
-#### For CI/Pre-commit Checks:
+To auto-fix formatting and linting:
+
 ```bash
-# Check formatting
-black --check .
-
-# Check linting (includes import sorting)
-ruff check .
-
-# Run tests
-pytest
+black .
+ruff check --fix .
 ```
 
 ## Why This Approach?

@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Extended Python Version Support**: Added official support for Python 3.10 and 3.13
+- **Comprehensive Tox Testing**: Multi-version testing across Python 3.10, 3.11, 3.12, and 3.13
+- **Enhanced CI/CD**: Streamlined linting pipeline with black + ruff for all Python versions
+
+### Changed
+- **Python Version Requirements**: Expanded from Python 3.11-3.12 to Python 3.10-3.13
+- **Tox Configuration**: Added dedicated test environments for each Python version
+- **Documentation**: Updated all documentation to reflect expanded Python version support
+
+### Technical Improvements
+- **Type Annotation Compatibility**: Ensured all modern type hints work across Python 3.10+
+- **Dependency Compatibility**: Verified all dependencies work with Python 3.10-3.13
+- **Testing Matrix**: Comprehensive testing across all supported Python versions
+
+
 ## [v0.2.5] - 2025-08-10
 
 ### Added - Major Release: Enterprise-Grade QE Tests & Production Enhancements

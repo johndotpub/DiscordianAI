@@ -33,14 +33,12 @@ DiscordianAI is an **advanced Discord bot** with sophisticated AI orchestration,
 - **Error Recovery**: Comprehensive error handling with graceful fallbacks
 - **Performance Optimization**: Pre-compiled regex patterns and optimized data structures
 
-# Requirements
+## Requirements
 
-- Bash
-- Python 3.10 – 3.12
-- Python Modules
-  - discord.py
-  - openai
-  - websockets
+- **Python**: 3.10, 3.11, 3.12, or 3.13
+- **Discord Bot Token**: From [Discord Developer Portal](https://discord.com/developers/applications)
+- **OpenAI API Key**: From [OpenAI Platform](https://platform.openai.com/api-keys) (optional)
+- **Perplexity API Key**: From [Perplexity AI](https://www.perplexity.ai/settings/api) (optional)
 
 ## API Keys (Choose Your Mode)
 

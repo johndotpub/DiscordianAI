@@ -2,6 +2,33 @@
 
 Thank you for your interest in contributing! This project follows modern Python best practices for code quality, testing, and documentation.
 
+## Development Setup
+
+### Prerequisites
+
+- **Python**: 3.10, 3.11, 3.12, or 3.13
+- **Git**: Latest version
+- **pip**: Latest version
+
+### Environment Setup
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/johndotpub/DiscordianAI.git
+   cd DiscordianAI
+   ```
+
+2. **Create virtual environment**:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+3. **Install development dependencies**:
+   ```bash
+   pip install -e .[dev]
+   ```
+
 ## Development & Testing
 
 ### Install Dev Dependencies
