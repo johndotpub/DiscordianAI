@@ -385,7 +385,7 @@ class TestSystemIntegrationBenchmarks:
         assert avg_response_time < 0.1  # Average under 100ms
         assert max_response_time < 0.2  # Max under 200ms
 
-        # Log performance results for monitoring
+        logger.info(f"Performance results: avg_response_time={avg_response_time:.4f}s, max_response_time={max_response_time:.4f}s")
 
 
 if __name__ == "__main__":
