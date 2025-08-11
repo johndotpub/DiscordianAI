@@ -6,7 +6,7 @@ Thank you for your interest in contributing! This project follows modern Python 
 
 ### Prerequisites
 
-- **Python**: 3.10 or 3.12
+- **Python**: 3.10
 - **Git**: Latest version
 - **pip**: Latest version
 

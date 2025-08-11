@@ -69,7 +69,7 @@ class TestOpenAIAPIIntegration:
         openai_client.chat.completions.create.assert_called_once()
         call_args = openai_client.chat.completions.create.call_args[1]
         assert call_args["model"] == "gpt-5-mini"
-        assert call_args["max_tokens"] == 1000
+        assert call_args["max_completion_tokens"] == 1000
         assert len(call_args["messages"]) == 2  # system + user message
 
         # Verify conversation history was updated
@@ -357,7 +357,7 @@ class TestAPIUtilities:
         )
 
         assert params["model"] == "gpt-5-mini"
-        assert params["max_tokens"] == 2000
+        assert params["max_completion_tokens"] == 2000
         assert len(params["messages"]) == 3  # system + previous + current
 
     def test_api_call_builder_perplexity(self):

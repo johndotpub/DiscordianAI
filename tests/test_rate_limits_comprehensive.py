@@ -368,7 +368,8 @@ class TestAsyncCheckRateLimit:
 
         # Verify warning logging for exceeded limit (enhanced logging calls warning twice)
         assert logger.warning.call_count == 2  # Both RateLimiter and async wrapper log warnings
-        # Each call in call_args_list is a unittest.mock._Call object; call.args contains the positional arguments.
+        # Each call in call_args_list is a unittest.mock._Call object;
+        # call.args contains the positional arguments.
         warning_calls = [call.args[0] for call in logger.warning.call_args_list]
         assert any("Rate limit exceeded" in msg for msg in warning_calls)
         assert any("TestUser" in msg for msg in warning_calls)

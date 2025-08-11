@@ -31,7 +31,16 @@ class TestOpenAIParams:
 
         assert params["model"] == "gpt-4"
         assert params["max_tokens"] == 1000
-        assert len(params) == 2
+        assert len(params) == 3  # model, messages, max_tokens
+
+    def test_init_gpt5_basic(self):
+        """Test basic initialization with GPT-5 model."""
+        builder = OpenAIParams("gpt-5", 1000)
+        params = builder.build()
+
+        assert params["model"] == "gpt-5"
+        assert params["max_completion_tokens"] == 1000
+        assert len(params) == 3  # model, messages, max_completion_tokens
 
     def test_add_messages(self):
         """Test adding messages to OpenAI parameters."""
@@ -85,7 +94,7 @@ class TestOpenAIParams:
         conversation = [{"role": "user", "content": "Test"}]
         params = OpenAIParams("gpt-5", 2000).add_messages("System", conversation, "Query").build()
         assert params["model"] == "gpt-5"
-        assert params["max_tokens"] == 2000
+        assert params["max_completion_tokens"] == 2000
         assert len(params["messages"]) == 3
 
     def test_build_returns_copy(self):
@@ -98,11 +107,34 @@ class TestOpenAIParams:
         assert params1 is not params2
 
     def test_openai_params_init_and_messages(self):
-        builder = OpenAIParams("gpt-5", 2000)
-        params = builder.add_messages("System", [], "Query").build()
+        """Test OpenAI parameters initialization and message building."""
+        builder = OpenAIParams("gpt-4", 1500)
+        conversation = [{"role": "user", "content": "Previous"}]
+
+        result = builder.add_messages("System", conversation, "Current")
+        params = result.build()
+
+        assert params["model"] == "gpt-4"
+        assert params["max_tokens"] == 1500
+        assert len(params["messages"]) == 3
+        assert params["messages"][0]["role"] == "system"
+        assert params["messages"][1]["role"] == "user"
+        assert params["messages"][2]["role"] == "user"
+
+    def test_openai_params_gpt5_init_and_messages(self):
+        """Test OpenAI parameters initialization and message building for GPT-5."""
+        builder = OpenAIParams("gpt-5", 1500)
+        conversation = [{"role": "user", "content": "Previous"}]
+
+        result = builder.add_messages("System", conversation, "Current")
+        params = result.build()
+
         assert params["model"] == "gpt-5"
-        assert params["max_tokens"] == 2000
-        assert len(params["messages"]) == 2
+        assert params["max_completion_tokens"] == 1500
+        assert len(params["messages"]) == 3
+        assert params["messages"][0]["role"] == "system"
+        assert params["messages"][1]["role"] == "user"
+        assert params["messages"][2]["role"] == "user"
 
 
 class TestPerplexityParams:
@@ -374,7 +406,7 @@ class TestAPICallBuilder:
     def test_openai_call_builds_supported_params_only(self):
         params = APICallBuilder.openai_call("gpt-5", "System", [], "Hello", 1000)
         assert params["model"] == "gpt-5"
-        assert params["max_tokens"] == 1000
+        assert params["max_completion_tokens"] == 1000
         assert "reasoning_effort" not in params
         assert "verbosity" not in params
 

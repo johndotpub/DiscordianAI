@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.2.5] - 2025-08-10
 
 ### Added
-- **Extended Python Version Support**: Added official support for Python 3.10 and 3.12
+- **Extended Python Version Support**: Added official support for Python 3.10 only
 - **GPT-5 Model Family**: Complete migration to GPT-5 variants (gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-chat)
 - **Smart AI Orchestration**: Intelligent routing between OpenAI and Perplexity based on query analysis
 - **Thread-Safe Conversation Management**: Robust conversation history with metadata tracking
@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Message Processing**: Intelligent message splitting and Discord formatting
 - **API Validation**: Startup parameter validation and configuration checks
 - **Performance Monitoring**: Built-in performance tracking and optimization
-- **Tox Multi-Version Testing**: Comprehensive testing across Python 3.10 and 3.12
+- **Tox Multi-Version Testing**: Comprehensive testing with Python 3.10
 
 ### Changed
 - **Linting Workflow**: Streamlined from 4 tools (isort + black + ruff + flake8) to 2 tools (black + ruff)
@@ -133,7 +133,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced Docker image optimization and performance improvements
 
 ### Changed
-- **Breaking Change**: Minimum Python version upgraded to 3.12
+- **Breaking Change**: Python version support simplified to 3.10 only
 - Improved Dockerfile compatibility across different environments
 - Enhanced security by ensuring config.ini exclusion from Docker images
 - Updated OpenAI library to version 1.17.1

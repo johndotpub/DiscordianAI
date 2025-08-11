@@ -2,9 +2,9 @@
 
 This guide explains the modern development workflow for DiscordianAI using streamlined linting tools.
 
-## Python Version Support
+## Prerequisites
 
-DiscordianAI officially supports **Python 3.10 and 3.12**. The codebase uses modern Python features including:
+DiscordianAI officially supports **Python 3.10 only**. The codebase uses modern Python features including:
 
 - **Generic Type Annotations** (Python 3.9+): `list[dict[str, str]]`, `dict[str, Any]`
 - **Union Types with |** (Python 3.10+): `str | None`, `dict[str, Any] | None`
@@ -16,17 +16,13 @@ DiscordianAI officially supports **Python 3.10 and 3.12**. The codebase uses mod
 We use `tox` to ensure compatibility across supported Python versions:
 
 ```bash
-# Test all versions
-tox
+# Test with Python 3.10
+tox -e py310
 
-# Test specific version
-tox -e py310  # Python 3.10
-tox -e py312  # Python 3.12
-
-# Run linting only
+# Run linting
 tox -e lint
 
-# Run formatting only
+# Run formatting
 tox -e format
 ```
 

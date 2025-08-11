@@ -37,6 +37,7 @@ class TestRoutingFunctions:
         assert is_factual_query("What is the capital of France?")
         assert is_factual_query("How many planets are in the solar system?")
         assert is_factual_query("When was Python created?")
+
     def test_is_factual_query_not_factual(self):
         """Test non-factual queries."""
         assert not is_factual_query("Tell me a story")
@@ -332,6 +333,7 @@ class TestProcessingModes:
             # Even if it fails, we've exercised the code path
             logger.exception("Exception occurred in test_process_hybrid_mode_basic")
             raise
+
 
 class TestMainOrchestrator:
     @pytest.mark.asyncio

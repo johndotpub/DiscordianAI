@@ -1,23 +1,21 @@
 # Python Version Compatibility
 
-DiscordianAI is designed to work across multiple Python versions with comprehensive testing and compatibility guarantees.
+DiscordianAI is designed to work with Python 3.10 only, providing a simple and straightforward development experience.
 
 ## Supported Python Versions
 
 | Version | Status | Notes |
 |---------|--------|-------|
-| **Python 3.10** | ✅ **Fully Supported** | Minimum supported version |
-| **Python 3.12** | ✅ **Fully Supported** | Latest stable release |
+| **Python 3.10** | ✅ **Fully Supported** | Only supported version |
 
 ## Version Requirements
 
-- **Minimum**: Python 3.10+
-- **Maximum**: Python 3.12
-- **Recommended**: Python 3.12 (latest stable)
+- **Required**: Python 3.10.x
+- **No other versions supported**
 
 ## Modern Python Features Used
 
-DiscordianAI leverages modern Python features that are available in Python 3.10+:
+DiscordianAI leverages modern Python features that are available in Python 3.10:
 
 ### Type Annotations (Python 3.9+)
 ```python
@@ -61,17 +59,13 @@ class HealthCheckResult:
     response_time_ms: float
 ```
 
-## Testing Across Versions
+## Testing
 
-We use `tox` to ensure compatibility across supported Python versions:
+We use `tox` to ensure compatibility with Python 3.10:
 
 ```bash
-# Test all versions
-tox
-
-# Test specific version
-tox -e py310  # Python 3.10
-tox -e py312  # Python 3.12
+# Test Python 3.10
+tox -e py310
 
 # Run linting
 tox -e lint
@@ -83,14 +77,14 @@ tox -e format
 ## CI/CD Testing
 
 Our GitHub Actions workflow automatically tests:
-- **Python versions** (3.10 and 3.12)
+- **Python version** (3.10 only)
 - **Linting and formatting** with black + ruff
 - **Unit tests** with pytest
 - **Full tox suite** for comprehensive validation
 
 ## Dependency Compatibility
 
-All project dependencies are verified to work with Python 3.10-3.12:
+All project dependencies are verified to work with Python 3.10:
 
 - **discord.py**: ✅ Python 3.8+
 - **openai**: ✅ Python 3.7+
@@ -134,9 +128,7 @@ No changes required! Your code will work as-is.
 
 ## Performance Considerations
 
-- **Python 3.11+**: Best performance, recommended for production
-- **Python 3.10**: Good performance, stable for production
-- **Python 3.13**: Latest features, may have minor instability
+- **Python 3.10**: Stable, well-tested, recommended for production
 
 ## Troubleshooting
 
@@ -148,11 +140,11 @@ No changes required! Your code will work as-is.
 
 2. **SyntaxError: invalid syntax**
    - Check Python version: `python --version`
-   - Ensure you're using Python 3.10+
+   - Ensure you're using Python 3.10.x
 
 3. **tox environment creation fails**
-   - Install Python 3.10+ interpreters
-   - Use `tox --skip-missing-interpreters` for partial testing
+   - Install Python 3.10.x interpreter
+   - Use `tox --skip-missing-interpreters` if needed
 
 ### Getting Help
 
@@ -164,7 +156,6 @@ No changes required! Your code will work as-is.
 ## Future Compatibility
 
 We're committed to:
-- **Maintaining Python 3.10+ support** for the foreseeable future
-- **Testing against Python 3.13** as it becomes stable
-- **Gradual adoption** of new Python features when beneficial
-- **Backward compatibility** within supported version ranges
+- **Maintaining Python 3.10 support** for the foreseeable future
+- **Simple and straightforward** version management
+- **Stable development environment** with minimal compatibility concerns

@@ -15,16 +15,15 @@ class OpenAIParams:
 
     def __init__(self, model: str, max_tokens: int):
         """Initialize with model and max_tokens."""
-        self.params = {
-            "model": model,
-            "max_tokens": max_tokens,
-        }
+        self.model = model
+        self.max_tokens = max_tokens
+        self.messages = []
 
     def add_messages(
         self, system_message: str, conversation_summary: list[dict], user_message: str
     ):
         """Add messages to the API call."""
-        self.params["messages"] = [
+        self.messages = [
             {"role": "system", "content": system_message},
             *conversation_summary,
             {"role": "user", "content": user_message},
@@ -34,8 +33,21 @@ class OpenAIParams:
     # Removed unsupported GPT-5 parameter helpers
 
     def build(self) -> dict[str, Any]:
-        """Build the final parameters dictionary."""
-        return self.params.copy()
+        """Build the final API parameters dictionary."""
+        params = {
+            "model": self.model,
+            "messages": self.messages,
+        }
+
+        # Use appropriate token parameter based on model
+        if self.model.startswith("gpt-5"):
+            # Newer GPT-5 models use max_completion_tokens
+            params["max_completion_tokens"] = self.max_tokens
+        else:
+            # Older models use max_tokens
+            params["max_tokens"] = self.max_tokens
+
+        return params
 
 
 class PerplexityParams:

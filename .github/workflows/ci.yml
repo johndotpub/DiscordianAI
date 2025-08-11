@@ -1,7 +1,5 @@
-# Modern Python toolchain: black + ruff + pytest + tox
-# Comprehensive testing across Python 3.10 and 3.12 (min and max supported versions)
-
-name: Code Quality & Testing
+# Comprehensive testing with Python 3.10 (only supported version)
+name: CI
 
 on:
   push:
@@ -9,93 +7,88 @@ on:
   pull_request:
     branches: [ main, develop ]
 
-permissions:
-  contents: read
-
 jobs:
   test:
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.12"]
-        os: [ubuntu-latest]
-
-    runs-on: ${{ matrix.os }}
+        python-version: ["3.10"]
 
     steps:
     - uses: actions/checkout@v4
-
+    
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-${{ matrix.python-version }}-
+    
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install .[dev]
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-
-    - name: Lint with ruff (includes import sorting)
+        pip install -r requirements.txt
+        pip install -e .[dev]
+    
+    - name: Run tests with pytest
       run: |
-        ruff check . --exit-zero
-
-    - name: Format with black
-      run: |
-        black --check .
-
-    - name: Test with pytest
-      run: |
-        pytest -q
-
-    - name: Run tox tests
-      run: |
-        tox -e py${{ matrix.python-version }} --skip-missing-interpreters
+        pytest --cov=src --cov-report=xml --cov-fail-under=80
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: true
 
   lint:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.10"]
 
     steps:
     - uses: actions/checkout@v4
-
+    
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-
-    - name: Install dependencies
+    
+    - name: Install linting tools
       run: |
         python -m pip install --upgrade pip
-        pip install .[dev]
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install black ruff
 
-    - name: Run comprehensive linting
-      run: |
-        black --check .
-        ruff check . --show-fixes
+    - name: Run black
+      run: black . --check --diff
+    
+    - name: Run ruff
+      run: ruff check . --show-fixes
 
-  tox-full:
+  tox:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.10"]
 
     steps:
     - uses: actions/checkout@v4
-
+    
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-
-    - name: Install dependencies
+    
+    - name: Install tox
       run: |
         python -m pip install --upgrade pip
-        pip install .[dev]
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-
-    - name: Run full tox suite
-      run: |
-        tox --skip-missing-interpreters
+        pip install tox
+    
+    - name: Run tox
+      run: tox -e py310,lint,test
