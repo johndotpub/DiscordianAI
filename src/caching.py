@@ -470,6 +470,19 @@ async def cleanup_caches():
         return 0
 
 
+async def _cache_cleanup_tick(interval: int, logger: logging.Logger) -> None:
+    """Execute a single cleanup tick with error handling."""
+    try:
+        await asyncio.sleep(interval)
+        await cleanup_caches()
+    except asyncio.CancelledError:
+        logger.info("Cache cleanup task cancelled")
+        raise
+    except Exception:
+        logger.exception("Error in cache cleanup task")
+        await asyncio.sleep(60)  # Wait 1 minute before retrying
+
+
 # Background cache cleanup task
 async def start_cache_cleanup_task(interval: int = 300):  # 5 minutes
     """Start background cache cleanup task."""
@@ -477,12 +490,4 @@ async def start_cache_cleanup_task(interval: int = 300):  # 5 minutes
     logger.info("Starting cache cleanup background task")
 
     while True:
-        try:
-            await asyncio.sleep(interval)
-            await cleanup_caches()
-        except asyncio.CancelledError:
-            logger.info("Cache cleanup task cancelled")
-            break
-        except Exception:
-            logger.exception("Error in cache cleanup task")
-            await asyncio.sleep(60)  # Wait 1 minute before retrying
+        await _cache_cleanup_tick(interval, logger)

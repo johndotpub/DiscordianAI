@@ -287,7 +287,6 @@ class TestProcessingModes:
             response, suppress_embeds = await _process_hybrid_mode(
                 message="What's the latest news?",
                 user=user,
-                conversation_summary=conversation_summary,
                 conversation_manager=conversation_manager,
                 logger=logger,
                 openai_client=openai_client,
@@ -320,7 +319,6 @@ class TestProcessingModes:
             response, suppress_embeds = await _process_hybrid_mode(
                 message="Test message",
                 user=user,
-                conversation_summary=conversation_summary,
                 conversation_manager=conversation_manager,
                 logger=logger,
                 openai_client=openai_client,

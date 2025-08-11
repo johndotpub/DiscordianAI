@@ -93,7 +93,7 @@ class APIHealthMonitor:
                     service="openai",
                     status="degraded",
                     response_time_ms=0,
-                timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(timezone.utc),
                     error=f"Model {model} may be deprecated or unsupported",
                     details={"available_models": OPENAI_VALID_MODELS[:5]},  # Show first 5
                 )
@@ -116,7 +116,7 @@ class APIHealthMonitor:
                     service="openai",
                     status="unhealthy",
                     response_time_ms=response_time_ms,
-                timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(timezone.utc),
                     error="Invalid response structure from OpenAI API",
                 )
 
@@ -179,7 +179,7 @@ class APIHealthMonitor:
                     service="perplexity",
                     status="degraded",
                     response_time_ms=0,
-                timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(timezone.utc),
                     error=f"Model {model} may be deprecated or unsupported",
                     details={"available_models": PERPLEXITY_MODELS},
                 )
@@ -205,7 +205,7 @@ class APIHealthMonitor:
                     service="perplexity",
                     status="unhealthy",
                     response_time_ms=response_time_ms,
-                timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(timezone.utc),
                     error="Invalid response structure from Perplexity API",
                 )
 
@@ -324,7 +324,7 @@ class APIHealthMonitor:
                 service="discord",
                 status="unhealthy",
                 response_time_ms=response_time_ms,
-                timestamp=datetime.now(UTC),
+                timestamp=datetime.now(timezone.utc),
                 error=str(e),
                 details={
                     "error_type": error_details.error_type.value,
@@ -471,27 +471,28 @@ class APIHealthMonitor:
         self._monitoring_active = True
         self.logger.info("Starting API health monitoring")
 
+        async def _monitor_tick() -> None:
+            results = await self.run_all_health_checks(clients, config)
+
+            # Log critical issues
+            for service, result in results.items():
+                if result.status == "unhealthy":
+                    self.logger.error(f"Service {service} is unhealthy: {result.error}")
+                elif result.status == "degraded":
+                    self.logger.warning(
+                        f"Service {service} is degraded: response time "
+                        f"{result.response_time_ms:.1f}ms"
+                    )
+
         async def monitor_loop():
             while self._monitoring_active:
                 try:
-                    results = await self.run_all_health_checks(clients, config)
-
-                    # Log critical issues
-                    for service, result in results.items():
-                        if result.status == "unhealthy":
-                            self.logger.error(f"Service {service} is unhealthy: {result.error}")
-                        elif result.status == "degraded":
-                            self.logger.warning(
-                                f"Service {service} is degraded: response time "
-                                f"{result.response_time_ms:.1f}ms"
-                            )
-
-                    # Wait for next check
-                    await asyncio.sleep(self.check_interval)
-
-                except Exception:
+                    await _monitor_tick()
+                except Exception:  # noqa: PERF203
                     self.logger.exception("Error in health monitoring loop")
-                    await asyncio.sleep(60)  # Wait 1 minute before retrying
+                    await asyncio.sleep(60)
+                else:
+                    await asyncio.sleep(self.check_interval)
 
         self._monitor_task = asyncio.create_task(monitor_loop())
 

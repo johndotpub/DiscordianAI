@@ -120,6 +120,7 @@ class TestProcessOpenAIMessageBasic:
     @pytest.mark.asyncio
     async def test_no_choices(self):
         from src.caching import conversation_cache, response_cache
+
         conversation_cache.clear()
         response_cache.cache.clear()
 
@@ -151,6 +152,7 @@ class TestProcessOpenAIMessageBasic:
     @pytest.mark.asyncio
     async def test_timeout(self):
         from src.caching import conversation_cache, response_cache
+
         conversation_cache.clear()
         response_cache.cache.clear()
 
@@ -178,6 +180,7 @@ class TestProcessOpenAIMessageBasic:
     @pytest.mark.asyncio
     async def test_generic_exception(self):
         from src.caching import conversation_cache, response_cache
+
         conversation_cache.clear()
         response_cache.cache.clear()
 
@@ -229,6 +232,7 @@ class TestProcessOpenAIMessageAdditionalCoverage:
             patch("src.openai_processing.retry_with_backoff") as mock_retry,
             patch("asyncio.to_thread") as mock_to_thread,
         ):
+
             async def call_function_directly(func, retry_config, logger_arg):
                 return await func()
 
@@ -252,6 +256,7 @@ class TestProcessOpenAIMessageAdditionalCoverage:
     @pytest.mark.asyncio
     async def test_retry_failure(self):
         from src.caching import conversation_cache, response_cache
+
         conversation_cache.clear()
         response_cache.cache.clear()
 
@@ -300,8 +305,10 @@ class TestProcessOpenAIMessageAdditionalCoverage:
             patch("src.openai_processing.retry_with_backoff") as mock_retry,
             patch("asyncio.to_thread") as mock_to_thread,
         ):
+
             async def call_function_directly(func, retry_config, logger_arg):
                 return await func()
+
             mock_retry.side_effect = call_function_directly
             mock_to_thread.return_value = mock_response
 
@@ -339,8 +346,10 @@ class TestProcessOpenAIMessageAdditionalCoverage:
             patch("src.openai_processing.retry_with_backoff") as mock_retry,
             patch("asyncio.to_thread") as mock_to_thread,
         ):
+
             async def call_function_directly(func, retry_config, logger_arg):
                 return await func()
+
             mock_retry.side_effect = call_function_directly
             mock_to_thread.return_value = mock_response
 
@@ -378,8 +387,10 @@ class TestProcessOpenAIMessageAdditionalCoverage:
             patch("src.openai_processing.retry_with_backoff") as mock_retry,
             patch("asyncio.to_thread") as mock_to_thread,
         ):
+
             async def call_function_directly(func, retry_config, logger_arg):
                 return await func()
+
             mock_retry.side_effect = call_function_directly
             mock_to_thread.return_value = mock_response
 
@@ -414,8 +425,10 @@ class TestProcessOpenAIMessageAdditionalCoverage:
             patch("src.openai_processing.retry_with_backoff") as mock_retry,
             patch("asyncio.to_thread") as mock_to_thread,
         ):
+
             async def call_function_directly(func, retry_config, logger_arg):
                 return await func()
+
             mock_retry.side_effect = call_function_directly
             mock_to_thread.return_value = mock_response
 
@@ -477,5 +490,3 @@ class TestProcessOpenAIMessageAdditionalCoverage:
                 output_tokens=1000,
             )
             assert result is None
-
-

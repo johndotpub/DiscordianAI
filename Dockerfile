@@ -1,26 +1,25 @@
-# Use Python 3.12 slim bullseye image for better compatibility and smaller size
-FROM python:3.12-slim-bullseye
+# Use Python 3.12 slim image (project supports 3.10–3.12; 3.12 for container)
+FROM python:3.12-slim-bookworm
 
 # Set the working directory to /app for better organization
 WORKDIR /app
 
-# Copy requirements.txt to the container first
-# This allows Docker to cache the installed dependencies for faster builds
-# when your code changes but your dependencies do not
-COPY requirements.txt .
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Copy requirements separately to leverage Docker layer caching
+COPY requirements.txt ./
 
 # Install the Python dependencies
 # The --no-cache-dir option is used to keep the image size small
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the code into the container, excluding config.ini
-# Doing this after installing the dependencies allows Docker to cache the
-# installed dependencies separately from your code
+# Doing this after installing dependencies allows caching for faster builds
 COPY . .
 RUN if [ -f config.ini ]; then rm config.ini; fi
 
 # Set the command to run the bot
-# The ENTRYPOINT instruction allows the container to be run as an executable
-# The CMD instruction provides default arguments that can be overridden
-ENTRYPOINT ["python", "-m", "src.bot"]
+# Use the unified entrypoint module
+ENTRYPOINT ["python", "-m", "src.main"]
 CMD ["--conf", "config.ini"]

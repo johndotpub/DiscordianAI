@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed - Code Quality & Reliability Improvements  
 - **Dependencies Updated**: OpenAI 1.98.0 → 1.99.6, discord.py/websockets to latest stable versions
 - **API Consistency**: Renamed `API_KEY`/`API_URL` to `OPENAI_API_KEY`/`OPENAI_API_URL` for future expansion
-- **Model Support**: Updated to support full GPT-4 series + GPT-5, sonar/sonar-pro models
+- **Model Support**: Updated to support official GPT-4 series models and sonar/sonar-pro models
 - **Function Naming**: Removed "_new" suffixes and improved parameter clarity
 - **GitHub Actions**: Enhanced CI workflows with automated performance benchmarks and dependency caching
 
@@ -52,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Centralized Configuration**: Consolidated all constants into config.py for better maintainability
 
 ### Removed
+- **Unsupported Parameters**: Removed all references to unofficial parameters such as `reasoning_effort` and `verbosity`; standardized on official OpenAI API parameters (e.g., `max_tokens`)
 - **Outdated Support**: Cleaned up references to unsupported legacy models
 
 ## [v0.2.0] - 2025-07-16

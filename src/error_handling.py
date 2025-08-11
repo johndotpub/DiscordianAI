@@ -147,8 +147,7 @@ async def retry_with_backoff(
     for attempt in range(retry_config.max_attempts):
         try:
             return await func(*args, **kwargs)
-
-        except Exception as e:
+        except Exception as e:  # noqa: PERF203
             last_exception = e
             error_details = classify_error(e)
 
@@ -157,18 +156,19 @@ async def retry_with_backoff(
                 logger.exception(f"Non-retryable error in {func.__name__}")
                 raise
 
-            if attempt < retry_config.max_attempts - 1:
-                delay = calculate_backoff_delay(attempt, retry_config)
-                logger.warning(
-                    f"Attempt {attempt + 1}/{retry_config.max_attempts} failed for "
-                    f"{func.__name__}: {e}. "
-                    f"Retrying in {delay:.1f}s"
-                )
-                await asyncio.sleep(delay)
-            else:
+            if attempt >= retry_config.max_attempts - 1:
                 logger.exception(
                     "All %s attempts failed for %s", retry_config.max_attempts, func.__name__
                 )
+                break
+
+            delay = calculate_backoff_delay(attempt, retry_config)
+            logger.warning(
+                f"Attempt {attempt + 1}/{retry_config.max_attempts} failed for "
+                f"{func.__name__}: {e}. "
+                f"Retrying in {delay:.1f}s"
+            )
+            await asyncio.sleep(delay)
 
     raise last_exception
 
@@ -383,9 +383,7 @@ def create_graceful_fallback(
                 try:
                     return await fallback_func(*args, **kwargs)
                 except Exception:
-                    logger.exception(
-                        "Both main and fallback failed for %s", main_func.__name__
-                    )
+                    logger.exception("Both main and fallback failed for %s", main_func.__name__)
                     return fallback_message
 
         return wrapper
@@ -410,19 +408,20 @@ async def safe_discord_send(
     for attempt in range(max_retries):
         try:
             await channel.send(content)
-        except Exception as e:
+        except Exception as e:  # noqa: PERF203
             error_details = classify_error(e)
 
-            if attempt < max_retries - 1:
-                delay = 2**attempt  # Simple exponential backoff
-                logger.warning(
-                    f"Discord send failed (attempt {attempt + 1}/{max_retries}): {e}. "
-                    f"Retrying in {delay}s"
-                )
-                await asyncio.sleep(delay)
-            else:
+            if attempt >= max_retries - 1:
                 logger.exception("Failed to send Discord message after %s attempts", max_retries)
                 error_tracker.record_error(error_details, {"channel": str(channel)})
+                break
+
+            delay = 2**attempt  # Simple exponential backoff
+            logger.warning(
+                f"Discord send failed (attempt {attempt + 1}/{max_retries}): {e}. "
+                f"Retrying in {delay}s"
+            )
+            await asyncio.sleep(delay)
         else:
             return True
     return False

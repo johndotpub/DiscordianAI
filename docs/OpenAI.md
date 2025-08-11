@@ -1,14 +1,8 @@
 # OpenAI Integration Guide
 
-DiscordianAI provides comprehensive OpenAI integration with support for GPT-5, GPT-4, and other OpenAI models, including advanced features like conversation consistency and metadata tracking.
+DiscordianAI provides comprehensive OpenAI integration with support for GPT-4 series and other official OpenAI models, including advanced features like conversation consistency and metadata tracking.
 
 ## Supported Models
-
-### GPT-5 (Recommended)
-- **Latest reasoning model** with advanced capabilities
-- **Enhanced reasoning effort** control for complex queries  
-- **Verbosity settings** for response length control
-- **Superior context understanding** for better conversations
 
 ### GPT-4 Series
 - **GPT-4**: High-quality reasoning and creative tasks
@@ -35,7 +29,7 @@ SYSTEM_MESSAGE=You are a helpful AI assistant with access to current information
 ```
 
 ### GPT-5 Notes
-GPT-5 works with the standard Chat Completions API parameters. No special GPT-5-only parameters are required or supported.
+OpenAI models use the standard Chat Completions API parameters. Only officially supported parameters are used (e.g., `model`, `messages`, `max_tokens`, optional `temperature`).
 
 ## Operation Modes
 
@@ -102,11 +96,8 @@ INPUT_TOKENS=60000    # Adjust based on conversation length
 - **GPT-4**: Good balance of quality and cost  
 - **GPT-4o-mini**: Most cost-effective for simple tasks
 
-### Reasoning Effort (GPT-5 only)
-- **minimal**: Fastest, lowest cost
-- **low**: Quick responses for simple queries
-- **medium**: Balanced reasoning (default)
-- **high**: Deep thinking for complex problems
+### Parameter support
+- This project does not use unofficial parameters. There is no `reasoning_effort` or `verbosity`.
 
 ## Monitoring & Debugging
 
@@ -162,14 +153,13 @@ MAX_HISTORY_PER_USER=30  # Reduce to save tokens on context
 - Implement appropriate rate limiting in bot configuration
 
 **"Model not found"**:
-- Verify the model name is correct (supported: `gpt-4o-mini`, `gpt-4o`, `gpt-4`, `gpt-4-turbo`, `gpt-5`)
+- Verify the model name is correct (examples: `gpt-4o-mini`, `gpt-4o`, `gpt-4`, `gpt-4-turbo`)
 - Check if you have access to the specified model
 
 **High costs**:
 - Lower `OUTPUT_TOKENS` setting
 - Use `gpt-4o-mini` for cost-effective responses (default)
 - Use `gpt-4o` or `gpt-4-turbo` for enhanced capabilities
-- Use `gpt-5` for latest features when available
 - Reduce `MAX_HISTORY_PER_USER` to minimize context tokens
 
 ### Getting Help

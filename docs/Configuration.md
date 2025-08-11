@@ -21,7 +21,7 @@ Configure OpenAI and Perplexity APIs for intelligent hybrid operation.
 #### OpenAI Settings
 - **`OPENAI_API_KEY`**: Your OpenAI API key for GPT models *(leave empty to disable)*
 - **`OPENAI_API_URL`**: OpenAI API endpoint *(default: "https://api.openai.com/v1/")*
-- **`GPT_MODEL`**: Model to use: "gpt-4o-mini" (default, cost-effective), "gpt-4o", "gpt-4", "gpt-4-turbo", "gpt-5" *(default: "gpt-4o-mini")*
+- **`GPT_MODEL`**: Model to use: "gpt-4o-mini" (default, cost-effective), "gpt-4o", "gpt-4", "gpt-4-turbo" *(default: "gpt-4o-mini")*
   
 
 #### Perplexity Settings  
@@ -102,8 +102,8 @@ ACTIVITY_STATUS=you bite my shiny metal ass!
 
 [Default]
 # === OPENAI CONFIGURATION ===
-# For GPT-5, GPT-4, etc. - Leave blank to disable OpenAI
-OPENAI_OPENAI_API_KEY=your_openai_api_key_here
+# For GPT-4 series, etc. - Leave blank to disable OpenAI
+OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_API_URL=https://api.openai.com/v1/
 GPT_MODEL=gpt-4o-mini
 
@@ -121,9 +121,7 @@ CONTEXT_WINDOW=128000
 # Customize your bot's personality
 SYSTEM_MESSAGE=You are Bender, a sarcastic robot from Futurama. You're crude, selfish, and love beer, but deep down you care about your friends. You automatically know when to search for current information and when to use your existing knowledge.
 
-# === GPT-5 SPECIFIC PARAMETERS (Optional) ===
-# Leave blank for defaults. Only works with GPT-5 models.
-# Note: No GPT-5-only parameters are currently supported by the public API
+# No GPT-5-specific parameters are supported by the public API; do not configure
 
 [Limits]
 # Rate limiting to prevent spam

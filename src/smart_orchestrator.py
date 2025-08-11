@@ -326,7 +326,6 @@ async def _try_perplexity_with_fallback(
 async def _process_hybrid_mode(
     message: str,
     user,
-    conversation_summary,
     conversation_manager,
     logger,
     openai_client,
@@ -480,7 +479,6 @@ async def get_smart_response(
             return await _process_hybrid_mode(
                 message,
                 user,
-                conversation_summary,
                 conversation_manager,
                 logger,
                 openai_client,

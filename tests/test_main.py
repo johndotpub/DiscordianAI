@@ -42,8 +42,10 @@ def test_main_handles_exception(monkeypatch):
     # Patch sys.argv to avoid pytest args
     sys_argv_backup = sys.argv
     sys.argv = ["prog"]
+
     def _raise_fail(_config):
         raise Exception("fail")
+
     monkeypatch.setattr(main, "run_bot", _raise_fail)
     # Mock the load_config to return valid config
     monkeypatch.setattr(

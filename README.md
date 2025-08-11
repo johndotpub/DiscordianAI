@@ -4,8 +4,8 @@
 
 DiscordianAI is an **advanced Discord bot** with sophisticated AI orchestration, conversation consistency, and production-grade thread-safe architecture. It intelligently uses multiple AI services to provide the best responses with **three operation modes**:
 
-1. **🧠 Smart Hybrid Mode** - Automatically chooses between OpenAI's GPT-5 and Perplexity's web search with conversation consistency
-2. **🤖 OpenAI Only** - Uses GPT-5 for all responses  
+1. **🧠 Smart Hybrid Mode** - Automatically chooses between OpenAI's GPT models and Perplexity's web search with conversation consistency
+2. **🤖 OpenAI Only** - Uses OpenAI for all responses  
 3. **🔍 Perplexity Only** - Uses web search for all responses with proper citations
 
 ## ✨ Advanced Features
@@ -36,7 +36,7 @@ DiscordianAI is an **advanced Discord bot** with sophisticated AI orchestration,
 # Requirements
 
 - Bash
-- Python 3.10 or Higher
+- Python 3.10 – 3.12
 - Python Modules
   - discord.py
   - openai
@@ -44,7 +44,7 @@ DiscordianAI is an **advanced Discord bot** with sophisticated AI orchestration,
 
 ## API Keys (Choose Your Mode)
 
-- **OpenAI API Key** (for GPT-5): Get from [OpenAI Platform](https://platform.openai.com/api-keys)
+- **OpenAI API Key**: Get from [OpenAI Platform](https://platform.openai.com/api-keys)
 - **Perplexity API Key** (for web search): Get from [Perplexity](https://www.perplexity.ai/settings/api)
 
 *You can use one or both keys depending on your preferred operation mode*
@@ -80,9 +80,9 @@ The `config.ini` file supports all three operation modes with comprehensive conf
 ### 🧠 Smart Hybrid Mode (Recommended)
 The bot automatically analyzes each message and chooses the best AI service:
 - **Time-sensitive questions** → Perplexity (web search)
-- **Creative/coding requests** → GPT-5  
+- **Creative/coding requests** → OpenAI  
 - **Factual queries** → Perplexity
-- **Conversations** → GPT-5
+- **Conversations** → OpenAI
 
 ```ini
 OPENAI_API_KEY=your_openai_key_here
@@ -90,7 +90,7 @@ PERPLEXITY_API_KEY=your_perplexity_key_here
 ```
 
 ### 🤖 OpenAI Only Mode
-Uses GPT-5 for all responses:
+Uses OpenAI for all responses:
 ```ini
 OPENAI_API_KEY=your_openai_key_here
 PERPLEXITY_API_KEY=
@@ -142,7 +142,7 @@ The bot automatically knows what to do - no manual commands needed!
 - "Tell me about the recent SpaceX launch" ← Current events
 - "What's the weather like in Tokyo?" ← Current information
 
-**Automatically uses GPT-5 for:**
+**Automatically uses OpenAI for:**
 - "Write me a poem about robots" ← Creative
 - "How do I fix this Python error?" ← Technical  
 - "What do you think about philosophy?" ← Conversational
@@ -171,8 +171,7 @@ OUTPUT_TOKENS=8000
 CONTEXT_WINDOW=128000
 SYSTEM_MESSAGE=You are Bender from Futurama. You automatically know when to search for current information.
 
-# GPT-5 advanced parameters
-  
+#
 
 [Limits]
 RATE_LIMIT=10
@@ -241,21 +240,12 @@ pytest
 
 ### Linting & Formatting
 
-- **flake8:**
+ - Preferred order:
   ```bash
-  flake8 .
-  ```
-- **black (check only):**
-  ```bash
-  black --check .
-  ```
-- **isort (check only):**
-  ```bash
-  isort --check .
-  ```
-- **autopep8 (auto-fix):**
-  ```bash
-  autopep8 -r . --in-place
+  black .
+  isort .
+  ruff check .
+  pytest -q
   ```
 
 ### Full Workflow
@@ -263,10 +253,10 @@ pytest
 To run all checks and tests:
 
 ```bash
-flake8 .
 black --check .
-isort --check .
-pytest
+isort --check-only --diff .
+ruff check .
+pytest -q
 ```
 
 To auto-fix formatting:
@@ -274,7 +264,7 @@ To auto-fix formatting:
 ```bash
 black .
 isort .
-autopep8 -r . --in-place
+ruff check --fix .
 ```
 
 ### Continuous Integration
