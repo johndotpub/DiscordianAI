@@ -25,6 +25,62 @@ from .rate_limits import RateLimiter, check_rate_limit
 from .smart_orchestrator import get_smart_response
 
 
+def validate_gpt5_parameters(
+    openai_client, gpt_model: str, logger: logging.Logger
+) -> dict[str, bool]:
+    """Validate GPT-5 parameter support at startup to avoid testing on every API call.
+    
+    Args:
+        openai_client: OpenAI client instance
+        gpt_model: Model name to validate
+        logger: Logger instance
+        
+    Returns:
+        Dict with parameter support status
+    """
+    if not gpt_model.startswith("gpt-5"):
+        return {"reasoning_effort": False, "verbosity": False}
+    
+    logger.info(f"Validating GPT-5 parameter support for model: {gpt_model}")
+    
+    # Test with minimal parameters to avoid token costs
+    test_params = {
+        "model": gpt_model,
+        "messages": [{"role": "user", "content": "test"}],
+        "max_completion_tokens": 1
+    }
+    
+    support_status = {"reasoning_effort": False, "verbosity": False}
+    
+    # Test reasoning_effort support
+    try:
+        test_params_with_reasoning = {**test_params, "reasoning_effort": "minimal"}
+        openai_client.chat.completions.create(**test_params_with_reasoning)
+        support_status["reasoning_effort"] = True
+        logger.info("✅ reasoning_effort parameter supported")
+    except Exception as e:
+        if "unexpected keyword argument 'reasoning_effort'" in str(e):
+            logger.warning("❌ reasoning_effort parameter not supported by OpenAI client")
+        else:
+            logger.info("✅ reasoning_effort parameter appears to be supported")
+            support_status["reasoning_effort"] = True
+    
+    # Test verbosity support
+    try:
+        test_params_with_verbosity = {**test_params, "verbosity": "low"}
+        openai_client.chat.completions.create(**test_params_with_verbosity)
+        support_status["verbosity"] = True
+        logger.info("✅ verbosity parameter supported")
+    except Exception as e:
+        if "unexpected keyword argument 'verbosity'" in str(e):
+            logger.warning("❌ verbosity parameter not supported by OpenAI client")
+        else:
+            logger.info("✅ verbosity parameter appears to be supported")
+            support_status["verbosity"] = True
+    
+    return support_status
+
+
 def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
     """Initialize Discord bot and all required dependencies with comprehensive error handling.
 
@@ -60,12 +116,18 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
 
     # Initialize OpenAI client if API key is provided
     client = None
+    gpt5_support = {"reasoning_effort": False, "verbosity": False}
     if config["OPENAI_API_KEY"]:
         try:
             client = OpenAI(api_key=config["OPENAI_API_KEY"], base_url=config["OPENAI_API_URL"])
             logger.info(
                 f"OpenAI client initialized successfully with model: {config['GPT_MODEL']}"
             )
+            
+            # Validate GPT-5 parameter support at startup
+            if config['GPT_MODEL'].startswith('gpt-5'):
+                gpt5_support = validate_gpt5_parameters(client, config['GPT_MODEL'], logger)
+            
         except Exception as e:
             logger.exception("Failed to initialize OpenAI client")
             raise Exception(f"OpenAI client initialization failed: {e}")
@@ -144,6 +206,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
         "OUTPUT_TOKENS": config["OUTPUT_TOKENS"],
         "REASONING_EFFORT": config["REASONING_EFFORT"],
         "VERBOSITY": config["VERBOSITY"],
+        "GPT5_SUPPORT": gpt5_support,  # Add GPT5_SUPPORT to dependencies
     }
     return dependencies
 
@@ -237,6 +300,7 @@ async def _process_message_core(
             deps["REASONING_EFFORT"],
             deps["VERBOSITY"],
             deps["config"],  # Pass config for orchestrator settings
+            deps["GPT5_SUPPORT"],  # Pass GPT-5 parameter support status
         )
 
         # Send response with automatic message splitting if needed

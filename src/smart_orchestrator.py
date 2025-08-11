@@ -262,6 +262,7 @@ async def _process_openai_only_mode(
     output_tokens: int,
     reasoning_effort: str | None = None,
     verbosity: str | None = None,
+    gpt5_support: dict[str, bool] | None = None,
 ) -> tuple[str, bool]:
     """Process message using OpenAI-only mode."""
     logger.info("Running in OpenAI-only mode")
@@ -278,6 +279,7 @@ async def _process_openai_only_mode(
             output_tokens,
             reasoning_effort,
             verbosity,
+            gpt5_support,
         )
         if response_content:
             logger.info(f"OpenAI response generated successfully ({len(response_content)} chars)")
@@ -343,6 +345,7 @@ async def _process_hybrid_mode(
     reasoning_effort: str | None = None,
     verbosity: str | None = None,
     config: dict | None = None,
+    gpt5_support: dict[str, bool] | None = None,
 ) -> tuple[str, bool]:
     """Process message using hybrid mode with intelligent service selection."""
     logger.info("Running in hybrid mode - analyzing message for optimal routing")
@@ -392,6 +395,7 @@ async def _process_hybrid_mode(
             output_tokens,
             reasoning_effort,
             verbosity,
+            gpt5_support,
         )
 
         if response_content:
@@ -421,6 +425,7 @@ async def get_smart_response(
     reasoning_effort: str | None = None,
     verbosity: str | None = None,
     config: dict | None = None,  # Configuration dictionary with orchestrator settings
+    gpt5_support: dict[str, bool] | None = None,  # GPT-5 parameter support status
 ) -> tuple[str, bool]:
     """Intelligently choose the best AI service and generate response with comprehensive
     error handling.
@@ -490,6 +495,7 @@ async def get_smart_response(
                 output_tokens,
                 reasoning_effort,
                 verbosity,
+                gpt5_support,
             )
 
         # Mode 3: Hybrid mode
@@ -508,6 +514,7 @@ async def get_smart_response(
                 reasoning_effort,
                 verbosity,
                 config,
+                gpt5_support,
             )
 
         # Fallback if no clients available (shouldn't happen due to config validation)

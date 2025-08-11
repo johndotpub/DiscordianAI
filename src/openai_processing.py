@@ -26,6 +26,7 @@ async def process_openai_message(
     output_tokens: int,
     reasoning_effort: str | None = None,
     verbosity: str | None = None,
+    gpt5_support: dict[str, bool] | None = None,
 ) -> str | None:
     """Process message using OpenAI API with thread-safe conversation management.
 
@@ -71,22 +72,14 @@ async def process_openai_message(
         }
 
         # Add GPT-5 specific parameters if provided and model supports them
-        # Note: These parameters may not be supported by all OpenAI client versions
+        # Use stored support information from startup validation
         if reasoning_effort and gpt_model.startswith("gpt-5"):
             if reasoning_effort in ["minimal", "low", "medium", "high"]:
-                # Only add if we're confident the client supports it
-                try:
-                    # Test if the parameter is supported by creating a minimal test call
-                    test_params = {
-                        "model": gpt_model, 
-                        "messages": [{"role": "user", "content": "test"}], 
-                        "max_completion_tokens": 1
-                    }
-                    test_params["reasoning_effort"] = reasoning_effort
-                    # This will fail fast if the parameter isn't supported
+                # Check if parameter is supported based on startup validation
+                if gpt5_support and gpt5_support.get("reasoning_effort", False):
                     api_params["reasoning_effort"] = reasoning_effort
                     logger.debug(f"Using GPT-5 reasoning_effort: {reasoning_effort}")
-                except Exception:
+                else:
                     logger.warning(
                         f"reasoning_effort parameter not supported by OpenAI client "
                         f"for {gpt_model}, ignoring"
@@ -104,19 +97,11 @@ async def process_openai_message(
 
         if verbosity and gpt_model.startswith("gpt-5"):
             if verbosity in ["low", "medium", "high"]:
-                # Only add if we're confident the client supports it
-                try:
-                    # Test if the parameter is supported by creating a minimal test call
-                    test_params = {
-                        "model": gpt_model, 
-                        "messages": [{"role": "user", "content": "test"}], 
-                        "max_completion_tokens": 1
-                    }
-                    test_params["verbosity"] = verbosity
-                    # This will fail fast if the parameter isn't supported
+                # Check if parameter is supported based on startup validation
+                if gpt5_support and gpt5_support.get("verbosity", False):
                     api_params["verbosity"] = verbosity
                     logger.debug(f"Using GPT-5 verbosity: {verbosity}")
-                except Exception:
+                else:
                     logger.warning(
                         f"verbosity parameter not supported by OpenAI client "
                         f"for {gpt_model}, ignoring"
