@@ -57,7 +57,7 @@ class TestOpenAIAPIIntegration:
             conversation_manager=conversation_manager,
             logger=logger,
             openai_client=openai_client,
-            gpt_model="gpt-4o-mini",
+            gpt_model="gpt-5-mini",
             system_message="You are a test assistant",
             output_tokens=1000,
         )
@@ -68,7 +68,7 @@ class TestOpenAIAPIIntegration:
         # Verify OpenAI API was called with correct parameters
         openai_client.chat.completions.create.assert_called_once()
         call_args = openai_client.chat.completions.create.call_args[1]
-        assert call_args["model"] == "gpt-4o-mini"
+        assert call_args["model"] == "gpt-5-mini"
         assert call_args["max_tokens"] == 1000
         assert len(call_args["messages"]) == 2  # system + user message
 
@@ -103,7 +103,7 @@ class TestOpenAIAPIIntegration:
             conversation_manager=conversation_manager,
             logger=logger,
             openai_client=openai_client,
-            gpt_model="gpt-4o-mini",
+            gpt_model="gpt-5-mini",
             system_message="You are a test assistant",
             output_tokens=1000,
         )
@@ -349,14 +349,14 @@ class TestAPIUtilities:
     def test_api_call_builder_openai(self):
         """Test OpenAI API call builder."""
         params = APICallBuilder.openai_call(
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             system_message="Test system message",
             conversation_summary=[{"role": "user", "content": "Previous message"}],
             user_message="Current user message",
             output_tokens=2000,
         )
 
-        assert params["model"] == "gpt-4o-mini"
+        assert params["model"] == "gpt-5-mini"
         assert params["max_tokens"] == 2000
         assert len(params["messages"]) == 3  # system + previous + current
 
@@ -382,7 +382,7 @@ class TestAPIUtilities:
         log_api_call(
             logger=logger,
             service="OpenAI",
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             message_length=150,
             conversation_length=5,
         )
@@ -394,7 +394,7 @@ class TestAPIUtilities:
         # Check info call for service and model
         info_call_args = logger.info.call_args[0][0]
         assert "OpenAI" in info_call_args
-        assert "gpt-4o-mini" in info_call_args
+        assert "gpt-5-mini" in info_call_args
 
         # Check debug call for message stats
         debug_call_args = logger.debug.call_args[0][0]
@@ -474,7 +474,7 @@ class TestIntegrationScenarios:
             conversation_manager=conversation_manager,
             logger=logger,
             openai_client=openai_client,
-            gpt_model="gpt-4o-mini",
+            gpt_model="gpt-5-mini",
             system_message="Fallback assistant",
             output_tokens=1000,
         )

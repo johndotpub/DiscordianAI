@@ -174,7 +174,7 @@ class TestResponseCache:
     def test_cache_response_and_retrieve(self):
         """Test caching and retrieving responses."""
         message = "What is Python?"
-        context = {"model": "gpt-4o-mini", "system_message": "You are helpful"}
+        context = {"model": "gpt-5-mini", "system_message": "You are helpful"}
         response = "Python is a programming language."
 
         # Cache response
@@ -186,7 +186,7 @@ class TestResponseCache:
 
     def test_cache_key_normalization(self):
         """Test cache key normalization for similar messages."""
-        context = {"model": "gpt-4o-mini", "system_message": "Test"}
+        context = {"model": "gpt-5-mini", "system_message": "Test"}
         response = "Test response"
 
         # Cache response with original message
@@ -202,7 +202,7 @@ class TestResponseCache:
 
     def test_should_not_cache_time_sensitive(self):
         """Test that time-sensitive responses are not cached."""
-        context = {"model": "gpt-4o-mini"}
+        context = {"model": "gpt-5-mini"}
 
         # Time-sensitive responses should not be cached
         time_sensitive_responses = [
@@ -220,7 +220,7 @@ class TestResponseCache:
 
     def test_should_not_cache_short_responses(self):
         """Test that very short responses are not cached."""
-        context = {"model": "gpt-4o-mini"}
+        context = {"model": "gpt-5-mini"}
 
         # Very short responses should not be cached
         short_responses = ["Yes.", "No", "OK", "   \n  "]
@@ -388,12 +388,12 @@ class TestCachingDecorators:
             return f"Response to: {message} (call #{call_count})"
 
         # First call should execute function
-        result1 = await test_function("Hello", gpt_model="gpt-4o-mini")
+        result1 = await test_function("Hello", gpt_model="gpt-5-mini")
         assert call_count == 1
         assert "call #1" in result1
 
         # Second identical call should use cache
-        result2 = await test_function("Hello", gpt_model="gpt-4o-mini")
+        result2 = await test_function("Hello", gpt_model="gpt-5-mini")
         assert call_count == 1  # No additional call
         assert result2 == result1
 
@@ -412,7 +412,7 @@ class TestCachingDecorators:
         # Start multiple simultaneous calls
         tasks = []
         for _ in range(5):
-            task = asyncio.create_task(test_function("test message", model="gpt-4"))
+            task = asyncio.create_task(test_function("test message", model="gpt-5-mini"))
             tasks.append(task)
 
         results = await asyncio.gather(*tasks)

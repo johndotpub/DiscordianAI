@@ -57,7 +57,7 @@ class TestProcessOpenAIMessage:
                 conversation_manager,
                 logger,
                 FakeOpenAIClient(),
-                "gpt-4o-mini",
+                "gpt-5-mini",
                 "You are a helpful assistant.",
                 8000,
             )
@@ -105,7 +105,7 @@ class TestProcessOpenAIMessage:
                 conversation_manager,
                 logger,
                 FakeOpenAIClient(),
-                "gpt-4o-mini",
+                "gpt-5-mini",
                 "You are a helpful assistant.",
                 8000,
             )
@@ -143,7 +143,7 @@ class TestProcessOpenAIMessage:
                 conversation_manager,
                 logger,
                 FakeOpenAIClient(),
-                "gpt-4o-mini",
+                "gpt-5-mini",
                 "You are a helpful assistant.",
                 8000,
             )

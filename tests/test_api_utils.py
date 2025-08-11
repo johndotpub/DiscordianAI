@@ -211,7 +211,7 @@ class TestValidateGptModel:
 
     def test_valid_models(self):
         """Test validation of all valid models."""
-        valid_models = ["gpt-5", "gpt-4o", "gpt-4o-mini", "gpt-4", "gpt-4-turbo"]
+        valid_models = ["gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-chat"]
 
         for model in valid_models:
             assert validate_gpt_model(model) is True
@@ -238,15 +238,15 @@ class TestValidateGptModel:
         """Test valid model doesn't log warning."""
         mock_logger = Mock()
 
-        result = validate_gpt_model("gpt-4", mock_logger)
+        result = validate_gpt_model("gpt-5-mini", mock_logger)
 
         assert result is True
         mock_logger.warning.assert_not_called()
 
     def test_case_sensitivity(self):
         """Test model validation is case sensitive."""
-        assert validate_gpt_model("GPT-4") is False
-        assert validate_gpt_model("gpt-4") is True
+        assert validate_gpt_model("GPT-5-MINI") is False
+        assert validate_gpt_model("gpt-5-mini") is True
 
 
 class TestAPIUtilities:

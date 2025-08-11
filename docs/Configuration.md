@@ -21,7 +21,7 @@ Configure OpenAI and Perplexity APIs for intelligent hybrid operation.
 #### OpenAI Settings
 - **`OPENAI_API_KEY`**: Your OpenAI API key for GPT models *(leave empty to disable)*
 - **`OPENAI_API_URL`**: OpenAI API endpoint *(default: "https://api.openai.com/v1/")*
-- **`GPT_MODEL`**: Model to use: "gpt-4o-mini" (default, cost-effective), "gpt-4o", "gpt-4", "gpt-4-turbo" *(default: "gpt-4o-mini")*
+- **`GPT_MODEL`**: Model to use: "gpt-5-mini" (default, cost-effective), "gpt-5", "gpt-5-nano", "gpt-5-chat" *(default: "gpt-5-mini")*
   
 
 #### Perplexity Settings  

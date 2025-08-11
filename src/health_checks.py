@@ -85,7 +85,7 @@ class APIHealthMonitor:
                 {"role": "user", "content": "ping"},
             ]
 
-            model = config.get("GPT_MODEL", "gpt-4o-mini")
+            model = config.get("GPT_MODEL", "gpt-5-mini")
 
             # Validate model is still supported
             if model not in OPENAI_VALID_MODELS:

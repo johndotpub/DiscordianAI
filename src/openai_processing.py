@@ -38,7 +38,7 @@ async def process_openai_message(
         conversation_manager (ThreadSafeConversationManager): Thread-safe conversation manager
         logger (logging.Logger): Logger for API events
         openai_client: OpenAI client instance
-        gpt_model (str): GPT model identifier (e.g., 'gpt-5', 'gpt-4')
+        gpt_model (str): GPT model identifier (e.g., 'gpt-5', 'gpt-5-mini')
         system_message (str): System prompt for the AI
         output_tokens (int): Maximum tokens to generate
 

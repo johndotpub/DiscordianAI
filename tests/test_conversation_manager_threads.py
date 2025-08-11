@@ -90,7 +90,7 @@ class TestThreadSafeConversationManager:
         """Test adding message with metadata."""
         manager = ThreadSafeConversationManager()
 
-        metadata = {"ai_service": "openai", "model": "gpt-4"}
+        metadata = {"ai_service": "openai", "model": "gpt-5-mini"}
         manager.add_message(12345, "assistant", "Response", metadata=metadata)
 
         conversation = manager.get_conversation(12345)

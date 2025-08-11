@@ -9,11 +9,10 @@ import re
 
 # Valid API parameters and values
 OPENAI_VALID_MODELS = [
-    "gpt-5",  # Latest generation
-    "gpt-4o",  # GPT-4 series - current
-    "gpt-4o-mini",  # GPT-4 series - cost-effective
-    "gpt-4",  # GPT-4 series - previous generation
-    "gpt-4-turbo",  # GPT-4 series - enhanced
+    "gpt-5",  # Latest generation - standard
+    "gpt-5-mini",  # Latest generation - cost-effective
+    "gpt-5-nano",  # Latest generation - high-speed
+    "gpt-5-chat",  # Latest generation - conversational
 ]
 
 
@@ -247,7 +246,7 @@ def get_api_recommendations() -> dict[str, str]:
         Dict[str, str]: Dictionary of recommended configuration values
     """
     return {
-        "GPT_MODEL": "gpt-4o-mini",  # Cost-effective default
+        "GPT_MODEL": "gpt-5-mini",  # Cost-effective default
         "OUTPUT_TOKENS": "8000",  # Conservative limit
         "INPUT_TOKENS": "120000",  # Safe context window
         "RATE_LIMIT": "10",  # Reasonable default

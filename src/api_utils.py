@@ -77,7 +77,7 @@ def validate_gpt_model(model: str, logger: logging.Logger | None = None) -> bool
     Returns:
         True if model is recognized
     """
-    valid_models = {"gpt-5", "gpt-4o", "gpt-4o-mini", "gpt-4", "gpt-4-turbo"}
+    valid_models = {"gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-chat"}
 
     is_valid = model in valid_models
 

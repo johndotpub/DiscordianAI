@@ -115,7 +115,7 @@ PERPLEXITY_API_KEY=your_perplexity_key_here
 ### AI Configuration
 - `OPENAI_API_KEY`: OpenAI API key for GPT models (leave blank to disable)
 - `OPENAI_API_URL`: OpenAI API endpoint (default: https://api.openai.com/v1/)
-- `GPT_MODEL`: OpenAI model (gpt-4o-mini, gpt-4o, gpt-4, gpt-4-turbo, gpt-5)
+- `GPT_MODEL`: OpenAI model (gpt-5-mini, gpt-5, gpt-5-nano, gpt-5-chat)
 - `PERPLEXITY_API_KEY`: Perplexity API key for web search (leave blank to disable)
 - `PERPLEXITY_API_URL`: Perplexity API endpoint (default: https://api.perplexity.ai)
 - `PERPLEXITY_MODEL`: Perplexity model (sonar-pro, sonar)

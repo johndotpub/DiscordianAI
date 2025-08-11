@@ -20,10 +20,10 @@ ACTIVITY_STATUS=you bite my shiny metal ass!
 
 [Default]
 # === OPENAI CONFIGURATION ===
-# Supported: gpt-4o-mini (default), gpt-4o, gpt-4, gpt-4-turbo, gpt-5
+# Supported: gpt-5-mini (default), gpt-5, gpt-5-nano, gpt-5-chat
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_API_URL=https://api.openai.com/v1/
-GPT_MODEL=gpt-4o-mini
+GPT_MODEL=gpt-5-mini
 
 # === PERPLEXITY CONFIGURATION ===  
 # Supported: sonar-pro (default), sonar - Leave blank to disable web search
@@ -68,13 +68,13 @@ LOG_LEVEL=INFO
 # HYBRID MODE (Smart Auto-Selection - Recommended):
 # OPENAI_API_KEY=sk-your-openai-key
 # PERPLEXITY_API_KEY=pplx-your-perplexity-key
-# GPT_MODEL=gpt-4o-mini        # Cost-effective default
+# GPT_MODEL=gpt-5-mini         # Cost-effective default
 # PERPLEXITY_MODEL=sonar-pro   # Latest web search model
 # 
 # OPENAI ONLY MODE:
 # OPENAI_API_KEY=sk-your-openai-key
 # PERPLEXITY_API_KEY=          # Leave blank
-# GPT_MODEL=gpt-4o-mini        # Or gpt-4, gpt-4o, gpt-5
+# GPT_MODEL=gpt-5-mini         # Or gpt-5, gpt-5-nano, gpt-5-chat
 #
 # PERPLEXITY ONLY MODE:
 # OPENAI_API_KEY=              # Leave blank

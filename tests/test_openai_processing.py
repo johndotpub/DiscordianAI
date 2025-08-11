@@ -44,7 +44,7 @@ class TestProcessOpenAIMessageBasic:
                 conversation_manager=conversation_manager,
                 logger=logging.getLogger("test"),
                 openai_client=openai_client,
-                gpt_model="gpt-4",
+                gpt_model="gpt-5-mini",
                 system_message="You are a helpful assistant",
                 output_tokens=1000,
             )
@@ -55,7 +55,7 @@ class TestProcessOpenAIMessageBasic:
                 12345,
                 "assistant",
                 "Test response from OpenAI",
-                metadata={"ai_service": "openai", "model": "gpt-4"},
+                metadata={"ai_service": "openai", "model": "gpt-5-mini"},
             )
 
     @pytest.mark.asyncio

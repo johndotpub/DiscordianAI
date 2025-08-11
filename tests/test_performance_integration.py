@@ -366,7 +366,7 @@ class TestSystemIntegrationBenchmarks:
                 conversation_manager=conversation_manager,
                 logger=logger,
                 openai_client=openai_client,
-                gpt_model="gpt-4o-mini",
+                gpt_model="gpt-5-mini",
                 system_message="Benchmark assistant",
                 output_tokens=1000,
             )

@@ -9,11 +9,10 @@ This document validates the API parameters used in DiscordianAI against current 
 - **API URL**: `https://api.openai.com/v1/` ✅ **VALID**
 - **Parameter**: `max_tokens` ✅ **VALID** (Correct parameter name)
 - **Supported Models**: 
-  - `gpt-4o-mini` ✅ **VALID** (Default - cost-effective)
-  - `gpt-4o` ✅ **VALID** (Enhanced GPT-4)
-  - `gpt-4` ✅ **VALID** (Previous generation)
-  - `gpt-4-turbo` ✅ **VALID** (Enhanced performance)
-  - `gpt-5` ⚠️ **EARLY ADOPTER** (Latest generation, limited availability)
+  - `gpt-5-mini` ✅ **VALID** (Default - cost-effective)
+  - `gpt-5` ✅ **VALID** (Standard - complex tasks)
+  - `gpt-5-nano` ✅ **VALID** (High-speed - low latency)
+  - `gpt-5-chat` ✅ **VALID** (Conversational - advanced chat)
 
 **Status**: Parameters are correctly implemented with proper validation and fallbacks.
 
@@ -39,7 +38,7 @@ This document validates the API parameters used in DiscordianAI against current 
 ## Recommendations
 
 ### High Priority
-1. **Model Selection**: Use `gpt-4o-mini` for cost-effective default, `gpt-5` for advanced reasoning when available
+1. **Model Selection**: Use `gpt-5-mini` for cost-effective default, `gpt-5` for advanced reasoning
 2. **Update discord.py**: Consider updating to latest version for security and features
 
 ### Medium Priority  
@@ -64,7 +63,7 @@ This document validates the API parameters used in DiscordianAI against current 
 [Default]
 OPENAI_API_URL=https://api.openai.com/v1/
 PERPLEXITY_API_URL=https://api.perplexity.ai
-GPT_MODEL=gpt-4o-mini      # Cost-effective default
+GPT_MODEL=gpt-5-mini       # Cost-effective default
 PERPLEXITY_MODEL=sonar-pro # Latest with web access
 INPUT_TOKENS=120000        # Safe context window
 OUTPUT_TOKENS=8000         # Conservative for cost control

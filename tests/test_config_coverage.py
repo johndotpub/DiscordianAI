@@ -55,7 +55,7 @@ class TestLoadConfig:
         assert config["OPENAI_API_URL"] == "https://api.openai.com/v1/"
         assert config["PERPLEXITY_API_KEY"] is None
         assert config["PERPLEXITY_API_URL"] == "https://api.perplexity.ai"
-        assert config["GPT_MODEL"] == "gpt-4o-mini"
+        assert config["GPT_MODEL"] == "gpt-5-mini"
         assert config["INPUT_TOKENS"] == 120000
         assert config["OUTPUT_TOKENS"] == 8000
         assert config["CONTEXT_WINDOW"] == 128000
@@ -83,7 +83,7 @@ ACTIVITY_STATUS=test game
 [Default]
 OPENAI_API_KEY=test_api_key
 PERPLEXITY_API_KEY=test_perplexity_key
-GPT_MODEL=gpt-4
+GPT_MODEL=gpt-5-mini
 INPUT_TOKENS=50000
 OUTPUT_TOKENS=2000
 SYSTEM_MESSAGE=Test system message
@@ -119,7 +119,7 @@ LOG_LEVEL=DEBUG
             assert config["ACTIVITY_STATUS"] == "test game"
             assert config["OPENAI_API_KEY"] == "test_api_key"
             assert config["PERPLEXITY_API_KEY"] == "test_perplexity_key"
-            assert config["GPT_MODEL"] == "gpt-4"
+            assert config["GPT_MODEL"] == "gpt-5-mini"
             assert config["INPUT_TOKENS"] == 50000
             assert config["OUTPUT_TOKENS"] == 2000
             assert config["SYSTEM_MESSAGE"] == "Test system message"
@@ -144,7 +144,7 @@ LOG_LEVEL=DEBUG
 
         # Should return defaults when file doesn't exist
         assert config["DISCORD_TOKEN"] is None
-        assert config["GPT_MODEL"] == "gpt-4o-mini"
+        assert config["GPT_MODEL"] == "gpt-5-mini"
 
     def test_load_config_with_base_folder(self):
         """Test config loading with base folder."""

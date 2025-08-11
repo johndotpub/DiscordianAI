@@ -4,10 +4,11 @@ DiscordianAI provides comprehensive OpenAI integration with support for GPT-4 se
 
 ## Supported Models
 
-### GPT-4 Series
-- **GPT-4**: High-quality reasoning and creative tasks
-- **GPT-4-turbo**: Faster processing with good quality
-- **GPT-4o-mini**: Cost-effective option for simpler tasks
+### GPT-5 Series
+- **GPT-5**: High-quality reasoning and complex tasks
+- **GPT-5-mini**: Cost-effective option for general use
+- **GPT-5-nano**: High-speed processing with low latency
+- **GPT-5-chat**: Advanced conversational interactions
 
 ## Configuration
 
@@ -17,7 +18,7 @@ DiscordianAI provides comprehensive OpenAI integration with support for GPT-4 se
 # OpenAI API configuration
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_API_URL=https://api.openai.com/v1/
-GPT_MODEL=gpt-4o-mini
+GPT_MODEL=gpt-5-mini
 
 # Token limits
 OUTPUT_TOKENS=8000

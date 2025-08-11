@@ -12,11 +12,10 @@ from typing import Any
 
 # API Configuration Constants
 OPENAI_VALID_MODELS = [
-    "gpt-5",  # Latest generation
-    "gpt-4o",  # GPT-4 series - current
-    "gpt-4o-mini",  # GPT-4 series - cost-effective
-    "gpt-4",  # GPT-4 series - previous generation
-    "gpt-4-turbo",  # GPT-4 series - enhanced
+    "gpt-5",  # Latest generation - standard
+    "gpt-5-mini",  # Latest generation - cost-effective
+    "gpt-5-nano",  # Latest generation - high-speed
+    "gpt-5-chat",  # Latest generation - conversational
 ]
 
 
@@ -188,7 +187,7 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
         config_data["PERPLEXITY_MODEL"] = config.get(
             "Default", "PERPLEXITY_MODEL", fallback="sonar-pro"
         )
-        config_data["GPT_MODEL"] = config.get("Default", "GPT_MODEL", fallback="gpt-4o-mini")
+        config_data["GPT_MODEL"] = config.get("Default", "GPT_MODEL", fallback="gpt-5-mini")
         config_data["INPUT_TOKENS"] = config.getint("Default", "INPUT_TOKENS", fallback=120000)
         config_data["OUTPUT_TOKENS"] = config.getint("Default", "OUTPUT_TOKENS", fallback=8000)
         config_data["CONTEXT_WINDOW"] = config.getint("Default", "CONTEXT_WINDOW", fallback=128000)
@@ -285,7 +284,7 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
         "PERPLEXITY_API_KEY": None,
         "PERPLEXITY_API_URL": "https://api.perplexity.ai",
         "PERPLEXITY_MODEL": "sonar-pro",
-        "GPT_MODEL": "gpt-4o-mini",
+        "GPT_MODEL": "gpt-5-mini",
         "INPUT_TOKENS": 120000,
         "OUTPUT_TOKENS": 8000,
         "CONTEXT_WINDOW": 128000,

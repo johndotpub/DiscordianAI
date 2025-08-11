@@ -33,13 +33,13 @@ class TestHealthCheckResult:
             status="healthy",
             response_time_ms=150.5,
             timestamp=datetime.now(timezone.utc),
-            details={"model": "gpt-4o-mini"},
+            details={"model": "gpt-5-mini"},
         )
 
         assert result.service == "openai"
         assert result.status == "healthy"
         assert result.response_time_ms == 150.5
-        assert result.details["model"] == "gpt-4o-mini"
+        assert result.details["model"] == "gpt-5-mini"
         assert result.error is None
 
     def test_health_check_result_with_error(self):
@@ -105,14 +105,14 @@ class TestAPIHealthMonitor:
 
         openai_client.chat.completions.create.return_value = mock_response
 
-        config = {"GPT_MODEL": "gpt-4o-mini"}
+        config = {"GPT_MODEL": "gpt-5-mini"}
 
         result = await self.monitor.check_openai_health(openai_client, config)
 
         assert result.service == "openai"
         assert result.status in ["healthy", "degraded"]  # Depending on response time
         assert result.error is None
-        assert result.details["model"] == "gpt-4o-mini"
+        assert result.details["model"] == "gpt-5-mini"
         assert "usage" in result.details
 
     @pytest.mark.asyncio
@@ -122,7 +122,7 @@ class TestAPIHealthMonitor:
         openai_client = Mock()
         openai_client.chat.completions.create.side_effect = Exception("API unavailable")
 
-        config = {"GPT_MODEL": "gpt-4o-mini"}
+        config = {"GPT_MODEL": "gpt-5-mini"}
 
         result = await self.monitor.check_openai_health(openai_client, config)
 
@@ -301,7 +301,7 @@ class TestAPIHealthMonitor:
         }
 
         config = {
-            "GPT_MODEL": "gpt-4o-mini",
+            "GPT_MODEL": "gpt-5-mini",
             "PERPLEXITY_MODEL": "sonar-pro",
         }
 
@@ -393,7 +393,7 @@ class TestAPIHealthMonitor:
         """Test starting and stopping the monitoring loop."""
         # Mock clients
         clients = {"openai": Mock()}
-        config = {"GPT_MODEL": "gpt-4o-mini"}
+        config = {"GPT_MODEL": "gpt-5-mini"}
 
         # Mock the health check method to avoid actual API calls
         self.monitor.run_all_health_checks = AsyncMock(return_value={})
@@ -421,7 +421,7 @@ class TestConfigurationValidation:
         config = {
             "OPENAI_API_KEY": "sk-test123",
             "OPENAI_API_URL": "https://api.openai.com/v1/",
-            "GPT_MODEL": "gpt-4o-mini",
+            "GPT_MODEL": "gpt-5-mini",
             "PERPLEXITY_API_KEY": "pplx-test123",
             "PERPLEXITY_MODEL": "sonar-pro",
             "DISCORD_TOKEN": "discord-token",
@@ -441,7 +441,7 @@ class TestConfigurationValidation:
         config = {
             # Missing OPENAI_API_KEY and PERPLEXITY_API_KEY
             "DISCORD_TOKEN": "discord-token",
-            "GPT_MODEL": "gpt-4o-mini",
+            "GPT_MODEL": "gpt-5-mini",
         }
 
         warnings, errors = validate_api_configuration(config)
