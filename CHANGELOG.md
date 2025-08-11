@@ -5,13 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.2.5] - 2025-01-16
+## [v0.2.5] - 2025-08-10
 
 ### Added - Major Release: Enterprise-Grade QE Tests & Production Enhancements
 - **Complete GPT-5 + Perplexity Dual-Stack Architecture**: Intelligent service selection with smart orchestrator
 - **Smart Query Routing**: Time-sensitive query detection, factual query classification, smart embed suppression
 - **Web Search Capabilities**: Perplexity API integration with Discord-compatible citation handling
 - **Hybrid Operation Modes**: GPT-only, Perplexity-only, or smart hybrid mode with intelligent switching
+- **New Modules**: Created 8 new modules (caching.py, health_checks.py, utilities)
+
 - **Advanced Performance Optimizations**: 
   - ThreadSafe LRU caching system with TTL support (reduces API calls by 50-80%)
   - Request deduplication preventing redundant simultaneous calls
@@ -29,8 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 4-stage linting pipeline (isort → black → ruff → flake8) with complete CI/CD integration
   - 25+ integration tests for API interactions using mocks and realistic scenarios
   - API parameter validation module with startup integration
-- **Centralized Configuration**: Consolidated all constants into config.py for better maintainability
-- **New Production Modules**: Created 8 new modules (caching.py, health_checks.py, utilities)
 
 ### Changed - Code Quality & Reliability Improvements  
 - **Dependencies Updated**: OpenAI 1.98.0 → 1.99.6, discord.py/websockets to latest stable versions
@@ -40,19 +40,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **GitHub Actions**: Enhanced CI workflows with automated performance benchmarks and dependency caching
 
 ### Technical Achievements & Statistics
-- **Massive Scale**: 55 files changed, 14,253+ insertions, 899 deletions across entire project
-- **Test Coverage Revolution**: Expanded from 34% → 85%+ with 157+ comprehensive tests
+- **Massive Scale**: 50+ files changed, 14k+ insertions, 800+ deletions across entire project
+- **Test Coverage Revolution**: Expanded from 34% → 85%+ with 420 comprehensive tests
 - **Thread-Safety**: All conversation management and rate limiting now fully thread-safe (zero race conditions)
 - **Code Quality**: Reduced function complexity from 19 → ≤16, improved type hints and documentation
 
 ### Fixed - Production Quality Standards
-- **Code Standards**: Fixed 23+ line length violations and resolved import organization issues across 10+ files
 - **Test Reliability**: Fixed all test failures in coverage, conversation manager, and orchestrator suites
 - **API Integration**: Resolved modular architecture issues and improved error handling for service fallbacks
 - **Citation Formatting**: Fixed Discord link compatibility and removed deprecated functions
+- **Centralized Configuration**: Consolidated all constants into config.py for better maintainability
 
 ### Removed
-- **Legacy Code**: Removed all deprecated functions, backwards compatibility layers, and unused imports
 - **Outdated Support**: Cleaned up references to unsupported legacy models
 
 ## [v0.2.0] - 2025-07-16
