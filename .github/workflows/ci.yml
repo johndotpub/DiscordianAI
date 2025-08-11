@@ -1,5 +1,5 @@
-# Modern Python toolchain: isort + black + ruff + pytest
-# Each tool runs in a separate step for better visibility and failure isolation
+# Modern Python toolchain: black + ruff + pytest
+# Streamlined linting with ruff handling import sorting and all other checks
 
 name: Code Quality & Testing
 
@@ -32,17 +32,13 @@ jobs:
         pip install .[dev]
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         
-    - name: Sort imports with isort
+    - name: Lint with ruff (includes import sorting)
       run: |
-        isort . --check-only --diff
+        ruff check . --exit-zero
         
     - name: Format code with black
       run: |
         black --check --diff .
-        
-    - name: Lint with ruff  
-      run: |
-        ruff check . --exit-zero
         
     - name: Test with pytest and coverage
       run: |

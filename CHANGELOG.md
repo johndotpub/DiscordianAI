@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Circuit breakers with intelligent failure thresholds
   - Exponential backoff with jitter for optimal retry patterns
 - **Modern Development Infrastructure**:
-  - 4-stage linting pipeline (isort → black → ruff → flake8) with complete CI/CD integration
+  - Streamlined 2-stage linting pipeline (black → ruff) with complete CI/CD integration
   - 25+ integration tests for API interactions using mocks and realistic scenarios
   - API parameter validation module with startup integration
 
@@ -77,7 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `.flake8` and `pytest.ini` configuration files for consistency
   - PEP 621 compliant `pyproject.toml` with proper dev dependencies
   - Updated `tox.ini` for streamlined testing and environment management
-  - Aligned black, flake8, and isort configurations (resolved E203, W503 conflicts)
+  - Aligned black and ruff configurations (resolved E203, W503 conflicts)
 
 ### Changed
 - **Complete Codebase Restructure**: Transformed from monolithic architecture to modular design

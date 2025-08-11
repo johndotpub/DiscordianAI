@@ -1,4 +1,4 @@
-[![Flake8 and Pytest](https://github.com/johndotpub/DiscordianAI/actions/workflows/flake8-pytest.yml/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/flake8-pytest.yml) [![CodeQL](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql) [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](http://unlicense.org/)
+[![Code Quality & Testing](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml) [![CodeQL](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql) [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](http://unlicense.org/)
 
 # Description
 
@@ -218,6 +218,7 @@ Daemon/background mode is handled by the `discordian.sh` shell script, which sup
 For more in-depth information about the DiscordianAI project, please refer to the following documentation files in the `docs/` directory:
 
 - **[Smart AI Mode](./docs/HybridMode.md)** : Complete guide to intelligent multi-AI operation with smart detection
+- **[Development](./docs/Development.md)** : Modern development workflow using streamlined linting tools
 - [Configuration](./docs/Configuration.md) : Detailed instructions on how to configure the Discord bot and AI API settings  
 - [Daemon](./docs/Daemon.md) : Information on how to run the Discord bot as a daemon
 - [Docker](./docs/Docker.md) : Instructions on how to containerize the Discord bot using Docker
@@ -240,13 +241,20 @@ pytest
 
 ### Linting & Formatting
 
- - Preferred order:
-  ```bash
-  black .
-  isort .
-  ruff check .
-  pytest -q
-  ```
+**Modern Approach (Recommended):**
+```bash
+black .
+ruff check --fix .
+pytest -q
+```
+
+**Legacy Approach (Not Recommended):**
+```bash
+black .
+isort .
+ruff check .
+pytest -q
+```
 
 ### Full Workflow
 
@@ -254,22 +262,20 @@ To run all checks and tests:
 
 ```bash
 black --check .
-isort --check-only --diff .
 ruff check .
 pytest -q
 ```
 
-To auto-fix formatting:
+To auto-fix formatting and linting:
 
 ```bash
 black .
-isort .
 ruff check --fix .
 ```
 
 ### Continuous Integration
 
-All pushes and pull requests are automatically checked with flake8 and pytest via GitHub Actions.
+All pushes and pull requests are automatically checked with black, ruff, and pytest via GitHub Actions.
 
 # Daemon Control Script
 

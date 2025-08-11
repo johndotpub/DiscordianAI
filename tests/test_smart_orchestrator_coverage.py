@@ -268,7 +268,6 @@ class TestProcessingModes:
     async def test_process_hybrid_mode_web_search_preferred(self):
         """Test hybrid mode choosing web search."""
         user = MagicMock()
-        conversation_summary = []
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
         logger = logging.getLogger("test")
         openai_client = MagicMock()
@@ -306,7 +305,6 @@ class TestProcessingModes:
     async def test_process_hybrid_mode_basic(self):
         """Test hybrid mode basic functionality."""
         user = MagicMock()
-        conversation_summary = []
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
         logger = logging.getLogger("test")
         openai_client = MagicMock()
