@@ -448,7 +448,7 @@ async def _handle_incoming_message(
             if is_allowed_channel and is_mentioned:
                 await process_channel_message(message, deps)
                 return
-            elif is_allowed_channel and not is_mentioned:
+            if is_allowed_channel and not is_mentioned:
                 logger.debug(f"Message in allowed channel #{channel_name} but bot not mentioned")
             elif not is_allowed_channel:
                 logger.debug(
