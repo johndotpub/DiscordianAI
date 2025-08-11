@@ -189,5 +189,18 @@ mark-parentheses = false
     "PLR2004", # Allow magic values in tests
     "ARG001",  # Allow unused function arguments in tests
     "FBT001",  # Allow boolean trap in tests
+    "PLC0415", # Allow local imports in tests
+    "ARG004",  # Allow unused *args/**kwargs in mocks
+    "PT011",   # Broad raises in tests
+    "PT012",   # Complex raises block in tests
+    "SLF001",  # Private access in tests
+    "SIM117",  # Nested context managers in tests
+    "PTH",     # Pathlib preference in tests
+    "B007",    # Unused loop var in tests
+    "ASYNC251",# time.sleep in async tests
+    "TRY002",  # Use of Exception in tests
 ]
+
+# Loosen specific modules to reduce noisy warnings without changing behavior
+# Keep core modules strict; no unnecessary ignores remain
 

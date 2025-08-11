@@ -205,9 +205,7 @@ def should_use_web_search(
     # Check message length and complexity
     # (longer, more specific questions often benefit from web search)
     if len(message.split()) > entity_detection_min_words:
-        # Look for specific entities, names, companies, etc. using pre-compiled patterns
-        if any(pattern.search(message) for pattern in _ENTITY_PATTERNS):
-            return True
+        return any(pattern.search(message) for pattern in _ENTITY_PATTERNS)
 
     # Default to False for general conversation
     return False
@@ -260,9 +258,6 @@ async def _process_openai_only_mode(
     gpt_model: str,
     system_message: str,
     output_tokens: int,
-    reasoning_effort: str | None = None,
-    verbosity: str | None = None,
-    gpt5_support: dict[str, bool] | None = None,
 ) -> tuple[str, bool]:
     """Process message using OpenAI-only mode."""
     logger.info("Running in OpenAI-only mode")
@@ -277,9 +272,6 @@ async def _process_openai_only_mode(
             gpt_model,
             system_message,
             output_tokens,
-            reasoning_effort,
-            verbosity,
-            gpt5_support,
         )
         if response_content:
             logger.info(f"OpenAI response generated successfully ({len(response_content)} chars)")
@@ -317,6 +309,10 @@ async def _try_perplexity_with_fallback(
             output_tokens,
             model,
         )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Perplexity failed in hybrid mode, falling back to OpenAI: %s", e)
+        return None, False
+    else:
         if result:
             response_content, suppress_embeds = result
             logger.info(
@@ -324,10 +320,6 @@ async def _try_perplexity_with_fallback(
             )
             return response_content, suppress_embeds
         logger.warning("Perplexity returned no response, falling back to OpenAI")
-        return None, False
-
-    except Exception as e:
-        logger.warning(f"Perplexity failed in hybrid mode, falling back to OpenAI: {e}")
         return None, False
 
 
@@ -342,10 +334,7 @@ async def _process_hybrid_mode(
     gpt_model: str,
     system_message: str,
     output_tokens: int,
-    reasoning_effort: str | None = None,
-    verbosity: str | None = None,
     config: dict | None = None,
-    gpt5_support: dict[str, bool] | None = None,
 ) -> tuple[str, bool]:
     """Process message using hybrid mode with intelligent service selection."""
     logger.info("Running in hybrid mode - analyzing message for optimal routing")
@@ -393,9 +382,6 @@ async def _process_hybrid_mode(
             gpt_model,
             system_message,
             output_tokens,
-            reasoning_effort,
-            verbosity,
-            gpt5_support,
         )
 
         if response_content:
@@ -422,13 +408,9 @@ async def get_smart_response(
     gpt_model: str,
     system_message: str,
     output_tokens: int,
-    reasoning_effort: str | None = None,
-    verbosity: str | None = None,
     config: dict | None = None,  # Configuration dictionary with orchestrator settings
-    gpt5_support: dict[str, bool] | None = None,  # GPT-5 parameter support status
 ) -> tuple[str, bool]:
-    """Intelligently choose the best AI service and generate response with comprehensive
-    error handling.
+    """Choose the best AI service and generate a response with robust error handling.
 
     This is the main orchestration function that analyzes the user's message,
     selects the most appropriate AI service, handles the conversation state
@@ -450,8 +432,6 @@ async def get_smart_response(
         gpt_model (str): GPT model identifier
         system_message (str): System prompt for AI
         output_tokens (int): Maximum output tokens
-        reasoning_effort (str, optional): GPT-5 reasoning effort level
-        verbosity (str, optional): GPT-5 verbosity level
         config (dict, optional): Configuration dictionary with orchestrator settings
 
     Returns:
@@ -493,9 +473,6 @@ async def get_smart_response(
                 gpt_model,
                 system_message,
                 output_tokens,
-                reasoning_effort,
-                verbosity,
-                gpt5_support,
             )
 
         # Mode 3: Hybrid mode
@@ -511,10 +488,7 @@ async def get_smart_response(
                 gpt_model,
                 system_message,
                 output_tokens,
-                reasoning_effort,
-                verbosity,
                 config,
-                gpt5_support,
             )
 
         # Fallback if no clients available (shouldn't happen due to config validation)
@@ -522,5 +496,5 @@ async def get_smart_response(
         return ERROR_MESSAGES["configuration_error"], False
 
     except Exception as e:
-        logger.critical(f"Unexpected error in smart orchestrator: {e}", exc_info=True)
+        logger.critical("Unexpected error in smart orchestrator: %s", e, exc_info=True)
         return ERROR_MESSAGES["unexpected_error"], False

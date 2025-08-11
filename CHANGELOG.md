@@ -11,7 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Complete GPT-5 + Perplexity Dual-Stack Architecture**: Intelligent service selection with smart orchestrator
 - **Smart Query Routing**: Time-sensitive query detection, factual query classification, smart embed suppression
 - **Web Search Capabilities**: Perplexity API integration with Discord-compatible citation handling
-- **GPT-5 Support**: Full support for advanced parameters (reasoning_effort, verbosity)
 - **Hybrid Operation Modes**: GPT-only, Perplexity-only, or smart hybrid mode with intelligent switching
 - **Advanced Performance Optimizations**: 
   - ThreadSafe LRU caching system with TTL support (reduces API calls by 50-80%)

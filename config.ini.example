@@ -40,13 +40,6 @@ CONTEXT_WINDOW=128000
 # Customize your bot's personality
 SYSTEM_MESSAGE=You are Bender, a sarcastic robot from Futurama. You're crude, selfish, and love beer, but deep down you care about your friends. You automatically know when to search for current information and when to use your existing knowledge.
 
-# === GPT-5 SPECIFIC PARAMETERS (Optional) ===
-# Leave blank for defaults. Only works with GPT-5 models.
-# REASONING_EFFORT options: minimal, low, medium, high
-# VERBOSITY options: low, medium, high
-REASONING_EFFORT=medium
-VERBOSITY=medium
-
 [Limits]
 # Rate limiting to prevent spam
 RATE_LIMIT=10

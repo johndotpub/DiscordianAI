@@ -69,7 +69,7 @@ class TestOpenAIAPIIntegration:
         openai_client.chat.completions.create.assert_called_once()
         call_args = openai_client.chat.completions.create.call_args[1]
         assert call_args["model"] == "gpt-4o-mini"
-        assert call_args["max_completion_tokens"] == 1000
+        assert call_args["max_tokens"] == 1000
         assert len(call_args["messages"]) == 2  # system + user message
 
         # Verify conversation history was updated
@@ -116,7 +116,7 @@ class TestOpenAIAPIIntegration:
 
     @pytest.mark.asyncio
     async def test_gpt5_parameters_integration(self):
-        """Test GPT-5 specific parameters are properly handled."""
+        """GPT-5-specific parameters are not supported; ensure normal behavior."""
         user = Mock()
         user.id = 12345
 
@@ -138,7 +138,7 @@ class TestOpenAIAPIIntegration:
 
         logger = logging.getLogger("test")
 
-        # Test with GPT-5 parameters
+        # Test GPT-5 model without special parameters
         result = await process_openai_message(
             message="Complex reasoning task",
             user=user,
@@ -149,16 +149,15 @@ class TestOpenAIAPIIntegration:
             gpt_model="gpt-5",
             system_message="You are a reasoning assistant",
             output_tokens=2000,
-            reasoning_effort="high",
-            verbosity="medium",
         )
 
         assert result == "GPT-5 response with reasoning"
 
-        # Verify GPT-5 parameters were included
+        # Verify call did not include unsupported parameters
         call_args = openai_client.chat.completions.create.call_args[1]
         assert call_args["model"] == "gpt-5"
-        # Note: The actual implementation may handle GPT-5 params differently
+        assert "reasoning_effort" not in call_args
+        assert "verbosity" not in call_args
 
 
 class TestPerplexityAPIIntegration:
@@ -358,7 +357,7 @@ class TestAPIUtilities:
         )
 
         assert params["model"] == "gpt-4o-mini"
-        assert params["max_completion_tokens"] == 2000
+        assert params["max_tokens"] == 2000
         assert len(params["messages"]) == 3  # system + previous + current
 
     def test_api_call_builder_perplexity(self):

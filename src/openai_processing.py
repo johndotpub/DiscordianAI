@@ -8,11 +8,12 @@ import asyncio
 import logging
 
 from .caching import cached_response, deduplicated_request
+from .config import DEFAULT_CACHE_TTL
 from .conversation_manager import ThreadSafeConversationManager
 from .error_handling import RetryConfig, retry_with_backoff
 
 
-@cached_response(ttl=300.0)  # Cache for 5 minutes
+@cached_response(ttl=DEFAULT_CACHE_TTL)
 @deduplicated_request()  # Prevent duplicate simultaneous requests
 async def process_openai_message(
     message: str,
@@ -24,14 +25,11 @@ async def process_openai_message(
     gpt_model: str,
     system_message: str,
     output_tokens: int,
-    reasoning_effort: str | None = None,
-    verbosity: str | None = None,
-    gpt5_support: dict[str, bool] | None = None,
 ) -> str | None:
     """Process message using OpenAI API with thread-safe conversation management.
 
     Handles conversation state updates, API calls, error recovery, and
-    GPT-5 specific parameters in a production-ready manner.
+    GPT integration in a production-ready manner.
 
     Args:
         message (str): User's input message
@@ -43,8 +41,6 @@ async def process_openai_message(
         gpt_model (str): GPT model identifier (e.g., 'gpt-5', 'gpt-4')
         system_message (str): System prompt for the AI
         output_tokens (int): Maximum tokens to generate
-        reasoning_effort (str, optional): GPT-5 reasoning effort ('low', 'medium', 'high')
-        verbosity (str, optional): GPT-5 verbosity level ('low', 'medium', 'high')
 
     Returns:
         Optional[str]: Generated response text, or None if generation failed
@@ -60,7 +56,7 @@ async def process_openai_message(
         # Note: We'll add user message to conversation history only after successful response
         # to maintain consistency and allow rollback on failures
 
-        # Build API parameters dynamically
+        # Build API parameters dynamically (only officially supported parameters)
         api_params = {
             "model": gpt_model,
             "messages": [
@@ -68,51 +64,8 @@ async def process_openai_message(
                 *conversation_summary,
                 {"role": "user", "content": message},
             ],
-            "max_completion_tokens": output_tokens,
+            "max_tokens": output_tokens,
         }
-
-        # Add GPT-5 specific parameters if provided and model supports them
-        # Use stored support information from startup validation
-        if reasoning_effort and gpt_model.startswith("gpt-5"):
-            if reasoning_effort in ["minimal", "low", "medium", "high"]:
-                # Check if parameter is supported based on startup validation
-                if gpt5_support and gpt5_support.get("reasoning_effort", False):
-                    api_params["reasoning_effort"] = reasoning_effort
-                    logger.debug(f"Using GPT-5 reasoning_effort: {reasoning_effort}")
-                else:
-                    logger.warning(
-                        f"reasoning_effort parameter not supported by OpenAI client "
-                        f"for {gpt_model}, ignoring"
-                    )
-            else:
-                logger.warning(
-                    f"Invalid reasoning_effort '{reasoning_effort}' for {gpt_model}, "
-                    f"ignoring"
-                )
-        elif reasoning_effort:
-            logger.info(
-                f"reasoning_effort '{reasoning_effort}' only supported for GPT-5 models, "
-                f"ignoring for {gpt_model}"
-            )
-
-        if verbosity and gpt_model.startswith("gpt-5"):
-            if verbosity in ["low", "medium", "high"]:
-                # Check if parameter is supported based on startup validation
-                if gpt5_support and gpt5_support.get("verbosity", False):
-                    api_params["verbosity"] = verbosity
-                    logger.debug(f"Using GPT-5 verbosity: {verbosity}")
-                else:
-                    logger.warning(
-                        f"verbosity parameter not supported by OpenAI client "
-                        f"for {gpt_model}, ignoring"
-                    )
-            else:
-                logger.warning(f"Invalid verbosity '{verbosity}' for {gpt_model}, ignoring")
-        elif verbosity:
-            logger.info(
-                f"verbosity '{verbosity}' only supported for GPT-5 models, "
-                f"ignoring for {gpt_model}"
-            )
 
         logger.debug(f"Making OpenAI API call with {len(api_params['messages'])} messages")
         logger.debug(f"API parameters: {api_params}")
@@ -132,7 +85,20 @@ async def process_openai_message(
         except Exception:
             logger.exception("OpenAI API call failed after retries")
             return None
+    except TimeoutError:
+        logger.exception(f"OpenAI API call timed out for user {user.id}")
+        return None
+    except Exception:
+        logger.exception("OpenAI API call failed for user %s", user.id)
 
+        # Log additional context for debugging
+        logger.debug(
+            f"Failed API call context - Model: {gpt_model}, Message length: {len(message)}"
+        )
+
+        # Don't add failed responses to conversation history
+        return None
+    else:
         # Log response metadata
         logger.debug(f"OpenAI API response received - ID: {getattr(response, 'id', 'unknown')}")
         if hasattr(response, "usage"):
@@ -170,21 +136,4 @@ async def process_openai_message(
             return response_content
 
         logger.error(f"OpenAI API returned invalid response structure: {response}")
-        return None
-
-    except TimeoutError:
-        logger.exception(f"OpenAI API call timed out for user {user.id}")
-        return None
-
-    except Exception as e:
-        logger.error(
-            f"OpenAI API call failed for user {user.id}: {type(e).__name__}: {e}", exc_info=True
-        )
-
-        # Log additional context for debugging
-        logger.debug(
-            f"Failed API call context - Model: {gpt_model}, Message length: {len(message)}"
-        )
-
-        # Don't add failed responses to conversation history
         return None

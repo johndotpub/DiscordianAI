@@ -399,14 +399,8 @@ class TestAsyncCheckRateLimit:
 
         assert result is True
 
-        # Verify error and critical logging
-        logger.error.assert_called_once()
+        # Verify critical logging occurred and message content
         logger.critical.assert_called_once()
-
-        error_msg = logger.error.call_args[0][0]
-        assert "Unexpected error" in error_msg
-        assert "TestUser" in error_msg
-
         critical_msg = logger.critical.call_args[0][0]
         assert "RATE_LIMITER_ERROR" in critical_msg
         assert "Failing open" in critical_msg

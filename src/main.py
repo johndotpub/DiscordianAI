@@ -6,7 +6,7 @@ bot initialization with comprehensive error recovery.
 """
 
 import logging
-import os
+from pathlib import Path
 import sys
 from typing import NoReturn
 
@@ -61,9 +61,9 @@ def setup_production_logging(config: dict, logger: logging.Logger) -> None:
             log_level = "INFO"
 
         # Ensure log directory exists
-        log_dir = os.path.dirname(log_file)
-        if log_dir and not os.path.exists(log_dir):
-            os.makedirs(log_dir, exist_ok=True)
+        log_dir = Path(log_file).parent
+        if log_dir and not log_dir.exists():
+            log_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Created log directory: {log_dir}")
 
         # Reconfigure logging with production settings
@@ -260,7 +260,7 @@ def main() -> NoReturn:
             # We'll run health checks after bot initialization since we need the clients
             # This is a placeholder for now - actual health checks run in bot startup
             logger.info("Health checks will run after bot initialization")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning(f"Startup health checks failed: {e}, but continuing with startup")
 
         # Step 6: Set up global exception handler (now with proper logging)
@@ -283,7 +283,7 @@ def main() -> NoReturn:
             early_logger.info("Bot startup interrupted by user")
         sys.exit(0)
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         # Use appropriate logger based on where we are in startup
         try:
             logger.critical(f"Fatal error during bot startup: {e}", exc_info=True)

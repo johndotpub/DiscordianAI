@@ -10,8 +10,8 @@ This test suite covers:
 - API error handling utilities
 """
 
-import time
 from dataclasses import asdict
+import time
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest

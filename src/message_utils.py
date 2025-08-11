@@ -58,13 +58,8 @@ def detect_code_blocks(text: str) -> list[tuple[int, int]]:
     Returns:
         List of (start, end) positions for code blocks
     """
-    code_blocks = []
     pattern = re.compile(r"```[\s\S]*?```", re.MULTILINE)
-
-    for match in pattern.finditer(text):
-        code_blocks.append((match.start(), match.end()))
-
-    return code_blocks
+    return [(match.start(), match.end()) for match in pattern.finditer(text)]
 
 
 def is_inside_code_block(position: int, code_blocks: list[tuple[int, int]]) -> bool:

@@ -60,8 +60,7 @@ class TestLoadConfig:
         assert config["OUTPUT_TOKENS"] == 8000
         assert config["CONTEXT_WINDOW"] == 128000
         assert config["SYSTEM_MESSAGE"] == "You are a helpful assistant."
-        assert config["REASONING_EFFORT"] is None
-        assert config["VERBOSITY"] is None
+        # Removed unsupported GPT-5 parameters
         assert config["RATE_LIMIT"] == 10
         assert config["RATE_LIMIT_PER"] == 60
         assert config["LOG_FILE"] == "bot.log"
@@ -88,8 +87,7 @@ GPT_MODEL=gpt-4
 INPUT_TOKENS=50000
 OUTPUT_TOKENS=2000
 SYSTEM_MESSAGE=Test system message
-REASONING_EFFORT=high
-VERBOSITY=medium
+; Removed unsupported GPT-5 parameters
 
 [Limits]
 RATE_LIMIT=5
@@ -125,8 +123,9 @@ LOG_LEVEL=DEBUG
             assert config["INPUT_TOKENS"] == 50000
             assert config["OUTPUT_TOKENS"] == 2000
             assert config["SYSTEM_MESSAGE"] == "Test system message"
-            assert config["REASONING_EFFORT"] == "high"
-            assert config["VERBOSITY"] == "medium"
+            # Unsupported GPT-5 parameters should not be present
+            assert "REASONING_EFFORT" not in config or config.get("REASONING_EFFORT") is None
+            assert "VERBOSITY" not in config or config.get("VERBOSITY") is None
             assert config["RATE_LIMIT"] == 5
             assert config["RATE_LIMIT_PER"] == 30
             assert config["LOOKBACK_MESSAGES_FOR_CONSISTENCY"] == 10

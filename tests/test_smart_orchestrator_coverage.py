@@ -182,8 +182,6 @@ class TestProcessingModes:
                 gpt_model="gpt-4",
                 system_message="Test system",
                 output_tokens=1000,
-                reasoning_effort="medium",
-                verbosity="low",
             )
 
             assert response == "OpenAI response"
@@ -336,7 +334,7 @@ class TestProcessingModes:
             # Function should complete and return values
             assert response is not None
             assert isinstance(suppress_embeds, bool)
-        except Exception as e:
+        except Exception:
             # Even if it fails, we've exercised the code path
             logger.exception("Exception occurred in test_process_hybrid_mode_basic")
 

@@ -8,11 +8,10 @@ from typing import Any
 import discord
 from openai import OpenAI
 
-# Removed import of get_conversation_summary - now using
-# conversation_manager.get_conversation_summary_formatted()
 from .conversation_manager import ThreadSafeConversationManager
 from .discord_bot import set_activity_status
 from .error_handling import classify_error, safe_discord_send
+from .health_checks import APIHealthMonitor
 from .message_utils import (
     MessageFormatter,
     adjust_split_for_code_blocks,
@@ -20,65 +19,7 @@ from .message_utils import (
     find_optimal_split_point,
 )
 from .rate_limits import RateLimiter, check_rate_limit
-
-# Backwards compatibility import maintained in openai_processing.py
 from .smart_orchestrator import get_smart_response
-
-
-def validate_gpt5_parameters(
-    openai_client, gpt_model: str, logger: logging.Logger
-) -> dict[str, bool]:
-    """Validate GPT-5 parameter support at startup to avoid testing on every API call.
-    
-    Args:
-        openai_client: OpenAI client instance
-        gpt_model: Model name to validate
-        logger: Logger instance
-        
-    Returns:
-        Dict with parameter support status
-    """
-    if not gpt_model.startswith("gpt-5"):
-        return {"reasoning_effort": False, "verbosity": False}
-    
-    logger.info(f"Validating GPT-5 parameter support for model: {gpt_model}")
-    
-    # Test with minimal parameters to avoid token costs
-    test_params = {
-        "model": gpt_model,
-        "messages": [{"role": "user", "content": "test"}],
-        "max_completion_tokens": 1
-    }
-    
-    support_status = {"reasoning_effort": False, "verbosity": False}
-    
-    # Test reasoning_effort support
-    try:
-        test_params_with_reasoning = {**test_params, "reasoning_effort": "minimal"}
-        openai_client.chat.completions.create(**test_params_with_reasoning)
-        support_status["reasoning_effort"] = True
-        logger.info("✅ reasoning_effort parameter supported")
-    except Exception as e:
-        if "unexpected keyword argument 'reasoning_effort'" in str(e):
-            logger.warning("❌ reasoning_effort parameter not supported by OpenAI client")
-        else:
-            logger.info("✅ reasoning_effort parameter appears to be supported")
-            support_status["reasoning_effort"] = True
-    
-    # Test verbosity support
-    try:
-        test_params_with_verbosity = {**test_params, "verbosity": "low"}
-        openai_client.chat.completions.create(**test_params_with_verbosity)
-        support_status["verbosity"] = True
-        logger.info("✅ verbosity parameter supported")
-    except Exception as e:
-        if "unexpected keyword argument 'verbosity'" in str(e):
-            logger.warning("❌ verbosity parameter not supported by OpenAI client")
-        else:
-            logger.info("✅ verbosity parameter appears to be supported")
-            support_status["verbosity"] = True
-    
-    return support_status
 
 
 def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
@@ -116,21 +57,15 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
 
     # Initialize OpenAI client if API key is provided
     client = None
-    gpt5_support = {"reasoning_effort": False, "verbosity": False}
     if config["OPENAI_API_KEY"]:
         try:
             client = OpenAI(api_key=config["OPENAI_API_KEY"], base_url=config["OPENAI_API_URL"])
             logger.info(
                 f"OpenAI client initialized successfully with model: {config['GPT_MODEL']}"
             )
-            
-            # Validate GPT-5 parameter support at startup
-            if config['GPT_MODEL'].startswith('gpt-5'):
-                gpt5_support = validate_gpt5_parameters(client, config['GPT_MODEL'], logger)
-            
         except Exception as e:
             logger.exception("Failed to initialize OpenAI client")
-            raise Exception(f"OpenAI client initialization failed: {e}")
+            raise RuntimeError("OpenAI client initialization failed") from e
     else:
         logger.info("No OpenAI API key provided - GPT models disabled")
 
@@ -144,7 +79,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
             logger.info("Perplexity client initialized successfully for web search")
         except Exception as e:
             logger.exception("Failed to initialize Perplexity client")
-            raise Exception(f"Perplexity client initialization failed: {e}")
+            raise RuntimeError("Perplexity client initialization failed") from e
     else:
         logger.info("No Perplexity API key provided - web search disabled")
 
@@ -182,11 +117,11 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
         # Note: Discord client health check will be done after bot is ready
         # Health checks will be initiated after bot is ready (in on_ready event)
         logger.info("Health checks will be initiated after bot startup")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning(f"Failed to setup health monitoring: {e}")
 
     # Return dependency injection container
-    dependencies = {
+    return {
         "logger": logger,
         "bot": bot,
         "client": client,
@@ -204,11 +139,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
         "GPT_MODEL": config["GPT_MODEL"],
         "SYSTEM_MESSAGE": config["SYSTEM_MESSAGE"],
         "OUTPUT_TOKENS": config["OUTPUT_TOKENS"],
-        "REASONING_EFFORT": config["REASONING_EFFORT"],
-        "VERBOSITY": config["VERBOSITY"],
-        "GPT5_SUPPORT": gpt5_support,  # Add GPT5_SUPPORT to dependencies
     }
-    return dependencies
 
 
 async def _process_message_core(
@@ -297,10 +228,7 @@ async def _process_message_core(
             deps["GPT_MODEL"],
             deps["SYSTEM_MESSAGE"],
             deps["OUTPUT_TOKENS"],
-            deps["REASONING_EFFORT"],
-            deps["VERBOSITY"],
             deps["config"],  # Pass config for orchestrator settings
-            deps["GPT5_SUPPORT"],  # Pass GPT-5 parameter support status
         )
 
         # Send response with automatic message splitting if needed
@@ -308,7 +236,7 @@ async def _process_message_core(
         logger.info(f"Successfully processed and responded to {context}")
 
     except Exception as e:
-        logger.exception(f"Error processing {context}")
+        logger.exception("Error processing %s", context)
 
         # Classify error for better user messaging
         error_details = classify_error(e)
@@ -317,7 +245,7 @@ async def _process_message_core(
         )
 
         if not await safe_discord_send(message.channel, user_friendly_msg, logger):
-            logger.exception(f"Failed to send error message for {context}")
+            logger.exception("Failed to send error message for %s", context)
 
 
 async def process_dm_message(message: discord.Message, deps: dict[str, Any]) -> None:
@@ -421,10 +349,10 @@ async def send_split_message(
         discord.HTTPException: If Discord API calls fail
     """
     # Recursion safety check
-    MAX_RECURSION_DEPTH = 10
-    if _recursion_depth > MAX_RECURSION_DEPTH:
+    max_recursion_depth = 10
+    if _recursion_depth > max_recursion_depth:
         deps["logger"].error(
-            f"Message splitting exceeded maximum recursion depth ({MAX_RECURSION_DEPTH}). "
+            f"Message splitting exceeded maximum recursion depth ({max_recursion_depth}). "
             f"Message length: {len(message)}. Truncating message."
         )
         # Send truncated message as fallback
@@ -526,11 +454,10 @@ async def _handle_incoming_message(
             f"(not mentioned or allowed)"
         )
 
-    except Exception as e:
-        logger.error(
-            f"Unhandled error in message processing for message from "
-            f"{message.author.name}: {e}",
-            exc_info=True,
+    except Exception:
+        logger.exception(
+            "Unhandled error in message processing for message from %s",
+            message.author.name,
         )
         # Attempt to send error message if possible
         try:
@@ -581,19 +508,18 @@ def register_event_handlers(bot: discord.Client, deps: dict[str, Any]) -> None:
 
             # Now that the event loop is running, initiate health checks
             try:
-                from .health_checks import APIHealthMonitor
-
+                # Create and schedule health checks
                 health_monitor = APIHealthMonitor()
                 clients_for_health_check = {
                     "openai": deps.get("client"),
                     "perplexity": deps.get("perplexity_client"),
                 }
-                asyncio.create_task(
+                deps["_health_task"] = asyncio.create_task(
                     health_monitor.run_all_health_checks(clients_for_health_check, deps)
                 )
                 logger.info("Health monitoring initiated successfully")
-            except Exception as e:
-                logger.warning(f"Failed to initiate health checks: {e}")
+            except Exception:
+                logger.exception("Failed to initiate health checks")
 
             logger.info("Bot initialization completed successfully - ready to process messages")
 

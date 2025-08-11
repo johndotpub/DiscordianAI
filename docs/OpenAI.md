@@ -34,14 +34,8 @@ CONTEXT_WINDOW=128000
 SYSTEM_MESSAGE=You are a helpful AI assistant with access to current information.
 ```
 
-### GPT-5 Specific Features
-```ini
-# GPT-5 reasoning effort: minimal, low, medium, high
-REASONING_EFFORT=medium
-
-# GPT-5 verbosity: low, medium, high  
-VERBOSITY=medium
-```
+### GPT-5 Notes
+GPT-5 works with the standard Chat Completions API parameters. No special GPT-5-only parameters are required or supported.
 
 ## Operation Modes
 
@@ -140,7 +134,7 @@ WARNING: OpenAI returned no response, trying fallback
 1. **Use GPT-4o-mini** for simple queries to reduce costs
 2. **Set appropriate OUTPUT_TOKENS** limit based on your needs
 3. **Monitor token usage** in logs to track spending
-4. **Use REASONING_EFFORT=low** for GPT-5 when deep thinking isn't needed
+4. Keep `max_tokens` conservative for cost control
 
 ### Rate Limiting
 ```ini

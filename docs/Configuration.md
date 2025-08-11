@@ -22,8 +22,7 @@ Configure OpenAI and Perplexity APIs for intelligent hybrid operation.
 - **`OPENAI_API_KEY`**: Your OpenAI API key for GPT models *(leave empty to disable)*
 - **`OPENAI_API_URL`**: OpenAI API endpoint *(default: "https://api.openai.com/v1/")*
 - **`GPT_MODEL`**: Model to use: "gpt-4o-mini" (default, cost-effective), "gpt-4o", "gpt-4", "gpt-4-turbo", "gpt-5" *(default: "gpt-4o-mini")*
-- **`REASONING_EFFORT`**: GPT-5 reasoning effort ("minimal", "low", "medium", "high") *(GPT-5 only)*
-- **`VERBOSITY`**: GPT-5 response verbosity ("low", "medium", "high") *(GPT-5 only)*
+  
 
 #### Perplexity Settings  
 - **`PERPLEXITY_API_KEY`**: Your Perplexity API key for web search *(leave empty to disable)*
@@ -124,10 +123,7 @@ SYSTEM_MESSAGE=You are Bender, a sarcastic robot from Futurama. You're crude, se
 
 # === GPT-5 SPECIFIC PARAMETERS (Optional) ===
 # Leave blank for defaults. Only works with GPT-5 models.
-# REASONING_EFFORT options: minimal, low, medium, high
-# VERBOSITY options: low, medium, high
-REASONING_EFFORT=medium
-VERBOSITY=medium
+# Note: No GPT-5-only parameters are currently supported by the public API
 
 [Limits]
 # Rate limiting to prevent spam

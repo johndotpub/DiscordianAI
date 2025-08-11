@@ -10,6 +10,7 @@ import logging
 import re
 
 from .caching import cached_response, deduplicated_request
+from .config import DEFAULT_CACHE_TTL
 from .conversation_manager import ThreadSafeConversationManager
 
 # Pre-compile regex patterns for better performance (cached globally)
@@ -101,9 +102,10 @@ def format_citations_for_discord(text: str, citations: dict[str, str]) -> str:
                 domain = domain_match.group(1) if domain_match else url
                 # Clean up domain for display
                 domain = domain.split("/")[0].split("?")[0]
-                return f"[{domain}]({url})"
-            except Exception:
+            except Exception:  # noqa: BLE001 - fallback for any parsing error
                 return f"[source]({url})"
+            else:
+                return f"[{domain}]({url})"
         return match.group(0)  # Return original if no URL found
 
     # Replace [1], [2], etc. with Discord hyperlinks using pre-compiled pattern
@@ -135,7 +137,7 @@ def should_suppress_embeds(text: str) -> bool:
     return total_links >= 2
 
 
-@cached_response(ttl=180.0)  # Cache for 3 minutes (shorter due to web content)
+@cached_response(ttl=DEFAULT_CACHE_TTL)
 @deduplicated_request()
 async def process_perplexity_message(
     message: str,
@@ -194,7 +196,16 @@ async def process_perplexity_message(
                 temperature=0.7,  # Slightly creative for better web search synthesis
             )
         )
-
+    except TimeoutError:
+        logger.exception(f"Perplexity API call timed out for user {user.id}")
+        return None
+    except Exception:
+        logger.exception("Perplexity API call failed for user %s", user.id)
+        # Log additional context for debugging
+        logger.debug(f"Failed Perplexity call context - Message length: {len(message)}")
+        # Don't add failed responses to conversation history
+        return None
+    else:
         # Log response metadata
         logger.debug(
             f"Perplexity API response received - ID: {getattr(response, 'id', 'unknown')}"
@@ -246,20 +257,4 @@ async def process_perplexity_message(
             return formatted_text, suppress_embeds
 
         logger.error(f"Perplexity API returned invalid response structure: {response}")
-        return None
-
-    except TimeoutError:
-        logger.exception(f"Perplexity API call timed out for user {user.id}")
-        return None
-
-    except Exception as e:
-        logger.error(
-            f"Perplexity API call failed for user {user.id}: {type(e).__name__}: {e}",
-            exc_info=True,
-        )
-
-        # Log additional context for debugging
-        logger.debug(f"Failed Perplexity call context - Message length: {len(message)}")
-
-        # Don't add failed responses to conversation history
         return None

@@ -16,8 +16,6 @@ OPENAI_VALID_MODELS = [
     "gpt-4-turbo",  # GPT-4 series - enhanced
 ]
 
-GPT5_REASONING_EFFORTS = ["minimal", "low", "medium", "high"]
-GPT5_VERBOSITY_LEVELS = ["low", "medium", "high"]
 
 DISCORD_ACTIVITY_TYPES = ["playing", "streaming", "listening", "watching", "custom", "competing"]
 
@@ -53,19 +51,7 @@ def validate_openai_config(config: dict) -> list[str]:
             f"Unknown GPT model: {gpt_model}. Known models: {', '.join(OPENAI_VALID_MODELS)}"
         )
 
-    # Validate GPT-5 specific parameters
-    reasoning_effort = config.get("REASONING_EFFORT")
-    if reasoning_effort and reasoning_effort not in GPT5_REASONING_EFFORTS:
-        issues.append(
-            f"Invalid reasoning_effort: {reasoning_effort}. "
-            f"Valid values: {', '.join(GPT5_REASONING_EFFORTS)}"
-        )
-
-    verbosity = config.get("VERBOSITY")
-    if verbosity and verbosity not in GPT5_VERBOSITY_LEVELS:
-        issues.append(
-            f"Invalid verbosity: {verbosity}. Valid values: {', '.join(GPT5_VERBOSITY_LEVELS)}"
-        )
+    # Removed unsupported GPT-5 parameter validation
 
     # Validate token limits
     output_tokens = config.get("OUTPUT_TOKENS", 0)

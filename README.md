@@ -120,10 +120,6 @@ PERPLEXITY_API_KEY=your_perplexity_key_here
 - `PERPLEXITY_API_URL`: Perplexity API endpoint (default: https://api.perplexity.ai)
 - `PERPLEXITY_MODEL`: Perplexity model (sonar-pro, sonar)
 
-### GPT-5 Advanced Parameters
-- `REASONING_EFFORT`: Thinking depth (minimal, low, medium, high)
-- `VERBOSITY`: Response length (low, medium, high)
-
 ### Token & Rate Limits
 - `INPUT_TOKENS`: Maximum input context size (default: 120000)
 - `OUTPUT_TOKENS`: Maximum response tokens (default: 8000)
@@ -176,8 +172,7 @@ CONTEXT_WINDOW=128000
 SYSTEM_MESSAGE=You are Bender from Futurama. You automatically know when to search for current information.
 
 # GPT-5 advanced parameters
-REASONING_EFFORT=medium
-VERBOSITY=medium
+  
 
 [Limits]
 RATE_LIMIT=10

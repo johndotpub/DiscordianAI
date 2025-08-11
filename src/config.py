@@ -2,8 +2,8 @@ import argparse
 import configparser
 import logging
 import os
-import re
 from pathlib import Path
+import re
 from typing import Any
 
 # ============================================================================
@@ -19,8 +19,6 @@ OPENAI_VALID_MODELS = [
     "gpt-4-turbo",  # GPT-4 series - enhanced
 ]
 
-GPT5_REASONING_EFFORTS = ["minimal", "low", "medium", "high"]
-GPT5_VERBOSITY_LEVELS = ["low", "medium", "high"]
 
 PERPLEXITY_MODELS = ["sonar-pro", "sonar"]  # Latest Perplexity model  # General Perplexity model
 
@@ -144,11 +142,13 @@ def parse_arguments() -> argparse.Namespace:
 
 
 def load_config(config_file: str | None = None, base_folder: str | None = None) -> dict[str, Any]:
-    """Load configuration from a file (if provided), then environment variables,
-    with a clear hierarchy.
+    """Load configuration from a file (if provided), then environment variables.
+
+    With a clear hierarchy.
 
     Args:
-        config_file (str, optional): Path to the configuration file. Defaults to None.
+        config_file: Path to the configuration file. If None, only env vars and defaults are used.
+        base_folder: Base folder to resolve relative paths like the config file and log file.
 
     Returns:
         dict: Configuration dictionary with all settings.
@@ -195,8 +195,7 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
         config_data["SYSTEM_MESSAGE"] = config.get(
             "Default", "SYSTEM_MESSAGE", fallback="You are a helpful assistant."
         )
-        config_data["REASONING_EFFORT"] = config.get("Default", "REASONING_EFFORT", fallback=None)
-        config_data["VERBOSITY"] = config.get("Default", "VERBOSITY", fallback=None)
+        # Removed unsupported GPT-5 parameters
         # Limits section
         config_data["RATE_LIMIT"] = config.getint("Limits", "RATE_LIMIT", fallback=10)
         config_data["RATE_LIMIT_PER"] = config.getint("Limits", "RATE_LIMIT_PER", fallback=60)
@@ -236,8 +235,7 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
         "OUTPUT_TOKENS": os.environ.get("OUTPUT_TOKENS"),
         "CONTEXT_WINDOW": os.environ.get("CONTEXT_WINDOW"),
         "SYSTEM_MESSAGE": os.environ.get("SYSTEM_MESSAGE"),
-        "REASONING_EFFORT": os.environ.get("REASONING_EFFORT"),
-        "VERBOSITY": os.environ.get("VERBOSITY"),
+        # Removed unsupported GPT-5 parameters
         "RATE_LIMIT": os.environ.get("RATE_LIMIT"),
         "RATE_LIMIT_PER": os.environ.get("RATE_LIMIT_PER"),
         "LOOKBACK_MESSAGES_FOR_CONSISTENCY": os.environ.get("LOOKBACK_MESSAGES_FOR_CONSISTENCY"),
@@ -292,8 +290,7 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
         "OUTPUT_TOKENS": 8000,
         "CONTEXT_WINDOW": 128000,
         "SYSTEM_MESSAGE": "You are a helpful assistant.",
-        "REASONING_EFFORT": None,
-        "VERBOSITY": None,
+        # Removed unsupported GPT-5 parameters
         # Rate Limiting Configuration
         "RATE_LIMIT": 10,
         "RATE_LIMIT_PER": 60,

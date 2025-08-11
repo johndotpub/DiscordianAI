@@ -7,17 +7,13 @@ This document validates the API parameters used in DiscordianAI against current 
 
 ### Parameters Used
 - **API URL**: `https://api.openai.com/v1/` ✅ **VALID**
-- **Parameter**: `max_completion_tokens` ✅ **VALID** (Correct parameter name)
+- **Parameter**: `max_tokens` ✅ **VALID** (Correct parameter name)
 - **Supported Models**: 
   - `gpt-4o-mini` ✅ **VALID** (Default - cost-effective)
   - `gpt-4o` ✅ **VALID** (Enhanced GPT-4)
   - `gpt-4` ✅ **VALID** (Previous generation)
   - `gpt-4-turbo` ✅ **VALID** (Enhanced performance)
   - `gpt-5` ⚠️ **EARLY ADOPTER** (Latest generation, limited availability)
-
-### GPT-5 Specific Parameters
-- **reasoning_effort**: `["minimal", "low", "medium", "high"]` ⚠️ **BETA FEATURE**
-- **verbosity**: `["low", "medium", "high"]` ⚠️ **BETA FEATURE**
 
 **Status**: Parameters are correctly implemented with proper validation and fallbacks.
 

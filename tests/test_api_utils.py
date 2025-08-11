@@ -30,7 +30,7 @@ class TestOpenAIParams:
         params = builder.build()
 
         assert params["model"] == "gpt-4"
-        assert params["max_completion_tokens"] == 1000
+        assert params["max_tokens"] == 1000
         assert len(params) == 2
 
     def test_add_messages(self):
@@ -61,66 +61,31 @@ class TestOpenAIParams:
         assert params["messages"][0]["content"] == "System prompt"
         assert params["messages"][1]["content"] == "User message"
 
-    def test_gpt5_parameters_valid_model(self):
-        """Test adding GPT-5 parameters with valid model."""
+    def test_no_gpt5_parameters_supported(self):
+        """GPT-5 specific parameters are not supported and should be absent."""
         builder = OpenAIParams("gpt-5", 1000)
-        result = builder.add_gpt5_parameters("gpt-5", "high", "medium")
-        params = result.build()
+        params = builder.build()
+        assert "reasoning_effort" not in params
+        assert "verbosity" not in params
 
-        assert params["reasoning_effort"] == "high"
-        assert params["verbosity"] == "medium"
-
-    def test_gpt5_parameters_non_gpt5_model(self):
-        """Test GPT-5 parameters are ignored for non-GPT-5 models."""
+    def test_non_gpt5_model_no_extra_params(self):
         builder = OpenAIParams("gpt-4", 1000)
-        result = builder.add_gpt5_parameters("gpt-4", "high", "medium")
-        params = result.build()
-
+        params = builder.build()
         assert "reasoning_effort" not in params
         assert "verbosity" not in params
 
-    def test_gpt5_parameters_invalid_values(self):
-        """Test invalid GPT-5 parameters are ignored."""
+    def test_no_param_helpers_present(self):
         builder = OpenAIParams("gpt-5", 1000)
-        result = builder.add_gpt5_parameters("gpt-5", "invalid_effort", "invalid_verbosity")
-        params = result.build()
-
-        assert "reasoning_effort" not in params
-        assert "verbosity" not in params
-
-    def test_gpt5_parameters_partial_valid(self):
-        """Test partial valid GPT-5 parameters."""
-        builder = OpenAIParams("gpt-5", 1000)
-        result = builder.add_gpt5_parameters("gpt-5", "low", "invalid_verbosity")
-        params = result.build()
-
-        assert params["reasoning_effort"] == "low"
-        assert "verbosity" not in params
-
-    def test_gpt5_parameters_none_values(self):
-        """Test None values for GPT-5 parameters."""
-        builder = OpenAIParams("gpt-5", 1000)
-        result = builder.add_gpt5_parameters("gpt-5", None, None)
-        params = result.build()
-
+        params = builder.build()
         assert "reasoning_effort" not in params
         assert "verbosity" not in params
 
     def test_builder_chain(self):
-        """Test method chaining works correctly."""
+        """Test method chaining works correctly without GPT-5 helpers."""
         conversation = [{"role": "user", "content": "Test"}]
-
-        params = (
-            OpenAIParams("gpt-5", 2000)
-            .add_messages("System", conversation, "Query")
-            .add_gpt5_parameters("gpt-5", "medium", "high")
-            .build()
-        )
-
+        params = OpenAIParams("gpt-5", 2000).add_messages("System", conversation, "Query").build()
         assert params["model"] == "gpt-5"
-        assert params["max_completion_tokens"] == 2000
-        assert params["reasoning_effort"] == "medium"
-        assert params["verbosity"] == "high"
+        assert params["max_tokens"] == 2000
         assert len(params["messages"]) == 3
 
     def test_build_returns_copy(self):
@@ -128,10 +93,16 @@ class TestOpenAIParams:
         builder = OpenAIParams("gpt-4", 1000)
         params1 = builder.build()
         params2 = builder.build()
-
         params1["test"] = "modified"
         assert "test" not in params2
         assert params1 is not params2
+
+    def test_openai_params_init_and_messages(self):
+        builder = OpenAIParams("gpt-5", 2000)
+        params = builder.add_messages("System", [], "Query").build()
+        assert params["model"] == "gpt-5"
+        assert params["max_tokens"] == 2000
+        assert len(params["messages"]) == 2
 
 
 class TestPerplexityParams:
@@ -382,7 +353,7 @@ class TestAPICallBuilder:
         params = APICallBuilder.openai_call("gpt-4", "You are helpful", [], "Hello", 1000)
 
         assert params["model"] == "gpt-4"
-        assert params["max_completion_tokens"] == 1000
+        assert params["max_tokens"] == 1000
         assert "messages" in params
         assert len(params["messages"]) == 2  # system + user
 
@@ -397,19 +368,15 @@ class TestAPICallBuilder:
         )
 
         assert params["model"] == "gpt-4"
-        assert params["max_completion_tokens"] == 1500
+        assert params["max_tokens"] == 1500
         assert len(params["messages"]) == 4  # system + conversation + user
 
-    def test_openai_call_with_gpt5_params(self):
-        """Test OpenAI call with GPT-5 parameters."""
-        params = APICallBuilder.openai_call(
-            "gpt-5", "System", [], "Hello", 1000, reasoning_effort="high", verbosity="low"
-        )
-
+    def test_openai_call_builds_supported_params_only(self):
+        params = APICallBuilder.openai_call("gpt-5", "System", [], "Hello", 1000)
         assert params["model"] == "gpt-5"
-        assert params["reasoning_effort"] == "high"
-        assert params["verbosity"] == "low"
-        assert params["max_completion_tokens"] == 1000
+        assert params["max_tokens"] == 1000
+        assert "reasoning_effort" not in params
+        assert "verbosity" not in params
 
     def test_perplexity_call_basic(self):
         """Test basic Perplexity call building."""

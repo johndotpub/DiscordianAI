@@ -58,49 +58,14 @@ class TestProcessOpenAIMessage:
                 metadata={"ai_service": "openai", "model": "gpt-4"},
             )
 
-    @pytest.mark.asyncio
-    async def test_process_openai_message_with_gpt5_params(self):
-        """Test OpenAI processing with GPT-5 specific parameters."""
-        user = MagicMock()
-        user.id = 12345
-
-        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
-
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "GPT-5 response"
-        mock_response.id = "test-id"
-
-        openai_client = MagicMock()
-        openai_client.chat.completions.create.return_value = mock_response
-
-        with patch("asyncio.to_thread") as mock_to_thread:
-            mock_to_thread.return_value = mock_response
-
-            result = await process_openai_message(
-                message="Test message",
-                user=user,
-                conversation_summary=[],
-                conversation_manager=conversation_manager,
-                logger=logging.getLogger("test"),
-                openai_client=openai_client,
-                gpt_model="gpt-5",
-                system_message="Test system message",
-                output_tokens=1000,
-                reasoning_effort="high",
-                verbosity="medium",
-            )
-
-            assert result == "GPT-5 response"
-
             # Verify GPT-5 parameters were included
             mock_to_thread.call_args[0][0]
             # The call_args[0] is the lambda function, we need to execute it to check params
             # This is a bit tricky to test directly, but we can verify the function was called
 
     @pytest.mark.asyncio
-    async def test_process_openai_message_invalid_reasoning_effort(self):
-        """Test handling of invalid reasoning_effort parameter."""
+    async def test_process_openai_message_no_unsupported_params(self):
+        """Unsupported params are not sent and do not affect behavior."""
         user = MagicMock()
         user.id = 12345
 
@@ -129,7 +94,6 @@ class TestProcessOpenAIMessage:
                     gpt_model="gpt-5",
                     system_message="Test",
                     output_tokens=1000,
-                    reasoning_effort="invalid_value",
                 )
 
                 assert result == "Response"
@@ -155,7 +119,7 @@ class TestProcessOpenAIMessage:
         with patch("asyncio.to_thread") as mock_to_thread:
             mock_to_thread.return_value = mock_response
 
-            # Test with reasoning_effort and verbosity
+            # Call without unsupported parameters
             result = await process_openai_message(
                 message="Test",
                 user=user,
@@ -166,8 +130,6 @@ class TestProcessOpenAIMessage:
                 gpt_model="gpt-5",
                 system_message="Test",
                 output_tokens=1000,
-                reasoning_effort="high",
-                verbosity="medium",
             )
 
             assert result == "Response"

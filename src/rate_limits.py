@@ -41,7 +41,7 @@ class RateLimiter:
         Args:
             user_id (int): The Discord user ID to check.
             rate_limit (int): Maximum number of allowed commands per time period.
-            rate_limit_per (int): Time period in seconds for the rate limit window.
+            rate_limit_window_seconds (int): Time period in seconds for the rate limit window.
             logger (logging.Logger): Logger instance for rate limit events.
 
         Returns:
@@ -157,20 +157,20 @@ async def check_rate_limit(
             user.id, rate_limit, rate_limit_window_seconds, logger
         )
 
-        # Log successful rate limit checks at debug level
-        if result:
-            logger.debug(f"Rate limit check successful for {user.name} (ID: {user.id})")
-        else:
-            logger.warning(f"Rate limit exceeded for {user.name} (ID: {user.id})")
-
-        return result
-
-    except Exception as e:
-        logger.error(
-            f"Unexpected error in rate limit check for user {user.name} (ID: {user.id}): {e}",
-            exc_info=True,
+    except Exception:
+        logger.exception(
+            "Unexpected error in rate limit check for user %s (ID: %s)",
+            user.name,
+            user.id,
         )
         # In case of error, allow the request (fail-open for availability)
         # but log it prominently for investigation
         logger.critical("RATE_LIMITER_ERROR: Failing open - allowing request due to error")
         return True
+    else:
+        # Log successful rate limit checks at debug level
+        if result:
+            logger.debug(f"Rate limit check successful for {user.name} (ID: {user.id})")
+        else:
+            logger.warning(f"Rate limit exceeded for {user.name} (ID: {user.id})")
+        return result

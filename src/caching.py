@@ -9,14 +9,14 @@ This module provides:
 """
 
 import asyncio
-import hashlib
-import logging
-import threading
-import time
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
+import hashlib
+import logging
+import threading
+import time
 from typing import Any
 
 
@@ -45,6 +45,12 @@ class ThreadSafeLRUCache:
     """
 
     def __init__(self, max_size: int = 1000, default_ttl: float = 300.0):
+        """Initialize cache with capacity and default TTL.
+
+        Args:
+            max_size: Maximum number of entries to store.
+            default_ttl: Default time-to-live per entry in seconds.
+        """
         self.max_size = max_size
         self.default_ttl = default_ttl
         self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
@@ -144,6 +150,12 @@ class ResponseCache:
     """
 
     def __init__(self, max_size: int = 500, default_ttl: float = 300.0):
+        """Initialize response cache wrapper.
+
+        Args:
+            max_size: Maximum cache entries to store.
+            default_ttl: Default TTL for cached responses (seconds).
+        """
         self.cache = ThreadSafeLRUCache(max_size, default_ttl)
         self.logger = logging.getLogger(__name__)
 
@@ -202,10 +214,10 @@ class ResponseCache:
                 self.logger.debug(f"Cache hit for message: {message[:50]}...")
                 return cached_response
 
-            return None
-
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - cache lookup should never crash callers
             self.logger.warning(f"Cache lookup failed: {e}")
+            return None
+        else:
             return None
 
     def cache_response(
@@ -221,15 +233,12 @@ class ResponseCache:
             # Use shorter TTL for potentially time-sensitive content
             if ttl is None:
                 # Default TTL based on response characteristics
-                if len(response) > 1000:
-                    ttl = 600.0  # 10 minutes for long responses
-                else:
-                    ttl = 300.0  # 5 minutes for short responses
+                ttl = 600.0 if len(response) > 1000 else 300.0
 
             self.cache.put(cache_key, response, ttl)
             self.logger.debug(f"Cached response for message: {message[:50]}...")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - cache failures should not raise
             self.logger.warning(f"Cache storage failed: {e}")
 
     def get_stats(self) -> dict[str, Any]:
@@ -249,6 +258,7 @@ class RequestDeduplicator:
     """
 
     def __init__(self):
+        """Initialize deduplicator state and locks."""
         self._pending_requests: dict[str, asyncio.Future] = {}
         self._lock = asyncio.Lock()
         self.logger = logging.getLogger(__name__)
@@ -278,12 +288,12 @@ class RequestDeduplicator:
         try:
             # Execute the request
             result = await request_func()
-            future.set_result(result)
-            return result
-
         except Exception as e:
             future.set_exception(e)
             raise
+        else:
+            future.set_result(result)
+            return result
 
         finally:
             # Clean up the pending request
@@ -328,18 +338,13 @@ def cached_response(ttl: float = 300.0, cache_instance: ResponseCache | None = N
                     return cached
 
             # Execute function and cache result
-            try:
-                result = await func(*args, **kwargs)
+            result = await func(*args, **kwargs)
 
-                # Cache successful responses
-                if isinstance(result, str) and isinstance(message, str):
-                    cache.cache_response(message, context, result, ttl)
+            # Cache successful responses
+            if isinstance(result, str) and isinstance(message, str):
+                cache.cache_response(message, context, result, ttl)
 
-                return result
-
-            except Exception:
-                # Don't cache errors, but still raise them
-                raise
+            return result
 
         return wrapper
 
@@ -380,6 +385,7 @@ class PerformanceMonitor:
     """Monitor and report performance metrics."""
 
     def __init__(self):
+        """Initialize metrics and synchronization primitives."""
         self.metrics = {
             "api_calls": 0,
             "cache_hits": 0,

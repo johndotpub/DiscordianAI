@@ -72,7 +72,7 @@ class ThreadSafeConversationManager:
         # Periodic cleanup of inactive locks (non-blocking)
         try:
             self.cleanup_inactive_user_locks(force=False)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - non-critical background cleanup
             self._logger.warning(f"Background cleanup failed: {e}")
 
         user_lock = self._get_user_lock(user_id)
@@ -358,10 +358,11 @@ class ThreadSafeConversationManager:
 
         with self._global_lock:
             # Find user locks that have no corresponding conversation data
-            inactive_user_ids = []
-            for user_id in list(self._user_locks.keys()):
-                if user_id not in self._conversations:
-                    inactive_user_ids.append(user_id)
+            inactive_user_ids = [
+                user_id
+                for user_id in list(self._user_locks.keys())
+                if user_id not in self._conversations
+            ]
 
             # Remove inactive user locks
             for user_id in inactive_user_ids:

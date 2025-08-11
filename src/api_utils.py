@@ -6,6 +6,7 @@ reusable way.
 """
 
 import logging
+import re
 from typing import Any
 
 
@@ -13,9 +14,10 @@ class OpenAIParams:
     """Builder class for OpenAI API parameters."""
 
     def __init__(self, model: str, max_tokens: int):
+        """Initialize with model and max_tokens."""
         self.params = {
             "model": model,
-            "max_completion_tokens": max_tokens,
+            "max_tokens": max_tokens,
         }
 
     def add_messages(
@@ -29,23 +31,7 @@ class OpenAIParams:
         ]
         return self
 
-    def add_gpt5_parameters(
-        self, model: str, reasoning_effort: str | None = None, verbosity: str | None = None
-    ):
-        """Add GPT-5 specific parameters if supported."""
-        if not model.startswith("gpt-5"):
-            return self
-
-        valid_reasoning_efforts = ["minimal", "low", "medium", "high"]
-        valid_verbosity_levels = ["low", "medium", "high"]
-
-        if reasoning_effort and reasoning_effort in valid_reasoning_efforts:
-            self.params["reasoning_effort"] = reasoning_effort
-
-        if verbosity and verbosity in valid_verbosity_levels:
-            self.params["verbosity"] = verbosity
-
-        return self
+    # Removed unsupported GPT-5 parameter helpers
 
     def build(self) -> dict[str, Any]:
         """Build the final parameters dictionary."""
@@ -56,6 +42,7 @@ class PerplexityParams:
     """Builder class for Perplexity API parameters."""
 
     def __init__(self, model: str | None = None, max_tokens: int = 8000):
+        """Initialize with model (optional) and max_tokens."""
         self.params = {
             "model": model or "sonar-pro",  # Default fallback if not provided
             "max_tokens": max_tokens,
@@ -131,8 +118,6 @@ def extract_api_error_info(exception: Exception) -> dict[str, Any]:
 
     # Extract retry-after if present
     if info["is_rate_limit"]:
-        import re
-
         retry_match = re.search(r"retry.*?(\d+)", error_msg.lower())
         if retry_match:
             info["retry_after"] = int(retry_match.group(1))
@@ -260,20 +245,18 @@ def estimate_token_count(text: str) -> int:
     return len(text) // 4
 
 
-def validate_token_limits(
-    prompt_tokens: int, max_completion_tokens: int, model_context_window: int
-) -> bool:
+def validate_token_limits(prompt_tokens: int, max_tokens: int, model_context_window: int) -> bool:
     """Validate that token usage fits within model limits.
 
     Args:
         prompt_tokens: Estimated prompt tokens
-        max_completion_tokens: Requested completion tokens
+        max_tokens: Requested completion tokens
         model_context_window: Model's context window size
 
     Returns:
         True if within limits
     """
-    total_needed = prompt_tokens + max_completion_tokens
+    total_needed = prompt_tokens + max_tokens
     return total_needed <= model_context_window
 
 
@@ -287,14 +270,11 @@ class APICallBuilder:
         conversation_summary: list[dict],
         user_message: str,
         output_tokens: int,
-        reasoning_effort: str | None = None,
-        verbosity: str | None = None,
     ) -> dict[str, Any]:
         """Build OpenAI API call parameters."""
         return (
             OpenAIParams(model, output_tokens)
             .add_messages(system_message, conversation_summary, user_message)
-            .add_gpt5_parameters(model, reasoning_effort, verbosity)
             .build()
         )
 
@@ -315,26 +295,23 @@ class APICallBuilder:
         )
 
 
-def safe_extract_response_content(response, service: str = "API") -> str | None:
-    """Safely extract content from API response.
+def safe_extract_response_content(response, _service: str = "API") -> str | None:
+    """Safely extract content from API response without raising.
 
     Args:
         response: API response object
-        service: Service name for logging
+        _service: Unused service name (kept for backwards compatibility)
 
     Returns:
-        Extracted content or None if extraction fails
+        Extracted content or None if unavailable
     """
-    try:
-        if hasattr(response, "choices") and len(response.choices) > 0:
-            choice = response.choices[0]
-            if hasattr(choice, "message") and hasattr(choice.message, "content"):
-                content = choice.message.content
-                if content:
-                    return content.strip()
-
+    choices = getattr(response, "choices", None)
+    if not choices or len(choices) == 0:
         return None
 
-    except Exception:
-        # Don't log here as it should be handled by the caller
-        return None
+    first_choice = choices[0]
+    message = getattr(first_choice, "message", None)
+    content = getattr(message, "content", None)
+    if content:
+        return content.strip()
+    return None

@@ -9,15 +9,13 @@ This module provides:
 
 import asyncio
 import contextlib
-import logging
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import logging
+import time
 from typing import Any
 
 from .api_validation import (
-    GPT5_REASONING_EFFORTS,
-    GPT5_VERBOSITY_LEVELS,
     OPENAI_VALID_MODELS,
     PERPLEXITY_MODELS,
     validate_full_config,
@@ -61,6 +59,7 @@ class APIHealthMonitor:
     """
 
     def __init__(self, check_interval: int = 300):  # 5 minutes default
+        """Initialize health monitor with interval and state."""
         self.check_interval = check_interval
         self.metrics: dict[str, APIHealthMetrics] = {}
         self.recent_results: list[HealthCheckResult] = []
@@ -94,7 +93,7 @@ class APIHealthMonitor:
                     service="openai",
                     status="degraded",
                     response_time_ms=0,
-                    timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(timezone.utc),
                     error=f"Model {model} may be deprecated or unsupported",
                     details={"available_models": OPENAI_VALID_MODELS[:5]},  # Show first 5
                 )
@@ -104,7 +103,7 @@ class APIHealthMonitor:
                 lambda: openai_client.chat.completions.create(
                     model=model,
                     messages=test_messages,
-                    max_completion_tokens=10,  # Minimal response
+                    max_tokens=10,  # Minimal response
                     timeout=30,  # Quick timeout for health check
                 )
             )
@@ -117,7 +116,7 @@ class APIHealthMonitor:
                     service="openai",
                     status="unhealthy",
                     response_time_ms=response_time_ms,
-                    timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(timezone.utc),
                     error="Invalid response structure from OpenAI API",
                 )
 
@@ -128,17 +127,7 @@ class APIHealthMonitor:
             elif response_time_ms > 10000:  # 10 seconds
                 status = "unhealthy"
 
-            # Validate GPT-5 parameters if using GPT-5
-            gpt5_warnings = []
-            if model.startswith("gpt-5"):
-                reasoning_effort = config.get("REASONING_EFFORT")
-                verbosity = config.get("VERBOSITY")
-
-                if reasoning_effort and reasoning_effort not in GPT5_REASONING_EFFORTS:
-                    gpt5_warnings.append(f"Invalid reasoning_effort: {reasoning_effort}")
-
-                if verbosity and verbosity not in GPT5_VERBOSITY_LEVELS:
-                    gpt5_warnings.append(f"Invalid verbosity: {verbosity}")
+            # Removed unsupported GPT-5 parameter checks
 
             return HealthCheckResult(
                 service="openai",
@@ -153,11 +142,10 @@ class APIHealthMonitor:
                         if hasattr(response, "usage")
                         else {}
                     ),
-                    "gpt5_warnings": gpt5_warnings,
                 },
             )
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - health check should never crash callers
             response_time_ms = (time.time() - start_time) * 1000
             error_details = classify_error(e)
 
@@ -191,7 +179,7 @@ class APIHealthMonitor:
                     service="perplexity",
                     status="degraded",
                     response_time_ms=0,
-                    timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(timezone.utc),
                     error=f"Model {model} may be deprecated or unsupported",
                     details={"available_models": PERPLEXITY_MODELS},
                 )
@@ -217,7 +205,7 @@ class APIHealthMonitor:
                     service="perplexity",
                     status="unhealthy",
                     response_time_ms=response_time_ms,
-                    timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(timezone.utc),
                     error="Invalid response structure from Perplexity API",
                 )
 
@@ -254,7 +242,7 @@ class APIHealthMonitor:
                 },
             )
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             response_time_ms = (time.time() - start_time) * 1000
             error_details = classify_error(e)
 
@@ -328,7 +316,7 @@ class APIHealthMonitor:
                 },
             )
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             response_time_ms = (time.time() - start_time) * 1000
             error_details = classify_error(e)
 
@@ -336,7 +324,7 @@ class APIHealthMonitor:
                 service="discord",
                 status="unhealthy",
                 response_time_ms=response_time_ms,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 error=str(e),
                 details={
                     "error_type": error_details.error_type.value,
@@ -563,8 +551,8 @@ async def run_startup_health_checks(clients: dict[str, Any], config: dict[str, A
                     f"(response time: {result.response_time_ms:.1f}ms)"
                 )
 
-        return critical_services_healthy
-
     except Exception:
         logger.exception("Failed to run startup health checks")
         return False
+    else:
+        return critical_services_healthy

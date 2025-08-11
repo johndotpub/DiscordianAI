@@ -39,8 +39,6 @@ class TestBotInitialization:
             "GPT_MODEL": "gpt-4",
             "SYSTEM_MESSAGE": "Test assistant",
             "OUTPUT_TOKENS": 1000,
-            "REASONING_EFFORT": None,
-            "VERBOSITY": None,
         }
 
         with patch("src.bot.OpenAI") as mock_openai:
@@ -76,8 +74,6 @@ class TestBotInitialization:
             "GPT_MODEL": "gpt-4",
             "SYSTEM_MESSAGE": "Test assistant",
             "OUTPUT_TOKENS": 1000,
-            "REASONING_EFFORT": None,
-            "VERBOSITY": None,
         }
 
         with patch("src.bot.OpenAI") as mock_openai:
@@ -107,8 +103,6 @@ class TestBotInitialization:
             "GPT_MODEL": "gpt-4",
             "SYSTEM_MESSAGE": "Test assistant",
             "OUTPUT_TOKENS": 1000,
-            "REASONING_EFFORT": None,
-            "VERBOSITY": None,
         }
 
         with patch("src.bot.OpenAI") as mock_openai:
@@ -180,8 +174,6 @@ class TestMessageProcessing:
             "GPT_MODEL": "gpt-4",
             "SYSTEM_MESSAGE": "Test",
             "OUTPUT_TOKENS": 1000,
-            "REASONING_EFFORT": None,
-            "VERBOSITY": None,
             "config": {},
         }
 
