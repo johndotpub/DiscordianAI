@@ -52,7 +52,7 @@ def test_should_suppress_embeds_multiple_links():
 
 def test_should_suppress_embeds_single_link():
     text_with_single_link = "Check [example.com](https://example.com)"
-    # Note: Currently counts both the markdown link AND the URL inside, so it returns True
+    # Counts both the markdown link AND the URL inside, so it returns True
     # This is actually correct behavior for the current implementation
     assert should_suppress_embeds(text_with_single_link) is True
 

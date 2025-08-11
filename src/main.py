@@ -257,8 +257,7 @@ def main() -> NoReturn:
         # Step 5.2: Run startup health checks (optional)
         logger.info("Running startup health checks...")
         try:
-            # We'll run health checks after bot initialization since we need the clients
-            # This is a placeholder for now - actual health checks run in bot startup
+            # Health checks will run after bot initialization since we need the clients
             logger.info("Health checks will run after bot initialization")
         except Exception as e:  # noqa: BLE001
             logger.warning(f"Startup health checks failed: {e}, but continuing with startup")

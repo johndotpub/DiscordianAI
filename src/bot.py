@@ -114,7 +114,6 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
     # Run startup health checks
     try:
         logger.info("Running API health checks...")
-        # Note: Discord client health check will be done after bot is ready
         # Health checks will be initiated after bot is ready (in on_ready event)
         logger.info("Health checks will be initiated after bot startup")
     except Exception as e:  # noqa: BLE001
