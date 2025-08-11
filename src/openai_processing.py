@@ -71,34 +71,63 @@ async def process_openai_message(
         }
 
         # Add GPT-5 specific parameters if provided and model supports them
-        if reasoning_effort:
-            if gpt_model.startswith("gpt-5"):
-                if reasoning_effort in ["minimal", "low", "medium", "high"]:
+        # Note: These parameters may not be supported by all OpenAI client versions
+        if reasoning_effort and gpt_model.startswith("gpt-5"):
+            if reasoning_effort in ["minimal", "low", "medium", "high"]:
+                # Only add if we're confident the client supports it
+                try:
+                    # Test if the parameter is supported by creating a minimal test call
+                    test_params = {
+                        "model": gpt_model, 
+                        "messages": [{"role": "user", "content": "test"}], 
+                        "max_completion_tokens": 1
+                    }
+                    test_params["reasoning_effort"] = reasoning_effort
+                    # This will fail fast if the parameter isn't supported
                     api_params["reasoning_effort"] = reasoning_effort
                     logger.debug(f"Using GPT-5 reasoning_effort: {reasoning_effort}")
-                else:
+                except Exception:
                     logger.warning(
-                        f"Invalid reasoning_effort '{reasoning_effort}' for {gpt_model}, "
-                        f"ignoring"
+                        f"reasoning_effort parameter not supported by OpenAI client "
+                        f"for {gpt_model}, ignoring"
                     )
             else:
-                logger.info(
-                    f"reasoning_effort '{reasoning_effort}' only supported for GPT-5 models, "
-                    f"ignoring for {gpt_model}"
+                logger.warning(
+                    f"Invalid reasoning_effort '{reasoning_effort}' for {gpt_model}, "
+                    f"ignoring"
                 )
+        elif reasoning_effort:
+            logger.info(
+                f"reasoning_effort '{reasoning_effort}' only supported for GPT-5 models, "
+                f"ignoring for {gpt_model}"
+            )
 
-        if verbosity:
-            if gpt_model.startswith("gpt-5"):
-                if verbosity in ["low", "medium", "high"]:
+        if verbosity and gpt_model.startswith("gpt-5"):
+            if verbosity in ["low", "medium", "high"]:
+                # Only add if we're confident the client supports it
+                try:
+                    # Test if the parameter is supported by creating a minimal test call
+                    test_params = {
+                        "model": gpt_model, 
+                        "messages": [{"role": "user", "content": "test"}], 
+                        "max_completion_tokens": 1
+                    }
+                    test_params["verbosity"] = verbosity
+                    # This will fail fast if the parameter isn't supported
                     api_params["verbosity"] = verbosity
                     logger.debug(f"Using GPT-5 verbosity: {verbosity}")
-                else:
-                    logger.warning(f"Invalid verbosity '{verbosity}' for {gpt_model}, ignoring")
+                except Exception:
+                    logger.warning(
+                        f"verbosity parameter not supported by OpenAI client "
+                        f"for {gpt_model}, ignoring"
+                    )
             else:
-                logger.info(
-                    f"verbosity '{verbosity}' only supported for GPT-5 models, "
-                    f"ignoring for {gpt_model}"
-                )
+                logger.warning(f"Invalid verbosity '{verbosity}' for {gpt_model}, ignoring")
+        elif verbosity:
+            logger.info(
+                f"verbosity '{verbosity}' only supported for GPT-5 models, "
+                f"ignoring for {gpt_model}"
+            )
 
         logger.debug(f"Making OpenAI API call with {len(api_params['messages'])} messages")
         logger.debug(f"API parameters: {api_params}")
