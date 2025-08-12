@@ -125,7 +125,6 @@ def should_use_web_search(
         6. Long specific queries with entities -> True (use web search)
         7. Default -> False (use ChatGPT)
     """
-    # Debug logging to understand routing decisions
     logger = logging.getLogger("discordianai.smart_orchestrator")
     logger.debug(f"Analyzing message for web search routing: {message[:100]}...")
 

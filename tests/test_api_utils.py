@@ -30,8 +30,8 @@ class TestOpenAIParams:
         params = builder.build()
 
         assert params["model"] == "gpt-4"
-        assert params["max_tokens"] == 1000
-        assert len(params) == 3  # model, messages, max_tokens
+        assert params["max_completion_tokens"] == 1000
+        assert len(params) == 3  # model, messages, max_completion_tokens
 
     def test_init_gpt5_basic(self):
         """Test basic initialization with GPT-5 model."""
@@ -115,7 +115,7 @@ class TestOpenAIParams:
         params = result.build()
 
         assert params["model"] == "gpt-4"
-        assert params["max_tokens"] == 1500
+        assert params["max_completion_tokens"] == 1500
         assert len(params["messages"]) == 3
         assert params["messages"][0]["role"] == "system"
         assert params["messages"][1]["role"] == "user"
@@ -385,7 +385,7 @@ class TestAPICallBuilder:
         params = APICallBuilder.openai_call("gpt-4", "You are helpful", [], "Hello", 1000)
 
         assert params["model"] == "gpt-4"
-        assert params["max_tokens"] == 1000
+        assert params["max_completion_tokens"] == 1000
         assert "messages" in params
         assert len(params["messages"]) == 2  # system + user
 
@@ -400,7 +400,7 @@ class TestAPICallBuilder:
         )
 
         assert params["model"] == "gpt-4"
-        assert params["max_tokens"] == 1500
+        assert params["max_completion_tokens"] == 1500
         assert len(params["messages"]) == 4  # system + conversation + user
 
     def test_openai_call_builds_supported_params_only(self):

@@ -12,7 +12,7 @@ This test suite covers:
 import asyncio
 import threading
 import time
-from unittest.mock import MagicMock
+from unittest.mock import Mock
 
 import pytest
 
@@ -59,7 +59,7 @@ class TestRateLimiterCheckRateLimit:
     def test_check_rate_limit_first_request(self):
         """Test first request from a user (should pass)."""
         rate_limiter = RateLimiter()
-        logger = MagicMock()
+        logger = Mock()
         user_id = 12345
 
         result = rate_limiter.check_rate_limit(user_id, 3, 60, logger)
@@ -77,7 +77,7 @@ class TestRateLimiterCheckRateLimit:
     def test_check_rate_limit_within_limit(self):
         """Test requests within rate limit (should pass)."""
         rate_limiter = RateLimiter()
-        logger = MagicMock()
+        logger = Mock()
         user_id = 12345
 
         # First request
@@ -99,7 +99,7 @@ class TestRateLimiterCheckRateLimit:
     def test_check_rate_limit_at_limit(self):
         """Test request exactly at the rate limit (should pass)."""
         rate_limiter = RateLimiter()
-        logger = MagicMock()
+        logger = Mock()
         user_id = 12345
 
         # Make requests up to the limit
@@ -112,7 +112,7 @@ class TestRateLimiterCheckRateLimit:
     def test_check_rate_limit_exceeds_limit(self):
         """Test request that exceeds rate limit (should fail)."""
         rate_limiter = RateLimiter()
-        logger = MagicMock()
+        logger = Mock()
         user_id = 12345
 
         # Use up the rate limit
@@ -136,7 +136,7 @@ class TestRateLimiterCheckRateLimit:
     def test_check_rate_limit_window_expiry(self):
         """Test rate limit reset after window expiry."""
         rate_limiter = RateLimiter()
-        logger = MagicMock()
+        logger = Mock()
         user_id = 12345
 
         # Use up the rate limit
@@ -164,7 +164,7 @@ class TestRateLimiterCheckRateLimit:
     def test_check_rate_limit_multiple_users(self):
         """Test rate limiting works independently for different users."""
         rate_limiter = RateLimiter()
-        logger = MagicMock()
+        logger = Mock()
         user1_id = 12345
         user2_id = 67890
 
@@ -184,7 +184,7 @@ class TestRateLimiterCheckRateLimit:
     def test_check_rate_limit_thread_safety(self):
         """Test that rate limiting is thread-safe."""
         rate_limiter = RateLimiter()
-        logger = MagicMock()
+        logger = Mock()
         user_id = 12345
         results = []
 
@@ -234,7 +234,7 @@ class TestRateLimiterGetUserStatus:
     def test_get_user_status_within_window(self):
         """Test getting status for a user within the rate limit window."""
         rate_limiter = RateLimiter()
-        logger = MagicMock()
+        logger = Mock()
         user_id = 12345
 
         # Make some requests first
@@ -253,7 +253,7 @@ class TestRateLimiterGetUserStatus:
     def test_get_user_status_window_expired(self):
         """Test getting status when the rate limit window has expired."""
         rate_limiter = RateLimiter()
-        logger = MagicMock()
+        logger = Mock()
         user_id = 12345
 
         # Make requests with a short window
@@ -274,7 +274,7 @@ class TestRateLimiterGetUserStatus:
     def test_get_user_status_at_limit(self):
         """Test getting status when user is at the rate limit."""
         rate_limiter = RateLimiter()
-        logger = MagicMock()
+        logger = Mock()
         user_id = 12345
 
         # Use up the rate limit
@@ -292,7 +292,7 @@ class TestRateLimiterGetUserStatus:
     def test_get_user_status_thread_safety(self):
         """Test that get_user_status is thread-safe."""
         rate_limiter = RateLimiter()
-        logger = MagicMock()
+        logger = Mock()
         user_id = 12345
         statuses = []
 
@@ -333,10 +333,10 @@ class TestAsyncCheckRateLimit:
     async def test_async_check_rate_limit_success(self):
         """Test successful async rate limit check."""
         rate_limiter = RateLimiter()
-        mock_user = MagicMock()
+        mock_user = Mock()
         mock_user.id = 12345
         mock_user.name = "TestUser"
-        logger = MagicMock()
+        logger = Mock()
 
         result = await check_rate_limit(mock_user, rate_limiter, 5, 60, logger)
 
@@ -351,10 +351,10 @@ class TestAsyncCheckRateLimit:
     async def test_async_check_rate_limit_failure(self):
         """Test failed async rate limit check."""
         rate_limiter = RateLimiter()
-        mock_user = MagicMock()
+        mock_user = Mock()
         mock_user.id = 12345
         mock_user.name = "TestUser"
-        logger = MagicMock()
+        logger = Mock()
 
         # Use up the rate limit first
         for _i in range(3):
@@ -377,7 +377,7 @@ class TestAsyncCheckRateLimit:
     async def test_async_check_rate_limit_default_logger(self):
         """Test async rate limit check with default logger."""
         rate_limiter = RateLimiter()
-        mock_user = MagicMock()
+        mock_user = Mock()
         mock_user.id = 12345
         mock_user.name = "TestUser"
 
@@ -388,13 +388,13 @@ class TestAsyncCheckRateLimit:
 
     async def test_async_check_rate_limit_exception_handling(self):
         """Test async rate limit check with exception handling."""
-        rate_limiter = MagicMock()
+        rate_limiter = Mock()
         rate_limiter.check_rate_limit.side_effect = ValueError("Test error")
 
-        mock_user = MagicMock()
+        mock_user = Mock()
         mock_user.id = 12345
         mock_user.name = "TestUser"
-        logger = MagicMock()
+        logger = Mock()
 
         # Should fail open (return True) on exception
         result = await check_rate_limit(mock_user, rate_limiter, 5, 60, logger)
@@ -410,7 +410,7 @@ class TestAsyncCheckRateLimit:
     async def test_async_check_rate_limit_none_logger(self):
         """Test async rate limit check with None logger creates default."""
         rate_limiter = RateLimiter()
-        mock_user = MagicMock()
+        mock_user = Mock()
         mock_user.id = 12345
         mock_user.name = "TestUser"
 
@@ -422,10 +422,10 @@ class TestAsyncCheckRateLimit:
     async def test_async_check_rate_limit_multiple_concurrent(self):
         """Test multiple concurrent async rate limit checks."""
         rate_limiter = RateLimiter()
-        mock_user = MagicMock()
+        mock_user = Mock()
         mock_user.id = 12345
         mock_user.name = "TestUser"
-        logger = MagicMock()
+        logger = Mock()
 
         # Create multiple concurrent checks
         tasks = []
@@ -449,7 +449,7 @@ class TestRateLimiterIntegration:
     def test_rate_limiter_comprehensive_workflow(self):
         """Test complete rate limiter workflow with status checking."""
         rate_limiter = RateLimiter()
-        logger = MagicMock()
+        logger = Mock()
         user_id = 12345
 
         # Check initial status
@@ -480,10 +480,10 @@ class TestRateLimiterIntegration:
     async def test_sync_async_integration(self):
         """Test that sync and async methods work together correctly."""
         rate_limiter = RateLimiter()
-        mock_user = MagicMock()
+        mock_user = Mock()
         mock_user.id = 12345
         mock_user.name = "TestUser"
-        logger = MagicMock()
+        logger = Mock()
 
         # Make some requests via sync method
         for _i in range(2):

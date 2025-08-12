@@ -122,8 +122,8 @@ LOG_LEVEL=DEBUG
             assert config["OUTPUT_TOKENS"] == 2000
             assert config["SYSTEM_MESSAGE"] == "Test system message"
             # Unsupported GPT-5 parameters should not be present
-            assert "REASONING_EFFORT" not in config or config.get("REASONING_EFFORT") is None
-            assert "VERBOSITY" not in config or config.get("VERBOSITY") is None
+            assert config.get("REASONING_EFFORT") is None
+            assert config.get("VERBOSITY") is None
             assert config["RATE_LIMIT"] == 5
             assert config["RATE_LIMIT_PER"] == 30
             assert config["LOOKBACK_MESSAGES_FOR_CONSISTENCY"] == 10

@@ -39,13 +39,8 @@ class OpenAIParams:
             "messages": self.messages,
         }
 
-        # Use appropriate token parameter based on model
-        if self.model.startswith("gpt-5"):
-            # Newer GPT-5 models use max_completion_tokens
-            params["max_completion_tokens"] = self.max_tokens
-        else:
-            # Older models use max_tokens
-            params["max_tokens"] = self.max_tokens
+        # GPT-5 models use max_completion_tokens
+        params["max_completion_tokens"] = self.max_tokens
 
         return params
 

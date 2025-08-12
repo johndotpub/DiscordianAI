@@ -267,7 +267,7 @@ class TestCleanMessageContent:
         assert result == "[empty]"
 
         result = clean_message_content("   ")
-        assert result == ""  # Actual behavior: empty string, not "[empty]"
+        assert result == ""  # Whitespace-only content gets cleaned to empty string
 
     def test_clean_with_truncation(self):
         """Test cleaning with truncation."""
@@ -615,7 +615,7 @@ class TestParseCommandArgs:
         command, args = parse_command_args(content, prefix="!")
 
         assert command == "say"
-        # Note: This test depends on actual implementation
+
         # May need adjustment based on whether quotes are handled
 
 

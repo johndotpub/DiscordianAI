@@ -43,7 +43,6 @@ def extract_citations_from_response(response_text: str) -> tuple[str, dict[str, 
     # Look for URLs in the text
     urls = URL_PATTERN.findall(response_text)
 
-    # Debug logging for citation extraction
     logger = logging.getLogger("discordianai.perplexity")
     logger.debug(
         f"Citation extraction: found {len(citation_matches)} citations: {citation_matches}"
@@ -211,7 +210,6 @@ async def process_perplexity_message(
         logger.info(f"Processing Perplexity web search request for user {user.id}")
         logger.debug(f"Query: {message[:200]}...")
 
-        # Note: We'll add user message to conversation history only after successful response
         # to maintain consistency and allow rollback on failures
 
         # Make Perplexity API call

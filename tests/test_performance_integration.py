@@ -111,7 +111,7 @@ class TestConcurrentConversationManagement:
 
         # Should contain the most recent messages
         assert "Message 24" in conversation[-1]["content"]
-        assert "Message 15" in conversation[0]["content"]  # Oldest kept message
+        assert "Message 15" in conversation[0]["content"]
 
 
 class TestRateLimitingUnderLoad:

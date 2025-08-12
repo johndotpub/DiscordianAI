@@ -53,7 +53,6 @@ async def process_openai_message(
     try:
         logger.info(f"Processing OpenAI request for user {user.id} with model {gpt_model}")
 
-        # Note: We'll add user message to conversation history only after successful response
         # to maintain consistency and allow rollback on failures
 
         # Build API parameters dynamically (only officially supported parameters)
@@ -66,13 +65,8 @@ async def process_openai_message(
             ],
         }
 
-        # Use appropriate token parameter based on model
-        if gpt_model.startswith("gpt-5"):
-            # Newer GPT-5 models use max_completion_tokens
-            api_params["max_completion_tokens"] = output_tokens
-        else:
-            # Older models use max_tokens
-            api_params["max_tokens"] = output_tokens
+        # GPT-5 models use max_completion_tokens
+        api_params["max_completion_tokens"] = output_tokens
 
         logger.debug(f"Making OpenAI API call with {len(api_params['messages'])} messages")
         logger.debug(f"API parameters: {api_params}")
