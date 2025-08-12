@@ -50,8 +50,6 @@ RATE_LIMIT_PER=60
 # How many recent messages to check for AI service consistency
 LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 
-# Minimum words before checking for entities in routing decisions
-ENTITY_DETECTION_MIN_WORDS=10
 
 # Maximum conversation entries per user before pruning
 MAX_HISTORY_PER_USER=50

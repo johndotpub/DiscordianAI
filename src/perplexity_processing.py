@@ -10,21 +10,23 @@ import logging
 import re
 
 from .caching import cached_response, deduplicated_request
-from .config import DEFAULT_CACHE_TTL
+from .config import (
+    BARE_URL_PATTERN,
+    CITATION_PATTERN,
+    DEFAULT_CACHE_TTL,
+    LINK_PATTERN,
+    URL_PATTERN,
+)
 from .conversation_manager import ThreadSafeConversationManager
 
-# Pre-compile regex patterns for better performance (cached globally)
-_CITATION_PATTERN = re.compile(r"\[(\d+)\]")
-_URL_PATTERN = re.compile(r"https?://[^\s\[\]()]+[^\s\[\]().,;!?]")
-_LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
-_BARE_URL_PATTERN = re.compile(r"https?://[^\s]+")
+# Use centralized patterns from config
 
 
 def extract_citations_from_response(response_text: str) -> tuple[str, dict[str, str]]:
     """Extract citations from Perplexity response and return cleaned text with citation mapping.
 
-    Perplexity typically includes citations in format [1], [2] etc. This function
-    attempts to extract and map these citations to URLs when available.
+    Perplexity typically includes citations at the end of lines in format [1], [2] etc.
+    This function extracts these citations and maps them to URLs found in the text.
 
     Args:
         response_text (str): Raw response text from Perplexity API
@@ -36,16 +38,53 @@ def extract_citations_from_response(response_text: str) -> tuple[str, dict[str, 
     citations = {}
 
     # Look for citation numbers in the text using pre-compiled pattern
-    citation_matches = _CITATION_PATTERN.findall(response_text)
+    citation_matches = CITATION_PATTERN.findall(response_text)
 
-    # Look for URLs in the text and try to match them to citations using pre-compiled pattern
-    # This is a fallback approach until we can access full Perplexity metadata
-    urls = _URL_PATTERN.findall(response_text)
+    # Look for URLs in the text
+    urls = URL_PATTERN.findall(response_text)
 
-    # Create a simple mapping for any URLs found
-    for i, url in enumerate(urls, 1):
-        if str(i) in citation_matches:
-            citations[str(i)] = url
+    # Debug logging for citation extraction
+    logger = logging.getLogger("discordianai.perplexity")
+    logger.debug(
+        f"Citation extraction: found {len(citation_matches)} citations: {citation_matches}"
+    )
+    logger.debug(
+        f"Citation extraction: found {len(urls)} URLs: {urls[:3]}..."
+    )  # Show first 3 URLs
+
+    # Since Perplexity citations are always at the end of lines,
+    # we can use a more intelligent approach to match citations to URLs
+
+    if citation_matches and urls:
+        # Split text into lines to find citations at line endings
+        lines = response_text.split("\n")
+
+        for line in lines:
+            # Look for citations at the end of each line
+            citation_match = CITATION_PATTERN.search(line)
+            if citation_match:
+                citation_num = citation_match.group(1)
+
+                # Find URLs in this specific line
+                line_urls = URL_PATTERN.findall(line)
+
+                if line_urls:
+                    # Use the first URL found in the line with the citation
+                    citations[citation_num] = line_urls[0]
+                    logger.debug(f"Mapped citation [{citation_num}] to URL: {line_urls[0]}")
+
+        # If we still don't have all citations mapped, try the fallback approach
+        if len(citations) < len(citation_matches):
+            logger.debug("Some citations not mapped by line analysis, using fallback approach")
+
+            # Fallback: try to match by position (simple approach)
+            for i, url in enumerate(urls, 1):
+                if str(i) in citation_matches and str(i) not in citations:
+                    citations[str(i)] = url
+                    logger.debug(f"Fallback mapped citation [{i}] to URL: {url}")
+
+    # Final debug logging
+    logger.debug(f"Final citation mapping: {citations}")
 
     # Clean up any bare URLs in the text since we'll be converting citations to hyperlinks
     cleaned_text = _clean_bare_urls_safely(response_text, urls)
@@ -80,14 +119,14 @@ def format_citations_for_discord(text: str, citations: dict[str, str]) -> str:
     """Convert numbered citations to Discord-compatible hyperlinks.
 
     Transforms citation numbers like [1], [2] into clickable Discord hyperlinks
-    using markdown format with domain names as display text.
+    while preserving the citation numbers for readability.
 
     Args:
         text (str): Text with [1], [2] style citations
         citations (Dict[str, str]): Mapping of citation numbers to URLs
 
     Returns:
-        str: Text with Discord hyperlink format: [domain](url)
+        str: Text with Discord hyperlink format: [1](url), [2](url)
     """
     if not citations:
         return text
@@ -96,20 +135,12 @@ def format_citations_for_discord(text: str, citations: dict[str, str]) -> str:
         citation_num = match.group(1)
         if citation_num in citations:
             url = citations[citation_num]
-            # Extract domain name for display
-            try:
-                domain_match = re.search(r"https?://(?:www\.)?([^/]+)", url)
-                domain = domain_match.group(1) if domain_match else url
-                # Clean up domain for display
-                domain = domain.split("/")[0].split("?")[0]
-            except Exception:  # noqa: BLE001 - fallback for any parsing error
-                return f"[source]({url})"
-            else:
-                return f"[{domain}]({url})"
+            # Keep the citation number as the display text for readability
+            return f"[{citation_num}]({url})"
         return match.group(0)  # Return original if no URL found
 
     # Replace [1], [2], etc. with Discord hyperlinks using pre-compiled pattern
-    return _CITATION_PATTERN.sub(replace_citation, text)
+    return CITATION_PATTERN.sub(replace_citation, text)
 
 
 def should_suppress_embeds(text: str) -> bool:
@@ -126,10 +157,10 @@ def should_suppress_embeds(text: str) -> bool:
         bool: True if embeds should be suppressed (2+ links detected)
     """
     # Count Discord hyperlinks [title](url) using pre-compiled pattern
-    links = _LINK_PATTERN.findall(text)
+    links = LINK_PATTERN.findall(text)
 
     # Also count bare URLs that might generate embeds using pre-compiled pattern
-    urls = _BARE_URL_PATTERN.findall(text)
+    urls = BARE_URL_PATTERN.findall(text)
 
     total_links = len(links) + len(urls)
 

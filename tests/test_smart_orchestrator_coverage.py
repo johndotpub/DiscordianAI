@@ -71,7 +71,7 @@ class TestRoutingFunctions:
             "What are the recent developments in artificial intelligence research "
             "and how are they impacting the technology industry?"
         )
-        assert should_use_web_search(long_factual, entity_detection_min_words=5)
+        assert should_use_web_search(long_factual)
 
     def test_should_use_web_search_conversational(self):
         """Test that conversational queries don't use web search."""
@@ -97,7 +97,7 @@ class TestRoutingFunctions:
     def test_should_use_web_search_short_message(self):
         """Test that short messages use appropriate routing."""
         short_message = "Hi there"  # Less than default min words
-        assert not should_use_web_search(short_message, entity_detection_min_words=10)
+        assert not should_use_web_search(short_message)
 
 
 class TestProcessingModes:

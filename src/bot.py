@@ -231,6 +231,8 @@ async def _process_message_core(
         )
 
         # Send response with automatic message splitting if needed
+        logger.debug(f"About to send response to Discord: {response[:200]}...")
+        logger.debug(f"Response length: {len(response)} characters")
         await send_split_message(message.channel, response, deps, suppress_embeds)
         logger.info(f"Successfully processed and responded to {context}")
 
@@ -362,6 +364,8 @@ async def send_split_message(
     # If message fits in one Discord message, send it directly
     if len(message) <= 2000:
         try:
+            deps["logger"].debug(f"Discord API call - message content: {message[:200]}...")
+            deps["logger"].debug(f"Discord API call - suppress_embeds: {suppress_embeds}")
             await channel.send(message, suppress_embeds=suppress_embeds)
             if _recursion_depth == 0:  # Only log for top-level calls
                 deps["logger"].debug(f"Sent message ({len(message)} chars)")

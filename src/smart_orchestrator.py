@@ -13,6 +13,7 @@ from .config import (
     COMPILED_FACTUAL_PATTERNS,
     COMPILED_FOLLOW_UP_PATTERNS,
     COMPILED_TIME_SENSITIVITY_PATTERNS,
+    COMPILED_URL_DETECTION_PATTERNS,
     get_error_messages,
 )
 from .conversation_manager import ThreadSafeConversationManager
@@ -98,7 +99,6 @@ def should_use_web_search(
     conversation_manager: ThreadSafeConversationManager | None = None,
     user_id: int | None = None,
     lookback_messages: int = 6,
-    entity_detection_min_words: int = 10,
 ) -> bool:
     """Intelligently determine if a message needs web search based on semantic analysis.
 
@@ -112,7 +112,6 @@ def should_use_web_search(
             Conversation manager for context
         user_id (Optional[int]): User ID for retrieving recent AI service usage
         lookback_messages (int): How many recent messages to check for consistency (default: 6)
-        entity_detection_min_words (int): Minimum words before checking entities (default: 10)
 
     Returns:
         bool: True if web search would likely provide better/more current information
@@ -122,12 +121,21 @@ def should_use_web_search(
         2. Conversational/creative messages -> False (use ChatGPT)
         3. Time-sensitive messages -> True (use web search)
         4. Factual queries -> True (use web search)
-        5. Long specific queries with entities -> True (use web search)
-        6. Default -> False (use ChatGPT)
+        5. Messages with URLs -> True (use web search) - PRIORITY CHECK
+        6. Long specific queries with entities -> True (use web search)
+        7. Default -> False (use ChatGPT)
     """
     # Debug logging to understand routing decisions
     logger = logging.getLogger("discordianai.smart_orchestrator")
     logger.debug(f"Analyzing message for web search routing: {message[:100]}...")
+
+    # PRIORITY CHECK: If message contains URLs, always use web search
+    # Use centralized URL patterns from config
+    has_urls = any(pattern.search(message) for pattern in COMPILED_URL_DETECTION_PATTERNS)
+    logger.debug(f"URL detection: {has_urls}")
+    if has_urls:
+        logger.debug("Message contains URLs - routing to Perplexity for web search")
+        return True
 
     # Check conversation context for ongoing topics to maintain consistency
     if conversation_manager and user_id:
@@ -178,19 +186,16 @@ def should_use_web_search(
         logger.debug("Message classified as factual - routing to Perplexity")
         return True
 
-    # Check message length and complexity
-    # (longer, more specific questions often benefit from web search)
-    word_count = len(message.split())
-    logger.debug(f"Message word count: {word_count} (threshold: {entity_detection_min_words})")
-    if word_count > entity_detection_min_words:
-        has_entities = any(pattern.search(message) for pattern in COMPILED_ENTITY_PATTERNS)
-        logger.debug(f"Entity detection: {has_entities}")
-        if has_entities:
-            logger.debug("Message has entities and is long - routing to Perplexity")
-            return True
+    # Check for entities in the message (proper names, acronyms, etc.)
+    # This helps identify specific queries that benefit from web search
+    has_entities = any(pattern.search(message) for pattern in COMPILED_ENTITY_PATTERNS)
+    logger.debug(f"Entity detection: {has_entities}")
+    if has_entities:
+        logger.debug("Message has entities - routing to Perplexity")
+        return True
 
-    # Default to False for general conversation
-    logger.debug("No specific patterns matched - defaulting to OpenAI")
+    # Default: use conversational AI
+    logger.debug("No specific indicators found - defaulting to OpenAI")
     return False
 
 
@@ -323,14 +328,12 @@ async def _process_hybrid_mode(
 
     # Get configuration values with fallback defaults
     lookback_messages = config.get("LOOKBACK_MESSAGES_FOR_CONSISTENCY", 6) if config else 6
-    entity_min_words = config.get("ENTITY_DETECTION_MIN_WORDS", 10) if config else 10
 
     needs_web = should_use_web_search(
         message,
         conversation_manager,
         user.id,
         lookback_messages=lookback_messages,
-        entity_detection_min_words=entity_min_words,
     )
 
     logger.info(f"Smart routing decision: needs_web_search = {needs_web}")

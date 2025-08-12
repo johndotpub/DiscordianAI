@@ -28,9 +28,9 @@ def test_format_citations_for_discord():
     citations = {"1": "https://test-site.example", "2": "https://demo-site.example"}
 
     formatted = format_citations_for_discord(text, citations)
-    # Test citation formatting without direct URL string matching to avoid security alerts
-    assert "[test-site.example]" in formatted
-    assert "[demo-site.example]" in formatted
+    # Test citation formatting - citations should remain as numbers but be clickable
+    assert "[1](https://test-site.example)" in formatted
+    assert "[2](https://demo-site.example)" in formatted
     # Verify URLs are present in formatted output
     assert any(url in formatted for url in citations.values())
 

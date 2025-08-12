@@ -6,6 +6,8 @@ and splitting Discord messages in a clean and reusable way.
 
 import re
 
+from .config import BARE_URL_PATTERN, MENTION_PATTERN
+
 
 def find_optimal_split_point(message: str, target_index: int) -> int:
     """Find the best place to split a message near a target index.
@@ -136,8 +138,7 @@ def extract_mentions(content: str) -> list[str]:
     Returns:
         List of user IDs mentioned
     """
-    mention_pattern = re.compile(r"<@!?(\d+)>")
-    return mention_pattern.findall(content)
+    return MENTION_PATTERN.findall(content)
 
 
 def format_user_context(user, is_dm: bool) -> str:
@@ -167,8 +168,7 @@ def count_links(text: str) -> int:
     discord_links = len(re.findall(r"\[([^\]]+)\]\(([^)]+)\)", text))
 
     # Count bare URLs
-    url_pattern = re.compile(r"https?://[^\s]+")
-    bare_urls = len(url_pattern.findall(text))
+    bare_urls = len(BARE_URL_PATTERN.findall(text))
 
     return discord_links + bare_urls
 

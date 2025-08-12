@@ -66,7 +66,6 @@ class TestLoadConfig:
         assert config["LOG_FILE"] == "bot.log"
         assert config["LOG_LEVEL"] == "INFO"
         assert config["LOOKBACK_MESSAGES_FOR_CONSISTENCY"] == 6
-        assert config["ENTITY_DETECTION_MIN_WORDS"] == 10
         assert config["MAX_HISTORY_PER_USER"] == 50
         assert config["USER_LOCK_CLEANUP_INTERVAL"] == 3600
 
@@ -95,7 +94,6 @@ RATE_LIMIT_PER=30
 
 [Orchestrator]
 LOOKBACK_MESSAGES_FOR_CONSISTENCY=10
-ENTITY_DETECTION_MIN_WORDS=15
 MAX_HISTORY_PER_USER=100
 USER_LOCK_CLEANUP_INTERVAL=7200
 
@@ -129,7 +127,6 @@ LOG_LEVEL=DEBUG
             assert config["RATE_LIMIT"] == 5
             assert config["RATE_LIMIT_PER"] == 30
             assert config["LOOKBACK_MESSAGES_FOR_CONSISTENCY"] == 10
-            assert config["ENTITY_DETECTION_MIN_WORDS"] == 15
             assert config["MAX_HISTORY_PER_USER"] == 100
             assert config["USER_LOCK_CLEANUP_INTERVAL"] == 7200
             assert config["LOG_FILE"] == "test.log"
@@ -200,7 +197,6 @@ LOG_FILE=relative.log
                 "RATE_LIMIT": "15",
                 "RATE_LIMIT_PER": "120",
                 "LOOKBACK_MESSAGES_FOR_CONSISTENCY": "8",
-                "ENTITY_DETECTION_MIN_WORDS": "20",
                 "MAX_HISTORY_PER_USER": "75",
                 "USER_LOCK_CLEANUP_INTERVAL": "1800",
             },
@@ -213,7 +209,6 @@ LOG_FILE=relative.log
             assert config["RATE_LIMIT"] == 15
             assert config["RATE_LIMIT_PER"] == 120
             assert config["LOOKBACK_MESSAGES_FOR_CONSISTENCY"] == 8
-            assert config["ENTITY_DETECTION_MIN_WORDS"] == 20
             assert config["MAX_HISTORY_PER_USER"] == 75
             assert config["USER_LOCK_CLEANUP_INTERVAL"] == 1800
 

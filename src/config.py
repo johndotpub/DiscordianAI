@@ -10,7 +10,11 @@ from typing import Any
 # CENTRALIZED CONFIGURATION CONSTANTS
 # ============================================================================
 
-# API Configuration Constants
+# ============================================================================
+# API CONFIGURATION
+# ============================================================================
+
+# OpenAI Models
 OPENAI_VALID_MODELS = [
     "gpt-5",  # Latest generation - standard
     "gpt-5-mini",  # Latest generation - cost-effective
@@ -18,10 +22,8 @@ OPENAI_VALID_MODELS = [
     "gpt-5-chat",  # Latest generation - conversational
 ]
 
-
-PERPLEXITY_MODELS = ["sonar-pro", "sonar"]  # Latest Perplexity model  # General Perplexity model
-
-DISCORD_ACTIVITY_TYPES = ["playing", "streaming", "listening", "watching", "custom", "competing"]
+# Perplexity Models
+PERPLEXITY_MODELS = ["sonar-pro", "sonar"]  # Latest Perplexity model
 
 # API URL Patterns for validation
 VALID_OPENAI_URL_PATTERN = re.compile(r"https://api\.openai\.com/v\d+/?")
@@ -31,31 +33,49 @@ VALID_PERPLEXITY_URL_PATTERN = re.compile(r"https://api\.perplexity\.ai/?")
 DEFAULT_OPENAI_API_URL = "https://api.openai.com/v1/"
 DEFAULT_PERPLEXITY_API_URL = "https://api.perplexity.ai"
 
-# Performance and Caching Constants
-DEFAULT_CACHE_TTL = 300.0  # 5 minutes
-DEFAULT_CACHE_SIZE = 1000
-DEFAULT_CONVERSATION_CACHE_TTL = 1800.0  # 30 minutes
-DEFAULT_HEALTH_CHECK_INTERVAL = 300  # 5 minutes
+# ============================================================================
+# DISCORD CONFIGURATION
+# ============================================================================
 
-# Rate Limiting Constants
-DEFAULT_RATE_LIMIT = 10
-DEFAULT_RATE_LIMIT_PER = 60  # seconds
-
-# Orchestrator Constants
-DEFAULT_LOOKBACK_MESSAGES_FOR_CONSISTENCY = 6
-DEFAULT_ENTITY_DETECTION_MIN_WORDS = 10
-DEFAULT_MAX_HISTORY_PER_USER = 50
-DEFAULT_USER_LOCK_CLEANUP_INTERVAL = 3600  # 1 hour
-
-# Token and Context Constants
-DEFAULT_INPUT_TOKENS = 120000
-DEFAULT_OUTPUT_TOKENS = 8000
-DEFAULT_CONTEXT_WINDOW = 128000
+# Discord Activity Types
+DISCORD_ACTIVITY_TYPES = ["playing", "streaming", "listening", "watching", "custom", "competing"]
 
 # Discord Message Constants
 DISCORD_MAX_MESSAGE_LENGTH = 2000
 DISCORD_MAX_EMBED_DESCRIPTION = 4096
 DISCORD_MAX_RECURSION_DEPTH = 10
+
+# ============================================================================
+# PERFORMANCE & CACHING
+# ============================================================================
+
+# Cache Configuration
+DEFAULT_CACHE_TTL = 300.0  # 5 minutes
+DEFAULT_CACHE_SIZE = 1000
+DEFAULT_CONVERSATION_CACHE_TTL = 1800.0  # 30 minutes
+DEFAULT_HEALTH_CHECK_INTERVAL = 300  # 5 minutes
+
+# Rate Limiting
+DEFAULT_RATE_LIMIT = 10
+DEFAULT_RATE_LIMIT_PER = 60  # seconds
+
+# ============================================================================
+# AI ORCHESTRATOR CONFIGURATION
+# ============================================================================
+
+# Conversation Management
+DEFAULT_LOOKBACK_MESSAGES_FOR_CONSISTENCY = 6
+DEFAULT_MAX_HISTORY_PER_USER = 50
+DEFAULT_USER_LOCK_CLEANUP_INTERVAL = 3600  # 1 hour
+
+# Token and Context Limits
+DEFAULT_INPUT_TOKENS = 120000
+DEFAULT_OUTPUT_TOKENS = 8000
+DEFAULT_CONTEXT_WINDOW = 128000
+
+# ============================================================================
+# SMART ROUTING PATTERNS
+# ============================================================================
 
 # Time-sensitive query patterns for web search routing
 TIME_SENSITIVITY_PATTERNS = [
@@ -99,7 +119,11 @@ FOLLOW_UP_PATTERNS = [
     r"\b(and|but|however|though|although)\b\s+\w+\s*\?",
 ]
 
-# Compile patterns for performance (used by smart orchestrator)
+# ============================================================================
+# COMPILED PATTERNS (for performance)
+# ============================================================================
+
+# Smart routing patterns (used by smart orchestrator)
 COMPILED_TIME_SENSITIVITY_PATTERNS = [
     re.compile(pattern, re.IGNORECASE) for pattern in TIME_SENSITIVITY_PATTERNS
 ]
@@ -112,14 +136,33 @@ COMPILED_FOLLOW_UP_PATTERNS = [
     re.compile(pattern, re.IGNORECASE) for pattern in FOLLOW_UP_PATTERNS
 ]
 
-# Regex patterns for message processing (compiled for performance)
+# ============================================================================
+# MESSAGE PROCESSING PATTERNS
+# ============================================================================
+
+# Citation and mention patterns
 CITATION_PATTERN = re.compile(r"\[(\d+)\]")
-URL_PATTERN = re.compile(r"https?://[^\s\[\]()]+[^\s\[\]().,;!?]")
-LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
-BARE_URL_PATTERN = re.compile(r"https?://[^\s]+")
 MENTION_PATTERN = re.compile(r"<@!?(\d+)>")
 
-# Error messages for user-facing responses
+# URL detection patterns for smart routing
+URL_DETECTION_PATTERNS = [
+    r"https?://[^\s\[\]()]+[^\s\[\]().,;!?]",  # Standard URLs with common punctuation
+    r"\[([^\]]+)\]\(([^)]+)\)",  # Markdown links [text](url)
+    r"https?://[^\s]+",  # Bare URLs (fallback)
+]
+
+# Compile URL detection patterns for performance
+COMPILED_URL_DETECTION_PATTERNS = [re.compile(pattern) for pattern in URL_DETECTION_PATTERNS]
+
+# Individual compiled patterns for backward compatibility and specific use cases
+URL_PATTERN = COMPILED_URL_DETECTION_PATTERNS[0]  # Standard URLs
+LINK_PATTERN = COMPILED_URL_DETECTION_PATTERNS[1]  # Markdown links
+BARE_URL_PATTERN = COMPILED_URL_DETECTION_PATTERNS[2]  # Bare URLs
+
+# ============================================================================
+# ERROR MESSAGES
+# ============================================================================
+
 ERROR_MESSAGES = {
     "web_search_unavailable": (
         "🔍 Web search is temporarily unavailable. Please try again in a few moments."
@@ -148,6 +191,10 @@ ERROR_MESSAGES = {
     "message_too_long": ("📝 Your message is too long. Please break it into smaller parts."),
     "empty_message": "❓ Please send a message for me to respond to.",
 }
+
+# ============================================================================
+# CONFIGURATION FUNCTIONS
+# ============================================================================
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -184,6 +231,7 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
     # 1. Load from file if provided and exists
     if config_file and Path(config_file).exists():
         config.read(config_file)
+
         # Discord section
         config_data["DISCORD_TOKEN"] = config.get("Discord", "DISCORD_TOKEN", fallback=None)
         config_data["ALLOWED_CHANNELS"] = config.get(
@@ -194,11 +242,13 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
         config_data["ACTIVITY_STATUS"] = config.get(
             "Discord", "ACTIVITY_STATUS", fallback="Humans"
         )
+
         # Default section
         config_data["OPENAI_API_KEY"] = config.get("Default", "OPENAI_API_KEY", fallback=None)
         config_data["OPENAI_API_URL"] = config.get(
             "Default", "OPENAI_API_URL", fallback="https://api.openai.com/v1/"
         )
+
         # Perplexity API for web search
         config_data["PERPLEXITY_API_KEY"] = config.get(
             "Default", "PERPLEXITY_API_KEY", fallback=None
@@ -216,16 +266,14 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
         config_data["SYSTEM_MESSAGE"] = config.get(
             "Default", "SYSTEM_MESSAGE", fallback="You are a helpful assistant."
         )
-        # Removed unsupported GPT-5 parameters
+
         # Limits section
         config_data["RATE_LIMIT"] = config.getint("Limits", "RATE_LIMIT", fallback=10)
         config_data["RATE_LIMIT_PER"] = config.getint("Limits", "RATE_LIMIT_PER", fallback=60)
+
         # Orchestrator section
         config_data["LOOKBACK_MESSAGES_FOR_CONSISTENCY"] = config.getint(
             "Orchestrator", "LOOKBACK_MESSAGES_FOR_CONSISTENCY", fallback=6
-        )
-        config_data["ENTITY_DETECTION_MIN_WORDS"] = config.getint(
-            "Orchestrator", "ENTITY_DETECTION_MIN_WORDS", fallback=10
         )
         config_data["MAX_HISTORY_PER_USER"] = config.getint(
             "Orchestrator", "MAX_HISTORY_PER_USER", fallback=50
@@ -233,6 +281,7 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
         config_data["USER_LOCK_CLEANUP_INTERVAL"] = config.getint(
             "Orchestrator", "USER_LOCK_CLEANUP_INTERVAL", fallback=3600
         )
+
         # Logging section
         config_data["LOG_FILE"] = config.get("Logging", "LOG_FILE", fallback="bot.log")
         if base_folder and not Path(config_data["LOG_FILE"]).is_absolute():
@@ -256,16 +305,15 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
         "OUTPUT_TOKENS": os.environ.get("OUTPUT_TOKENS"),
         "CONTEXT_WINDOW": os.environ.get("CONTEXT_WINDOW"),
         "SYSTEM_MESSAGE": os.environ.get("SYSTEM_MESSAGE"),
-        # Removed unsupported GPT-5 parameters
         "RATE_LIMIT": os.environ.get("RATE_LIMIT"),
         "RATE_LIMIT_PER": os.environ.get("RATE_LIMIT_PER"),
         "LOOKBACK_MESSAGES_FOR_CONSISTENCY": os.environ.get("LOOKBACK_MESSAGES_FOR_CONSISTENCY"),
-        "ENTITY_DETECTION_MIN_WORDS": os.environ.get("ENTITY_DETECTION_MIN_WORDS"),
         "MAX_HISTORY_PER_USER": os.environ.get("MAX_HISTORY_PER_USER"),
         "USER_LOCK_CLEANUP_INTERVAL": os.environ.get("USER_LOCK_CLEANUP_INTERVAL"),
         "LOG_FILE": os.environ.get("LOG_FILE"),
         "LOG_LEVEL": os.environ.get("LOG_LEVEL"),
     }
+
     for key, value in env_overrides.items():
         if value is not None:
             if key == "ALLOWED_CHANNELS":
@@ -277,7 +325,6 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
                 "RATE_LIMIT",
                 "RATE_LIMIT_PER",
                 "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
-                "ENTITY_DETECTION_MIN_WORDS",
                 "MAX_HISTORY_PER_USER",
                 "USER_LOCK_CLEANUP_INTERVAL",
             }:
@@ -311,21 +358,18 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
         "OUTPUT_TOKENS": 8000,
         "CONTEXT_WINDOW": 128000,
         "SYSTEM_MESSAGE": "You are a helpful assistant.",
-        # Removed unsupported GPT-5 parameters
         # Rate Limiting Configuration
         "RATE_LIMIT": 10,
         "RATE_LIMIT_PER": 60,
+        # AI Orchestrator Configuration
+        "LOOKBACK_MESSAGES_FOR_CONSISTENCY": 6,
+        "MAX_HISTORY_PER_USER": 50,  # Maximum conversation entries per user before pruning
+        "USER_LOCK_CLEANUP_INTERVAL": 3600,  # How often to clean up inactive user locks (seconds)
         # Logging Configuration
         "LOG_FILE": "bot.log",
         "LOG_LEVEL": "INFO",
-        # AI Orchestrator Configuration
-        # How many recent messages to check for AI service consistency
-        "LOOKBACK_MESSAGES_FOR_CONSISTENCY": 6,
-        # Minimum words before checking for entities in routing decisions
-        "ENTITY_DETECTION_MIN_WORDS": 10,
-        "MAX_HISTORY_PER_USER": 50,  # Maximum conversation entries per user before pruning
-        "USER_LOCK_CLEANUP_INTERVAL": 3600,  # How often to clean up inactive user locks (seconds)
     }
+
     for key, value in defaults.items():
         if key not in config_data or config_data[key] is None:
             config_data[key] = value
@@ -339,31 +383,4 @@ def get_error_messages() -> dict[str, str]:
     Returns:
         Dict[str, str]: Dictionary of error message keys to user-friendly messages.
     """
-    return {
-        "web_search_unavailable": (
-            "🔍 Web search is temporarily unavailable. Please try again in a few moments."
-        ),
-        "ai_service_unavailable": (
-            "🤖 AI service is temporarily unavailable. Please try again in a few moments."
-        ),
-        "no_response_generated": (
-            "🔧 I'm having trouble generating a response. Please try rephrasing your question."
-        ),
-        "both_services_unavailable": (
-            "🔧 All AI services are temporarily unavailable. Please try again later."
-        ),
-        "configuration_error": (
-            "⚠️ AI services are not properly configured. Please contact the administrator."
-        ),
-        "unexpected_error": (
-            "🔧 An unexpected error occurred while processing your request. Please try again."
-        ),
-        "rate_limit_exceeded": (
-            "⏱️ Rate limit exceeded! Please wait a moment before sending another message."
-        ),
-        "api_error": (
-            "🔧 There was an issue connecting to the AI service. Please try again in a moment."
-        ),
-        "message_too_long": ("📝 Your message is too long. Please break it into smaller parts."),
-        "empty_message": "❓ Please send a message for me to respond to.",
-    }
+    return ERROR_MESSAGES.copy()
