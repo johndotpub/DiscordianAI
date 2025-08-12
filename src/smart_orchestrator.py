@@ -5,72 +5,22 @@ and orchestrates the response generation with comprehensive error handling,
 logging, and thread-safe conversation management.
 """
 
-import re
+import logging
 
-from .config import get_error_messages
+from .config import (
+    COMPILED_CONVERSATIONAL_PATTERNS,
+    COMPILED_ENTITY_PATTERNS,
+    COMPILED_FACTUAL_PATTERNS,
+    COMPILED_FOLLOW_UP_PATTERNS,
+    COMPILED_TIME_SENSITIVITY_PATTERNS,
+    get_error_messages,
+)
 from .conversation_manager import ThreadSafeConversationManager
 from .openai_processing import process_openai_message
 from .perplexity_processing import process_perplexity_message
 
 # Get centralized error messages
 ERROR_MESSAGES = get_error_messages()
-
-# Compiled regex patterns for better performance (cached globally)
-_TIME_SENSITIVITY_PATTERNS = [
-    re.compile(
-        r"\b(today|yesterday|this week|this month|this year|recently|latest|current|now)\b",
-        re.IGNORECASE,
-    ),
-    re.compile(r"\b(2024|2025|2026)\b", re.IGNORECASE),  # Recent/current years
-    re.compile(r"\b(what.*happening|what.*happened)\b", re.IGNORECASE),
-    re.compile(
-        r"\b(current|recent|new|latest).*\b(news|update|information|data|report)\b", re.IGNORECASE
-    ),
-]
-
-_FACTUAL_PATTERNS = [
-    re.compile(
-        r"\b(what|who|when|where|how much|how many).*\b(is|are|was|were|will|would|cost|price)\b",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"\b(weather|temperature|forecast|stock|price|market|news|events|schedule|score|game)\b",
-        re.IGNORECASE,
-    ),
-    re.compile(r"\b(status|condition|situation|state).*of\b", re.IGNORECASE),
-    re.compile(r"\bhow.*doing\b", re.IGNORECASE),
-    re.compile(r"\b(better|worse|faster|slower|higher|lower|more|less).*than\b", re.IGNORECASE),
-]
-
-_CONVERSATIONAL_PATTERNS = [
-    re.compile(
-        r"\b(hello|hi|hey|good morning|good evening|how are you|what\'s up)\b", re.IGNORECASE
-    ),
-    re.compile(r"\b(what do you think|your opinion|do you like|do you prefer)\b", re.IGNORECASE),
-    re.compile(
-        r"\b(write|create|make|generate|tell me).*\b(story|poem|joke|song|script)\b", re.IGNORECASE
-    ),
-    re.compile(
-        r"\b(how to|help me|explain|teach|show me).*\b(code|program|function|algorithm)\b",
-        re.IGNORECASE,
-    ),
-    re.compile(r"\b(meaning|purpose|philosophy|theory|concept|idea)\b", re.IGNORECASE),
-]
-
-_ENTITY_PATTERNS = [
-    re.compile(r"\b[A-Z][a-z]+\s+[A-Z][a-z]+\b"),  # Proper names
-    re.compile(r"\b[A-Z]{2,}\b"),  # Acronyms/companies
-    re.compile(r"\$[A-Z]+\b"),  # Stock symbols
-]
-
-_FOLLOW_UP_PATTERNS = [
-    re.compile(
-        r"\b(continue|more|follow.?up|also|additionally|furthermore|moreover)\b", re.IGNORECASE
-    ),
-    re.compile(r"\b(what about|how about|tell me more)\b", re.IGNORECASE),
-    re.compile(r"\b(and|but|however|though|although)\b.*\?", re.IGNORECASE),
-    re.compile(r"^(yes|no|ok|okay),", re.IGNORECASE),  # Responses that continue conversation
-]
 
 
 def has_time_sensitivity(message: str) -> bool:
@@ -93,7 +43,7 @@ def has_time_sensitivity(message: str) -> bool:
         False
     """
     # Use pre-compiled patterns for better performance
-    return any(pattern.search(message) for pattern in _TIME_SENSITIVITY_PATTERNS)
+    return any(pattern.search(message) for pattern in COMPILED_TIME_SENSITIVITY_PATTERNS)
 
 
 def is_factual_query(message: str) -> bool:
@@ -115,7 +65,7 @@ def is_factual_query(message: str) -> bool:
         False
     """
     # Use pre-compiled patterns for better performance
-    return any(pattern.search(message) for pattern in _FACTUAL_PATTERNS)
+    return any(pattern.search(message) for pattern in COMPILED_FACTUAL_PATTERNS)
 
 
 def is_conversational_or_creative(message: str) -> bool:
@@ -140,7 +90,7 @@ def is_conversational_or_creative(message: str) -> bool:
         False
     """
     # Use pre-compiled patterns for better performance
-    return any(pattern.search(message) for pattern in _CONVERSATIONAL_PATTERNS)
+    return any(pattern.search(message) for pattern in COMPILED_CONVERSATIONAL_PATTERNS)
 
 
 def should_use_web_search(
@@ -176,15 +126,23 @@ def should_use_web_search(
         6. Default -> False (use ChatGPT)
     """
     # Debug logging to understand routing decisions
-    import logging
     logger = logging.getLogger("discordianai.smart_orchestrator")
     logger.debug(f"Analyzing message for web search routing: {message[:100]}...")
-    
+
     # Check conversation context for ongoing topics to maintain consistency
     if conversation_manager and user_id:
         # Check for follow-up indicators using pre-compiled patterns
-        has_follow_up = any(pattern.search(message) for pattern in _FOLLOW_UP_PATTERNS)
+        follow_up_matches = []
+        for i, pattern in enumerate(COMPILED_FOLLOW_UP_PATTERNS):
+            match = pattern.search(message)
+            if match:
+                follow_up_matches.append(f"Pattern {i}: '{pattern.pattern}' -> '{match.group()}'")
+
+        has_follow_up = len(follow_up_matches) > 0
         logger.debug(f"Follow-up detection: {has_follow_up}")
+        if follow_up_matches:
+            for match in follow_up_matches:
+                logger.debug(f"  {match}")
 
         if has_follow_up:
             # Use metadata-based service detection instead of fragile heuristics
@@ -225,7 +183,7 @@ def should_use_web_search(
     word_count = len(message.split())
     logger.debug(f"Message word count: {word_count} (threshold: {entity_detection_min_words})")
     if word_count > entity_detection_min_words:
-        has_entities = any(pattern.search(message) for pattern in _ENTITY_PATTERNS)
+        has_entities = any(pattern.search(message) for pattern in COMPILED_ENTITY_PATTERNS)
         logger.debug(f"Entity detection: {has_entities}")
         if has_entities:
             logger.debug("Message has entities and is long - routing to Perplexity")
@@ -374,7 +332,7 @@ async def _process_hybrid_mode(
         lookback_messages=lookback_messages,
         entity_detection_min_words=entity_min_words,
     )
-    
+
     logger.info(f"Smart routing decision: needs_web_search = {needs_web}")
 
     # Try Perplexity first if web search is beneficial

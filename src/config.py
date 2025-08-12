@@ -57,37 +57,59 @@ DISCORD_MAX_MESSAGE_LENGTH = 2000
 DISCORD_MAX_EMBED_DESCRIPTION = 4096
 DISCORD_MAX_RECURSION_DEPTH = 10
 
-# Time-sensitive query patterns for caching decisions
+# Time-sensitive query patterns for web search routing
 TIME_SENSITIVITY_PATTERNS = [
-    r"\b(current|now|today|yesterday|tomorrow|this\s+(morning|afternoon|evening)|tonight)\b",
-    r"\b(latest|recent|breaking|live|real\s*time)\b",
-    r"\b(what\s+time|what\s+date|when\s+is)\b",
-    r"\b(stock\s+(price|market)|crypto\s+price)\b",
+    r"\b(today|yesterday|this week|this month|this year|recently|latest|current|now)\b",
+    r"\b(2024|2025|2026)\b",  # Recent/current years
+    r"\b(what.*happening|what.*happened)\b",
+    r"\b(current|recent|new|latest).*\b(news|update|information|data|report)\b",
 ]
 
-# Factual query patterns for routing decisions
+# Factual query patterns for web search routing
 FACTUAL_PATTERNS = [
-    r"\b(what\s+is|define|explain|describe)\b",
-    r"\b(how\s+(do|does|to|can|much|many))\b",
-    r"\b(where\s+(is|are|can|do))\b",
-    r"\b(when\s+(is|are|was|were|did))\b",
-    r"\b(who\s+(is|are|was|were))\b",
-    r"\b(which\s+(is|are))\b",
+    r"\b(what|who|when|where|how much|how many).*\b(is|are|was|were|will|would|cost|price)\b",
+    r"\b(weather|temperature|forecast|stock|price|market|news|events|schedule|score|game)\b",
+    r"\b(status|condition|situation|state).*of\b",
+    r"\bhow.*doing\b",
+    r"\b(better|worse|faster|slower|higher|lower|more|less).*than\b",
 ]
 
-# Conversational query patterns
+# Conversational/creative patterns for OpenAI routing
 CONVERSATIONAL_PATTERNS = [
-    r"\b(tell\s+me\s+about|talk\s+about)\b",
-    r"\b(i\s+(think|feel|believe|wonder))\b",
-    r"\b(what\s+do\s+you\s+(think|feel|recommend))\b",
-    r"\b(can\s+you\s+(help|write|create|make))\b",
+    r"\b(hello|hi|hey|good morning|good evening|how are you|what's up)\b",
+    r"\b(what do you think|your opinion|do you like|do you prefer)\b",
+    r"\b(write|create|make|generate|tell me).*\b(story|poem|joke|song|script)\b",
+    r"\b(how to|help me|explain|teach|show me).*\b(code|program|function|algorithm)\b",
+    r"\b(meaning|purpose|philosophy|theory|concept|idea)\b",
 ]
 
 # Entity detection patterns for web search routing
 ENTITY_PATTERNS = [
     r"\b[A-Z][a-z]+\s+[A-Z][a-z]+\b",  # Proper names
-    r"\b\d{4}\b",  # Years
-    r"\$[0-9,]+(?:\.[0-9]{2})?\b",  # Dollar amounts
+    r"\b[A-Z]{2,}\b",  # Acronyms/companies
+    r"\$[A-Z]+\b",  # Stock symbols
+]
+
+# Follow-up detection patterns for conversation consistency
+FOLLOW_UP_PATTERNS = [
+    r"\b(continue|more|follow.?up|also|additionally|furthermore|moreover)\b",
+    r"\b(what about|how about|tell me more)\b",
+    r"^(yes|no|ok|okay),",  # Responses that continue conversation
+    # More specific: "and what about...", "but how..."
+    r"\b(and|but|however|though|although)\b\s+\w+\s*\?",
+]
+
+# Compile patterns for performance (used by smart orchestrator)
+COMPILED_TIME_SENSITIVITY_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE) for pattern in TIME_SENSITIVITY_PATTERNS
+]
+COMPILED_FACTUAL_PATTERNS = [re.compile(pattern, re.IGNORECASE) for pattern in FACTUAL_PATTERNS]
+COMPILED_CONVERSATIONAL_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE) for pattern in CONVERSATIONAL_PATTERNS
+]
+COMPILED_ENTITY_PATTERNS = [re.compile(pattern) for pattern in ENTITY_PATTERNS]
+COMPILED_FOLLOW_UP_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE) for pattern in FOLLOW_UP_PATTERNS
 ]
 
 # Regex patterns for message processing (compiled for performance)
