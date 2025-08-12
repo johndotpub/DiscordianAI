@@ -111,6 +111,11 @@ select = [
     # ... and many more
 ]
 
+# AI-friendly rules - allows multiple return statements for readable routing logic
+ignore = [
+    "PLR0911", # Too many return statements (common in AI routing logic)
+]
+
 [tool.ruff.lint.isort]
 combine-as-imports = true
 force-sort-within-sections = true
@@ -184,3 +189,18 @@ line-length = 99
 - **Better performance** - Rust-based tooling
 - **Simplified CI** - fewer steps, faster builds
 - **Modern standards** - follows current Python best practices
+- **AI-friendly** - configured for readable routing logic with multiple returns
+- **Centralized config** - all patterns and constants in one place
+
+## Recent Improvements
+
+### Configuration Consolidation
+- **Single Source of Truth**: All regex patterns, constants, and settings now centralized in `/src/config.py`
+- **Eliminated Duplication**: Removed hardcoded patterns from individual modules
+- **Improved Maintainability**: Changes to patterns only need to be made in one place
+- **Better Testing**: Centralized configuration makes testing more reliable
+
+### Enhanced AI Routing
+- **Improved Time-Sensitivity Detection**: Better recognition of queries needing current information
+- **Optimized Entity Detection**: More efficient routing without unnecessary word count thresholds
+- **Readable Logic**: Restored clear, readable routing logic with early returns

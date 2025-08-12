@@ -22,7 +22,7 @@ DiscordianAI is an **advanced Discord bot** with sophisticated AI orchestration,
 - **Configurable Intelligence**: Fine-tune routing behavior with advanced configuration options
 
 ### 🔗 **Enhanced Discord Integration** 
-- **Clickable Citations**: Converts numbered citations [1], [2] to clickable Discord hyperlinks
+- **Clickable Citations**: Converts numbered citations [1], [2] to clickable Discord hyperlinks while preserving the number format
 - **Smart Embed Suppression**: Prevents link preview clutter with multiple citations
 - **Message Splitting**: Intelligently splits long responses while preserving formatting
 - **Thread-Safe Operations**: Handles concurrent users safely without data corruption
@@ -32,6 +32,7 @@ DiscordianAI is an **advanced Discord bot** with sophisticated AI orchestration,
 - **Memory Management**: Automatic cleanup of inactive user data to prevent memory leaks
 - **Error Recovery**: Comprehensive error handling with graceful fallbacks
 - **Performance Optimization**: Pre-compiled regex patterns and optimized data structures
+- **Centralized Configuration**: Single source of truth for all patterns and settings
 
 ## Requirements
 
@@ -234,46 +235,64 @@ pip install -e .[dev]
 ### Run Tests
 
 ```bash
+# Run all tests
 pytest
+
+# Run with coverage
+pytest --cov=src --cov-report=term-missing
+
+# Run specific test file
+pytest tests/test_smart_orchestrator.py
 ```
 
 ### Linting & Formatting
 
 **Modern Approach (Recommended):**
 ```bash
+# Format code
 black .
+
+# Lint and auto-fix
 ruff check --fix .
+
+# Run tests
 pytest -q
 ```
 
-**Legacy Approach (Not Recommended):**
+**Full Quality Check:**
 ```bash
-black .
-isort .
-ruff check .
-pytest -q
-```
-
-### Full Workflow
-
-To run all checks and tests:
-
-```bash
+# Check formatting
 black --check .
+
+# Check linting
 ruff check .
+
+# Run tests
 pytest -q
 ```
 
-To auto-fix formatting and linting:
+### Using Tox (CI/CD)
 
 ```bash
-black .
-ruff check --fix .
+# Run all environments
+tox
+
+# Run specific environment
+tox -e py310
+tox -e lint
+tox -e test
+
+# Run in parallel for faster execution
+tox --parallel auto
 ```
 
 ### Continuous Integration
 
-All pushes and pull requests are automatically checked with black, ruff, and pytest via GitHub Actions.
+All pushes and pull requests are automatically checked with:
+- **Black** for code formatting
+- **Ruff** for comprehensive linting and import sorting
+- **Pytest** for testing with coverage reporting
+- **GitHub Actions** for automated CI/CD
 
 # Daemon Control Script
 

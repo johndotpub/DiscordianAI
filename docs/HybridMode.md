@@ -74,7 +74,7 @@ The bot uses advanced semantic analysis to automatically determine when web sear
 
 ### Proper Hyperlinks
 - Converts numbered citations [1], [2] into clickable Discord hyperlinks
-- Format: `[domain.com](https://full-url)` for clean appearance
+- Format: `[1](https://full-url)` - preserves the citation number for readability
 - No more unclickable numbers in brackets!
 
 ### Smart Embed Suppression
@@ -121,8 +121,8 @@ Fine-tune the AI service selection behavior with these advanced configuration op
 # How many recent messages to check for AI service consistency
 LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 
-# Minimum words before checking for entities in routing decisions
-ENTITY_DETECTION_MIN_WORDS=10
+# Maximum conversation entries per user before pruning
+MAX_HISTORY_PER_USER=50
 
 # Maximum conversation entries per user before pruning
 MAX_HISTORY_PER_USER=50
@@ -136,13 +136,11 @@ USER_LOCK_CLEANUP_INTERVAL=3600
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | 6 | How many recent messages to check when determining AI service consistency for follow-ups |
-| `ENTITY_DETECTION_MIN_WORDS` | 10 | Minimum words in a message before checking for proper nouns/entities (performance optimization) |
 | `MAX_HISTORY_PER_USER` | 50 | Maximum conversation entries stored per user (older entries are automatically pruned) |
 | `USER_LOCK_CLEANUP_INTERVAL` | 3600 | How often to clean up memory from inactive users (in seconds) |
 
 ### Performance Impact
 - **Higher `LOOKBACK_MESSAGES_FOR_CONSISTENCY`**: More accurate consistency but slightly more processing
-- **Lower `ENTITY_DETECTION_MIN_WORDS`**: More sensitive entity detection but more CPU usage  
 - **Higher `MAX_HISTORY_PER_USER`**: Better long-term context but more memory usage
 - **Lower `USER_LOCK_CLEANUP_INTERVAL`**: More frequent memory cleanup but slight CPU overhead
 

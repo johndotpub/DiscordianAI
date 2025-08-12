@@ -76,7 +76,7 @@ The bot automatically uses Perplexity for:
 
 ## Citation Format
 
-Perplexity responses include properly formatted citations:
+Perplexity responses include properly formatted citations that are automatically converted to clickable Discord hyperlinks:
 
 ```
 The latest developments in AI research show significant progress [1]. 
@@ -86,6 +86,12 @@ Companies are investing heavily in machine learning capabilities [2].
 [1] https://example.com/ai-research-2024
 [2] https://example.com/ml-investments
 ```
+
+### Discord Integration
+- **Clickable Citations**: Numbers like [1], [2] become clickable hyperlinks
+- **Preserved Format**: Citation numbers remain visible for readability
+- **Smart Embed Suppression**: Prevents link preview clutter with multiple citations
+- **Clean Appearance**: Maintains clean, readable message format
 
 ## Configuration Examples
 

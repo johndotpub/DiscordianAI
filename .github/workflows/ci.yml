@@ -52,8 +52,14 @@ jobs:
         # Run all environments in parallel for maximum performance
         tox --parallel auto -e py310,lint,test
         
+    - name: Generate coverage XML
+      run: |
+        # Ensure coverage XML is generated for Codecov
+        coverage xml -o coverage.xml
+        
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
-        file: .tox/py310/.tox/py310/coverage.xml
-        fail_ci_if_error: true
+        file: coverage.xml
+        fail_ci_if_error: false
+        verbose: true

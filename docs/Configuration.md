@@ -47,7 +47,7 @@ Prevents spam and manages API costs.
 Advanced configuration for intelligent AI service routing.
 
 - **`LOOKBACK_MESSAGES_FOR_CONSISTENCY`**: Messages to check for follow-up consistency *(default: 6)*
-- **`ENTITY_DETECTION_MIN_WORDS`**: Minimum words before entity detection *(default: 10)*  
+  
 - **`MAX_HISTORY_PER_USER`**: Maximum conversation history per user *(default: 50)*
 - **`USER_LOCK_CLEANUP_INTERVAL`**: Memory cleanup interval in seconds *(default: 3600)*
 
