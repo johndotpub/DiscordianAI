@@ -1,5 +1,7 @@
 # Comprehensive testing with Python 3.10 (only supported version)
 name: CI
+permissions:
+  contents: read
 
 on:
   push:
