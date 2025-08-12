@@ -52,11 +52,6 @@ jobs:
         # Run all environments in parallel for maximum performance
         tox --parallel auto -e py310,lint,test
         
-    - name: Generate coverage XML
-      run: |
-        # Ensure coverage XML is generated for Codecov
-        coverage xml -o coverage.xml
-        
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
