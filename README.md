@@ -1,16 +1,52 @@
-[![Flake8 and Pytest](https://github.com/johndotpub/DiscordianAI/actions/workflows/flake8-pytest.yml/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/flake8-pytest.yml) [![CodeQL](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql) [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](http://unlicense.org/)
+[![Code Quality & Testing](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml) [![CodeQL](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql) [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](http://unlicense.org/)
 
 # Description
 
-This is a Python script for a Discord bot that uses either OpenAI's GPT API, or any compatible API such as Perplexity to generate responses to user messages. The bot can be configured to listen to specific channels and respond to direct messages. The bot also has a rate limit to prevent spamming and can maintain a per user conversational history to improve response quality which is only limited by the `GPT_TOKENS` value.
+DiscordianAI is an **advanced Discord bot** with sophisticated AI orchestration, conversation consistency, and production-grade thread-safe architecture. It intelligently uses multiple AI services to provide the best responses with **three operation modes**:
 
-# Requirements
+1. **🧠 Smart Hybrid Mode** - Automatically chooses between OpenAI's GPT models and Perplexity's web search with conversation consistency
+2. **🤖 OpenAI Only** - Uses OpenAI for all responses  
+3. **🔍 Perplexity Only** - Uses web search for all responses with proper citations
 
-- Bash
-- Python 3.12 or Higher
-- Python Modules
-  - discord.py
-  - openai
+## ✨ Advanced Features
+
+### 🔄 **AI Service Consistency System**
+- **Follow-up Detection**: Automatically detects when users ask follow-up questions
+- **Context Preservation**: Routes follow-ups to the same AI service for conversational continuity  
+- **Metadata Tracking**: Stores AI service information with each response for intelligent routing
+
+### 🎯 **Smart AI Orchestration**
+- **Semantic Analysis**: Advanced pattern matching to determine optimal AI service
+- **Entity Detection**: Recognizes proper nouns, companies, and specific topics for routing
+- **Time Sensitivity**: Automatically detects time-sensitive queries for web search
+- **Configurable Intelligence**: Fine-tune routing behavior with advanced configuration options
+
+### 🔗 **Enhanced Discord Integration** 
+- **Clickable Citations**: Converts numbered citations [1], [2] to clickable Discord hyperlinks while preserving the number format
+- **Smart Embed Suppression**: Prevents link preview clutter with multiple citations
+- **Message Splitting**: Intelligently splits long responses while preserving formatting
+- **Thread-Safe Operations**: Handles concurrent users safely without data corruption
+
+### 🛡️ **Production-Grade Architecture**
+- **Thread Safety**: Per-user locking prevents race conditions in concurrent scenarios
+- **Memory Management**: Automatic cleanup of inactive user data to prevent memory leaks
+- **Error Recovery**: Comprehensive error handling with graceful fallbacks
+- **Performance Optimization**: Pre-compiled regex patterns and optimized data structures
+- **Centralized Configuration**: Single source of truth for all patterns and settings
+
+## Requirements
+
+- **Python**: 3.10
+- **Discord Bot Token**: From [Discord Developer Portal](https://discord.com/developers/applications)
+- **OpenAI API Key**: From [OpenAI Platform](https://platform.openai.com/api-keys) (optional)
+- **Perplexity API Key**: From [Perplexity AI](https://www.perplexity.ai/settings/api) (optional)
+
+## API Keys (Choose Your Mode)
+
+- **OpenAI API Key**: Get from [OpenAI Platform](https://platform.openai.com/api-keys)
+- **Perplexity API Key** (for web search): Get from [Perplexity](https://www.perplexity.ai/settings/api)
+
+*You can use one or both keys depending on your preferred operation mode*
 
 ### Features
 
@@ -36,62 +72,113 @@ This is a Python script for a Discord bot that uses either OpenAI's GPT API, or 
 
 # Configuration
 
-The `config.ini` file contains the following configuration sections:
+The `config.ini` file supports all three operation modes with comprehensive configuration options:
 
-### Discord
+## Operation Modes
 
-- `DISCORD_TOKEN`: The Discord bot token.
-- `ALLOWED_CHANNELS`: A comma-separated list of channel names that the bot is allowed to listen to.
-- `BOT_PRESENCE`: The presence of the bot (e.g. online, offline, idle).
-- `ACTIVITY_TYPE`: The type of activity for the bot (e.g. playing, streaming, listening, watching, custom, competing).
-- `ACTIVITY_STATUS`: The activity status of the bot (e.g. Humans).
+### 🧠 Smart Hybrid Mode (Recommended)
+The bot automatically analyzes each message and chooses the best AI service:
+- **Time-sensitive questions** → Perplexity (web search)
+- **Creative/coding requests** → OpenAI  
+- **Factual queries** → Perplexity
+- **Conversations** → OpenAI
 
-### Default Configs
+```ini
+OPENAI_API_KEY=your_openai_key_here
+PERPLEXITY_API_KEY=your_perplexity_key_here
+```
 
-- `API_URL`: The backend API URL. (default: `https://api.openai.com/v1/`)
-- `API_KEY`: The API key for your backend. (default: `None`)
-- `GPT_MODEL`: The GPT model to use (default: `gpt-4o-mini`)
-- `INPUT_TOKENS`: Your response input size. (default: `120000`)
-- `OUTPUT_TOKENS`: The maximum number of tokens to generate in the GPT response (default: `8000`)
-- `CONTEXT_WINDOW`: The maximum number of tokens to keep in the context window. (default: `128000`)
-- `SYSTEM_MESSAGE`: The message to send to the GPT model before the user's message.
+### 🤖 OpenAI Only Mode
+Uses OpenAI for all responses:
+```ini
+OPENAI_API_KEY=your_openai_key_here
+PERPLEXITY_API_KEY=
+```
 
-### Limits
+### 🔍 Perplexity Only Mode  
+Uses web search for all responses with citations:
+```ini
+OPENAI_API_KEY=
+PERPLEXITY_API_KEY=your_perplexity_key_here
+```
 
-- `RATE_LIMIT`: The number of messages a user can send within `RATE_LIMIT_PER` seconds (default: `2`).
-- `RATE_LIMIT_PER`: The time period in seconds for the rate limit (default: `10`).
+## Configuration Sections
 
-### Logging
+### Discord Settings
+- `DISCORD_TOKEN`: Your Discord bot token
+- `ALLOWED_CHANNELS`: Comma-separated channel names where bot responds
+- `BOT_PRESENCE`: Bot status (online, idle, dnd, invisible)
+- `ACTIVITY_TYPE`: Activity type (playing, streaming, listening, watching, competing)
+- `ACTIVITY_STATUS`: Custom activity message
 
-- `LOG_FILE`: The path to the log file (default: bot.log).
+### AI Configuration
+- `OPENAI_API_KEY`: OpenAI API key for GPT models (leave blank to disable)
+- `OPENAI_API_URL`: OpenAI API endpoint (default: https://api.openai.com/v1/)
+- `GPT_MODEL`: OpenAI model (gpt-5-mini, gpt-5, gpt-5-nano, gpt-5-chat)
+- `PERPLEXITY_API_KEY`: Perplexity API key for web search (leave blank to disable)
+- `PERPLEXITY_API_URL`: Perplexity API endpoint (default: https://api.perplexity.ai)
+- `PERPLEXITY_MODEL`: Perplexity model (sonar-pro, sonar)
 
-Here is an example `config.ini` file:
+### Token & Rate Limits
+- `INPUT_TOKENS`: Maximum input context size (default: 120000)
+- `OUTPUT_TOKENS`: Maximum response tokens (default: 8000)
+- `CONTEXT_WINDOW`: Context window size (default: 128000)
+- `RATE_LIMIT`: Messages per time period (default: 10)  
+- `RATE_LIMIT_PER`: Time period in seconds (default: 60)
+
+### System & Logging
+- `SYSTEM_MESSAGE`: AI personality/instructions
+- `LOG_FILE`: Log file path (default: bot.log)
+- `LOG_LEVEL`: Logging verbosity (INFO, DEBUG, etc.)
+
+## Smart Detection Examples
+
+The bot automatically knows what to do - no manual commands needed!
+
+**Automatically uses web search for:**
+- "What's happening in AI today?" ← Time-sensitive
+- "How's Tesla stock doing?" ← Financial data
+- "Tell me about the recent SpaceX launch" ← Current events
+- "What's the weather like in Tokyo?" ← Current information
+
+**Automatically uses OpenAI for:**
+- "Write me a poem about robots" ← Creative
+- "How do I fix this Python error?" ← Technical  
+- "What do you think about philosophy?" ← Conversational
+- "Hello! How are you?" ← Greeting
+
+Here is the unified `config.ini` example:
 
 ```ini
 [Discord]
-DISCORD_TOKEN = <your_discord_bot_token>
-ALLOWED_CHANNELS = <allowed_channel_id_1>, <allowed_channel_id_2>, ...
-BOT_PRESENCE = online
-# ACTIVITY_TYPE Options
-# playing, streaming, listening, watching, custom, competing
-ACTIVITY_TYPE=listening
-ACTIVITY_STATUS=Humans
+DISCORD_TOKEN=your_discord_bot_token_here
+ALLOWED_CHANNELS=general,bot-testing
+BOT_PRESENCE=online
+ACTIVITY_TYPE=watching
+ACTIVITY_STATUS=you bite my shiny metal ass!
 
 [Default]
-API_URL=https://api.openai.com/v1/
-API_KEY = <your_api_key>
+# Both APIs for smart hybrid mode
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_API_URL=https://api.openai.com/v1/
 GPT_MODEL=gpt-4o-mini
+PERPLEXITY_API_KEY=your_perplexity_api_key_here
+PERPLEXITY_MODEL=sonar-pro
+
 INPUT_TOKENS=120000
 OUTPUT_TOKENS=8000
 CONTEXT_WINDOW=128000
-SYSTEM_MESSAGE = You are a helpful AI assistant.
+SYSTEM_MESSAGE=You are Bender from Futurama. You automatically know when to search for current information.
+
+#
 
 [Limits]
-RATE_LIMIT = 2
-RATE_LIMIT_PER = 10
+RATE_LIMIT=10
+RATE_LIMIT_PER=60
 
 [Logging]
-LOG_FILE = bot.log
+LOG_FILE=bot.log
+LOG_LEVEL=INFO
 ```
 
 # Discord Bot Setup
@@ -129,11 +216,13 @@ Daemon/background mode is handled by the `discordian.sh` shell script, which sup
 
 For more in-depth information about the DiscordianAI project, please refer to the following documentation files in the `docs/` directory:
 
-- [Configuration](./docs/Configuration.md) : Detailed instructions on how to configure the Discord bot and OpenAI GPT API settings.
-- [Daemon](./docs/Daemon.md) : Information on how to run the Discord bot as a daemon.
-- [Docker](./docs/Docker.md) : Instructions on how to containerize the Discord bot using Docker.
-- [OpenAI](./docs/OpenAI.md) : Information on how the Discord bot uses the OpenAI GPT API to generate responses.
-- [Setup](./docs/Setup.md) : Step-by-step guide on how to set up and run the Discord bot.
+- **[Smart AI Mode](./docs/HybridMode.md)** : Complete guide to intelligent multi-AI operation with smart detection
+- **[Development](./docs/Development.md)** : Modern development workflow using streamlined linting tools
+- [Configuration](./docs/Configuration.md) : Detailed instructions on how to configure the Discord bot and AI API settings  
+- [Daemon](./docs/Daemon.md) : Information on how to run the Discord bot as a daemon
+- [Docker](./docs/Docker.md) : Instructions on how to containerize the Discord bot using Docker
+- [OpenAI](./docs/OpenAI.md) : Information on how the Discord bot uses the OpenAI GPT API to generate responses
+- [Setup](./docs/Setup.md) : Step-by-step guide on how to set up and run the Discord bot
 
 ## Development & Testing
 
@@ -146,50 +235,64 @@ pip install -e .[dev]
 ### Run Tests
 
 ```bash
+# Run all tests
 pytest
+
+# Run with coverage
+pytest --cov=src --cov-report=term-missing
+
+# Run specific test file
+pytest tests/test_smart_orchestrator.py
 ```
 
 ### Linting & Formatting
 
-- **flake8:**
-  ```bash
-  flake8 .
-  ```
-- **black (check only):**
-  ```bash
-  black --check .
-  ```
-- **isort (check only):**
-  ```bash
-  isort --check .
-  ```
-- **autopep8 (auto-fix):**
-  ```bash
-  autopep8 -r . --in-place
-  ```
-
-### Full Workflow
-
-To run all checks and tests:
-
+**Modern Approach (Recommended):**
 ```bash
-flake8 .
-black --check .
-isort --check .
-pytest
+# Format code
+black .
+
+# Lint and auto-fix
+ruff check --fix .
+
+# Run tests
+pytest -q
 ```
 
-To auto-fix formatting:
+**Full Quality Check:**
+```bash
+# Check formatting
+black --check .
+
+# Check linting
+ruff check .
+
+# Run tests
+pytest -q
+```
+
+### Using Tox (CI/CD)
 
 ```bash
-black .
-isort .
-autopep8 -r . --in-place
+# Run all environments
+tox
+
+# Run specific environment
+tox -e py310
+tox -e lint
+tox -e test
+
+# Run in parallel for faster execution
+tox --parallel auto
 ```
 
 ### Continuous Integration
 
-All pushes and pull requests are automatically checked with flake8 and pytest via GitHub Actions.
+All pushes and pull requests are automatically checked with:
+- **Black** for code formatting
+- **Ruff** for comprehensive linting and import sorting
+- **Pytest** for testing with coverage reporting
+- **GitHub Actions** for automated CI/CD
 
 # Daemon Control Script
 

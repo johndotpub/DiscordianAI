@@ -1,224 +1,492 @@
-from unittest.mock import MagicMock
+"""Unified tests for src/openai_processing.py.
+
+Consolidates coverage and edge-case tests into a single module to avoid
+fragmentation and improve maintainability.
+"""
+
+import logging
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.openai_processing import process_input_message
+from src.conversation_manager import ThreadSafeConversationManager
+from src.openai_processing import process_openai_message
 
 
-@pytest.mark.asyncio
-async def test_process_input_message_normal():
-    mock_user = MagicMock()
-    mock_user.id = 1
-    conversation_history = {}
-    conversation_summary = []
-    logger = MagicMock()
+class TestProcessOpenAIMessageBasic:
+    @pytest.mark.asyncio
+    async def test_success(self):
+        user = MagicMock()
+        user.id = 12345
 
-    class FakeMessage:
-        def __init__(self, content):
-            self.content = content
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
 
-    class FakeChoice:
-        def __init__(self, content):
-            self.message = FakeMessage(content)
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Test response from OpenAI"
+        mock_response.choices[0].finish_reason = "stop"
+        mock_response.id = "test-response-id"
+        mock_response.usage = MagicMock()
+        mock_response.usage.prompt_tokens = 50
+        mock_response.usage.completion_tokens = 20
+        mock_response.usage.total_tokens = 70
 
-    class FakeResponse:
-        def __init__(self, content):
-            self.choices = [FakeChoice(content)]
+        openai_client = MagicMock()
+        openai_client.chat.completions.create.return_value = mock_response
 
-    class FakeOpenAIClient:
-        class Chat:
-            class Completions:
-                @staticmethod
-                def create(*args, **kwargs):
-                    return FakeResponse("Test response")
+        with patch("asyncio.to_thread") as mock_to_thread:
+            mock_to_thread.return_value = mock_response
 
-            completions = Completions()
+            result = await process_openai_message(
+                message="Hello OpenAI",
+                user=user,
+                conversation_summary=[],
+                conversation_manager=conversation_manager,
+                logger=logging.getLogger("test"),
+                openai_client=openai_client,
+                gpt_model="gpt-5-mini",
+                system_message="You are a helpful assistant",
+                output_tokens=1000,
+            )
 
-        chat = Chat()
+            assert result == "Test response from OpenAI"
+            conversation_manager.add_message.assert_any_call(12345, "user", "Hello OpenAI")
+            conversation_manager.add_message.assert_any_call(
+                12345,
+                "assistant",
+                "Test response from OpenAI",
+                metadata={"ai_service": "openai", "model": "gpt-5-mini"},
+            )
 
-    response = await process_input_message(
-        "Hello!",
-        mock_user,
-        conversation_summary,
-        conversation_history,
-        logger,
-        FakeOpenAIClient(),
-        "gpt-4o-mini",
-        "You are a helpful assistant.",
-        8000,
-    )
-    assert response == "Test response"
-    assert conversation_history[mock_user.id][-1]["role"] == "assistant"
-    assert conversation_history[mock_user.id][-1]["content"] == "Test response"
+    @pytest.mark.asyncio
+    async def test_basic_gpt5_processing(self):
+        user = MagicMock()
+        user.id = 12345
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Response"
+        mock_response.id = "test-id"
+
+        openai_client = MagicMock()
+        logger = logging.getLogger("test")
+
+        with patch("src.openai_processing.logging.Logger.warning"):
+            with patch("asyncio.to_thread") as mock_to_thread:
+                mock_to_thread.return_value = mock_response
+
+                result = await process_openai_message(
+                    message="Test",
+                    user=user,
+                    conversation_summary=[],
+                    conversation_manager=conversation_manager,
+                    logger=logger,
+                    openai_client=openai_client,
+                    gpt_model="gpt-5",
+                    system_message="Test",
+                    output_tokens=1000,
+                )
+                assert result == "Response"
+
+    @pytest.mark.asyncio
+    async def test_empty_response(self):
+        user = MagicMock()
+        user.id = 12345
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = ""
+
+        openai_client = MagicMock()
+        logger = logging.getLogger("test")
+
+        with patch("asyncio.to_thread") as mock_to_thread:
+            mock_to_thread.return_value = mock_response
+            result = await process_openai_message(
+                message="Test",
+                user=user,
+                conversation_summary=[],
+                conversation_manager=conversation_manager,
+                logger=logger,
+                openai_client=openai_client,
+                gpt_model="gpt-4",
+                system_message="Test",
+                output_tokens=1000,
+            )
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_no_choices(self):
+        from src.caching import conversation_cache, response_cache
+
+        conversation_cache.clear()
+        response_cache.cache.clear()
+
+        user = MagicMock()
+        user.id = 12345
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
+
+        mock_response = MagicMock()
+        mock_response.choices = []
+        openai_client = MagicMock()
+        logger = MagicMock()
+
+        with patch("asyncio.to_thread") as mock_to_thread:
+            mock_to_thread.return_value = mock_response
+            result = await process_openai_message(
+                message="Test",
+                user=user,
+                conversation_summary=[],
+                conversation_manager=conversation_manager,
+                logger=logger,
+                openai_client=openai_client,
+                gpt_model="gpt-4",
+                system_message="Test",
+                output_tokens=1000,
+            )
+            assert result is None
+            logger.error.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_timeout(self):
+        from src.caching import conversation_cache, response_cache
+
+        conversation_cache.clear()
+        response_cache.cache.clear()
+
+        user = MagicMock()
+        user.id = 12345
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
+        openai_client = MagicMock()
+        logger = MagicMock()
+
+        with patch("asyncio.to_thread", side_effect=TimeoutError("Timeout")):
+            result = await process_openai_message(
+                message="Test",
+                user=user,
+                conversation_summary=[],
+                conversation_manager=conversation_manager,
+                logger=logger,
+                openai_client=openai_client,
+                gpt_model="gpt-4",
+                system_message="Test",
+                output_tokens=1000,
+            )
+            assert result is None
+            logger.exception.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_generic_exception(self):
+        from src.caching import conversation_cache, response_cache
+
+        conversation_cache.clear()
+        response_cache.cache.clear()
+
+        user = MagicMock()
+        user.id = 12345
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
+        openai_client = MagicMock()
+        logger = MagicMock()
+
+        with patch("asyncio.to_thread", side_effect=Exception("Generic error")):
+            result = await process_openai_message(
+                message="Test",
+                user=user,
+                conversation_summary=[],
+                conversation_manager=conversation_manager,
+                logger=logger,
+                openai_client=openai_client,
+                gpt_model="gpt-4",
+                system_message="Test",
+                output_tokens=1000,
+            )
+            assert result is None
+            logger.exception.assert_called()
+            conversation_manager.add_message.assert_not_called()
 
 
-@pytest.mark.asyncio
-async def test_process_input_message_no_response():
-    mock_user = MagicMock()
-    mock_user.id = 2
-    conversation_history = {}
-    conversation_summary = []
-    logger = MagicMock()
+class TestProcessOpenAIMessageAdditionalCoverage:
+    @pytest.mark.asyncio
+    async def test_internal_api_call_logic(self):
+        user = MagicMock()
+        user.id = 12345
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
 
-    class FakeResponse:
-        def __init__(self):
-            self.choices = []
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Test response"
+        mock_response.choices[0].finish_reason = "stop"
+        mock_response.id = "test-response-id"
+        mock_response.usage = MagicMock()
+        mock_response.usage.prompt_tokens = 50
+        mock_response.usage.completion_tokens = 25
+        mock_response.usage.total_tokens = 75
 
-    class FakeOpenAIClient:
-        class Chat:
-            class Completions:
-                @staticmethod
-                def create(*args, **kwargs):
-                    return FakeResponse()
+        openai_client = MagicMock()
+        openai_client.chat.completions.create.return_value = mock_response
+        logger = MagicMock()
 
-            completions = Completions()
+        with (
+            patch("src.openai_processing.retry_with_backoff") as mock_retry,
+            patch("asyncio.to_thread") as mock_to_thread,
+        ):
 
-        chat = Chat()
+            async def call_function_directly(func, retry_config, logger_arg):
+                return await func()
 
-    response = await process_input_message(
-        "Hello!",
-        mock_user,
-        conversation_summary,
-        conversation_history,
-        logger,
-        FakeOpenAIClient(),
-        "gpt-4o-mini",
-        "You are a helpful assistant.",
-        8000,
-    )
-    assert response == "Sorry, I didn't get that. Can you rephrase or ask again?"
-    # Should not add assistant message to history
-    assert mock_user.id not in conversation_history
+            mock_retry.side_effect = call_function_directly
+            mock_to_thread.return_value = mock_response
 
+            result = await process_openai_message(
+                message="Test message for internal logic",
+                user=user,
+                conversation_summary=[{"role": "user", "content": "Previous message"}],
+                conversation_manager=conversation_manager,
+                logger=logger,
+                openai_client=openai_client,
+                gpt_model="gpt-4",
+                system_message="System message",
+                output_tokens=1000,
+            )
+            assert result == "Test response"
+            assert logger.debug.call_count >= 3
 
-@pytest.mark.asyncio
-async def test_process_input_message_exception():
-    mock_user = MagicMock()
-    mock_user.id = 3
-    conversation_history = {}
-    conversation_summary = []
-    logger = MagicMock()
+    @pytest.mark.asyncio
+    async def test_retry_failure(self):
+        from src.caching import conversation_cache, response_cache
 
-    class FakeOpenAIClient:
-        class Chat:
-            class Completions:
-                @staticmethod
-                def create(*args, **kwargs):
-                    raise Exception("API failure!")
+        conversation_cache.clear()
+        response_cache.cache.clear()
 
-            completions = Completions()
+        user = MagicMock()
+        user.id = 12345
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
+        openai_client = MagicMock()
+        logger = MagicMock()
 
-        chat = Chat()
+        with patch("src.openai_processing.retry_with_backoff") as mock_retry:
+            mock_retry.side_effect = Exception("API call failed after retries")
+            result = await process_openai_message(
+                message="Test message",
+                user=user,
+                conversation_summary=[],
+                conversation_manager=conversation_manager,
+                logger=logger,
+                openai_client=openai_client,
+                gpt_model="gpt-4",
+                system_message="System message",
+                output_tokens=1000,
+            )
+            assert result is None
 
-    response = await process_input_message(
-        "Hello!",
-        mock_user,
-        conversation_summary,
-        conversation_history,
-        logger,
-        FakeOpenAIClient(),
-        "gpt-4o-mini",
-        "You are a helpful assistant.",
-        8000,
-    )
-    assert response == "Sorry, an error occurred while processing the message."
-    # Should not add assistant message to history
-    assert mock_user.id not in conversation_history
+    @pytest.mark.asyncio
+    async def test_usage_logging(self):
+        user = MagicMock()
+        user.id = 12345
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
 
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Response with detailed usage"
+        mock_response.choices[0].finish_reason = "stop"
+        mock_response.id = "usage-test-id"
+        mock_response.usage = MagicMock()
+        mock_response.usage.prompt_tokens = 150
+        mock_response.usage.completion_tokens = 75
+        mock_response.usage.total_tokens = 225
 
-@pytest.mark.asyncio
-async def test_process_input_message_to_thread_override():
-    mock_user = MagicMock()
-    mock_user.id = 4
-    conversation_history = {}
-    conversation_summary = []
-    logger = MagicMock()
-    called = {}
+        openai_client = MagicMock()
+        openai_client.chat.completions.create.return_value = mock_response
+        logger = MagicMock()
 
-    class FakeMessage:
-        def __init__(self, content):
-            self.content = content
+        with (
+            patch("src.openai_processing.retry_with_backoff") as mock_retry,
+            patch("asyncio.to_thread") as mock_to_thread,
+        ):
 
-    class FakeChoice:
-        def __init__(self, content):
-            self.message = FakeMessage(content)
+            async def call_function_directly(func, retry_config, logger_arg):
+                return await func()
 
-    class FakeResponse:
-        def __init__(self, content):
-            self.choices = [FakeChoice(content)]
+            mock_retry.side_effect = call_function_directly
+            mock_to_thread.return_value = mock_response
 
-    class FakeOpenAIClient:
-        class Chat:
-            class Completions:
-                @staticmethod
-                def create(*args, **kwargs):
-                    called["used"] = True
-                    return FakeResponse("Threaded response")
+            result = await process_openai_message(
+                message="Test message with usage tracking",
+                user=user,
+                conversation_summary=[],
+                conversation_manager=conversation_manager,
+                logger=logger,
+                openai_client=openai_client,
+                gpt_model="gpt-4",
+                system_message="System message",
+                output_tokens=1000,
+            )
+            assert result == "Response with detailed usage"
 
-            completions = Completions()
+    @pytest.mark.asyncio
+    async def test_whitespace_only_response(self):
+        user = MagicMock()
+        user.id = 12345
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
 
-        chat = Chat()
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "   \n\t   "
+        mock_response.choices[0].finish_reason = "stop"
+        mock_response.id = "whitespace-id"
+        mock_response.usage = MagicMock()
 
-    async def fake_to_thread(fn, *args, **kwargs):
-        return fn(*args, **kwargs)
+        openai_client = MagicMock()
+        openai_client.chat.completions.create.return_value = mock_response
+        logger = MagicMock()
 
-    response = await process_input_message(
-        "Threaded!",
-        mock_user,
-        conversation_summary,
-        conversation_history,
-        logger,
-        FakeOpenAIClient(),
-        "gpt-4o-mini",
-        "You are a helpful assistant.",
-        8000,
-        to_thread=fake_to_thread,
-    )
-    assert response == "Threaded response"
-    assert called["used"] is True
+        with (
+            patch("src.openai_processing.retry_with_backoff") as mock_retry,
+            patch("asyncio.to_thread") as mock_to_thread,
+        ):
 
+            async def call_function_directly(func, retry_config, logger_arg):
+                return await func()
 
-@pytest.mark.asyncio
-async def test_process_input_message_empty_input():
-    mock_user = MagicMock()
-    mock_user.id = 5
-    conversation_history = {}
-    conversation_summary = []
-    logger = MagicMock()
+            mock_retry.side_effect = call_function_directly
+            mock_to_thread.return_value = mock_response
 
-    class FakeMessage:
-        def __init__(self, content):
-            self.content = content
+            result = await process_openai_message(
+                message="Test message",
+                user=user,
+                conversation_summary=[],
+                conversation_manager=conversation_manager,
+                logger=logger,
+                openai_client=openai_client,
+                gpt_model="gpt-4",
+                system_message="System message",
+                output_tokens=1000,
+            )
+            assert result is None
 
-    class FakeChoice:
-        def __init__(self, content):
-            self.message = FakeMessage(content)
+    @pytest.mark.asyncio
+    async def test_response_logging_message_counts(self):
+        user = MagicMock()
+        user.id = 12345
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
 
-    class FakeResponse:
-        def __init__(self, content):
-            self.choices = [FakeChoice(content)]
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "A" * 300
+        mock_response.choices[0].finish_reason = "stop"
+        mock_response.id = "logging-test-id"
+        mock_response.usage = MagicMock()
 
-    class FakeOpenAIClient:
-        class Chat:
-            class Completions:
-                @staticmethod
-                def create(*args, **kwargs):
-                    return FakeResponse("")
+        openai_client = MagicMock()
+        openai_client.chat.completions.create.return_value = mock_response
+        logger = MagicMock()
 
-            completions = Completions()
+        with (
+            patch("src.openai_processing.retry_with_backoff") as mock_retry,
+            patch("asyncio.to_thread") as mock_to_thread,
+        ):
 
-        chat = Chat()
+            async def call_function_directly(func, retry_config, logger_arg):
+                return await func()
 
-    response = await process_input_message(
-        "",
-        mock_user,
-        conversation_summary,
-        conversation_history,
-        logger,
-        FakeOpenAIClient(),
-        "gpt-4o-mini",
-        "You are a helpful assistant.",
-        8000,
-    )
-    # Even if the API returns an empty string, it should be treated as no response
-    assert response == "Sorry, I didn't get that. Can you rephrase or ask again?"
+            mock_retry.side_effect = call_function_directly
+            mock_to_thread.return_value = mock_response
+
+            result = await process_openai_message(
+                message="Test message for logging",
+                user=user,
+                conversation_summary=[],
+                conversation_manager=conversation_manager,
+                logger=logger,
+                openai_client=openai_client,
+                gpt_model="gpt-4",
+                system_message="System message",
+                output_tokens=1000,
+            )
+            assert result == "A" * 300
+            assert conversation_manager.add_message.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_invalid_response_structure(self):
+        user = MagicMock()
+        user.id = 12345
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
+
+        mock_response = MagicMock()
+        mock_response.choices = None
+        mock_response.id = "invalid-structure-id"
+        openai_client = MagicMock()
+        openai_client.chat.completions.create.return_value = mock_response
+        logger = MagicMock()
+
+        with (
+            patch("src.openai_processing.retry_with_backoff") as mock_retry,
+            patch("asyncio.to_thread") as mock_to_thread,
+        ):
+
+            async def call_function_directly(func, retry_config, logger_arg):
+                return await func()
+
+            mock_retry.side_effect = call_function_directly
+            mock_to_thread.return_value = mock_response
+
+            result = await process_openai_message(
+                message="Test message",
+                user=user,
+                conversation_summary=[],
+                conversation_manager=conversation_manager,
+                logger=logger,
+                openai_client=openai_client,
+                gpt_model="gpt-4",
+                system_message="System message",
+                output_tokens=1000,
+            )
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_timeout_via_retry(self):
+        user = MagicMock()
+        user.id = 12345
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
+        openai_client = MagicMock()
+        logger = MagicMock()
+
+        with patch("src.openai_processing.retry_with_backoff") as mock_retry:
+            mock_retry.side_effect = TimeoutError("API call timed out")
+            result = await process_openai_message(
+                message="Test message",
+                user=user,
+                conversation_summary=[],
+                conversation_manager=conversation_manager,
+                logger=logger,
+                openai_client=openai_client,
+                gpt_model="gpt-4",
+                system_message="System message",
+                output_tokens=1000,
+            )
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_generic_exception_via_retry(self):
+        user = MagicMock()
+        user.id = 12345
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
+        openai_client = MagicMock()
+        logger = MagicMock()
+
+        with patch("src.openai_processing.retry_with_backoff") as mock_retry:
+            mock_retry.side_effect = ValueError("Generic API error")
+            result = await process_openai_message(
+                message="Test message",
+                user=user,
+                conversation_summary=[],
+                conversation_manager=conversation_manager,
+                logger=logger,
+                openai_client=openai_client,
+                gpt_model="gpt-4",
+                system_message="System message",
+                output_tokens=1000,
+            )
+            assert result is None

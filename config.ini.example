@@ -1,24 +1,83 @@
+# DiscordianAI Configuration - Smart AI Bot
+# Copy this file to config.ini and fill in your API keys
+#
+# OPERATION MODES:
+# 1. HYBRID MODE (Recommended): Provide both API keys - bot automatically chooses best AI
+# 2. OPENAI ONLY: Only provide OPENAI_API_KEY - uses GPT models for all responses  
+# 3. PERPLEXITY ONLY: Only provide PERPLEXITY_API_KEY - uses web search for all responses
+
 [Discord]
-DISCORD_TOKEN = <your_discord_bot_token>
-ALLOWED_CHANNELS = <allowed_channel_id_1>, <allowed_channel_id_2>, ...
-BOT_PRESENCE = online
-# ACTIVITY_TYPE Options
-# playing, streaming, listening, watching, custom, competing
-ACTIVITY_TYPE=listening
-ACTIVITY_STATUS=Humans
+# Your Discord bot token (required)
+DISCORD_TOKEN=your_discord_bot_token_here
+
+# Channels where the bot responds (comma-separated)
+ALLOWED_CHANNELS=general,bot-testing
+
+# Bot presence settings
+BOT_PRESENCE=online
+ACTIVITY_TYPE=watching
+ACTIVITY_STATUS=you bite my shiny metal ass!
 
 [Default]
-API_URL=https://api.openai.com/v1/
-API_KEY = <your_api_key>
-GPT_MODEL=gpt-4o-mini
+# === OPENAI CONFIGURATION ===
+# Supported: gpt-5-mini (default), gpt-5, gpt-5-nano, gpt-5-chat
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_API_URL=https://api.openai.com/v1/
+GPT_MODEL=gpt-5-mini
+
+# === PERPLEXITY CONFIGURATION ===  
+# Supported: sonar-pro (default), sonar - Leave blank to disable web search
+PERPLEXITY_API_KEY=your_perplexity_api_key_here
+PERPLEXITY_API_URL=https://api.perplexity.ai
+PERPLEXITY_MODEL=sonar-pro
+
+# === TOKEN LIMITS ===
 INPUT_TOKENS=120000
 OUTPUT_TOKENS=8000
 CONTEXT_WINDOW=128000
-SYSTEM_MESSAGE = You are a helpful AI assistant.
+
+# === SYSTEM MESSAGE ===
+# Customize your bot's personality
+SYSTEM_MESSAGE=You are Bender, a sarcastic robot from Futurama. You're crude, selfish, and love beer, but deep down you care about your friends. You automatically know when to search for current information and when to use your existing knowledge.
 
 [Limits]
-RATE_LIMIT = 2
-RATE_LIMIT_PER = 10
+# Rate limiting to prevent spam
+RATE_LIMIT=10
+RATE_LIMIT_PER=60
+
+[Orchestrator]
+# AI Orchestrator Configuration for advanced routing and optimization
+# How many recent messages to check for AI service consistency
+LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
+
+
+# Maximum conversation entries per user before pruning
+MAX_HISTORY_PER_USER=50
+
+# How often to clean up inactive user locks (seconds) - default 1 hour
+USER_LOCK_CLEANUP_INTERVAL=3600
 
 [Logging]
-LOG_FILE = bot.log
+LOG_FILE=bot.log
+LOG_LEVEL=INFO
+
+# === CONFIGURATION EXAMPLES ===
+#
+# HYBRID MODE (Smart Auto-Selection - Recommended):
+# OPENAI_API_KEY=sk-your-openai-key
+# PERPLEXITY_API_KEY=pplx-your-perplexity-key
+# GPT_MODEL=gpt-5-mini         # Cost-effective default
+# PERPLEXITY_MODEL=sonar-pro   # Latest web search model
+# 
+# OPENAI ONLY MODE:
+# OPENAI_API_KEY=sk-your-openai-key
+# PERPLEXITY_API_KEY=          # Leave blank
+# GPT_MODEL=gpt-5-mini         # Or gpt-5, gpt-5-nano, gpt-5-chat
+#
+# PERPLEXITY ONLY MODE:
+# OPENAI_API_KEY=              # Leave blank
+# PERPLEXITY_API_KEY=pplx-your-perplexity-key
+# PERPLEXITY_MODEL=sonar-pro   # Or sonar
+#
+# === INVITE URL TEMPLATE ===
+# https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_CLIENT_ID&permissions=274945084416&scope=bot
