@@ -60,7 +60,7 @@ class TestLoadConfig:
         assert config["OUTPUT_TOKENS"] == 8000
         assert config["CONTEXT_WINDOW"] == 128000
         assert config["SYSTEM_MESSAGE"] == "You are a helpful assistant."
-        # Removed unsupported GPT-5 parameters
+        # GPT-5 models use max_completion_tokens instead of max_tokens
         assert config["RATE_LIMIT"] == 10
         assert config["RATE_LIMIT_PER"] == 60
         assert config["LOG_FILE"] == "bot.log"
@@ -86,7 +86,7 @@ GPT_MODEL=gpt-5-mini
 INPUT_TOKENS=50000
 OUTPUT_TOKENS=2000
 SYSTEM_MESSAGE=Test system message
-; Removed unsupported GPT-5 parameters
+; Legacy parameters no longer used
 
 [Limits]
 RATE_LIMIT=5
@@ -121,7 +121,7 @@ LOG_LEVEL=DEBUG
             assert config["INPUT_TOKENS"] == 50000
             assert config["OUTPUT_TOKENS"] == 2000
             assert config["SYSTEM_MESSAGE"] == "Test system message"
-            # Unsupported GPT-5 parameters should not be present
+            # Legacy parameters that are no longer used
             assert config.get("REASONING_EFFORT") is None
             assert config.get("VERBOSITY") is None
             assert config["RATE_LIMIT"] == 5

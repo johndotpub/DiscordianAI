@@ -59,7 +59,7 @@ class TestProcessOpenAIMessageBasic:
             )
 
     @pytest.mark.asyncio
-    async def test_no_unsupported_params(self):
+    async def test_basic_gpt5_processing(self):
         user = MagicMock()
         user.id = 12345
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
