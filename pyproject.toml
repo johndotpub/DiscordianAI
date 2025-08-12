@@ -4,16 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "DiscordianAI"
-version = "0.1.0"
+version = "0.2.5"
 description = "A Discord bot that uses OpenAI's GPT API to generate responses."
 readme = "README.md"
 license = {file = "LICENSE"}
 authors = [{name = "johndotpub", email = "github@john.pub"}]
-requires-python = ">=3.12"
+requires-python = "==3.10.*"
 dependencies = [
-    "discord.py>=1.7.3",
-    "openai>=0.10.2",
-    "python-dotenv>=0.19.0"
+    "discord.py>=2.5.2",
+    "openai>=1.99.6",
+    "websockets>=15.0.1"
 ]
 urls = {"Homepage" = "https://github.com/johndotpub/DiscordianAI"}
 classifiers = [
@@ -22,7 +22,7 @@ classifiers = [
     "License :: OSI Approved :: The Unlicense (Unlicense)",
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.10",
     "Topic :: Communications :: Chat",
     "Topic :: Software Development :: Libraries :: Python Modules"
 ]
@@ -32,13 +32,13 @@ discordianai = "src.main:main"
 
 [project.optional-dependencies]
 dev = [
-    "isort",
-    "black",
-    "flake8",
+    "black", 
+    "ruff",
     "pytest",
     "pytest-asyncio",
-    "tox",
-    "autopep8"
+    "pytest-cov",
+    "coverage",
+    "tox"
 ]
 
 [tool.pytest.ini_options]
@@ -47,4 +47,158 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.black]
 line-length = 99
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = [
+    "src/__init__.py",
+    "*/tests/*",
+    "*/test_*"
+]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod"
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 99
+extend-exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    ".tox",
+    ".venv",
+    "venv",
+]
+
+[tool.ruff.lint]
+# Enable comprehensive rule sets - modern replacement for flake8
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings  
+    "F",      # Pyflakes
+    "I",      # isort
+    "N",      # pep8-naming
+    "D",      # pydocstyle
+    "UP",     # pyupgrade
+    "YTT",    # flake8-2020
+    "ASYNC",  # flake8-async
+    "S",      # flake8-bandit
+    "BLE",    # flake8-blind-except
+    "B",      # flake8-bugbear
+    "A",      # flake8-builtins
+    "C4",     # flake8-comprehensions
+    "DTZ",    # flake8-datetimez
+    "T10",    # flake8-debugger
+    "EM",     # flake8-errmsg
+    "FA",     # flake8-future-annotations
+    "ISC",    # flake8-implicit-str-concat
+    "ICN",    # flake8-import-conventions
+    "G",      # flake8-logging-format
+    "INP",    # flake8-no-pep420
+    "PIE",    # flake8-pie
+    "T20",    # flake8-print
+    "PT",     # flake8-pytest-style
+    "Q",      # flake8-quotes
+    "RSE",    # flake8-raise
+    "RET",    # flake8-return
+    "SLF",    # flake8-self
+    "SLOT",   # flake8-slots
+    "SIM",    # flake8-simplify
+    "TID",    # flake8-tidy-imports
+    "TCH",    # flake8-type-checking
+    "ARG",    # flake8-unused-arguments
+    "PTH",    # flake8-use-pathlib
+    "TD",     # flake8-todos
+    "FIX",    # flake8-fixme
+    "ERA",    # eradicate
+    "PD",     # pandas-vet
+    "PGH",    # pygrep-hooks
+    "PL",     # Pylint
+    "TRY",    # tryceratops
+    "FLY",    # flynt
+    "NPY",    # NumPy-specific rules
+    "PERF",   # Perflint
+    "FURB",   # refurb
+    "LOG",    # flake8-logging
+    "RUF",    # Ruff-specific rules
+]
+
+
+
+# Rules to ignore (equivalent to flake8 ignore)
+ignore = [
+    "D100",   # Missing docstring in public module
+    "D101",   # Missing docstring in public class  
+    "D102",   # Missing docstring in public method
+    "D103",   # Missing docstring in public function
+    "D104",   # Missing docstring in public package
+    "D105",   # Missing docstring in magic method
+    "S101",   # Use of assert detected (OK in tests)
+    "PLR0913", # Too many arguments in function definition
+    "PLR0912", # Too many branches in function
+    "PLR0911", # Too many return statements (common in AI routing logic)
+    "PLR0915", # Too many statements in function
+    "PLR2004", # Magic value used in comparison
+    "TRY003",  # Avoid specifying long messages outside exception class
+    "EM101",   # Exception must not use a string literal
+    "EM102",   # Exception must not use an f-string literal
+    "G004",    # Logging statement uses f-string
+]
+
+[tool.ruff.lint.mccabe]
+# Complexity limit (equivalent to flake8 --max-complexity)
+max-complexity = 16
+
+[tool.ruff.lint.pydocstyle]
+# Use Google-style docstrings
+convention = "google"
+
+[tool.ruff.lint.isort]
+# Configure isort behavior within ruff
+combine-as-imports = true
+force-sort-within-sections = true
+
+[tool.ruff.lint.flake8-pytest-style]
+fixture-parentheses = false
+mark-parentheses = false
+
+[tool.ruff.lint.per-file-ignores]
+# Test files can have additional flexibility
+"tests/*.py" = [
+    "D",       # Skip docstring requirements in tests
+    "S101",    # Allow assert in tests
+    "PLR2004", # Allow magic values in tests
+    "ARG001",  # Allow unused function arguments in tests
+    "FBT001",  # Allow boolean trap in tests
+    "PLC0415", # Allow local imports in tests
+    "ARG004",  # Allow unused *args/**kwargs in mocks
+    "PT011",   # Broad raises in tests
+    "PT012",   # Complex raises block in tests
+    "SLF001",  # Private access in tests
+    "SIM117",  # Nested context managers in tests
+    "PTH",     # Pathlib preference in tests
+    "B007",    # Unused loop var in tests
+    "ASYNC251",# time.sleep in async tests
+    "TRY002",  # Use of Exception in tests
+]
+
+# Loosen specific modules to reduce noisy warnings without changing behavior
+# Keep core modules strict; no unnecessary ignores remain
 

@@ -107,7 +107,7 @@ def test_get_conversation_summary_invalid_role():
 
 # Parametrized tests to cover various scenarios with a single test function
 @pytest.mark.parametrize(
-    "conversation,expected_summary",
+    ("conversation", "expected_summary"),
     [
         # Alternating messages
         (

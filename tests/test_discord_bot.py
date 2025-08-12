@@ -1,6 +1,7 @@
-import pytest
-from src.discord_bot import set_activity_status
 import discord
+import pytest
+
+from src.discord_bot import set_activity_status
 
 
 @pytest.mark.parametrize(
