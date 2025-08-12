@@ -1,7 +1,5 @@
-# Comprehensive testing with Python 3.10 (only supported version)
+# Optimized CI workflow with parallel tox execution and caching
 name: CI
-permissions:
-  contents: read
 
 on:
   push:
@@ -9,8 +7,12 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+permissions:
+  contents: read
+
 jobs:
-  test:
+  # Single optimized job using tox for everything
+  test-and-lint:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -28,69 +30,30 @@ jobs:
       uses: actions/cache@v3
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt', '**/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-pip-${{ matrix.python-version }}-
     
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install -e .[dev]
-    
-    - name: Run tests with pytest
-      run: |
-        pytest --cov=src --cov-report=xml --cov-fail-under=80
-    
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+    - name: Cache tox environments
+      uses: actions/cache@v3
       with:
-        file: ./coverage.xml
-        fail_ci_if_error: true
-
-  lint:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10"]
-
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-    
-    - name: Install linting tools
-      run: |
-        python -m pip install --upgrade pip
-        pip install black ruff
-
-    - name: Run black
-      run: black . --check --diff
-    
-    - name: Run ruff
-      run: ruff check . --show-fixes
-
-  tox:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10"]
-
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
+        path: .tox
+        key: ${{ runner.os }}-tox-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
+        restore-keys: |
+          ${{ runner.os }}-tox-${{ matrix.python-version }}-
     
     - name: Install tox
       run: |
         python -m pip install --upgrade pip
         pip install tox
     
-    - name: Run tox
-      run: tox -e py310,lint,test
+    - name: Run tox in parallel
+      run: |
+        # Run all environments in parallel for maximum performance
+        tox --parallel auto -e py310,lint,test
+        
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: .tox/py310/.tox/py310/coverage.xml
+        fail_ci_if_error: true
