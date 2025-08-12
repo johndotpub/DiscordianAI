@@ -36,6 +36,7 @@ dev = [
     "ruff",
     "pytest",
     "pytest-asyncio",
+    "pytest-cov",
     "coverage",
     "tox"
 ]
