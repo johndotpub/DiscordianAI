@@ -1,12 +1,6 @@
 # Use Python 3.10 slim image from GitHub Container Registry (GHCR)
 # This eliminates dependency on Docker Hub entirely
-# Multiple fallback options for maximum reliability
-FROM ghcr.io/library/python:3.10-slim-bullseye
-
-# Alternative base images (uncomment if needed):
-# FROM ghcr.io/library/python:3.10-slim-bookworm
-# FROM ghcr.io/library/python:3.10-alpine
-# FROM ghcr.io/library/python:3.10-slim
+FROM ghcr.io/docker-library/python:3.10-slim-bookworm
 
 # Set the working directory to /app for better organization
 WORKDIR /app
