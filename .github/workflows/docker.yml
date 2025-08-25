@@ -79,7 +79,6 @@ jobs:
 
     - name: Push to Docker Hub (Secondary - Optional)
       uses: docker/build-push-action@v5
-      if: ${{ secrets.DOCKERHUB_TOKEN != '' }}
       with:
         context: .
         platforms: linux/amd64,linux/arm64
