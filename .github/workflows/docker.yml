@@ -60,7 +60,7 @@ jobs:
           org.opencontainers.image.revision=${{ github.sha }}
           org.opencontainers.image.version=${{ github.ref_name }}
 
-    - name: Build and push to GHCR (Primary)
+    - name: Build and push to both registries
       uses: docker/build-push-action@v5
       with:
         context: .
@@ -72,24 +72,5 @@ jobs:
         cache-to: type=gha,mode=max  # Cache layers for faster builds
         build-args: |
           BUILDKIT_INLINE_CACHE=1
-        # Add retry logic for resilience
-        no-cache-filters: false
-        # Use GitHub's build infrastructure exclusively
+        # Build once, push to both registries
         provenance: false
-
-    - name: Push to Docker Hub (Secondary - Optional)
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        platforms: linux/amd64,linux/arm64
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-        build-args: |
-          BUILDKIT_INLINE_CACHE=1
-        # Continue on failure - this is secondary
-        provenance: false
-      # Continue on failure - Docker Hub is optional
-      continue-on-error: true
