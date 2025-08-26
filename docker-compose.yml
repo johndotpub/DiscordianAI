@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  discordianai:
+    # Primary: Use GHCR image (GitHub Container Registry)
+    image: ghcr.io/johndotpub/discordianai:latest
+    # Secondary: Fallback to Docker Hub if needed
+    # image: johndotpub/discordianai:latest
+    # Alternative: build locally if needed
+    # build: .
+    container_name: discordianai
+    restart: unless-stopped
+    
+    # Mount configuration and logs
+    volumes:
+      - ./config.ini:/app/config.ini:ro
+      - ./logs:/app/logs
+      - ./data:/app/data
+    
+    # Environment variables
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=UTC
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    
+    # Network configuration
+    networks:
+      - discordianai-network
+
+  # Optional: Add a monitoring service
+  # prometheus:
+  #   image: ghcr.io/prom/prometheus:latest
+  #   container_name: prometheus
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  #   networks:
+  #     - discordianai-network
+
+networks:
+  discordianai-network:
+    driver: bridge
+    name: discordianai-network
