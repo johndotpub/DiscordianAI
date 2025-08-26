@@ -68,8 +68,6 @@ jobs:
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha  # Use GitHub Actions cache
-        cache-to: type=gha,mode=max  # Cache layers for faster builds
         build-args: |
           BUILDKIT_INLINE_CACHE=1
         # Build once, push to both registries
