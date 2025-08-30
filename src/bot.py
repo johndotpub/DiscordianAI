@@ -354,9 +354,7 @@ async def send_formatted_message(
 
         # Check if the original content was truncated in the embed
         embed_description = embed.description or ""
-        was_truncated = (
-            len(clean_text) > EMBED_LIMIT and embed_description.endswith("...")
-        )
+        was_truncated = len(clean_text) > EMBED_LIMIT and embed_description.endswith("...")
 
         if was_truncated:
             # Content was truncated - need to split and send remaining parts
@@ -426,7 +424,7 @@ async def send_split_message_with_embed(
         logger.exception("Discord API error sending message part 1 with embed")
         raise
 
-        # Send remaining parts - if they contain citations, format as embeds too
+    # Send remaining parts - if they contain citations, format as embeds too
     if message_part2 and citations:
         # Check if remaining content has citations
         remaining_citations = {

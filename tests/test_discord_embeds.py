@@ -97,14 +97,14 @@ class TestCitationEmbedFormatter:
         formatter = CitationEmbedFormatter()
 
         # Should use embed when citations present
-        assert formatter.should_use_embed_for_response("content", {"1": "url"}) is True
+        assert formatter.should_use_embed_for_response({"1": "url"}) is True
 
         # Should not use embed when no citations
-        assert formatter.should_use_embed_for_response("content", {}) is False
-        assert formatter.should_use_embed_for_response("content", None) is False
+        assert formatter.should_use_embed_for_response({}) is False
+        assert formatter.should_use_embed_for_response(None) is False
 
         # Should use embed when forced
-        assert formatter.should_use_embed_for_response("content", None, force_embed=True) is True
+        assert formatter.should_use_embed_for_response(None, force_embed=True) is True
 
     def test_create_error_embed(self):
         """Test error embed creation."""

@@ -97,7 +97,7 @@ def extract_citations_from_response(
                     )
 
     # FALLBACK: Try to extract URLs from text (legacy format support)
-    elif unique_citations:
+    else:
         logger.debug("No API metadata citations, trying legacy URL extraction from text")
         urls = URL_PATTERN.findall(response_text)
         logger.debug(f"Legacy extraction: found {len(urls)} URLs in text: {urls[:3]}...")
@@ -326,7 +326,7 @@ async def process_perplexity_message(
 
             # Determine if we should use embed formatting
             embed_data = None
-            if citation_embed_formatter.should_use_embed_for_response(clean_text, citations):
+            if citation_embed_formatter.should_use_embed_for_response(citations):
                 # Create embed data for Discord embed rendering
                 embed = citation_embed_formatter.create_citation_embed(
                     clean_text, citations, footer_text="🌐 Web search results"

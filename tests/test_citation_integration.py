@@ -199,12 +199,11 @@ class TestCitationIntegration:
         """Test that responses without citations don't trigger embed creation."""
         formatter = CitationEmbedFormatter()
 
-        content = "This is a regular response without any citations."
         citations = {}
 
-        should_use_embed = formatter.should_use_embed_for_response(content, citations)
+        should_use_embed = formatter.should_use_embed_for_response(citations)
         assert should_use_embed is False
 
         # Test with None citations
-        should_use_embed = formatter.should_use_embed_for_response(content, None)
+        should_use_embed = formatter.should_use_embed_for_response(None)
         assert should_use_embed is False

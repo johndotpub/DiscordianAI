@@ -112,14 +112,12 @@ class CitationEmbedFormatter:
 
     def should_use_embed_for_response(
         self,
-        content: str,  # noqa: ARG002
         citations: dict[str, str] | None = None,
         force_embed: bool = False,
     ) -> bool:
         """Determine if a response should be formatted as an embed.
 
         Args:
-            content: Response content
             citations: Optional citation dictionary
             force_embed: Force embed usage regardless of other factors
 
@@ -129,7 +127,7 @@ class CitationEmbedFormatter:
         if force_embed:
             return True
 
-            # Use embed if citations are present (primary use case)
+        # Use embed if citations are present (primary use case)
         return bool(citations)
 
     def create_error_embed(self, error_message: str, title: str = "Error") -> discord.Embed:
