@@ -68,25 +68,43 @@ flowchart TD
     P -->|OpenAI| G
     P -->|Perplexity| H
     
-    N --> Q[Format Regular Message]
-    O --> R[Format Citation Embed]
+    N --> Q[Format as Regular Message]
+    O --> R[Format as Citation Embed]
     
-    Q --> S{Message > 2000 chars?}
-    R --> T{Content > 4096 chars?}
+    Q --> S[send_formatted_message]
+    R --> S
     
-    S -->|No| U[Send Single Message]
-    S -->|Yes| V[Split Message]
-    T -->|No| W[Send Single Embed]
-    T -->|Yes| X[Split Embed with Citations]
+    S --> T{Has Embed Data?}
+    T -->|Yes| U{Content > 4096 chars?}
+    T -->|No| V{Message > 2000 chars?}
     
-    V --> Y[Send Multiple Messages]
-    X --> AA[Send Multiple Embeds]
+    U -->|Yes| W[Split Embed with Citations]
+    U -->|No| X[Send Single Embed]
     
-    U --> BB[Response Complete]
-    W --> BB
-    Y --> BB
-    AA --> BB
+    V -->|Yes| Y[Split Regular Message]
+    V -->|No| Z1[Send Single Message]
+    
+    X --> AA{Embed Send Success?}
+    AA -->|Yes| BB[✅ Response Complete - EXIT]
+    AA -->|No| V
+    
+    W --> CC[Send Multiple Citation Embeds]
+    Y --> DD[Send Multiple Messages]
+    Z1 --> BB
+    CC --> BB
+    DD --> BB
 ```
+
+### Key Anti-Duplication Features
+
+The diagram above shows the **critical control flow fix** that prevents duplicate messages:
+
+1. **Single Entry Point**: All responses go through `send_formatted_message` 
+2. **Explicit Returns**: Each successful send has a `return` statement to exit the function
+3. **Embed Priority**: Perplexity responses with citations try embed first, fallback to regular message only on failure
+4. **No Fallthrough**: Fixed the bug where embed success still continued to regular message logic
+
+This ensures **exactly one message** is sent per user query, eliminating the duplicate message issue.
 
 ## Smart Detection (No Manual Triggers Required!)
 
