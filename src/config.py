@@ -41,9 +41,10 @@ DEFAULT_PERPLEXITY_API_URL = "https://api.perplexity.ai"
 DISCORD_ACTIVITY_TYPES = ["playing", "streaming", "listening", "watching", "custom", "competing"]
 
 # Discord Message Constants
-DISCORD_MAX_MESSAGE_LENGTH = 2000
-DISCORD_MAX_EMBED_DESCRIPTION = 4096
-DISCORD_MAX_RECURSION_DEPTH = 10
+MESSAGE_LIMIT = 2000        # Discord's hard limit for regular messages
+EMBED_LIMIT = 4096          # Discord's hard limit for embed descriptions
+EMBED_SAFE_LIMIT = 3840     # Safe margin for citation expansion and formatting
+MAX_SPLIT_RECURSION = 10    # Safety limit for message splitting recursion
 
 # ============================================================================
 # PERFORMANCE & CACHING

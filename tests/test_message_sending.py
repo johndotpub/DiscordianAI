@@ -3,7 +3,7 @@
 Tests the core message sending logic including:
 - send_formatted_message function
 - Embed vs regular message handling
-- Message splitting for embeds > 4096 chars
+- Message splitting for embeds > embed limit chars
 - Duplication prevention
 - Error handling and fallbacks
 """
@@ -14,6 +14,7 @@ import discord
 import pytest
 
 from src.bot import send_formatted_message, send_split_message_with_embed
+from src.config import EMBED_SAFE_LIMIT
 
 
 class TestSendFormattedMessage:
@@ -35,19 +36,12 @@ class TestSendFormattedMessage:
         }
 
         message = "Test message"
-        deps = {
-            "logger": MagicMock(),
-            "config": {
-                "DISCORD_MESSAGE_LIMIT": "2000",
-                "DISCORD_EMBED_DESCRIPTION_LIMIT": "4096",
-                "DISCORD_EMBED_DESCRIPTION_SOFT_LIMIT": "4090"
-            }
-        }
+        deps = {"logger": MagicMock()}
 
         await send_formatted_message(channel, message, deps, embed_data=embed_data)
 
-        # Should send empty message with embed (content is in embed, not message text)
-        channel.send.assert_called_once_with("", embed=embed)
+        # Should send message with embed
+        channel.send.assert_called_once_with(message, embed=embed)
 
     @pytest.mark.asyncio
     async def test_send_formatted_message_with_embed_truncated(self):
@@ -57,9 +51,9 @@ class TestSendFormattedMessage:
 
         # Mock embed with truncated content
         embed = MagicMock(spec=discord.Embed)
-        embed.description = "A" * 4090 + "..."  # Truncated embed
+        embed.description = "A" * EMBED_SAFE_LIMIT + "..."  # Truncated embed
 
-        # Original content longer than 4096
+        # Original content longer than embed limit
         long_content = "A" * 5000
         embed_data = {
             "embed": embed,
@@ -68,14 +62,7 @@ class TestSendFormattedMessage:
         }
 
         message = "Test message"
-        deps = {
-            "logger": MagicMock(),
-            "config": {
-                "DISCORD_MESSAGE_LIMIT": "2000",
-                "DISCORD_EMBED_DESCRIPTION_LIMIT": "4096",
-                "DISCORD_EMBED_DESCRIPTION_SOFT_LIMIT": "4090"
-            }
-        }
+        deps = {"logger": MagicMock()}
 
         with patch("src.bot.send_split_message_with_embed") as mock_split:
             await send_formatted_message(channel, message, deps, embed_data=embed_data)
@@ -101,14 +88,7 @@ class TestSendFormattedMessage:
         embed_data = {"embed": embed, "clean_text": "Test content"}
 
         message = "Short message"
-        deps = {
-            "logger": MagicMock(),
-            "config": {
-                "DISCORD_MESSAGE_LIMIT": "2000",
-                "DISCORD_EMBED_DESCRIPTION_LIMIT": "4096",
-                "DISCORD_EMBED_DESCRIPTION_SOFT_LIMIT": "4090"
-            }
-        }
+        deps = {"logger": MagicMock()}
 
         await send_formatted_message(channel, message, deps, embed_data=embed_data)
 
@@ -124,14 +104,7 @@ class TestSendFormattedMessage:
         channel.send = AsyncMock()
 
         message = "Short regular message"
-        deps = {
-            "logger": MagicMock(),
-            "config": {
-                "DISCORD_MESSAGE_LIMIT": "2000",
-                "DISCORD_EMBED_DESCRIPTION_LIMIT": "4096",
-                "DISCORD_EMBED_DESCRIPTION_SOFT_LIMIT": "4090"
-            }
-        }
+        deps = {"logger": MagicMock()}
 
         await send_formatted_message(channel, message, deps)
 
@@ -146,14 +119,7 @@ class TestSendFormattedMessage:
 
         # Message longer than 2000 characters
         long_message = "A" * 2500
-        deps = {
-            "logger": MagicMock(),
-            "config": {
-                "DISCORD_MESSAGE_LIMIT": "2000",
-                "DISCORD_EMBED_DESCRIPTION_LIMIT": "4096",
-                "DISCORD_EMBED_DESCRIPTION_SOFT_LIMIT": "4090"
-            }
-        }
+        deps = {"logger": MagicMock()}
 
         with patch("src.bot.send_split_message") as mock_split:
             await send_formatted_message(channel, long_message, deps)
@@ -172,23 +138,16 @@ class TestSendFormattedMessage:
         embed.description = "Test"
         embed_data = {"embed": embed, "clean_text": "Test"}
 
-        deps = {
-            "logger": MagicMock(),
-            "config": {
-                "DISCORD_MESSAGE_LIMIT": "2000",
-                "DISCORD_EMBED_DESCRIPTION_LIMIT": "4096",
-                "DISCORD_EMBED_DESCRIPTION_SOFT_LIMIT": "4090",
-            },
-        }
-
-        await send_formatted_message(channel, "Test", deps, embed_data=embed_data)
+        await send_formatted_message(
+            channel, "Test", {"logger": MagicMock()}, embed_data=embed_data
+        )
 
         # Should only send once
         assert channel.send.call_count == 1
 
         # Reset and test regular message
         channel.send.reset_mock()
-        await send_formatted_message(channel, "Regular test", deps)
+        await send_formatted_message(channel, "Regular test", {"logger": MagicMock()})
 
         # Should only send once
         assert channel.send.call_count == 1
@@ -208,14 +167,7 @@ class TestSendSplitMessageWithEmbed:
         citations = {"1": "https://example.com"}
 
         embed = MagicMock(spec=discord.Embed)
-        deps = {
-            "logger": MagicMock(),
-            "config": {
-                "DISCORD_MESSAGE_LIMIT": "2000",
-                "DISCORD_EMBED_DESCRIPTION_LIMIT": "4096",
-                "DISCORD_EMBED_DESCRIPTION_SOFT_LIMIT": "4090"
-            }
-        }
+        deps = {"logger": MagicMock()}
 
         await send_split_message_with_embed(channel, content, deps, embed, citations)
 
@@ -233,14 +185,7 @@ class TestSendSplitMessageWithEmbed:
         citations = {"1": "https://example.com"}
 
         embed = MagicMock(spec=discord.Embed)
-        deps = {
-            "logger": MagicMock(),
-            "config": {
-                "DISCORD_MESSAGE_LIMIT": "2000",
-                "DISCORD_EMBED_DESCRIPTION_LIMIT": "4096",
-                "DISCORD_EMBED_DESCRIPTION_SOFT_LIMIT": "4090"
-            }
-        }
+        deps = {"logger": MagicMock()}
 
         await send_split_message_with_embed(channel, long_content, deps, embed, citations)
 
@@ -254,8 +199,8 @@ class TestEmbedCharacterLimits:
     """Test proper handling of Discord character limits."""
 
     @pytest.mark.asyncio
-    async def test_embed_4096_limit_respected(self):
-        """Test that embed splitting respects 4096 character limit."""
+    async def test_embed_limit_respected(self):
+        """Test that embed splitting respects embed character limit."""
         channel = MagicMock(spec=discord.TextChannel)
         channel.send = AsyncMock()
 
@@ -264,14 +209,7 @@ class TestEmbedCharacterLimits:
         citations = {"1": "https://example.com"}
 
         embed = MagicMock(spec=discord.Embed)
-        deps = {
-            "logger": MagicMock(),
-            "config": {
-                "DISCORD_MESSAGE_LIMIT": "2000",
-                "DISCORD_EMBED_DESCRIPTION_LIMIT": "4096",
-                "DISCORD_EMBED_DESCRIPTION_SOFT_LIMIT": "4090"
-            }
-        }
+        deps = {"logger": MagicMock()}
 
         await send_split_message_with_embed(channel, content, deps, embed, citations)
 
@@ -287,14 +225,7 @@ class TestEmbedCharacterLimits:
 
         # Message just over 2000 chars
         long_message = "A" * 2001
-        deps = {
-            "logger": MagicMock(),
-            "config": {
-                "DISCORD_MESSAGE_LIMIT": "2000",
-                "DISCORD_EMBED_DESCRIPTION_LIMIT": "4096",
-                "DISCORD_EMBED_DESCRIPTION_SOFT_LIMIT": "4090"
-            }
-        }
+        deps = {"logger": MagicMock()}
 
         with patch("src.bot.send_split_message") as mock_split:
             await send_formatted_message(channel, long_message, deps)

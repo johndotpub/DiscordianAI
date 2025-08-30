@@ -75,7 +75,7 @@ flowchart TD
     R --> S
     
     S --> T{Has Embed Data?}
-    T -->|Yes| U{Content > 4096 chars?}
+    T -->|Yes| U{Content > EMBED_LIMIT?}
     T -->|No| V{Message > 2000 chars?}
     
     U -->|Yes| W[Split Embed with Citations]

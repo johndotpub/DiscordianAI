@@ -2,6 +2,7 @@
 
 import discord
 
+from src.config import EMBED_LIMIT
 from src.discord_embeds import CitationEmbedFormatter, citation_embed_formatter
 
 
@@ -121,14 +122,14 @@ class TestCitationEmbedFormatter:
         """Test that embed descriptions are truncated if too long."""
         formatter = CitationEmbedFormatter()
 
-        # Create content longer than 4096 characters
+        # Create content longer than EMBED_LIMIT characters
         long_content = "A" * 5000 + " [1]"
         citations = {"1": "https://example.com"}
 
         embed = formatter.create_citation_embed(long_content, citations)
 
         # Should be truncated to fit Discord's limit
-        assert len(embed.description) <= 4096
+        assert len(embed.description) <= EMBED_LIMIT
         assert embed.description.endswith("...")
 
     def test_global_formatter_instance(self):

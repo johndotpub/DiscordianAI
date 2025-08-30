@@ -96,7 +96,7 @@ flowchart TD
     
     I --> K[Format Citations for Embed]
     K --> L[Create Citation Embed]
-    L --> M{Content > 4096 chars?}
+    L --> M{Content > EMBED_LIMIT?}
     
     M -->|No| N[Send Single Embed]
     M -->|Yes| O[Split Content at Boundaries]

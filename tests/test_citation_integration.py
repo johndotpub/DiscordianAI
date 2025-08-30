@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import discord
 import pytest
 
+from src.config import EMBED_LIMIT
 from src.conversation_manager import ThreadSafeConversationManager
 from src.discord_embeds import CitationEmbedFormatter
 from src.perplexity_processing import process_perplexity_message
@@ -191,7 +192,7 @@ class TestCitationIntegration:
         embed = formatter.create_citation_embed(long_content, citations)
 
         # Should be truncated to fit Discord limits
-        assert len(embed.description) <= 4096
+        assert len(embed.description) <= EMBED_LIMIT
         assert embed.description.endswith("...")
 
     def test_no_citations_no_embed_decision(self):

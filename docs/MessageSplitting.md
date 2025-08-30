@@ -2,6 +2,8 @@
 
 DiscordianAI implements intelligent message splitting to handle Discord's character limits while preserving formatting, code blocks, and citation functionality.
 
+> **Note**: The constants `EMBED_LIMIT` and `EMBED_SAFE_LIMIT` referenced in this document are defined in `src/config.py`.
+
 ## Discord Character Limits
 
 ### Regular Messages
@@ -10,9 +12,19 @@ DiscordianAI implements intelligent message splitting to handle Discord's charac
 - **Splitting**: Intelligent boundary detection
 
 ### Embed Descriptions  
-- **Limit**: 4096 characters
+- **Hard Limit**: 4096 characters (`EMBED_LIMIT` - Discord maximum)
+- **Safe Limit**: 3840 characters (`EMBED_SAFE_LIMIT` - safe margin for citations)
 - **Usage**: Perplexity responses with citations
 - **Splitting**: Citation-aware splitting
+
+#### Why Use a Safe Limit?
+
+The 3840-character safe limit (`EMBED_SAFE_LIMIT`) provides a 256-character safety buffer (6.25%) for:
+
+- **Citation Expansion**: `[1]` becomes `[[1]](https://very-long-url...)` (~15-20x expansion)
+- **Footer Text**: "📚 5 sources" and continuation markers
+- **Unicode Encoding**: Some characters require multiple bytes
+- **Future-Proofing**: Room for additional formatting without breaking
 
 ## Message Splitting Algorithm
 
@@ -23,7 +35,7 @@ flowchart TD
     A[Message Content] --> B{Content Type?}
     
     B -->|Regular Text| C{Length > 2000?}
-    B -->|Embed Content| D{Length > 4096?}
+    B -->|Embed Content| D{Length > EMBED_SAFE_LIMIT?}
     
     C -->|No| E[Send Single Message]
     C -->|Yes| F[Find Optimal Split Point]
@@ -90,7 +102,7 @@ For Perplexity responses with citations, the splitting algorithm ensures citatio
 
 ```mermaid
 flowchart TD
-    A[Long Citation Content] --> B[Split at 4090 chars]
+    A[Long Citation Content] --> B[Split at EMBED_SAFE_LIMIT]
     B --> C[Analyze Citation References]
     
     C --> D[Part 1: Citations 1-3]
@@ -137,12 +149,12 @@ async def send_split_message(channel, message, deps, suppress_embeds=False):
 ```python
 async def send_split_message_with_embed(channel, message, deps, embed, citations):
     """Split embed content while preserving citations."""
-    if len(message) <= 4090:
+    if len(message) <= EMBED_SAFE_LIMIT:
         await channel.send("", embed=embed)
         return
     
     # Split content
-    split_point = find_optimal_split_point(message, 4090)
+    split_point = find_optimal_split_point(message, EMBED_SAFE_LIMIT)
     part1, part2 = adjust_split_for_code_blocks(message, split_point)
     
     # Send first part with original embed
@@ -200,7 +212,7 @@ def find_optimal_split_point(message: str, target_index: int) -> int:
 ### For Developers
 
 1. **Always check content length** before sending
-2. **Use appropriate limits** (2000 for messages, 4096 for embeds)
+2. **Use appropriate limits** (2000 for messages, `EMBED_SAFE_LIMIT` for embeds)
 3. **Preserve formatting** when splitting
 4. **Test with long content** to verify splitting works
 5. **Handle edge cases** like very long words or URLs

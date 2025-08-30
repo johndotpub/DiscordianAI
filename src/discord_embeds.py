@@ -8,7 +8,11 @@ import logging
 
 import discord
 
-from .config import CITATION_PATTERN
+from .config import (
+    CITATION_PATTERN,
+    EMBED_LIMIT,
+    EMBED_SAFE_LIMIT,
+)
 
 
 class CitationEmbedFormatter:
@@ -55,12 +59,13 @@ class CitationEmbedFormatter:
         # Format the content with clickable citations for embed description
         formatted_content = self._format_citations_for_embed_description(content, citations)
 
-        # Discord embed description has a 4096 character limit
-        if len(formatted_content) > 4096:
+        # Discord embed description has a character limit
+        if len(formatted_content) > EMBED_LIMIT:
             # Truncate and add notice
-            formatted_content = formatted_content[:4090] + "..."
+            formatted_content = formatted_content[:EMBED_SAFE_LIMIT] + "..."
             self.logger.warning(
-                f"Embed description truncated from {len(formatted_content)} to 4096 chars"
+                f"Embed description truncated from {len(formatted_content)} to "
+                f"{EMBED_LIMIT} chars"
             )
 
         embed.description = formatted_content
@@ -124,7 +129,7 @@ class CitationEmbedFormatter:
         if force_embed:
             return True
 
-        # Use embed if citations are present (primary use case)
+            # Use embed if citations are present (primary use case)
         return bool(citations)
 
     def create_error_embed(self, error_message: str, title: str = "Error") -> discord.Embed:
