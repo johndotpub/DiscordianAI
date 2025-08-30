@@ -337,8 +337,8 @@ async def process_perplexity_message(
                     "clean_text": clean_text,
                     "embed_metadata": embed_metadata
                 }
-                # For embeds, we use the clean text (citations will be in embed)
-                formatted_text = clean_text
+                # For embeds, we don't need formatted text since content is in embed
+                formatted_text = ""  # Empty string - embed contains all content
                 suppress_embeds = False  # We're using our own embed
                 logger.info(f"Created citation embed with {len(citations)} citations")
             else:

@@ -81,8 +81,16 @@ class TestCitationIntegration:
         assert "citations" in embed_data
         assert "clean_text" in embed_data
 
-        # Verify embed formatting
+        # CRITICAL: When embed_data exists, response_text should be empty to prevent duplication
+        assert response_text == "", f"Expected empty response_text to prevent duplication, got: '{response_text}'"
+        
+        # The embed should contain the actual content
         embed = embed_data["embed"]
+        assert "The latest AI developments" in embed.description
+        assert "[[1]](https://ai-research.example.com/breakthrough)" in embed.description
+        assert "[[2]](https://ml-models.example.com/architectures)" in embed.description
+
+        # Verify embed formatting
         assert isinstance(embed, discord.Embed)
         assert embed.description is not None
 
@@ -93,9 +101,12 @@ class TestCitationIntegration:
         # Verify footer (should be the custom Perplexity footer)
         assert "🌐 Web search results" in embed.footer.text
 
-        # Response text should be clean (no URLs)
-        assert "https://" not in response_text
-        assert "The latest AI developments" in response_text
+        # CRITICAL: When embed_data exists, response_text should be empty to prevent duplication
+        assert response_text == "", f"Expected empty response_text to prevent duplication, got: '{response_text}'"
+        
+        # The embed should contain the actual content
+        embed = embed_data["embed"]
+        assert "The latest AI developments" in embed.description
 
     def test_citation_embed_formatter_integration(self):
         """Test CitationEmbedFormatter integration with real citation data."""

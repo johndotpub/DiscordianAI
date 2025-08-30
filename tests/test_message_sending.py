@@ -33,15 +33,50 @@ class TestSendFormattedMessage:
             "embed": embed,
             "citations": {"1": "https://example.com"},
             "clean_text": "Test content with citation [1]",
+            "embed_metadata": {"was_truncated": False, "original_length": 100, "formatted_length": 100}
         }
 
-        message = "Test message"
+        message = "Test message"  # This should be ignored when embed_data exists
         deps = {"logger": MagicMock()}
 
         await send_formatted_message(channel, message, deps, embed_data=embed_data)
 
-        # Should send message with embed
-        channel.send.assert_called_once_with(message, embed=embed)
+        # Should send ONLY the embed with empty message (prevents duplication)
+        channel.send.assert_called_once_with("", embed=embed)
+
+    @pytest.mark.asyncio
+    async def test_send_formatted_message_no_duplication(self):
+        """Test that send_formatted_message prevents duplicate content when embed_data exists."""
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+
+        # Mock embed data
+        embed = MagicMock(spec=discord.Embed)
+        embed.description = "Test embed content with citations"
+        embed_data = {
+            "embed": embed,
+            "citations": {"1": "https://example.com", "2": "https://test.com"},
+            "clean_text": "Content with [1] and [2] citations",
+            "embed_metadata": {"was_truncated": False, "original_length": 50, "formatted_length": 50}
+        }
+
+        # This message text should NOT be sent - only the embed should be sent
+        message = "This raw text should not appear in Discord"
+        deps = {"logger": MagicMock()}
+
+        await send_formatted_message(channel, message, deps, embed_data=embed_data)
+
+        # Verify exactly one message is sent
+        assert channel.send.call_count == 1
+        
+        # Verify it's sent with empty message text and embed
+        call_args = channel.send.call_args
+        assert call_args[0][0] == ""  # Empty message text
+        assert call_args[1]["embed"] == embed  # Embed is sent
+        
+        # Verify the raw message text was NOT sent
+        assert message not in str(call_args)
+        assert "raw text should not appear" not in str(call_args)
 
     @pytest.mark.asyncio
     async def test_send_formatted_message_with_embed_truncated(self):
