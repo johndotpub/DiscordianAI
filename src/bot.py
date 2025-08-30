@@ -352,9 +352,9 @@ async def send_formatted_message(
         embed = embed_data["embed"]
         clean_text = embed_data.get("clean_text", message)
 
-        # Check if the original content was truncated in the embed
-        embed_description = embed.description or ""
-        was_truncated = len(clean_text) > EMBED_LIMIT and embed_description.endswith("...")
+        # Check if the original content was truncated in the embed using metadata
+        embed_metadata = embed_data.get("embed_metadata", {})
+        was_truncated = embed_metadata.get("was_truncated", False)
 
         if was_truncated:
             # Content was truncated - need to split and send remaining parts
@@ -436,7 +436,7 @@ async def send_split_message_with_embed(
         if remaining_citations:
             # Create embed for remaining content with citations
             logger.debug(f"Creating continuation embed with {len(remaining_citations)} citations")
-            continuation_embed = citation_embed_formatter.create_citation_embed(
+            continuation_embed, _ = citation_embed_formatter.create_citation_embed(
                 message_part2, remaining_citations, footer_text="🌐 Web search results (continued)"
             )
 

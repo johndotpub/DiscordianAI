@@ -1,13 +1,15 @@
-"""Tests for Discord embed formatting functionality."""
+"""Tests for Discord embed formatting and citation handling."""
+
+import pytest
+from unittest.mock import MagicMock
 
 import discord
 
-from src.config import EMBED_LIMIT
-from src.discord_embeds import CitationEmbedFormatter, citation_embed_formatter
+from src.discord_embeds import CitationEmbedFormatter, citation_embed_formatter, EMBED_LIMIT
 
 
 class TestCitationEmbedFormatter:
-    """Test the CitationEmbedFormatter class."""
+    """Test CitationEmbedFormatter class functionality."""
 
     def test_create_citation_embed_basic(self):
         """Test basic citation embed creation."""
@@ -19,7 +21,7 @@ class TestCitationEmbedFormatter:
             "2": "https://example.com/ml-progress",
         }
 
-        embed = formatter.create_citation_embed(content, citations)
+        embed, metadata = formatter.create_citation_embed(content, citations)
 
         # Verify embed properties
         assert isinstance(embed, discord.Embed)
@@ -27,6 +29,13 @@ class TestCitationEmbedFormatter:
         assert "[[1]](https://example.com/ai-advances)" in embed.description
         assert "[[2]](https://example.com/ml-progress)" in embed.description
         assert "📚 2 sources" in embed.footer.text
+        
+        # Verify metadata
+        assert isinstance(metadata, dict)
+        assert "was_truncated" in metadata
+        assert "original_length" in metadata
+        assert "formatted_length" in metadata
+        assert metadata["was_truncated"] is False
 
     def test_create_citation_embed_with_title(self):
         """Test citation embed creation with custom title."""
@@ -36,10 +45,14 @@ class TestCitationEmbedFormatter:
         citations = {"1": "https://example.com/research"}
         title = "Research Update"
 
-        embed = formatter.create_citation_embed(content, citations, title=title)
+        embed, metadata = formatter.create_citation_embed(content, citations, title=title)
 
         assert embed.title == "Research Update"
         assert "[[1]](https://example.com/research)" in embed.description
+        
+        # Verify metadata
+        assert isinstance(metadata, dict)
+        assert metadata["was_truncated"] is False
 
     def test_create_citation_embed_no_citations(self):
         """Test embed creation with no citations."""
@@ -48,10 +61,14 @@ class TestCitationEmbedFormatter:
         content = "This is plain text with no citations."
         citations = {}
 
-        embed = formatter.create_citation_embed(content, citations)
+        embed, metadata = formatter.create_citation_embed(content, citations)
 
         assert embed.description == content
         assert embed.footer.text is None
+        
+        # Verify metadata
+        assert isinstance(metadata, dict)
+        assert metadata["was_truncated"] is False
 
     def test_create_citation_embed_custom_footer(self):
         """Test embed creation with custom footer."""
@@ -61,9 +78,13 @@ class TestCitationEmbedFormatter:
         citations = {"1": "https://example.com"}
         footer_text = "Custom footer text"
 
-        embed = formatter.create_citation_embed(content, citations, footer_text=footer_text)
+        embed, metadata = formatter.create_citation_embed(content, citations, footer_text=footer_text)
 
         assert embed.footer.text == footer_text
+        
+        # Verify metadata
+        assert isinstance(metadata, dict)
+        assert metadata["was_truncated"] is False
 
     def test_format_citations_for_embed_description(self):
         """Test citation formatting for embed description."""
@@ -126,11 +147,14 @@ class TestCitationEmbedFormatter:
         long_content = "A" * 5000 + " [1]"
         citations = {"1": "https://example.com"}
 
-        embed = formatter.create_citation_embed(long_content, citations)
+        embed, metadata = formatter.create_citation_embed(long_content, citations)
 
         # Should be truncated to fit Discord's limit
         assert len(embed.description) <= EMBED_LIMIT
         assert embed.description.endswith("...")
+        
+        # Verify metadata shows truncation
+        assert metadata["was_truncated"] is True
 
     def test_global_formatter_instance(self):
         """Test that global formatter instance is available."""
@@ -142,11 +166,11 @@ class TestCitationEmbedFormatter:
         formatter = CitationEmbedFormatter()
 
         # Single citation
-        embed_single = formatter.create_citation_embed("Content [1]", {"1": "https://example.com"})
+        embed_single, metadata_single = formatter.create_citation_embed("Content [1]", {"1": "https://example.com"})
         assert "1 source" in embed_single.footer.text
 
         # Multiple citations
-        embed_multiple = formatter.create_citation_embed(
+        embed_multiple, metadata_multiple = formatter.create_citation_embed(
             "Content [1] and [2]", {"1": "https://example.com", "2": "https://test.com"}
         )
         assert "2 sources" in embed_multiple.footer.text

@@ -109,7 +109,7 @@ class TestCitationIntegration:
         }
 
         # Test embed creation
-        embed = formatter.create_citation_embed(content, citations)
+        embed, metadata = formatter.create_citation_embed(content, citations)
 
         # Verify all citations are clickable
         for num, url in citations.items():
@@ -118,6 +118,10 @@ class TestCitationIntegration:
 
         # Verify footer shows correct count
         assert "📚 3 sources" in embed.footer.text
+        
+        # Verify metadata
+        assert isinstance(metadata, dict)
+        assert metadata["was_truncated"] is False
 
     @pytest.mark.asyncio
     async def test_mixed_content_without_citations(self):
@@ -170,7 +174,7 @@ class TestCitationIntegration:
         content = "Research shows [1] and studies indicate [2] and data suggests [3]."
         citations = {"1": "https://research.example.com"}  # Missing 2 and 3
 
-        embed = formatter.create_citation_embed(content, citations)
+        embed, metadata = formatter.create_citation_embed(content, citations)
 
         # Should format available citation
         assert "[[1]](https://research.example.com)" in embed.description
@@ -180,6 +184,10 @@ class TestCitationIntegration:
         assert "[3]" in embed.description
         assert "[[2]]" not in embed.description
         assert "[[3]]" not in embed.description
+        
+        # Verify metadata
+        assert isinstance(metadata, dict)
+        assert metadata["was_truncated"] is False
 
     def test_embed_character_limits(self):
         """Test embed handling of Discord character limits."""
@@ -189,11 +197,14 @@ class TestCitationIntegration:
         long_content = "A" * 5000 + " with citation [1]"
         citations = {"1": "https://example.com"}
 
-        embed = formatter.create_citation_embed(long_content, citations)
+        embed, metadata = formatter.create_citation_embed(long_content, citations)
 
         # Should be truncated to fit Discord limits
         assert len(embed.description) <= EMBED_LIMIT
         assert embed.description.endswith("...")
+        
+        # Verify metadata shows truncation
+        assert metadata["was_truncated"] is True
 
     def test_no_citations_no_embed_decision(self):
         """Test that responses without citations don't trigger embed creation."""

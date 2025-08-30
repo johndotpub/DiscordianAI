@@ -38,7 +38,7 @@ class CitationEmbedFormatter:
         citations: dict[str, str],
         title: str | None = None,
         footer_text: str | None = None,
-    ) -> discord.Embed:
+    ) -> tuple[discord.Embed, dict]:
         """Create a Discord embed with properly formatted citations.
 
         Args:
@@ -48,7 +48,7 @@ class CitationEmbedFormatter:
             footer_text: Optional footer text
 
         Returns:
-            discord.Embed: Formatted embed with clickable citation links
+            tuple[discord.Embed, dict]: (embed, metadata) where metadata contains truncation info
         """
         # Create the base embed
         embed = discord.Embed(color=self.color)
@@ -60,12 +60,13 @@ class CitationEmbedFormatter:
         formatted_content = self._format_citations_for_embed_description(content, citations)
 
         # Discord embed description has a character limit
-        if len(formatted_content) > EMBED_LIMIT:
+        was_truncated = len(formatted_content) > EMBED_LIMIT
+        if was_truncated:
             # Truncate and add notice
             formatted_content = formatted_content[:EMBED_SAFE_LIMIT] + "..."
             self.logger.warning(
                 f"Embed description truncated from {len(formatted_content)} to "
-                f"{EMBED_LIMIT} chars"
+                f"{EMBED_SAFE_LIMIT} chars"
             )
 
         embed.description = formatted_content
@@ -80,8 +81,15 @@ class CitationEmbedFormatter:
                 text=f"📚 {citation_count} source{'s' if citation_count != 1 else ''}"
             )
 
+        # Create metadata about the embed
+        metadata = {
+            "was_truncated": was_truncated,
+            "original_length": len(content),
+            "formatted_length": len(formatted_content)
+        }
+
         self.logger.debug(f"Created citation embed with {len(citations)} citations")
-        return embed
+        return embed, metadata
 
     def _format_citations_for_embed_description(self, text: str, citations: dict[str, str]) -> str:
         """Format citation numbers as clickable hyperlinks for Discord embed description.

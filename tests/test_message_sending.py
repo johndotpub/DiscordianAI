@@ -59,6 +59,7 @@ class TestSendFormattedMessage:
             "embed": embed,
             "citations": {"1": "https://example.com", "2": "https://test.com"},
             "clean_text": long_content,
+            "embed_metadata": {"was_truncated": True, "original_length": 5000, "formatted_length": EMBED_SAFE_LIMIT}
         }
 
         message = "Test message"

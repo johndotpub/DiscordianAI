@@ -328,10 +328,15 @@ async def process_perplexity_message(
             embed_data = None
             if citation_embed_formatter.should_use_embed_for_response(citations):
                 # Create embed data for Discord embed rendering
-                embed = citation_embed_formatter.create_citation_embed(
+                embed, embed_metadata = citation_embed_formatter.create_citation_embed(
                     clean_text, citations, footer_text="🌐 Web search results"
                 )
-                embed_data = {"embed": embed, "citations": citations, "clean_text": clean_text}
+                embed_data = {
+                    "embed": embed, 
+                    "citations": citations, 
+                    "clean_text": clean_text,
+                    "embed_metadata": embed_metadata
+                }
                 # For embeds, we use the clean text (citations will be in embed)
                 formatted_text = clean_text
                 suppress_embeds = False  # We're using our own embed
