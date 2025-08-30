@@ -59,8 +59,9 @@ PERPLEXITY_API_KEY=your_perplexity_key_here
 
 ### 📚 Citation Management
 - Automatic citation extraction from responses
-- Clean URL formatting for Discord
-- Source attribution with clickable links
+- **Discord embed formatting** for clickable citation hyperlinks
+- Source attribution with proper `[[1]](url)` formatting
+- **Smart embed creation** only when citations are present
 
 ### 🎯 Smart Embed Suppression
 - Automatically suppresses Discord embeds when 2+ links present

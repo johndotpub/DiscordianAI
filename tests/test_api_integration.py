@@ -204,11 +204,13 @@ class TestPerplexityAPIIntegration:
 
         # Verify results
         assert result is not None
-        response_text, suppress_embeds = result
+        response_text, suppress_embeds, embed_data = result
         assert "AI development continues to advance" in response_text
 
-        # Should suppress embeds due to multiple URLs
-        assert suppress_embeds is True
+        # Should have embed data since citations are present
+        assert embed_data is not None
+        assert "embed" in embed_data
+        assert "citations" in embed_data
 
         # Verify API call parameters
         call_args = perplexity_client.chat.completions.create.call_args[1]

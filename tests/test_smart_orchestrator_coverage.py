@@ -114,9 +114,9 @@ class TestProcessingModes:
         perplexity_client = MagicMock()
 
         with patch("src.smart_orchestrator.process_perplexity_message") as mock_perplexity:
-            mock_perplexity.return_value = ("Perplexity response", True)
+            mock_perplexity.return_value = ("Perplexity response", True, None)
 
-            response, suppress_embeds = await _process_perplexity_only_mode(
+            response, suppress_embeds, embed_data = await _process_perplexity_only_mode(
                 message="Test query",
                 user=user,
                 conversation_manager=conversation_manager,
@@ -143,7 +143,7 @@ class TestProcessingModes:
         with patch("src.smart_orchestrator.process_perplexity_message") as mock_perplexity:
             mock_perplexity.return_value = None  # Simulate failure
 
-            response, suppress_embeds = await _process_perplexity_only_mode(
+            response, suppress_embeds, embed_data = await _process_perplexity_only_mode(
                 message="Test query",
                 user=user,
                 conversation_manager=conversation_manager,
@@ -171,7 +171,7 @@ class TestProcessingModes:
         with patch("src.smart_orchestrator.process_openai_message") as mock_openai:
             mock_openai.return_value = "OpenAI response"
 
-            response, suppress_embeds = await _process_openai_only_mode(
+            response, suppress_embeds, embed_data = await _process_openai_only_mode(
                 message="Test query",
                 user=user,
                 conversation_summary=conversation_summary,
@@ -199,7 +199,7 @@ class TestProcessingModes:
         with patch("src.smart_orchestrator.process_openai_message") as mock_openai:
             mock_openai.return_value = None  # Simulate failure
 
-            response, suppress_embeds = await _process_openai_only_mode(
+            response, suppress_embeds, embed_data = await _process_openai_only_mode(
                 message="Test query",
                 user=user,
                 conversation_summary=conversation_summary,
@@ -224,9 +224,9 @@ class TestProcessingModes:
         perplexity_client = MagicMock()
 
         with patch("src.smart_orchestrator.process_perplexity_message") as mock_perplexity:
-            mock_perplexity.return_value = ("Perplexity response", True)
+            mock_perplexity.return_value = ("Perplexity response", True, None)
 
-            response, suppress_embeds = await _try_perplexity_with_fallback(
+            response, suppress_embeds, embed_data = await _try_perplexity_with_fallback(
                 message="Test query",
                 user=user,
                 conversation_manager=conversation_manager,
@@ -250,7 +250,7 @@ class TestProcessingModes:
         with patch("src.smart_orchestrator.process_perplexity_message") as mock_perplexity:
             mock_perplexity.return_value = None  # Simulate failure
 
-            response, suppress_embeds = await _try_perplexity_with_fallback(
+            response, suppress_embeds, embed_data = await _try_perplexity_with_fallback(
                 message="Test query",
                 user=user,
                 conversation_manager=conversation_manager,
@@ -280,9 +280,9 @@ class TestProcessingModes:
             patch("src.smart_orchestrator._process_openai_only_mode") as mock_openai,
         ):
 
-            mock_perplexity.return_value = ("Web search result", True)
+            mock_perplexity.return_value = ("Web search result", True, None)
 
-            response, suppress_embeds = await _process_hybrid_mode(
+            response, suppress_embeds, embed_data = await _process_hybrid_mode(
                 message="What's the latest news?",
                 user=user,
                 conversation_manager=conversation_manager,
@@ -313,7 +313,7 @@ class TestProcessingModes:
 
         # Just test that the function can be called and returns something
         try:
-            response, suppress_embeds = await _process_hybrid_mode(
+            response, suppress_embeds, embed_data = await _process_hybrid_mode(
                 message="Test message",
                 user=user,
                 conversation_manager=conversation_manager,
@@ -349,9 +349,9 @@ class TestMainOrchestrator:
         config = {"test": "config"}
 
         with patch("src.smart_orchestrator._process_hybrid_mode") as mock_hybrid:
-            mock_hybrid.return_value = ("Hybrid response", True)
+            mock_hybrid.return_value = ("Hybrid response", True, None)
 
-            response, suppress_embeds = await get_smart_response(
+            response, suppress_embeds, embed_data = await get_smart_response(
                 message="Test message",
                 user=user,
                 conversation_summary=conversation_summary,
@@ -380,9 +380,9 @@ class TestMainOrchestrator:
         perplexity_client = None  # No Perplexity
 
         with patch("src.smart_orchestrator._process_openai_only_mode") as mock_openai:
-            mock_openai.return_value = ("OpenAI only response", False)
+            mock_openai.return_value = ("OpenAI only response", False, None)
 
-            response, suppress_embeds = await get_smart_response(
+            response, suppress_embeds, embed_data = await get_smart_response(
                 message="Test message",
                 user=user,
                 conversation_summary=conversation_summary,
@@ -409,9 +409,9 @@ class TestMainOrchestrator:
         perplexity_client = MagicMock()
 
         with patch("src.smart_orchestrator._process_perplexity_only_mode") as mock_perplexity:
-            mock_perplexity.return_value = ("Perplexity only response", True)
+            mock_perplexity.return_value = ("Perplexity only response", True, None)
 
-            response, suppress_embeds = await get_smart_response(
+            response, suppress_embeds, embed_data = await get_smart_response(
                 message="Test message",
                 user=user,
                 conversation_summary=[],
@@ -435,7 +435,7 @@ class TestMainOrchestrator:
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
         logger = logging.getLogger("test")
 
-        response, suppress_embeds = await get_smart_response(
+        response, suppress_embeds, embed_data = await get_smart_response(
             message="Test message",
             user=user,
             conversation_summary=[],

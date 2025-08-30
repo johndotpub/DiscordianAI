@@ -180,8 +180,8 @@ class TestMessageProcessing:
         # Mock successful rate limit check and response generation
         with (
             patch("src.bot.check_rate_limit", return_value=True),
-            patch("src.bot.get_smart_response", return_value=("Test response", False)),
-            patch("src.bot.send_split_message") as mock_send,
+            patch("src.bot.get_smart_response", return_value=("Test response", False, None)),
+            patch("src.bot.send_formatted_message") as mock_send,
         ):
 
             deps["conversation_manager"].get_conversation_summary_formatted.return_value = []
@@ -248,8 +248,8 @@ class TestMessageProcessing:
 
         with (
             patch("src.bot.check_rate_limit", return_value=True),
-            patch("src.bot.get_smart_response", return_value=("Test response", False)),
-            patch("src.bot.send_split_message") as mock_send,
+            patch("src.bot.get_smart_response", return_value=("Test response", False, None)),
+            patch("src.bot.send_formatted_message") as mock_send,
         ):
 
             deps["conversation_manager"].get_conversation_summary_formatted.return_value = []

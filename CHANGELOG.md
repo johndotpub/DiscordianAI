@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.6] - 2025-01-25
+
+### Fixed
+- **🔗 Citation Hyperlinks**: Fixed Perplexity citations not rendering as clickable links in Discord
+  - **Root Cause**: Discord only supports `[text](url)` hyperlinks in embeds, not regular messages
+  - **Solution**: Implemented Discord embeds for Perplexity responses with citations
+  - **Result**: Citations now appear as clickable hyperlinks: `[[1]](https://source.com)`
+- **📱 Message Splitting with Embeds**: Enhanced message splitting to properly handle Discord embeds
+  - Embed with citations attached to first message part
+  - Continuation messages sent as plain text
+  - Preserves citation accessibility for long responses
+
+### Added  
+- **`CitationEmbedFormatter` Class**: New utility for creating Discord embeds with properly formatted citations
+- **Enhanced Citation Processing**: Improved pipeline from Perplexity API to Discord embed rendering
+- **Comprehensive Citation Tests**: 17 new tests covering end-to-end citation functionality
+- **Smart Embed Decision Logic**: Automatically determines when to use embeds vs plain text
+
+### Changed
+- **Perplexity Response Format**: Now returns `(text, suppress_embeds, embed_data)` tuple
+- **Message Sending Pipeline**: Updated to handle both text messages and embeds seamlessly  
+- **Citation Display**: Citations only appear in embeds for Perplexity responses (OpenAI remains plain text)
+- **Dependencies**: Updated to `discord.py>=2.6.2` and `openai>=1.101.0`
+
+### Technical Details
+- **Discord Embed Limits**: Properly handles 4096 character description limit
+- **Backward Compatibility**: Non-citation responses continue using plain text
+- **Error Handling**: Graceful fallback to plain text if embed creation fails
+- **Performance**: Maintains existing caching and deduplication optimizations
+
 ## [v0.2.5] - 2025-08-10
 
 ### Added

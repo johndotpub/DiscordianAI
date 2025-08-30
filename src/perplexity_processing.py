@@ -18,6 +18,7 @@ from .config import (
     URL_PATTERN,
 )
 from .conversation_manager import ThreadSafeConversationManager
+from .discord_embeds import citation_embed_formatter
 
 # Use centralized patterns from config
 
@@ -181,7 +182,7 @@ async def process_perplexity_message(
     ),
     output_tokens: int = 8000,
     model: str = "sonar-pro",
-) -> tuple[str, bool] | None:
+) -> tuple[str, bool, dict | None] | None:
     """Get response from Perplexity's web-enabled model with comprehensive error handling.
 
     Processes user queries through Perplexity's web search capabilities,
@@ -199,8 +200,10 @@ async def process_perplexity_message(
         model (str): Perplexity model to use (default: "sonar-pro")
 
     Returns:
-        Optional[Tuple[str, bool]]: (formatted_response_text, should_suppress_embeds)
-                                   or None if the API call failed
+        Optional[Tuple[str, bool, dict | None]]:
+            (formatted_response_text, should_suppress_embeds, embed_data)
+            or None if the API call failed.
+            embed_data contains Discord embed info when citations present.
 
     Side Effects:
         - Updates user's conversation history via thread-safe manager
@@ -262,15 +265,28 @@ async def process_perplexity_message(
             clean_text, citations = extract_citations_from_response(raw_response)
             logger.debug(f"Extracted {len(citations)} citations from response")
 
-            # Format citations for Discord
-            formatted_text = format_citations_for_discord(clean_text, citations)
-
-            # Determine if embeds should be suppressed
-            suppress_embeds = should_suppress_embeds(formatted_text)
+            # Determine if we should use embed formatting
+            embed_data = None
+            if citation_embed_formatter.should_use_embed_for_response(clean_text, citations):
+                # Create embed data for Discord embed rendering
+                embed = citation_embed_formatter.create_citation_embed(
+                    clean_text, citations, footer_text="🌐 Web search results"
+                )
+                embed_data = {"embed": embed, "citations": citations, "clean_text": clean_text}
+                # For embeds, we use the clean text (citations will be in embed)
+                formatted_text = clean_text
+                suppress_embeds = False  # We're using our own embed
+                logger.info(f"Created citation embed with {len(citations)} citations")
+            else:
+                # Fallback to plain text with markdown citations (won't be clickable)
+                formatted_text = format_citations_for_discord(clean_text, citations)
+                suppress_embeds = should_suppress_embeds(formatted_text)
+                logger.debug("Using plain text formatting (no citations for embed)")
 
             logger.info(
                 f"Perplexity response processed: {len(formatted_text)} chars, "
-                f"{len(citations)} citations, suppress_embeds={suppress_embeds}"
+                f"{len(citations)} citations, embed_mode={embed_data is not None}, "
+                f"suppress_embeds={suppress_embeds}"
             )
 
             # Add both user and assistant messages to conversation history (thread-safe)
@@ -280,10 +296,14 @@ async def process_perplexity_message(
                 user.id,
                 "assistant",
                 formatted_text,
-                metadata={"ai_service": "perplexity", "citations_count": len(citations)},
+                metadata={
+                    "ai_service": "perplexity",
+                    "citations_count": len(citations),
+                    "has_embed": embed_data is not None,
+                },
             )
 
-            return formatted_text, suppress_embeds
+            return formatted_text, suppress_embeds, embed_data
 
         logger.error(f"Perplexity API returned invalid response structure: {response}")
         return None
