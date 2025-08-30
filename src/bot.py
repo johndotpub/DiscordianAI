@@ -372,7 +372,7 @@ async def send_formatted_message(
         except discord.HTTPException:
             logger.exception("Failed to send embed message")
             logger.warning("Falling back to split message without embed")
-            # Continue to fallback logic below
+                # Continue to fallback logic below
 
     # No embed data OR embed send failed - use regular message splitting (2000 char limit)
     if len(message) <= 2000:
