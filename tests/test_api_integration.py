@@ -210,10 +210,15 @@ class TestPerplexityAPIIntegration:
         assert result is not None
         response_text, suppress_embeds, embed_data = result
 
-        # CRITICAL: When embed_data exists, response_text should be empty to prevent duplication
+        # When embed_data exists, response_text should contain the actual content
+        # for conversation history, while the embed displays the formatted content
+        expected_text = (
+            "Based on recent research [1], AI development continues to advance. "
+            "The latest findings [2] show promising results."
+        )
         assert (
-            response_text == ""
-        ), f"Expected empty response_text to prevent duplication, got: '{response_text}'"
+            response_text == expected_text
+        ), f"Expected actual content in response_text, got: '{response_text}'"
 
         # Should have embed data since citations are present
         assert embed_data is not None
@@ -229,6 +234,7 @@ class TestPerplexityAPIIntegration:
         assert call_args["model"] == "sonar-pro"
         assert call_args["max_tokens"] == 1500
         assert call_args["temperature"] == 0.7
+        # Citations are now included by default, no special parameters needed
 
     @pytest.mark.asyncio
     async def test_perplexity_error_handling(self):

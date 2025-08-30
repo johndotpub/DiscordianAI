@@ -149,7 +149,9 @@ MENTION_PATTERN = re.compile(r"<@!?(\d+)>")
 URL_DETECTION_PATTERNS = [
     r"https?://[^\s\[\]()]+[^\s\[\]().,;!?]",  # Standard URLs with common punctuation
     r"\[([^\]]+)\]\(([^)]+)\)",  # Markdown links [text](url)
-    r"https?://[^\s]+",  # Bare URLs (fallback)
+    r"(?:https?://)?[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
+    r"(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}"
+    r"(?:/[^\s]*)?",  # Bare URLs (domain.tld/path)
 ]
 
 # Compile URL detection patterns for performance

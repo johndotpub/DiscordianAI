@@ -262,7 +262,8 @@ async def _process_openai_only_mode(
         )
         if response_content:
             logger.info(f"OpenAI response generated successfully ({len(response_content)} chars)")
-            return response_content, False, None  # OpenAI doesn't use embeds
+            # OpenAI responses don't have citations, so no embed data needed
+            return response_content, False, None
         logger.error("OpenAI API returned no response")
         return ERROR_MESSAGES["no_response_generated"], False, None
 

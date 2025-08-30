@@ -81,10 +81,15 @@ class TestCitationIntegration:
         assert "citations" in embed_data
         assert "clean_text" in embed_data
 
-        # CRITICAL: When embed_data exists, response_text should be empty to prevent duplication
+        # When embed_data exists, response_text should contain the actual content
+        # for conversation history, while the embed displays the formatted content
+        expected_text = (
+            "The latest AI developments include breakthrough research [1] "
+            "and new model architectures [2]. Recent studies show progress."
+        )
         assert (
-            response_text == ""
-        ), f"Expected empty response_text to prevent duplication, got: '{response_text}'"
+            response_text == expected_text
+        ), f"Expected actual content in response_text, got: '{response_text}'"
 
         # The embed should contain the actual content
         embed = embed_data["embed"]
@@ -103,10 +108,15 @@ class TestCitationIntegration:
         # Verify footer (should be the custom Perplexity footer)
         assert "🌐 Web search results" in embed.footer.text
 
-        # CRITICAL: When embed_data exists, response_text should be empty to prevent duplication
+        # When embed_data exists, response_text should contain the actual content
+        # for conversation history, while the embed displays the formatted content
+        expected_text = (
+            "The latest AI developments include breakthrough research [1] "
+            "and new model architectures [2]. Recent studies show progress."
+        )
         assert (
-            response_text == ""
-        ), f"Expected empty response_text to prevent duplication, got: '{response_text}'"
+            response_text == expected_text
+        ), f"Expected actual content in response_text, got: '{response_text}'"
 
         # The embed should contain the actual content
         embed = embed_data["embed"]

@@ -199,7 +199,6 @@ class APIHealthMonitor:
                     ],
                     max_tokens=50,  # Minimal response
                     temperature=0.1,  # Low temperature for consistent results
-                    timeout=30,
                 )
             )
 

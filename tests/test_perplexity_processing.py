@@ -233,13 +233,77 @@ async def test_process_perplexity_message_with_citations():
     assert "citations" in embed_data
     assert "clean_text" in embed_data
 
-    # CRITICAL: When embed_data exists, response_text should be empty to prevent duplication
+    # When embed_data exists, response_text should contain the actual content
+    # for conversation history, while the embed displays the formatted content
     assert (
-        response_text == ""
-    ), f"Expected empty response_text to prevent duplication, got: '{response_text}'"
+        response_text == "AI is advancing rapidly [1] and shows promise [2]."
+    ), f"Expected actual content in response_text, got: '{response_text}'"
 
     # Embed should contain the citations
     embed = embed_data["embed"]
     assert embed.description is not None
     assert "AI is advancing rapidly" in embed.description  # Content is in embed
     assert "[[1]]" in embed.description  # Citation hyperlinks in embed
+
+
+@pytest.mark.asyncio
+async def test_process_perplexity_message_with_urls():
+    """Test processing Perplexity message with URLs creates proper search queries."""
+    mock_user = MagicMock()
+    mock_user.id = 4
+
+    from src.conversation_manager import ThreadSafeConversationManager
+
+    conversation_manager = ThreadSafeConversationManager()
+    logger = MagicMock()
+
+    class FakeMessage:
+        def __init__(self, content):
+            self.content = content
+
+    class FakeChoice:
+        def __init__(self, content):
+            self.message = FakeMessage(content)
+
+    class FakeResponse:
+        def __init__(self, content):
+            self.choices = [FakeChoice(content)]
+
+    class FakePerplexityClient:
+        class Chat:
+            class Completions:
+                @staticmethod
+                def create(*args, **kwargs):
+                    # Verify that the message contains the URL
+                    messages = kwargs["messages"]
+                    user_message = messages[1]["content"]
+                    assert "https://github.com/johndotpub/DiscordianAI/pull/197" in user_message
+
+                    # Return a response with citations
+                    response = FakeResponse("This PR looks great [1]!")
+                    response.citations = ["https://github.com/johndotpub/DiscordianAI/pull/197"]
+                    return response
+
+            completions = Completions()
+
+        chat = Chat()
+
+    result = await process_perplexity_message(
+        "Check this PR: https://github.com/johndotpub/DiscordianAI/pull/197",
+        mock_user,
+        conversation_manager,
+        logger,
+        FakePerplexityClient(),
+        "You are a helpful assistant.",
+        8000,
+        "sonar-pro",
+    )
+
+    assert result is not None
+    response_text, suppress_embeds, embed_data = result
+
+    # Should have embed data since citations are present
+    assert embed_data is not None
+    assert "citations" in embed_data
+    assert "1" in embed_data["citations"]
+    assert embed_data["citations"]["1"] == "https://github.com/johndotpub/DiscordianAI/pull/197"

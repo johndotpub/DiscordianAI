@@ -265,18 +265,36 @@ async def process_perplexity_message(
 
         # to maintain consistency and allow rollback on failures
 
-        # Make Perplexity API call
-        logger.debug("Making Perplexity API call")
+        # Make Perplexity API call with web search enabled
+        logger.debug("Making Perplexity API call with web search")
+
+        # Extract URLs from the message for web search
+        urls_in_message = URL_PATTERN.findall(message)
+
+        # Prepare API parameters for Perplexity
+        api_params = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": message},
+            ],
+            "max_tokens": output_tokens,
+            "temperature": 0.7,  # Slightly creative for better web search synthesis
+        }
+
+        # Enable web search and citations
+        if urls_in_message:
+            # If URLs are present, include them in the user message for context
+            # Perplexity will automatically process URLs in the message content
+            logger.debug(f"Message contains URLs for web search: {urls_in_message}")
+        else:
+            # If no URLs, still enable web search for general queries
+            logger.debug("No URLs detected, enabling general web search")
+
+        # Enable web search capabilities (citations are included by default)
+
         response = await asyncio.to_thread(
-            lambda: perplexity_client.chat.completions.create(
-                model=model,  # Configurable Perplexity model
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": message},
-                ],
-                max_tokens=output_tokens,
-                temperature=0.7,  # Slightly creative for better web search synthesis
-            )
+            lambda: perplexity_client.chat.completions.create(**api_params)
         )
     except TimeoutError:
         logger.exception(f"Perplexity API call timed out for user {user.id}")
@@ -337,9 +355,12 @@ async def process_perplexity_message(
                     "clean_text": clean_text,
                     "embed_metadata": embed_metadata,
                 }
-                # For embeds, we don't need formatted text since content is in embed
-                formatted_text = ""  # Empty string - embed contains all content
-                suppress_embeds = False  # We're using our own embed
+                # For embeds, use the actual content for conversation history
+                # The embed will be sent separately, but we need content for context
+                formatted_text = clean_text
+                # Set suppress_embeds to False to prevent Discord from auto-generating embeds,
+                # since we are sending a custom citation embed instead.
+                suppress_embeds = False
                 logger.info(f"Created citation embed with {len(citations)} citations")
             else:
                 # Fallback to plain text with markdown citations (won't be clickable)

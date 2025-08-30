@@ -368,7 +368,8 @@ async def send_formatted_message(
         # Content fits in embed - send ONLY the embed, not the message text
         try:
             logger.debug(f"Sending citation embed only ({len(clean_text)} chars in embed)")
-            await channel.send("", embed=embed)  # Empty message text, content is in embed
+            # Send empty message text to avoid duplicate content - all content is in the embed
+            await channel.send("", embed=embed)
             logger.debug("Successfully sent message with embed")
         except discord.HTTPException:
             logger.exception("Failed to send embed message")
