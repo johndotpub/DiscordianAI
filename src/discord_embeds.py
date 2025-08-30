@@ -91,8 +91,6 @@ class CitationEmbedFormatter:
         if not citations:
             return text
 
-
-
         def replace_citation(match):
             citation_num = match.group(1)
             if citation_num in citations:
@@ -126,7 +124,7 @@ class CitationEmbedFormatter:
         if force_embed:
             return True
 
-                # Use embed if citations are present (primary use case)
+            # Use embed if citations are present (primary use case)
         return bool(citations and len(citations) > 0)
 
     def create_error_embed(self, error_message: str, title: str = "Error") -> discord.Embed:

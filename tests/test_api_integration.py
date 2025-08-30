@@ -171,14 +171,18 @@ class TestPerplexityAPIIntegration:
 
         conversation_manager = Mock(spec=ThreadSafeConversationManager)
 
-        # Mock Perplexity response with citations
+        # Mock Perplexity response with citations in metadata (new format)
         mock_response = Mock()
         mock_response.choices = [Mock()]
         mock_response.choices[0].message.content = (
             "Based on recent research [1], AI development continues to advance. "
-            "The latest findings [2] show promising results. "
-            "https://example.com/research1 https://example.com/research2"
+            "The latest findings [2] show promising results."
         )
+        # Add citations metadata (new Perplexity API format)
+        mock_response.citations = [
+            "https://example.com/research1",
+            "https://example.com/research2",
+        ]
         mock_response.id = "ppl-test-123"
         mock_response.usage = Mock()
         mock_response.usage.prompt_tokens = 35

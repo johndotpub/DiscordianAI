@@ -4,13 +4,14 @@ This test suite validates the complete citation pipeline from Perplexity API
 response to Discord embed rendering with clickable hyperlinks.
 """
 
+from unittest.mock import MagicMock
+
 import discord
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
+from src.conversation_manager import ThreadSafeConversationManager
 from src.discord_embeds import CitationEmbedFormatter
 from src.perplexity_processing import process_perplexity_message
-from src.conversation_manager import ThreadSafeConversationManager
 
 
 class TestCitationIntegration:
@@ -35,8 +36,13 @@ class TestCitationIntegration:
                 self.message = FakeMessage(content)
 
         class FakeResponse:
-            def __init__(self, content):
+            def __init__(self, content, citations=None):
                 self.choices = [FakeChoice(content)]
+                # Add citations metadata (new Perplexity API format)
+                self.citations = citations or [
+                    "https://ai-research.example.com/breakthrough",
+                    "https://ml-models.example.com/architectures",
+                ]
 
         class FakePerplexityClient:
             class Chat:
@@ -45,9 +51,7 @@ class TestCitationIntegration:
                     def create(*args, **kwargs):
                         return FakeResponse(
                             "The latest AI developments include breakthrough research [1] "
-                            "and new model architectures [2]. Recent studies show progress. "
-                            "https://ai-research.example.com/breakthrough "
-                            "https://ml-models.example.com/architectures"
+                            "and new model architectures [2]. Recent studies show progress."
                         )
 
                 completions = Completions()
@@ -80,11 +84,11 @@ class TestCitationIntegration:
         embed = embed_data["embed"]
         assert isinstance(embed, discord.Embed)
         assert embed.description is not None
-        
+
         # Check that citations are properly formatted as hyperlinks
         assert "[[1]](https://ai-research.example.com/breakthrough)" in embed.description
         assert "[[2]](https://ml-models.example.com/architectures)" in embed.description
-        
+
         # Verify footer (should be the custom Perplexity footer)
         assert "🌐 Web search results" in embed.footer.text
 
@@ -95,22 +99,22 @@ class TestCitationIntegration:
     def test_citation_embed_formatter_integration(self):
         """Test CitationEmbedFormatter integration with real citation data."""
         formatter = CitationEmbedFormatter()
-        
+
         content = "Machine learning advances [1] and neural networks [2] show promise [3]."
         citations = {
             "1": "https://ml-advances.example.com",
-            "2": "https://neural-nets.example.com", 
-            "3": "https://ai-promise.example.com"
+            "2": "https://neural-nets.example.com",
+            "3": "https://ai-promise.example.com",
         }
-        
+
         # Test embed creation
         embed = formatter.create_citation_embed(content, citations)
-        
+
         # Verify all citations are clickable
         for num, url in citations.items():
             expected_link = f"[[{num}]]({url})"
             assert expected_link in embed.description
-            
+
         # Verify footer shows correct count
         assert "📚 3 sources" in embed.footer.text
 
@@ -128,9 +132,15 @@ class TestCitationIntegration:
                     @staticmethod
                     def create(*args, **kwargs):
                         # Response without citations
-                        return MagicMock(choices=[MagicMock(message=MagicMock(
-                            content="This is a simple response without citations."
-                        ))])
+                        return MagicMock(
+                            choices=[
+                                MagicMock(
+                                    message=MagicMock(
+                                        content="This is a simple response without citations."
+                                    )
+                                )
+                            ]
+                        )
 
                 completions = Completions()
 
@@ -146,7 +156,7 @@ class TestCitationIntegration:
 
         assert result is not None
         response_text, suppress_embeds, embed_data = result
-        
+
         # Should not have embed data since no citations
         assert embed_data is None
         assert "This is a simple response" in response_text
@@ -154,16 +164,16 @@ class TestCitationIntegration:
     def test_citation_edge_cases(self):
         """Test citation handling edge cases."""
         formatter = CitationEmbedFormatter()
-        
+
         # Test with missing citation URLs
         content = "Research shows [1] and studies indicate [2] and data suggests [3]."
         citations = {"1": "https://research.example.com"}  # Missing 2 and 3
-        
+
         embed = formatter.create_citation_embed(content, citations)
-        
+
         # Should format available citation
         assert "[[1]](https://research.example.com)" in embed.description
-        
+
         # Should leave missing citations unchanged
         assert "[2]" in embed.description
         assert "[3]" in embed.description
@@ -173,13 +183,13 @@ class TestCitationIntegration:
     def test_embed_character_limits(self):
         """Test embed handling of Discord character limits."""
         formatter = CitationEmbedFormatter()
-        
+
         # Create content that exceeds embed description limit
         long_content = "A" * 5000 + " with citation [1]"
         citations = {"1": "https://example.com"}
-        
+
         embed = formatter.create_citation_embed(long_content, citations)
-        
+
         # Should be truncated to fit Discord limits
         assert len(embed.description) <= 4096
         assert embed.description.endswith("...")
@@ -187,13 +197,13 @@ class TestCitationIntegration:
     def test_no_citations_no_embed_decision(self):
         """Test that responses without citations don't trigger embed creation."""
         formatter = CitationEmbedFormatter()
-        
+
         content = "This is a regular response without any citations."
         citations = {}
-        
+
         should_use_embed = formatter.should_use_embed_for_response(content, citations)
         assert should_use_embed is False
-        
+
         # Test with None citations
         should_use_embed = formatter.should_use_embed_for_response(content, None)
         assert should_use_embed is False

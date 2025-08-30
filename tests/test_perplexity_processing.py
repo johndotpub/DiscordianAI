@@ -11,14 +11,30 @@ from src.perplexity_processing import (
 
 
 def test_extract_citations_from_response():
-    # Test with citations in the text
+    # Test with modern Perplexity format (citations in metadata)
+    text_with_citations = "AI is advancing rapidly [1] and GPT-5 shows promise [2]."
+    api_citations = [
+        "https://ai-research.example.com/advances",
+        "https://gpt5.example.com/promise",
+    ]
+
+    clean_text, citations = extract_citations_from_response(text_with_citations, api_citations)
+
+    assert "[1]" in text_with_citations  # Original should have citations
+    assert clean_text.strip()  # Should return cleaned text
+    assert isinstance(citations, dict)  # Should return citation dict
+    assert citations["1"] == "https://ai-research.example.com/advances"
+    assert citations["2"] == "https://gpt5.example.com/promise"
+
+
+def test_extract_citations_legacy_format():
+    # Test with legacy format (URLs in text) for backward compatibility
     text_with_citations = (
         "AI is advancing rapidly [1] and GPT-5 shows promise [2]. "
         "Here's a URL: https://test-domain.example"
     )
-    clean_text, citations = extract_citations_from_response(text_with_citations)
+    clean_text, citations = extract_citations_from_response(text_with_citations, None)
 
-    assert "[1]" in text_with_citations  # Original should have citations
     assert clean_text.strip()  # Should return cleaned text
     assert isinstance(citations, dict)  # Should return citation dict
 
@@ -184,11 +200,14 @@ async def test_process_perplexity_message_with_citations():
             class Completions:
                 @staticmethod
                 def create(*args, **kwargs):
-                    # Response with citations and URLs
-                    return FakeResponse(
-                        "AI is advancing rapidly [1] and shows promise [2]. "
-                        "https://example.com/ai-research https://test.com/ai-future"
-                    )
+                    # Response with citations in metadata (new format)
+                    response = FakeResponse("AI is advancing rapidly [1] and shows promise [2].")
+                    # Add citations metadata
+                    response.citations = [
+                        "https://example.com/ai-research",
+                        "https://test.com/ai-future",
+                    ]
+                    return response
 
             completions = Completions()
 

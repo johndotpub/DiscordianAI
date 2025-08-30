@@ -23,71 +23,119 @@ from .discord_embeds import citation_embed_formatter
 # Use centralized patterns from config
 
 
-def extract_citations_from_response(response_text: str) -> tuple[str, dict[str, str]]:
+def extract_citations_from_response(
+    response_text: str,
+    response_citations: list[str] | None = None,
+    search_results: list[dict] | None = None,
+) -> tuple[str, dict[str, str]]:
     """Extract citations from Perplexity response and return cleaned text with citation mapping.
 
-    Perplexity typically includes citations at the end of lines in format [1], [2] etc.
-    This function extracts these citations and maps them to URLs found in the text.
+    Modern Perplexity API provides citations in metadata fields rather than inline URLs.
+    This function maps citation numbers [1], [2] to URLs from the response citations field.
 
     Args:
         response_text (str): Raw response text from Perplexity API
+        response_citations (list[str], optional): Citations array from API response metadata
+        search_results (list[dict], optional): Search results with title/url/date from API response
 
     Returns:
         Tuple[str, Dict[str, str]]: (cleaned_text, citation_dict) where
                                    citation_dict maps citation numbers to URLs
     """
     citations = {}
+    logger = logging.getLogger("discordianai.perplexity")
 
     # Look for citation numbers in the text using pre-compiled pattern
     citation_matches = CITATION_PATTERN.findall(response_text)
+    unique_citations = list(set(citation_matches))  # Remove duplicates
 
-    # Look for URLs in the text
-    urls = URL_PATTERN.findall(response_text)
-
-    logger = logging.getLogger("discordianai.perplexity")
     logger.debug(
         f"Citation extraction: found {len(citation_matches)} citations: {citation_matches}"
     )
-    logger.debug(
-        f"Citation extraction: found {len(urls)} URLs: {urls[:3]}..."
-    )  # Show first 3 URLs
+    logger.debug(f"Unique citations: {unique_citations}")
 
-    # Since Perplexity citations are always at the end of lines,
-    # we can use a more intelligent approach to match citations to URLs
+    # NEW: Use citations from API response metadata (modern Perplexity format)
+    if unique_citations:
+        # Try citations field first (direct URL array)
+        if response_citations:
+            logger.debug(f"Using API citations field: {len(response_citations)} URLs available")
 
-    if citation_matches and urls:
-        # Split text into lines to find citations at line endings
-        lines = response_text.split("\n")
+            # Map citation numbers to URLs from the citations array
+            for citation_num in unique_citations:
+                citation_index = int(citation_num) - 1  # Convert to 0-based index
+                if 0 <= citation_index < len(response_citations):
+                    url = response_citations[citation_index]
+                    citations[citation_num] = url
+                    logger.debug(f"Mapped citation [{citation_num}] to URL: {url}")
+                else:
+                    logger.warning(
+                        f"Citation [{citation_num}] index {citation_index} out of range for {len(response_citations)} URLs"
+                    )
 
-        for line in lines:
-            # Look for citations at the end of each line
-            citation_match = CITATION_PATTERN.search(line)
-            if citation_match:
-                citation_num = citation_match.group(1)
+        # Try search_results field as fallback (more detailed objects)
+        elif search_results:
+            logger.debug(
+                f"Using API search_results field: {len(search_results)} results available"
+            )
 
-                # Find URLs in this specific line
-                line_urls = URL_PATTERN.findall(line)
+            # Extract URLs from search_results objects
+            search_urls = [result.get("url") for result in search_results if result.get("url")]
+            logger.debug(f"Extracted {len(search_urls)} URLs from search_results")
 
-                if line_urls:
-                    # Use the first URL found in the line with the citation
-                    citations[citation_num] = line_urls[0]
-                    logger.debug(f"Mapped citation [{citation_num}] to URL: {line_urls[0]}")
+            # Map citation numbers to URLs from search results
+            for citation_num in unique_citations:
+                citation_index = int(citation_num) - 1  # Convert to 0-based index
+                if 0 <= citation_index < len(search_urls):
+                    url = search_urls[citation_index]
+                    citations[citation_num] = url
+                    logger.debug(f"Mapped citation [{citation_num}] to search result URL: {url}")
+                else:
+                    logger.warning(
+                        f"Citation [{citation_num}] index {citation_index} out of range for {len(search_urls)} search results"
+                    )
 
-        # If we still don't have all citations mapped, try the fallback approach
-        if len(citations) < len(citation_matches):
-            logger.debug("Some citations not mapped by line analysis, using fallback approach")
+    # FALLBACK: Try to extract URLs from text (legacy format support)
+    elif unique_citations:
+        logger.debug("No API metadata citations, trying legacy URL extraction from text")
+        urls = URL_PATTERN.findall(response_text)
+        logger.debug(f"Legacy extraction: found {len(urls)} URLs in text: {urls[:3]}...")
 
-            # Fallback: try to match by position (simple approach)
-            for i, url in enumerate(urls, 1):
-                if str(i) in citation_matches and str(i) not in citations:
-                    citations[str(i)] = url
-                    logger.debug(f"Fallback mapped citation [{i}] to URL: {url}")
+        if urls:
+            # Split text into lines to find citations at line endings
+            lines = response_text.split("\n")
+
+            for line in lines:
+                # Look for citations at the end of each line
+                citation_match = CITATION_PATTERN.search(line)
+                if citation_match:
+                    citation_num = citation_match.group(1)
+
+                    # Find URLs in this specific line
+                    line_urls = URL_PATTERN.findall(line)
+
+                    if line_urls:
+                        # Use the first URL found in the line with the citation
+                        citations[citation_num] = line_urls[0]
+                        logger.debug(
+                            f"Legacy mapped citation [{citation_num}] to URL: {line_urls[0]}"
+                        )
+
+            # If we still don't have all citations mapped, try the fallback approach
+            if len(citations) < len(unique_citations):
+                logger.debug("Some citations not mapped by line analysis, using fallback approach")
+
+                # Fallback: try to match by position (simple approach)
+                for i, url in enumerate(urls, 1):
+                    if str(i) in unique_citations and str(i) not in citations:
+                        citations[str(i)] = url
+                        logger.debug(f"Legacy fallback mapped citation [{i}] to URL: {url}")
 
     # Final debug logging
     logger.debug(f"Final citation mapping: {citations}")
 
-    # Clean up any bare URLs in the text since we'll be converting citations to hyperlinks
-    cleaned_text = _clean_bare_urls_safely(response_text, urls)
+    # Clean up any bare URLs in the text (if any were found in legacy mode)
+    urls_for_cleanup = list(citations.values()) if citations else []
+    cleaned_text = _clean_bare_urls_safely(response_text, urls_for_cleanup)
 
     return cleaned_text.strip(), citations
 
@@ -261,8 +309,17 @@ async def process_perplexity_message(
             logger.debug(f"Raw Perplexity response: {len(raw_response)} characters")
             logger.debug(f"Response preview: {raw_response[:200]}...")
 
+            # Extract citations from API response metadata (new Perplexity format)
+            response_citations = getattr(response, "citations", None)
+            response_search_results = getattr(response, "search_results", None)
+
+            logger.debug(f"API response citations metadata: {response_citations}")
+            logger.debug(f"API response search_results metadata: {response_search_results}")
+
             # Process citations if present
-            clean_text, citations = extract_citations_from_response(raw_response)
+            clean_text, citations = extract_citations_from_response(
+                raw_response, response_citations, response_search_results
+            )
             logger.debug(f"Extracted {len(citations)} citations from response")
 
             # Determine if we should use embed formatting

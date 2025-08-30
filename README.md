@@ -22,10 +22,11 @@ DiscordianAI is an **advanced Discord bot** with sophisticated AI orchestration,
 - **Configurable Intelligence**: Fine-tune routing behavior with advanced configuration options
 
 ### 🔗 **Enhanced Discord Integration** 
-- **Clickable Citations**: Converts numbered citations [1], [2] to clickable Discord hyperlinks while preserving the number format
-- **Smart Embed Suppression**: Prevents link preview clutter with multiple citations
-- **Message Splitting**: Intelligently splits long responses while preserving formatting
-- **Thread-Safe Operations**: Handles concurrent users safely without data corruption
+- **🌐 Clickable Citations**: Perplexity responses with citations display as beautiful Discord embeds with clickable `[[1]](url)` hyperlinks
+- **📱 Smart Embed Usage**: Automatically creates embeds for citation-rich responses, plain text for conversations
+- **🔧 Modern API Support**: Supports latest Perplexity API format with `citations` and `search_results` metadata fields
+- **✂️ Message Splitting**: Intelligently splits long responses while preserving embed functionality
+- **🔒 Thread-Safe Operations**: Handles concurrent users safely without data corruption
 
 ### 🛡️ **Production-Grade Architecture**
 - **Thread Safety**: Per-user locking prevents race conditions in concurrent scenarios
