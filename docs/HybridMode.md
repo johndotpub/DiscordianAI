@@ -37,6 +37,57 @@ The system recognizes these follow-up indicators:
 - **Connectors**: "and", "but", "however" + question mark
 - **Responses**: "yes, but...", "okay, and...", "no, what about..."
 
+## Message Flow Architecture
+
+The following diagram shows how messages flow through the DiscordianAI system:
+
+```mermaid
+flowchart TD
+    A[Discord Message Received] --> B{Bot Mentioned?}
+    B -->|No| Z[Ignore Message]
+    B -->|Yes| C[Rate Limit Check]
+    C -->|Failed| D[Send Rate Limit Message]
+    C -->|Passed| E[Smart Orchestrator Analysis]
+    
+    E --> F{Hybrid Mode?}
+    F -->|No - OpenAI Only| G[OpenAI Processing]
+    F -->|No - Perplexity Only| H[Perplexity Processing]
+    F -->|Yes| I[Analyze Message Content]
+    
+    I --> J{Follow-up Detected?}
+    J -->|Yes| K[Use Same AI Service as Previous]
+    J -->|No| L[Smart Routing Decision]
+    
+    L --> M{Web Search Needed?}
+    M -->|Yes| H[Perplexity Processing]
+    M -->|No| G[OpenAI Processing]
+    
+    G --> N[OpenAI Response]
+    H --> O[Perplexity Response + Citations]
+    K --> P{Previous Service}
+    P -->|OpenAI| G
+    P -->|Perplexity| H
+    
+    N --> Q[Format Regular Message]
+    O --> R[Format Citation Embed]
+    
+    Q --> S{Message > 2000 chars?}
+    R --> T{Content > 4096 chars?}
+    
+    S -->|No| U[Send Single Message]
+    S -->|Yes| V[Split Message]
+    T -->|No| W[Send Single Embed]
+    T -->|Yes| X[Split Embed with Citations]
+    
+    V --> Y[Send Multiple Messages]
+    X --> AA[Send Multiple Embeds]
+    
+    U --> BB[Response Complete]
+    W --> BB
+    Y --> BB
+    AA --> BB
+```
+
 ## Smart Detection (No Manual Triggers Required!)
 
 The bot uses advanced semantic analysis to automatically determine when web search would be beneficial:

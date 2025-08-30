@@ -69,7 +69,8 @@ def extract_citations_from_response(
                     logger.debug(f"Mapped citation [{citation_num}] to URL: {url}")
                 else:
                     logger.warning(
-                        f"Citation [{citation_num}] index {citation_index} out of range for {len(response_citations)} URLs"
+                        f"Citation [{citation_num}] index {citation_index} out of range for "
+                        f"{len(response_citations)} URLs"
                     )
 
         # Try search_results field as fallback (more detailed objects)
@@ -91,7 +92,8 @@ def extract_citations_from_response(
                     logger.debug(f"Mapped citation [{citation_num}] to search result URL: {url}")
                 else:
                     logger.warning(
-                        f"Citation [{citation_num}] index {citation_index} out of range for {len(search_urls)} search results"
+                        f"Citation [{citation_num}] index {citation_index} out of range for "
+                        f"{len(search_urls)} search results"
                     )
 
     # FALLBACK: Try to extract URLs from text (legacy format support)

@@ -75,6 +75,45 @@ The bot automatically uses Perplexity for:
 - Factual research questions
 - Queries with proper nouns and entities
 
+## Citation Processing Flow
+
+The following diagram shows how Perplexity responses are processed and formatted for Discord:
+
+```mermaid
+flowchart TD
+    A[Perplexity API Response] --> B[Extract Raw Text]
+    A --> C[Extract Citations Metadata]
+    A --> D[Extract Search Results]
+    
+    B --> E[Find Citation Markers]
+    E --> F[Parse Citation Numbers]
+    F --> G[Map Citations to URLs]
+    
+    C --> H{Citations Available?}
+    D --> H
+    H -->|Yes| I[Build Citation Dictionary]
+    H -->|No| J[Plain Text Response]
+    
+    I --> K[Format Citations for Embed]
+    K --> L[Create Citation Embed]
+    L --> M{Content > 4096 chars?}
+    
+    M -->|No| N[Send Single Embed]
+    M -->|Yes| O[Split Content at Boundaries]
+    O --> P[Create Multiple Embeds]
+    P --> Q[Distribute Citations by Reference]
+    Q --> R[Send Multiple Citation Embeds]
+    
+    J --> S{Content > 2000 chars?}
+    S -->|No| T[Send Regular Message]
+    S -->|Yes| U[Split Regular Message]
+    
+    N --> V[Response Complete]
+    R --> V
+    T --> V
+    U --> V
+```
+
 ## Citation Format
 
 Perplexity responses include properly formatted citations that are automatically converted to clickable Discord hyperlinks:

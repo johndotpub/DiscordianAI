@@ -36,8 +36,9 @@ dev = [
     "ruff",
     "pytest",
     "pytest-asyncio",
-    "pytest-cov",
-    "coverage",
+    "pytest-cov", 
+    "pytest-xdist[psutil]",  # For parallel test execution
+    "coverage[toml]",
     "tox"
 ]
 
@@ -47,6 +48,23 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.black]
 line-length = 99
+extend-exclude = '''
+/(
+    \.git
+  | __pycache__
+  | build
+  | dist
+  | \.tox
+  | \.venv
+  | venv
+  | \.egg-info
+  | \.pytest_cache
+  | \.coverage.*
+  | htmlcov
+  | .*\.log
+  | scripts
+)/
+'''
 
 [tool.coverage.run]
 source = ["src"]
@@ -81,10 +99,16 @@ extend-exclude = [
     ".git",
     "__pycache__",
     "build",
-    "dist",
+    "dist", 
     ".tox",
     ".venv",
     "venv",
+    "*.egg-info",
+    ".pytest_cache",
+    ".coverage*",
+    "htmlcov",
+    "*.log",
+    "scripts",
 ]
 
 [tool.ruff.lint]
