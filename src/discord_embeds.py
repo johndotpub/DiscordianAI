@@ -124,7 +124,7 @@ class CitationEmbedFormatter:
         if force_embed:
             return True
 
-            # Use embed if citations are present (primary use case)
+        # Use embed if citations are present (primary use case)
         return bool(citations)
 
     def create_error_embed(self, error_message: str, title: str = "Error") -> discord.Embed:

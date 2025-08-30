@@ -345,6 +345,11 @@ async def send_formatted_message(
         embed_data: Optional embed data from Perplexity processing
     """
     logger = deps["logger"]
+    config = deps["config"]
+
+    # Get Discord limits from config
+    discord_message_limit = int(config.get("DISCORD_MESSAGE_LIMIT", 2000))
+    discord_embed_limit = int(config.get("DISCORD_EMBED_DESCRIPTION_LIMIT", 4096))
 
     # If we have embed data (from Perplexity web search), use embed for longer content
     if embed_data and "embed" in embed_data:
@@ -353,7 +358,7 @@ async def send_formatted_message(
 
         # Check if the original content was truncated in the embed
         embed_description = embed.description or ""
-        was_truncated = len(clean_text) > 4096 and embed_description.endswith("...")
+        was_truncated = len(clean_text) > discord_embed_limit and embed_description.endswith("...")
 
         if was_truncated:
             # Content was truncated - need to split and send remaining parts
@@ -374,8 +379,8 @@ async def send_formatted_message(
             logger.warning("Falling back to split message without embed")
             # Continue to fallback logic below
 
-    # No embed data OR embed send failed - use regular message splitting (2000 char limit)
-    if len(message) <= 2000:
+    # No embed data OR embed send failed - use regular message splitting
+    if len(message) <= discord_message_limit:
         # Message fits in single regular message
         try:
             logger.debug(f"Sending regular message ({len(message)} chars)")
@@ -400,11 +405,15 @@ async def send_split_message_with_embed(
 ) -> None:
     """Send a long message with citation embeds, maintaining citations across parts."""
     logger = deps["logger"]
+    config = deps["config"]
 
-    # Find optimal split point for 4096 char limit (embed description)
+    # Get Discord embed limits from config
+    discord_embed_soft_limit = int(config.get("DISCORD_EMBED_DESCRIPTION_SOFT_LIMIT", 4090))
+
+    # Find optimal split point for embed description
     # We want the first part to fit in the embed description
-    if len(message) > 4090:  # Leave room for "..."
-        split_index = find_optimal_split_point(message, 4090)
+    if len(message) > discord_embed_soft_limit:  # Leave room for "..."
+        split_index = find_optimal_split_point(message, discord_embed_soft_limit)
         _, after_split = adjust_split_for_code_blocks(message, split_index)
     else:
         after_split = ""

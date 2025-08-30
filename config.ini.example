@@ -45,6 +45,11 @@ SYSTEM_MESSAGE=You are Bender, a sarcastic robot from Futurama. You're crude, se
 RATE_LIMIT=10
 RATE_LIMIT_PER=60
 
+# Discord message limits
+DISCORD_MESSAGE_LIMIT=2000
+DISCORD_EMBED_DESCRIPTION_LIMIT=4096
+DISCORD_EMBED_DESCRIPTION_SOFT_LIMIT=4090
+
 [Orchestrator]
 # AI Orchestrator Configuration for advanced routing and optimization
 # How many recent messages to check for AI service consistency
