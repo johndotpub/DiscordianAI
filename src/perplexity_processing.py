@@ -332,10 +332,10 @@ async def process_perplexity_message(
                     clean_text, citations, footer_text="🌐 Web search results"
                 )
                 embed_data = {
-                    "embed": embed, 
-                    "citations": citations, 
+                    "embed": embed,
+                    "citations": citations,
                     "clean_text": clean_text,
-                    "embed_metadata": embed_metadata
+                    "embed_metadata": embed_metadata,
                 }
                 # For embeds, we don't need formatted text since content is in embed
                 formatted_text = ""  # Empty string - embed contains all content

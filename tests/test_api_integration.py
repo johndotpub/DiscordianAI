@@ -209,12 +209,20 @@ class TestPerplexityAPIIntegration:
         # Verify results
         assert result is not None
         response_text, suppress_embeds, embed_data = result
-        assert "AI development continues to advance" in response_text
+
+        # CRITICAL: When embed_data exists, response_text should be empty to prevent duplication
+        assert (
+            response_text == ""
+        ), f"Expected empty response_text to prevent duplication, got: '{response_text}'"
 
         # Should have embed data since citations are present
         assert embed_data is not None
         assert "embed" in embed_data
         assert "citations" in embed_data
+
+        # The content should be in the embed, not in response_text
+        embed = embed_data["embed"]
+        assert "AI development continues to advance" in embed.description
 
         # Verify API call parameters
         call_args = perplexity_client.chat.completions.create.call_args[1]

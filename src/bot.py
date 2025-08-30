@@ -364,7 +364,7 @@ async def send_formatted_message(
             )
             await send_split_message_with_embed(channel, clean_text, deps, embed, citations)
             return
-        
+
         # Content fits in embed - send ONLY the embed, not the message text
         try:
             logger.debug(f"Sending citation embed only ({len(clean_text)} chars in embed)")

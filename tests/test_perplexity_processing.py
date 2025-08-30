@@ -233,11 +233,13 @@ async def test_process_perplexity_message_with_citations():
     assert "citations" in embed_data
     assert "clean_text" in embed_data
 
-    # Response text should be clean (no citation URLs)
-    assert "AI is advancing rapidly" in response_text
-    assert "https://example.com" not in response_text  # URLs should be cleaned
+    # CRITICAL: When embed_data exists, response_text should be empty to prevent duplication
+    assert (
+        response_text == ""
+    ), f"Expected empty response_text to prevent duplication, got: '{response_text}'"
 
     # Embed should contain the citations
     embed = embed_data["embed"]
     assert embed.description is not None
+    assert "AI is advancing rapidly" in embed.description  # Content is in embed
     assert "[[1]]" in embed.description  # Citation hyperlinks in embed

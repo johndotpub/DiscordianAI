@@ -82,8 +82,10 @@ class TestCitationIntegration:
         assert "clean_text" in embed_data
 
         # CRITICAL: When embed_data exists, response_text should be empty to prevent duplication
-        assert response_text == "", f"Expected empty response_text to prevent duplication, got: '{response_text}'"
-        
+        assert (
+            response_text == ""
+        ), f"Expected empty response_text to prevent duplication, got: '{response_text}'"
+
         # The embed should contain the actual content
         embed = embed_data["embed"]
         assert "The latest AI developments" in embed.description
@@ -102,8 +104,10 @@ class TestCitationIntegration:
         assert "🌐 Web search results" in embed.footer.text
 
         # CRITICAL: When embed_data exists, response_text should be empty to prevent duplication
-        assert response_text == "", f"Expected empty response_text to prevent duplication, got: '{response_text}'"
-        
+        assert (
+            response_text == ""
+        ), f"Expected empty response_text to prevent duplication, got: '{response_text}'"
+
         # The embed should contain the actual content
         embed = embed_data["embed"]
         assert "The latest AI developments" in embed.description
@@ -129,7 +133,7 @@ class TestCitationIntegration:
 
         # Verify footer shows correct count
         assert "📚 3 sources" in embed.footer.text
-        
+
         # Verify metadata
         assert isinstance(metadata, dict)
         assert metadata["was_truncated"] is False
@@ -195,7 +199,7 @@ class TestCitationIntegration:
         assert "[3]" in embed.description
         assert "[[2]]" not in embed.description
         assert "[[3]]" not in embed.description
-        
+
         # Verify metadata
         assert isinstance(metadata, dict)
         assert metadata["was_truncated"] is False
@@ -213,7 +217,7 @@ class TestCitationIntegration:
         # Should be truncated to fit Discord limits
         assert len(embed.description) <= EMBED_LIMIT
         assert embed.description.endswith("...")
-        
+
         # Verify metadata shows truncation
         assert metadata["was_truncated"] is True
 

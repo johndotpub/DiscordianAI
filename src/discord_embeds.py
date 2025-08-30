@@ -85,7 +85,7 @@ class CitationEmbedFormatter:
         metadata = {
             "was_truncated": was_truncated,
             "original_length": len(content),
-            "formatted_length": len(formatted_content)
+            "formatted_length": len(formatted_content),
         }
 
         self.logger.debug(f"Created citation embed with {len(citations)} citations")

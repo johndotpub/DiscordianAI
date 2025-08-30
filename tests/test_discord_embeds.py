@@ -1,11 +1,8 @@
 """Tests for Discord embed formatting and citation handling."""
 
-import pytest
-from unittest.mock import MagicMock
-
 import discord
 
-from src.discord_embeds import CitationEmbedFormatter, citation_embed_formatter, EMBED_LIMIT
+from src.discord_embeds import EMBED_LIMIT, CitationEmbedFormatter, citation_embed_formatter
 
 
 class TestCitationEmbedFormatter:
@@ -29,7 +26,7 @@ class TestCitationEmbedFormatter:
         assert "[[1]](https://example.com/ai-advances)" in embed.description
         assert "[[2]](https://example.com/ml-progress)" in embed.description
         assert "📚 2 sources" in embed.footer.text
-        
+
         # Verify metadata
         assert isinstance(metadata, dict)
         assert "was_truncated" in metadata
@@ -49,7 +46,7 @@ class TestCitationEmbedFormatter:
 
         assert embed.title == "Research Update"
         assert "[[1]](https://example.com/research)" in embed.description
-        
+
         # Verify metadata
         assert isinstance(metadata, dict)
         assert metadata["was_truncated"] is False
@@ -65,7 +62,7 @@ class TestCitationEmbedFormatter:
 
         assert embed.description == content
         assert embed.footer.text is None
-        
+
         # Verify metadata
         assert isinstance(metadata, dict)
         assert metadata["was_truncated"] is False
@@ -78,10 +75,12 @@ class TestCitationEmbedFormatter:
         citations = {"1": "https://example.com"}
         footer_text = "Custom footer text"
 
-        embed, metadata = formatter.create_citation_embed(content, citations, footer_text=footer_text)
+        embed, metadata = formatter.create_citation_embed(
+            content, citations, footer_text=footer_text
+        )
 
         assert embed.footer.text == footer_text
-        
+
         # Verify metadata
         assert isinstance(metadata, dict)
         assert metadata["was_truncated"] is False
@@ -152,7 +151,7 @@ class TestCitationEmbedFormatter:
         # Should be truncated to fit Discord's limit
         assert len(embed.description) <= EMBED_LIMIT
         assert embed.description.endswith("...")
-        
+
         # Verify metadata shows truncation
         assert metadata["was_truncated"] is True
 
@@ -166,7 +165,9 @@ class TestCitationEmbedFormatter:
         formatter = CitationEmbedFormatter()
 
         # Single citation
-        embed_single, metadata_single = formatter.create_citation_embed("Content [1]", {"1": "https://example.com"})
+        embed_single, metadata_single = formatter.create_citation_embed(
+            "Content [1]", {"1": "https://example.com"}
+        )
         assert "1 source" in embed_single.footer.text
 
         # Multiple citations

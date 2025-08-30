@@ -541,7 +541,11 @@ class TestBotMessageHandling:
             "embed": embed,
             "citations": {"1": "https://example.com", "2": "https://test.com"},
             "clean_text": "Content with [1] and [2] citations",
-            "embed_metadata": {"was_truncated": False, "original_length": 50, "formatted_length": 50}
+            "embed_metadata": {
+                "was_truncated": False,
+                "original_length": 50,
+                "formatted_length": 50,
+            },
         }
 
         # This message text should NOT be sent - only the embed should be sent
@@ -550,16 +554,17 @@ class TestBotMessageHandling:
 
         # Import and test the function directly
         from src.bot import send_formatted_message
+
         await send_formatted_message(channel, message, deps, embed_data=embed_data)
 
         # Verify exactly one message is sent
         assert channel.send.call_count == 1
-        
+
         # Verify it's sent with empty message text and embed
         call_args = channel.send.call_args
         assert call_args[0][0] == ""  # Empty message text
         assert call_args[1]["embed"] == embed  # Embed is sent
-        
+
         # Verify the raw message text was NOT sent
         assert message not in str(call_args)
         assert "raw text should not appear" not in str(call_args)
@@ -578,11 +583,12 @@ class TestBotMessageHandling:
 
         # Import and test the function directly
         from src.bot import send_formatted_message
+
         await send_formatted_message(channel, message, deps, embed_data=embed_data)
 
         # Verify exactly one message is sent
         assert channel.send.call_count == 1
-        
+
         # Verify it's sent with the regular message text
         call_args = channel.send.call_args
         assert message in call_args[0][0]  # Message text is sent
