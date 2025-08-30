@@ -39,8 +39,8 @@ class TestSendFormattedMessage:
 
         await send_formatted_message(channel, message, deps, embed_data=embed_data)
 
-        # Should send message with embed
-        channel.send.assert_called_once_with(message, embed=embed)
+        # Should send empty message with embed (content is in embed, not message text)
+        channel.send.assert_called_once_with("", embed=embed)
 
     @pytest.mark.asyncio
     async def test_send_formatted_message_with_embed_truncated(self):

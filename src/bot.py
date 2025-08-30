@@ -365,14 +365,14 @@ async def send_formatted_message(
             return
         # Content fits in embed - send normally
         try:
-            logger.debug(f"Sending message with citation embed ({len(message)} chars)")
-            await channel.send(message, embed=embed)
+            logger.debug(f"Sending citation embed ({len(embed.description or '')} chars in embed)")
+            await channel.send("", embed=embed)  # Empty message text, content is in embed
             logger.debug("Successfully sent message with embed")
             return  # Successfully sent embed - exit function  # noqa: TRY300
         except discord.HTTPException:
             logger.exception("Failed to send embed message")
             logger.warning("Falling back to split message without embed")
-                # Continue to fallback logic below
+            # Continue to fallback logic below
 
     # No embed data OR embed send failed - use regular message splitting (2000 char limit)
     if len(message) <= 2000:
