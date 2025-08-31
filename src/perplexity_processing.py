@@ -284,9 +284,36 @@ async def process_perplexity_message(
 
         # Enable web search and citations
         if urls_in_message:
-            # If URLs are present, include them in the user message for context
-            # Perplexity will automatically process URLs in the message content
-            logger.debug(f"Message contains URLs for web search: {urls_in_message}")
+            # If URLs are present, enhance the message to give Perplexity better context
+            # about what we want it to do with the URLs while preserving user intent
+            if len(urls_in_message) == 1:
+                # Single URL - integrate it naturally with the user's question
+                url = urls_in_message[0]
+                if message.strip() == url:
+                    # User just pasted a URL - ask for general analysis
+                    enhanced_message = (
+                        f"Please load and read the content from this URL: {url}. "
+                        f"Analyze the webpage content and provide a comprehensive overview "
+                        f"of what you find there."
+                    )
+                else:
+                    # User asked a question with a URL - integrate the URL into answering
+                    enhanced_message = (
+                        f"Please load and read the content from this URL: {url} "
+                        f"to help answer this question: {message}"
+                    )
+            else:
+                # Multiple URLs - process all of them
+                url_list = ", ".join(urls_in_message)
+                enhanced_message = (
+                    f"Please load and read the content from these URLs: {url_list}. "
+                    f"Analyze the content and provide information based on what you find "
+                    f"there to help answer: {message}"
+                )
+
+            # Update the message in the API call
+            api_params["messages"][1]["content"] = enhanced_message
+            logger.debug(f"Enhanced message for URL processing: {enhanced_message[:200]}...")
         else:
             # If no URLs, still enable web search for general queries
             logger.debug("No URLs detected, enabling general web search")
@@ -341,6 +368,26 @@ async def process_perplexity_message(
                 raw_response, response_citations, response_search_results
             )
             logger.debug(f"Extracted {len(citations)} citations from response")
+
+            # Check if Perplexity couldn't access the specific URLs and provide helpful fallback
+            if urls_in_message and len(citations) == 0:
+                # Perplexity couldn't access the specific URLs, add helpful context
+                if len(urls_in_message) == 1:
+                    url_info = f"the URL {urls_in_message[0]}"
+                else:
+                    url_info = f"the URLs: {', '.join(urls_in_message)}"
+
+                fallback_text = (
+                    f"\n\n**Note**: I couldn't load the content from {url_info} directly, "
+                    f"but I've searched for related information. Some websites contain "
+                    f"dynamic content, require authentication, or use JavaScript that "
+                    f"web search APIs can't execute. You may need to visit the URL(s) "
+                    f"directly in a browser for the full content."
+                )
+                clean_text += fallback_text
+                logger.debug(
+                    f"Added URL access fallback message for {len(urls_in_message)} URL(s)"
+                )
 
             # Determine if we should use embed formatting
             embed_data = None
