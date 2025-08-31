@@ -1,6 +1,6 @@
 # Perplexity Integration Guide
 
-DiscordianAI provides comprehensive Perplexity integration for real-time web search capabilities with intelligent citation formatting and embed suppression for optimal Discord experience.
+DiscordianAI provides comprehensive Perplexity integration for real-time web search capabilities with intelligent URL content extraction, citation formatting, and embed suppression for optimal Discord experience.
 
 ## Supported Models
 
@@ -52,9 +52,11 @@ PERPLEXITY_API_KEY=your_perplexity_key_here
 
 ## Key Features
 
-### 🌐 Real-Time Web Search
+### 🌐 Real-Time Web Search & URL Content Extraction
 - Access to current information and breaking news
 - Real-time data from various web sources
+- **Direct URL content extraction** for GitHub PRs, articles, and web pages
+- **Intelligent web scraping** with fallback to enhanced search prompts
 - Up-to-date facts and statistics
 
 ### 📚 Citation Management
@@ -70,10 +72,19 @@ PERPLEXITY_API_KEY=your_perplexity_key_here
 
 ### 🧠 Intelligent Query Routing
 The bot automatically uses Perplexity for:
+- **URLs and links** (automatically detected and content extracted)
 - Current events and news queries
 - Time-sensitive information requests
 - Factual research questions
 - Queries with proper nouns and entities
+
+### 🔗 URL Processing
+When URLs are detected in messages, the bot:
+1. **Attempts web scraping** to extract actual content from the URL
+2. **Provides scraped content** directly to Perplexity for analysis
+3. **Falls back to enhanced prompts** if scraping fails
+4. **Logs all scraping attempts** for debugging and transparency
+5. **Handles multiple URLs** in the same message
 
 ## Citation Processing Flow
 

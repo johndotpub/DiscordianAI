@@ -19,6 +19,7 @@ from .config import (
 )
 from .conversation_manager import ThreadSafeConversationManager
 from .discord_embeds import citation_embed_formatter
+from .web_scraper import is_scrapable_url, scrape_url_content
 
 # Use centralized patterns from config
 
@@ -282,38 +283,102 @@ async def process_perplexity_message(
             "temperature": 0.7,  # Slightly creative for better web search synthesis
         }
 
-        # Enable web search and citations
+        # Enable web search and citations with intelligent URL content extraction
         if urls_in_message:
-            # If URLs are present, enhance the message to give Perplexity better context
-            # about what we want it to do with the URLs while preserving user intent
-            if len(urls_in_message) == 1:
-                # Single URL - integrate it naturally with the user's question
-                url = urls_in_message[0]
-                if message.strip() == url:
-                    # User just pasted a URL - ask for general analysis
-                    enhanced_message = (
-                        f"Please load and read the content from this URL: {url}. "
-                        f"Analyze the webpage content and provide a comprehensive overview "
-                        f"of what you find there."
-                    )
+            logger.info(f"Processing {len(urls_in_message)} URL(s) for content extraction")
+
+            # Try to scrape content from URLs for better context
+            scraped_contents = []
+            successful_scrapes = []
+
+            for url in urls_in_message:
+                if is_scrapable_url(url):
+                    logger.debug(f"Attempting to scrape content from: {url}")
+                    try:
+                        scraped_content = await scrape_url_content(url, logger)
+                        if scraped_content:
+                            scraped_contents.append(f"Content from {url}:\n{scraped_content}")
+                            successful_scrapes.append(url)
+                            logger.info(
+                                f"Successfully scraped {len(scraped_content)} "
+                                f"characters from {url}"
+                            )
+                        else:
+                            logger.warning(f"Web scraping returned no content for: {url}")
+                    except Exception as e:
+                        # ruff: noqa: TRY401
+                        logger.exception(f"Web scraping failed for {url}: {e}")
                 else:
-                    # User asked a question with a URL - integrate the URL into answering
+                    logger.debug(f"URL not suitable for scraping: {url}")
+
+            # Build enhanced message based on scraping results
+            if scraped_contents:
+                # We have scraped content - provide it directly to Perplexity
+                if len(urls_in_message) == 1:
+                    if message.strip() == urls_in_message[0]:
+                        # User just pasted a URL - analyze the scraped content
+                        enhanced_message = (
+                            f"Analyze the following webpage content and provide a "
+                            f"comprehensive overview:\n\n{scraped_contents[0]}"
+                        )
+                    else:
+                        # User asked a question with a URL - answer using scraped content
+                        enhanced_message = (
+                            f"Answer this question based on the webpage content "
+                            f"provided: {message}\n\nWebpage content:\n{scraped_contents[0]}"
+                        )
+                else:
+                    # Multiple URLs with scraped content
+                    all_content = "\n\n---\n\n".join(scraped_contents)
                     enhanced_message = (
-                        f"Please load and read the content from this URL: {url} "
-                        f"to help answer this question: {message}"
+                        f"Answer this question based on the content from these "
+                        f"webpages: {message}\n\nWebpage contents:\n{all_content}"
                     )
-            else:
-                # Multiple URLs - process all of them
-                url_list = ", ".join(urls_in_message)
-                enhanced_message = (
-                    f"Please load and read the content from these URLs: {url_list}. "
-                    f"Analyze the content and provide information based on what you find "
-                    f"there to help answer: {message}"
+
+                logger.info(
+                    f"Enhanced message with scraped content from {len(successful_scrapes)} URL(s)"
                 )
+                logger.debug(
+                    f"Total scraped content length: "
+                    f"{sum(len(content) for content in scraped_contents)} characters"
+                )
+            else:
+                # No scraped content - fall back to enhanced prompting
+                logger.warning(
+                    "No content could be scraped from URLs, falling back to enhanced prompting"
+                )
+                if len(urls_in_message) == 1:
+                    url = urls_in_message[0]
+                    if message.strip() == url:
+                        enhanced_message = (
+                            f"Please search for information about this URL and "
+                            f"provide an overview: {url}"
+                        )
+                    else:
+                        enhanced_message = (
+                            f"Please search for information about this URL to help "
+                            f"answer the question: {message}\nURL: {url}"
+                        )
+                else:
+                    url_list = ", ".join(urls_in_message)
+                    enhanced_message = (
+                        f"Please search for information about these URLs to help "
+                        f"answer: {message}\nURLs: {url_list}"
+                    )
 
             # Update the message in the API call
             api_params["messages"][1]["content"] = enhanced_message
             logger.debug(f"Enhanced message for URL processing: {enhanced_message[:200]}...")
+
+            # Log the full enhanced message for debugging (but truncated for readability)
+            if len(enhanced_message) > 1000:
+                logger.debug(
+                    f"Full enhanced message ({len(enhanced_message)} chars): "
+                    f"{enhanced_message[:500]}...[TRUNCATED]...{enhanced_message[-200:]}"
+                )
+            else:
+                logger.debug(f"Full enhanced message: {enhanced_message}")
+
         else:
             # If no URLs, still enable web search for general queries
             logger.debug("No URLs detected, enabling general web search")
@@ -369,25 +434,42 @@ async def process_perplexity_message(
             )
             logger.debug(f"Extracted {len(citations)} citations from response")
 
-            # Check if Perplexity couldn't access the specific URLs and provide helpful fallback
-            if urls_in_message and len(citations) == 0:
-                # Perplexity couldn't access the specific URLs, add helpful context
-                if len(urls_in_message) == 1:
-                    url_info = f"the URL {urls_in_message[0]}"
-                else:
-                    url_info = f"the URLs: {', '.join(urls_in_message)}"
+            # Check if we processed URLs and provide helpful context about what happened
+            if urls_in_message:
+                # Check if we have citations from the response
+                if len(citations) == 0:
+                    # No citations - this could mean web scraping was used or
+                    # Perplexity couldn't access URLs
+                    if any(
+                        "Content from" in msg
+                        for msg in api_params["messages"]
+                        if isinstance(msg, dict) and "content" in msg
+                    ):
+                        # Web scraping was used - content was provided directly to Perplexity
+                        logger.debug(
+                            "Web scraping content was provided to Perplexity for analysis"
+                        )
+                    else:
+                        # No web scraping and no citations - add fallback message
+                        if len(urls_in_message) == 1:
+                            url_info = f"the URL {urls_in_message[0]}"
+                        else:
+                            url_info = f"the URLs: {', '.join(urls_in_message)}"
 
-                fallback_text = (
-                    f"\n\n**Note**: I couldn't load the content from {url_info} directly, "
-                    f"but I've searched for related information. Some websites contain "
-                    f"dynamic content, require authentication, or use JavaScript that "
-                    f"web search APIs can't execute. You may need to visit the URL(s) "
-                    f"directly in a browser for the full content."
-                )
-                clean_text += fallback_text
-                logger.debug(
-                    f"Added URL access fallback message for {len(urls_in_message)} URL(s)"
-                )
+                        fallback_text = (
+                            f"\n\n**Note**: I couldn't access {url_info} directly, "
+                            f"but I've searched for related information. Some websites contain "
+                            f"dynamic content, require authentication, or use JavaScript that "
+                            f"web search APIs can't execute. You may need to visit the URL(s) "
+                            f"directly in a browser for the full content."
+                        )
+                        clean_text += fallback_text
+                        logger.debug(
+                            f"Added URL access fallback message for {len(urls_in_message)} URL(s)"
+                        )
+                else:
+                    # We have citations - log successful URL processing
+                    logger.info(f"Successfully processed URL(s) with {len(citations)} citations")
 
             # Determine if we should use embed formatting
             embed_data = None
