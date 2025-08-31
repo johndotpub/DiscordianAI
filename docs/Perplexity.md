@@ -1,6 +1,6 @@
 # Perplexity Integration Guide
 
-DiscordianAI provides comprehensive Perplexity integration for real-time web search capabilities with intelligent citation formatting and embed suppression for optimal Discord experience.
+DiscordianAI provides comprehensive Perplexity integration for real-time web search capabilities with intelligent URL content extraction, citation formatting, and embed suppression for optimal Discord experience.
 
 ## Supported Models
 
@@ -52,15 +52,18 @@ PERPLEXITY_API_KEY=your_perplexity_key_here
 
 ## Key Features
 
-### 🌐 Real-Time Web Search
+### 🌐 Real-Time Web Search & URL Content Extraction
 - Access to current information and breaking news
 - Real-time data from various web sources
+- **Direct URL content extraction** for GitHub PRs, articles, and web pages
+- **Intelligent web scraping** with fallback to enhanced search prompts
 - Up-to-date facts and statistics
 
 ### 📚 Citation Management
 - Automatic citation extraction from responses
-- Clean URL formatting for Discord
-- Source attribution with clickable links
+- **Discord embed formatting** for clickable citation hyperlinks
+- Source attribution with proper `[[1]](url)` formatting
+- **Smart embed creation** only when citations are present
 
 ### 🎯 Smart Embed Suppression
 - Automatically suppresses Discord embeds when 2+ links present
@@ -69,10 +72,58 @@ PERPLEXITY_API_KEY=your_perplexity_key_here
 
 ### 🧠 Intelligent Query Routing
 The bot automatically uses Perplexity for:
+- **URLs and links** (automatically detected and content extracted)
 - Current events and news queries
 - Time-sensitive information requests
 - Factual research questions
 - Queries with proper nouns and entities
+
+### 🔗 URL Processing
+When URLs are detected in messages, the bot:
+1. **Attempts web scraping** to extract actual content from the URL
+2. **Provides scraped content** directly to Perplexity for analysis
+3. **Falls back to enhanced prompts** if scraping fails
+4. **Logs all scraping attempts** for debugging and transparency
+5. **Handles multiple URLs** in the same message
+
+## Citation Processing Flow
+
+The following diagram shows how Perplexity responses are processed and formatted for Discord:
+
+```mermaid
+flowchart TD
+    A[Perplexity API Response] --> B[Extract Raw Text]
+    A --> C[Extract Citations Metadata]
+    A --> D[Extract Search Results]
+    
+    B --> E[Find Citation Markers]
+    E --> F[Parse Citation Numbers]
+    F --> G[Map Citations to URLs]
+    
+    C --> H{Citations Available?}
+    D --> H
+    H -->|Yes| I[Build Citation Dictionary]
+    H -->|No| J[Plain Text Response]
+    
+    I --> K[Format Citations for Embed]
+    K --> L[Create Citation Embed]
+    L --> M{Content > EMBED_LIMIT?}
+    
+    M -->|No| N[Send Single Embed]
+    M -->|Yes| O[Split Content at Boundaries]
+    O --> P[Create Multiple Embeds]
+    P --> Q[Distribute Citations by Reference]
+    Q --> R[Send Multiple Citation Embeds]
+    
+    J --> S{Content > 2000 chars?}
+    S -->|No| T[Send Regular Message]
+    S -->|Yes| U[Split Regular Message]
+    
+    N --> V[Response Complete]
+    R --> V
+    T --> V
+    U --> V
+```
 
 ## Citation Format
 

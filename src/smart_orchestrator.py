@@ -207,7 +207,7 @@ async def _process_perplexity_only_mode(
     system_message: str,
     output_tokens: int,
     model: str = "sonar-pro",
-) -> tuple[str, bool]:
+) -> tuple[str, bool, dict | None]:
     """Process message using Perplexity-only mode."""
     logger.info("Running in Perplexity-only mode")
     try:
@@ -222,17 +222,17 @@ async def _process_perplexity_only_mode(
             model,
         )
         if result:
-            response_content, suppress_embeds = result
+            response_content, suppress_embeds, embed_data = result
             logger.info(
                 f"Perplexity response generated successfully ({len(response_content)} chars)"
             )
-            return response_content, suppress_embeds
+            return response_content, suppress_embeds, embed_data
         logger.error("Perplexity API returned no response")
-        return ERROR_MESSAGES["no_response_generated"], False
+        return ERROR_MESSAGES["no_response_generated"], False, None
 
     except Exception:
         logger.exception("Perplexity processing failed")
-        return ERROR_MESSAGES["web_search_unavailable"], False
+        return ERROR_MESSAGES["web_search_unavailable"], False, None
 
 
 async def _process_openai_only_mode(
@@ -245,7 +245,7 @@ async def _process_openai_only_mode(
     gpt_model: str,
     system_message: str,
     output_tokens: int,
-) -> tuple[str, bool]:
+) -> tuple[str, bool, dict | None]:
     """Process message using OpenAI-only mode."""
     logger.info("Running in OpenAI-only mode")
     try:
@@ -262,13 +262,14 @@ async def _process_openai_only_mode(
         )
         if response_content:
             logger.info(f"OpenAI response generated successfully ({len(response_content)} chars)")
-            return response_content, False
+            # OpenAI responses don't have citations, so no embed data needed
+            return response_content, False, None
         logger.error("OpenAI API returned no response")
-        return ERROR_MESSAGES["no_response_generated"], False
+        return ERROR_MESSAGES["no_response_generated"], False, None
 
     except Exception:
         logger.exception("OpenAI processing failed")
-        return ERROR_MESSAGES["ai_service_unavailable"], False
+        return ERROR_MESSAGES["ai_service_unavailable"], False, None
 
 
 async def _try_perplexity_with_fallback(
@@ -280,7 +281,7 @@ async def _try_perplexity_with_fallback(
     system_message: str,
     output_tokens: int,
     model: str = "sonar-pro",
-) -> tuple[str | None, bool]:
+) -> tuple[str | None, bool, dict | None]:
     """Try Perplexity API with fallback handling."""
     logger.info(
         "Message analysis suggests web search would be beneficial - trying Perplexity first"
@@ -298,16 +299,16 @@ async def _try_perplexity_with_fallback(
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("Perplexity failed in hybrid mode, falling back to OpenAI: %s", e)
-        return None, False
+        return None, False, None
     else:
         if result:
-            response_content, suppress_embeds = result
+            response_content, suppress_embeds, embed_data = result
             logger.info(
                 f"Perplexity response successful in hybrid mode ({len(response_content)} chars)"
             )
-            return response_content, suppress_embeds
+            return response_content, suppress_embeds, embed_data
         logger.warning("Perplexity returned no response, falling back to OpenAI")
-        return None, False
+        return None, False, None
 
 
 async def _process_hybrid_mode(
@@ -321,7 +322,7 @@ async def _process_hybrid_mode(
     system_message: str,
     output_tokens: int,
     config: dict | None = None,
-) -> tuple[str, bool]:
+) -> tuple[str, bool, dict | None]:
     """Process message using hybrid mode with intelligent service selection."""
     logger.info("Running in hybrid mode - analyzing message for optimal routing")
 
@@ -341,7 +342,7 @@ async def _process_hybrid_mode(
     if needs_web:
         logger.info("Routing to Perplexity for web search")
         perplexity_model = config.get("PERPLEXITY_MODEL", "sonar-pro") if config else "sonar-pro"
-        response_content, suppress_embeds = await _try_perplexity_with_fallback(
+        response_content, suppress_embeds, embed_data = await _try_perplexity_with_fallback(
             message,
             user,
             conversation_manager,
@@ -352,7 +353,7 @@ async def _process_hybrid_mode(
             perplexity_model,
         )
         if response_content:
-            return response_content, suppress_embeds
+            return response_content, suppress_embeds, embed_data
     else:
         logger.info("Message analysis suggests conversational AI is optimal - using OpenAI")
 
@@ -376,13 +377,13 @@ async def _process_hybrid_mode(
             logger.info(
                 f"OpenAI response successful in hybrid mode ({len(response_content)} chars)"
             )
-            return response_content, False
+            return response_content, False, None  # OpenAI doesn't use embeds
         logger.error("OpenAI returned no response in hybrid mode")
-        return ERROR_MESSAGES["no_response_generated"], False
+        return ERROR_MESSAGES["no_response_generated"], False, None
 
     except Exception:
         logger.exception("OpenAI failed in hybrid mode")
-        return ERROR_MESSAGES["both_services_unavailable"], False
+        return ERROR_MESSAGES["both_services_unavailable"], False, None
 
 
 async def get_smart_response(
@@ -397,7 +398,7 @@ async def get_smart_response(
     system_message: str,
     output_tokens: int,
     config: dict | None = None,  # Configuration dictionary with orchestrator settings
-) -> tuple[str, bool]:
+) -> tuple[str, bool, dict | None]:
     """Choose the best AI service and generate a response with robust error handling.
 
     This is the main orchestration function that analyzes the user's message,
@@ -423,7 +424,7 @@ async def get_smart_response(
         config (dict, optional): Configuration dictionary with orchestrator settings
 
     Returns:
-        Tuple[str, bool]: (response_text, should_suppress_embeds)
+        Tuple[str, bool, dict | None]: (response_text, should_suppress_embeds, embed_data)
 
     Raises:
         Exception: Critical errors that prevent any response generation
@@ -480,8 +481,8 @@ async def get_smart_response(
 
         # Fallback if no clients available (shouldn't happen due to config validation)
         logger.critical("No AI service clients available - this indicates a configuration error")
-        return ERROR_MESSAGES["configuration_error"], False
+        return ERROR_MESSAGES["configuration_error"], False, None
 
     except Exception as e:
         logger.critical("Unexpected error in smart orchestrator: %s", e, exc_info=True)
-        return ERROR_MESSAGES["unexpected_error"], False
+        return ERROR_MESSAGES["unexpected_error"], False, None

@@ -4,16 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "DiscordianAI"
-version = "0.2.5"
+version = "0.2.6"
 description = "A Discord bot that uses OpenAI's GPT API to generate responses."
 readme = "README.md"
 license = {file = "LICENSE"}
 authors = [{name = "johndotpub", email = "github@john.pub"}]
 requires-python = "==3.10.*"
 dependencies = [
-    "discord.py>=2.5.2",
-    "openai>=1.99.6",
-    "websockets>=15.0.1"
+    "discord.py>=2.6.2",
+    "openai>=1.101.0",
+    "websockets>=15.0.1",
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.2"
 ]
 urls = {"Homepage" = "https://github.com/johndotpub/DiscordianAI"}
 classifiers = [
@@ -36,8 +38,9 @@ dev = [
     "ruff",
     "pytest",
     "pytest-asyncio",
-    "pytest-cov",
-    "coverage",
+    "pytest-cov", 
+    "pytest-xdist[psutil]",  # For parallel test execution
+    "coverage[toml]",
     "tox"
 ]
 
@@ -47,6 +50,23 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.black]
 line-length = 99
+extend-exclude = '''
+/(
+    \.git
+  | __pycache__
+  | build
+  | dist
+  | \.tox
+  | \.venv
+  | venv
+  | \.egg-info
+  | \.pytest_cache
+  | \.coverage.*
+  | htmlcov
+  | .*\.log
+  | scripts
+)/
+'''
 
 [tool.coverage.run]
 source = ["src"]
@@ -81,10 +101,16 @@ extend-exclude = [
     ".git",
     "__pycache__",
     "build",
-    "dist",
+    "dist", 
     ".tox",
     ".venv",
     "venv",
+    "*.egg-info",
+    ".pytest_cache",
+    ".coverage*",
+    "htmlcov",
+    "*.log",
+    "scripts",
 ]
 
 [tool.ruff.lint]

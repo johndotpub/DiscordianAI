@@ -6,7 +6,7 @@ and splitting Discord messages in a clean and reusable way.
 
 import re
 
-from .config import BARE_URL_PATTERN, MENTION_PATTERN
+from .config import BARE_URL_PATTERN, MENTION_PATTERN, MESSAGE_LIMIT
 
 
 def find_optimal_split_point(message: str, target_index: int) -> int:
@@ -203,7 +203,7 @@ def sanitize_for_discord(text: str) -> str:
     text = text.replace("@here", "@\u200bhere")
 
     # Ensure text isn't too long
-    if len(text) > 2000:
+    if len(text) > MESSAGE_LIMIT:
         text = text[:1997] + "..."
 
     return text

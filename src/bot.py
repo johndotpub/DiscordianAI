@@ -8,8 +8,10 @@ from typing import Any
 import discord
 from openai import OpenAI
 
+from .config import EMBED_LIMIT, EMBED_SAFE_LIMIT, MAX_SPLIT_RECURSION, MESSAGE_LIMIT
 from .conversation_manager import ThreadSafeConversationManager
 from .discord_bot import set_activity_status
+from .discord_embeds import citation_embed_formatter
 from .error_handling import classify_error, safe_discord_send
 from .health_checks import APIHealthMonitor
 from .message_utils import (
@@ -216,7 +218,7 @@ async def _process_message_core(
         )
 
         # Generate AI response using smart orchestrator
-        response, suppress_embeds = await get_smart_response(
+        response, suppress_embeds, embed_data = await get_smart_response(
             message.content,
             message.author,
             conversation_summary,
@@ -233,7 +235,9 @@ async def _process_message_core(
         # Send response with automatic message splitting if needed
         logger.debug(f"About to send response to Discord: {response[:200]}...")
         logger.debug(f"Response length: {len(response)} characters")
-        await send_split_message(message.channel, response, deps, suppress_embeds)
+        await send_formatted_message(
+            message.channel, response, deps, suppress_embeds=suppress_embeds, embed_data=embed_data
+        )
         logger.info(f"Successfully processed and responded to {context}")
 
     except Exception as e:
@@ -322,6 +326,144 @@ def adjust_for_code_block(message: str, before_split: str, middle_index: int) ->
     return before_split, after_split
 
 
+async def send_formatted_message(
+    channel: discord.TextChannel,
+    message: str,
+    deps: dict[str, Any],
+    suppress_embeds: bool = False,
+    embed_data: dict | None = None,
+) -> None:
+    """Send a formatted message to Discord, handling both embeds and message splitting.
+
+    This function determines whether to send an embed or plain text message,
+    and handles message splitting for long content while preserving embed functionality.
+
+    Args:
+        channel: Discord channel to send message to
+        message: Message content to send
+        deps: Dependency container for logging
+        suppress_embeds: Whether to suppress link embeds (for plain text messages)
+        embed_data: Optional embed data from Perplexity processing
+    """
+    logger = deps["logger"]
+
+    # If we have embed data (from Perplexity web search), use embed for longer content
+    if embed_data and "embed" in embed_data:
+        embed = embed_data["embed"]
+        clean_text = embed_data.get("clean_text", message)
+
+        # Check if the original content was truncated in the embed using metadata
+        embed_metadata = embed_data.get("embed_metadata", {})
+        was_truncated = embed_metadata.get("was_truncated", False)
+
+        if was_truncated:
+            # Content was truncated - need to split and send remaining parts
+            citations = embed_data.get("citations", {})
+            logger.debug(
+                f"Embed content was truncated ({len(clean_text)} chars), splitting message"
+            )
+            await send_split_message_with_embed(channel, clean_text, deps, embed, citations)
+            return
+
+        # Content fits in embed - send ONLY the embed, not the message text
+        try:
+            logger.debug(f"Sending citation embed only ({len(clean_text)} chars in embed)")
+            # Send empty message text to avoid duplicate content - all content is in the embed
+            await channel.send("", embed=embed)
+            logger.debug("Successfully sent message with embed")
+        except discord.HTTPException:
+            logger.exception("Failed to send embed message")
+            logger.warning("Falling back to split message without embed")
+            # Continue to fallback logic below
+        else:
+            return  # Successfully sent embed - exit function
+
+    # No embed data OR embed send failed - use regular message splitting
+    if len(message) <= MESSAGE_LIMIT:
+        # Message fits in single regular message
+        try:
+            logger.debug(f"Sending regular message ({len(message)} chars)")
+            await channel.send(message, suppress_embeds=suppress_embeds)
+            logger.debug(f"Sent message ({len(message)} chars)")
+        except discord.HTTPException:
+            logger.exception("Discord API error sending message")
+            raise
+        else:
+            return
+    else:
+        # Message too long for regular message - need to split
+        await send_split_message(channel, message, deps, suppress_embeds)
+
+
+async def send_split_message_with_embed(
+    channel: discord.TextChannel,
+    message: str,
+    deps: dict[str, Any],
+    embed: discord.Embed,
+    citations: dict[str, str] | None = None,
+) -> None:
+    """Send a long message with citation embeds, maintaining citations across parts."""
+    logger = deps["logger"]
+
+    # Find optimal split point for embed description limit
+    # We want the first part to fit in the embed description
+    if len(message) > EMBED_SAFE_LIMIT:
+        split_index = find_optimal_split_point(message, EMBED_SAFE_LIMIT)
+        _, after_split = adjust_split_for_code_blocks(message, split_index)
+    else:
+        after_split = ""
+
+    # Clean up the splits
+    message_part2 = after_split.strip()
+
+    # Send first part with the provided embed (already contains formatted citations)
+    try:
+        await channel.send("", embed=embed)  # Empty message text, content is in embed
+        logger.debug(
+            f"Sent message part 1 with embed ({len(embed.description or '')} chars in embed)"
+        )
+    except discord.HTTPException:
+        logger.exception("Discord API error sending message part 1 with embed")
+        raise
+
+    # Send remaining parts - if they contain citations, format as embeds too
+    if message_part2 and citations:
+        # Check if remaining content has citations
+        remaining_citations = {
+            cite_num: url
+            for cite_num, url in citations.items()
+            if f"[{cite_num}]" in message_part2
+        }
+
+        if remaining_citations:
+            # Create embed for remaining content with citations
+            logger.debug(f"Creating continuation embed with {len(remaining_citations)} citations")
+            continuation_embed, _ = citation_embed_formatter.create_citation_embed(
+                message_part2, remaining_citations, footer_text="🌐 Web search results (continued)"
+            )
+
+            # Check if this part also needs splitting
+            if len(message_part2) > EMBED_LIMIT:
+                await send_split_message_with_embed(
+                    channel, message_part2, deps, continuation_embed, remaining_citations
+                )
+            else:
+                try:
+                    await channel.send("", embed=continuation_embed)
+                    logger.debug(f"Sent continuation embed ({len(message_part2)} chars)")
+                except discord.HTTPException:
+                    logger.exception(
+                        "Failed to send continuation embed, falling back to plain text"
+                    )
+                    await send_split_message(channel, message_part2, deps, suppress_embeds=False)
+        else:
+            # No citations in remaining part - send as plain text
+            await send_split_message(channel, message_part2, deps, suppress_embeds=False)
+    elif message_part2:
+        # No citations available - send remaining as plain text
+        await send_split_message(channel, message_part2, deps, suppress_embeds=False)
+
+
 async def send_split_message(
     channel: discord.TextChannel,
     message: str,
@@ -329,7 +471,7 @@ async def send_split_message(
     suppress_embeds: bool = False,
     _recursion_depth: int = 0,
 ) -> None:
-    """Send messages with automatic splitting for Discord's 2000 character limit.
+    """Send messages with automatic splitting for Discord's message character limit.
 
     Handles long messages by intelligently splitting them at natural boundaries
     while preserving code blocks and other formatting. Includes safeguards
@@ -337,7 +479,7 @@ async def send_split_message(
 
     Args:
         channel (discord.TextChannel): Discord channel to send message to
-        message (str): Message content to send (may exceed 2000 chars)
+        message (str): Message content to send (may exceed MESSAGE_LIMIT chars)
         deps (Dict[str, Any]): Dependency container for logging
         suppress_embeds (bool): Whether to suppress link embeds
         _recursion_depth (int): Internal recursion counter for safety
@@ -350,7 +492,7 @@ async def send_split_message(
         discord.HTTPException: If Discord API calls fail
     """
     # Recursion safety check
-    max_recursion_depth = 10
+    max_recursion_depth = MAX_SPLIT_RECURSION
     if _recursion_depth > max_recursion_depth:
         deps["logger"].error(
             f"Message splitting exceeded maximum recursion depth ({max_recursion_depth}). "
@@ -362,7 +504,7 @@ async def send_split_message(
         return
 
     # If message fits in one Discord message, send it directly
-    if len(message) <= 2000:
+    if len(message) <= MESSAGE_LIMIT:
         try:
             deps["logger"].debug(f"Discord API call - message content: {message[:200]}...")
             deps["logger"].debug(f"Discord API call - suppress_embeds: {suppress_embeds}")

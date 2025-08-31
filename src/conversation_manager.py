@@ -103,8 +103,11 @@ class ThreadSafeConversationManager:
         if role not in ["user", "assistant", "system"]:
             raise ValueError(f"Invalid role '{role}'. Must be 'user', 'assistant', or 'system'")
 
-        if not content.strip():
-            self._logger.warning(f"Attempted to add empty message for user {user_id}")
+        # Allow empty content only if we have meaningful metadata (e.g., embed data)
+        if not content.strip() and not metadata:
+            self._logger.warning(
+                f"Attempted to add empty message without metadata for user {user_id}"
+            )
             return
 
         user_lock = self._get_user_lock(user_id)

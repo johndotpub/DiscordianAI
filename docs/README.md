@@ -16,9 +16,40 @@ Welcome to the DiscordianAI documentation! This guide covers everything you need
 
 ### 🤖 Bot Features
 - **[AI Models](AI_Models.md)** - Available AI models and capabilities
-- **[Smart Orchestration](Smart_Orchestration.md)** - How the bot chooses between AI services
+- **[Smart Orchestration](HybridMode.md)** - How the bot chooses between AI services
+- **[Message Splitting](MessageSplitting.md)** - How long messages and embeds are handled
 - **[Conversation Management](Conversation_Management.md)** - How conversations are handled
 - **[Rate Limiting](Rate_Limiting.md)** - Bot rate limiting and spam prevention
+
+## AI Service Selection
+
+The bot intelligently chooses between OpenAI and Perplexity based on message content:
+
+```mermaid
+flowchart TD
+    A[User Message] --> B{Follow-up to previous?}
+    B -->|Yes| C[Use same AI service]
+    B -->|No| D[Analyze message content]
+    
+    D --> E{Time-sensitive keywords?}
+    E -->|Yes| F[Use Perplexity]
+    E -->|No| G{Entities detected?}
+    
+    G -->|Yes| F
+    G -->|No| H{Conversational/Creative?}
+    
+    H -->|Yes| I[Use OpenAI]
+    H -->|No| J{Factual query?}
+    
+    J -->|Yes| F
+    J -->|No| I
+    
+    F --> K[Web search + Citations]
+    I --> L[Conversational AI]
+    C --> M{Previous service}
+    M -->|OpenAI| I
+    M -->|Perplexity| F
+```
 
 ### 🔧 Development
 - **[Development Guide](Development.md)** - Modern development workflow with black + ruff

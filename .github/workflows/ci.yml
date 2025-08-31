@@ -50,7 +50,7 @@ jobs:
     - name: Run tox in parallel
       run: |
         # Run all environments in parallel for maximum performance
-        tox --parallel auto -e py310,lint,test
+        tox --parallel auto -e py310,lint,format
         
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3

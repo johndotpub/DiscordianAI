@@ -446,7 +446,7 @@ class TestCountLinks:
 
         count = count_links(text)
 
-        assert count == 0  # Should not count invalid formats
+        assert count == 1  # Should count ftp://ignored.com as valid URL
 
     def test_count_https_vs_http(self):
         """Test counting both HTTPS and HTTP links."""

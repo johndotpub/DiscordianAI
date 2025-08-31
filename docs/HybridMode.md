@@ -37,6 +37,75 @@ The system recognizes these follow-up indicators:
 - **Connectors**: "and", "but", "however" + question mark
 - **Responses**: "yes, but...", "okay, and...", "no, what about..."
 
+## Message Flow Architecture
+
+The following diagram shows how messages flow through the DiscordianAI system:
+
+```mermaid
+flowchart TD
+    A[Discord Message Received] --> B{Bot Mentioned?}
+    B -->|No| Z[Ignore Message]
+    B -->|Yes| C[Rate Limit Check]
+    C -->|Failed| D[Send Rate Limit Message]
+    C -->|Passed| E[Smart Orchestrator Analysis]
+    
+    E --> F{Hybrid Mode?}
+    F -->|No - OpenAI Only| G[OpenAI Processing]
+    F -->|No - Perplexity Only| H[Perplexity Processing]
+    F -->|Yes| I[Analyze Message Content]
+    
+    I --> J{Follow-up Detected?}
+    J -->|Yes| K[Use Same AI Service as Previous]
+    J -->|No| L[Smart Routing Decision]
+    
+    L --> M{Web Search Needed?}
+    M -->|Yes| H[Perplexity Processing]
+    M -->|No| G[OpenAI Processing]
+    
+    G --> N[OpenAI Response]
+    H --> O[Perplexity Response + Citations]
+    K --> P{Previous Service}
+    P -->|OpenAI| G
+    P -->|Perplexity| H
+    
+    N --> Q[Format as Regular Message]
+    O --> R[Format as Citation Embed]
+    
+    Q --> S[send_formatted_message]
+    R --> S
+    
+    S --> T{Has Embed Data?}
+    T -->|Yes| U{Content > EMBED_LIMIT?}
+    T -->|No| V{Message > 2000 chars?}
+    
+    U -->|Yes| W[Split Embed with Citations]
+    U -->|No| X[Send Single Embed]
+    
+    V -->|Yes| Y[Split Regular Message]
+    V -->|No| Z1[Send Single Message]
+    
+    X --> AA{Embed Send Success?}
+    AA -->|Yes| BB[✅ Response Complete - EXIT]
+    AA -->|No| V
+    
+    W --> CC[Send Multiple Citation Embeds]
+    Y --> DD[Send Multiple Messages]
+    Z1 --> BB
+    CC --> BB
+    DD --> BB
+```
+
+### Key Anti-Duplication Features
+
+The diagram above shows the **critical control flow fix** that prevents duplicate messages:
+
+1. **Single Entry Point**: All responses go through `send_formatted_message` 
+2. **Explicit Returns**: Each successful send has a `return` statement to exit the function
+3. **Embed Priority**: Perplexity responses with citations try embed first, fallback to regular message only on failure
+4. **No Fallthrough**: Fixed the bug where embed success still continued to regular message logic
+
+This ensures **exactly one message** is sent per user query, eliminating the duplicate message issue.
+
 ## Smart Detection (No Manual Triggers Required!)
 
 The bot uses advanced semantic analysis to automatically determine when web search would be beneficial:

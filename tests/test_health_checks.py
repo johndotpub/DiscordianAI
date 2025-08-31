@@ -168,6 +168,10 @@ class TestAPIHealthMonitor:
         assert result.details["model"] == "sonar-pro"
         assert "response_length" in result.details
 
+        # Verify that the API call was made successfully
+        perplexity_client.chat.completions.create.assert_called_once()
+        # Citations are now included by default, no special parameters needed
+
     @pytest.mark.asyncio
     async def test_discord_health_check_success(self):
         """Test successful Discord health check."""

@@ -171,14 +171,18 @@ class TestPerplexityAPIIntegration:
 
         conversation_manager = Mock(spec=ThreadSafeConversationManager)
 
-        # Mock Perplexity response with citations
+        # Mock Perplexity response with citations in metadata (new format)
         mock_response = Mock()
         mock_response.choices = [Mock()]
         mock_response.choices[0].message.content = (
             "Based on recent research [1], AI development continues to advance. "
-            "The latest findings [2] show promising results. "
-            "https://example.com/research1 https://example.com/research2"
+            "The latest findings [2] show promising results."
         )
+        # Add citations metadata (new Perplexity API format)
+        mock_response.citations = [
+            "https://example.com/research1",
+            "https://example.com/research2",
+        ]
         mock_response.id = "ppl-test-123"
         mock_response.usage = Mock()
         mock_response.usage.prompt_tokens = 35
@@ -204,17 +208,33 @@ class TestPerplexityAPIIntegration:
 
         # Verify results
         assert result is not None
-        response_text, suppress_embeds = result
-        assert "AI development continues to advance" in response_text
+        response_text, suppress_embeds, embed_data = result
 
-        # Should suppress embeds due to multiple URLs
-        assert suppress_embeds is True
+        # When embed_data exists, response_text should contain the actual content
+        # for conversation history, while the embed displays the formatted content
+        expected_text = (
+            "Based on recent research [1], AI development continues to advance. "
+            "The latest findings [2] show promising results."
+        )
+        assert (
+            response_text == expected_text
+        ), f"Expected actual content in response_text, got: '{response_text}'"
+
+        # Should have embed data since citations are present
+        assert embed_data is not None
+        assert "embed" in embed_data
+        assert "citations" in embed_data
+
+        # The content should be in the embed, not in response_text
+        embed = embed_data["embed"]
+        assert "AI development continues to advance" in embed.description
 
         # Verify API call parameters
         call_args = perplexity_client.chat.completions.create.call_args[1]
         assert call_args["model"] == "sonar-pro"
         assert call_args["max_tokens"] == 1500
         assert call_args["temperature"] == 0.7
+        # Citations are now included by default, no special parameters needed
 
     @pytest.mark.asyncio
     async def test_perplexity_error_handling(self):

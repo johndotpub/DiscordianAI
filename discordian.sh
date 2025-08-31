@@ -77,6 +77,21 @@ trap 'log "An error occurred. Exiting..."; exit 1' ERR
 log "Killing existing instances of the bot..."
 pkill -f "src.main --conf" || true
 
+# Check dependencies before starting
+log "Checking dependencies..."
+if [[ -n $base_folder ]]; then
+    dep_check_cmd="$python3 -c \"import sys; sys.path.insert(0, '$base_folder'); from src.dependency_check import check_dependencies; success, missing = check_dependencies(); exit(0 if success else 1)\""
+else
+    dep_check_cmd="$python3 -c \"from src.dependency_check import check_dependencies; success, missing = check_dependencies(); exit(0 if success else 1)\""
+fi
+
+if ! eval "$dep_check_cmd" 2>/dev/null; then
+    log "ERROR: Dependency check failed. Please install missing packages."
+    log "Run: pip install -r requirements.txt"
+    exit 1
+fi
+log "✓ All dependencies available"
+
 # Decide execution mode based on output setting
 if [[ -z $output ]]; then
     # Normal execution
