@@ -45,7 +45,9 @@ class TestOpenAIAPIIntegration:
 
         # Mock OpenAI client
         openai_client = Mock()
-        openai_client.chat.completions.create.return_value = mock_response
+        mock_create = AsyncMock()
+        mock_create.return_value = mock_response
+        openai_client.chat.completions.create = mock_create
 
         logger = logging.getLogger("test")
 
@@ -134,7 +136,9 @@ class TestOpenAIAPIIntegration:
         mock_response.usage.total_tokens = 50
 
         openai_client = Mock()
-        openai_client.chat.completions.create.return_value = mock_response
+        mock_create = AsyncMock()
+        mock_create.return_value = mock_response
+        openai_client.chat.completions.create = mock_create
 
         logger = logging.getLogger("test")
 
@@ -190,7 +194,9 @@ class TestPerplexityAPIIntegration:
         mock_response.usage.total_tokens = 80
 
         perplexity_client = Mock()
-        perplexity_client.chat.completions.create.return_value = mock_response
+        mock_create = AsyncMock()
+        mock_create.return_value = mock_response
+        perplexity_client.chat.completions.create = mock_create
 
         logger = logging.getLogger("test")
 
@@ -208,7 +214,7 @@ class TestPerplexityAPIIntegration:
 
         # Verify results
         assert result is not None
-        response_text, suppress_embeds, embed_data = result
+        response_text, _suppress_embeds, embed_data = result
 
         # When embed_data exists, response_text should contain the actual content
         # for conversation history, while the embed displays the formatted content
@@ -459,7 +465,9 @@ class TestIntegrationScenarios:
 
         # Mock Perplexity failure and OpenAI success
         perplexity_client = Mock()
-        perplexity_client.chat.completions.create.side_effect = Exception("Perplexity unavailable")
+        perplexity_create = AsyncMock()
+        perplexity_create.side_effect = Exception("Perplexity unavailable")
+        perplexity_client.chat.completions.create = perplexity_create
 
         openai_client = Mock()
         openai_response = Mock()
@@ -470,7 +478,9 @@ class TestIntegrationScenarios:
         openai_response.usage.prompt_tokens = 20
         openai_response.usage.completion_tokens = 30
         openai_response.usage.total_tokens = 50
-        openai_client.chat.completions.create.return_value = openai_response
+        openai_create = AsyncMock()
+        openai_create.return_value = openai_response
+        openai_client.chat.completions.create = openai_create
 
         # Test that the system can handle API failures gracefully
         # This would be tested through the smart orchestrator integration

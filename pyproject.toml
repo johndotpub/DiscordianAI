@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "DiscordianAI"
-version = "0.2.6"
+version = "0.2.7"
 description = "A Discord bot that uses OpenAI's GPT API to generate responses."
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -35,7 +35,7 @@ discordianai = "src.main:main"
 [project.optional-dependencies]
 dev = [
     "black", 
-    "ruff",
+    "ruff>=0.1.0,<0.2.0",
     "pytest",
     "pytest-asyncio",
     "pytest-cov", 

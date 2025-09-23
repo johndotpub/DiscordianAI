@@ -165,13 +165,13 @@ class TestCitationEmbedFormatter:
         formatter = CitationEmbedFormatter()
 
         # Single citation
-        embed_single, metadata_single = formatter.create_citation_embed(
+        embed_single, _metadata_single = formatter.create_citation_embed(
             "Content [1]", {"1": "https://example.com"}
         )
         assert "1 source" in embed_single.footer.text
 
         # Multiple citations
-        embed_multiple, metadata_multiple = formatter.create_citation_embed(
+        embed_multiple, _metadata_multiple = formatter.create_citation_embed(
             "Content [1] and [2]", {"1": "https://example.com", "2": "https://test.com"}
         )
         assert "2 sources" in embed_multiple.footer.text

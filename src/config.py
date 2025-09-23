@@ -60,6 +60,12 @@ DEFAULT_HEALTH_CHECK_INTERVAL = 300  # 5 minutes
 DEFAULT_RATE_LIMIT = 10
 DEFAULT_RATE_LIMIT_PER = 60  # seconds
 
+# Connection Pooling
+DEFAULT_OPENAI_MAX_CONNECTIONS = 50
+DEFAULT_OPENAI_MAX_KEEPALIVE = 10
+DEFAULT_PERPLEXITY_MAX_CONNECTIONS = 30
+DEFAULT_PERPLEXITY_MAX_KEEPALIVE = 5
+
 # ============================================================================
 # AI ORCHESTRATOR CONFIGURATION
 # ============================================================================
@@ -364,6 +370,11 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
         # Rate Limiting Configuration
         "RATE_LIMIT": 10,
         "RATE_LIMIT_PER": 60,
+        # Connection Pooling Configuration
+        "OPENAI_MAX_CONNECTIONS": 50,
+        "OPENAI_MAX_KEEPALIVE": 10,
+        "PERPLEXITY_MAX_CONNECTIONS": 30,
+        "PERPLEXITY_MAX_KEEPALIVE": 5,
         # AI Orchestrator Configuration
         "LOOKBACK_MESSAGES_FOR_CONSISTENCY": 6,
         "MAX_HISTORY_PER_USER": 50,  # Maximum conversation entries per user before pruning

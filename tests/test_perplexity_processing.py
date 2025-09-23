@@ -8,6 +8,7 @@ from src.perplexity_processing import (
     process_perplexity_message,
     should_suppress_embeds,
 )
+from tests.test_utils import FakePerplexityClient
 
 
 def test_extract_citations_from_response():
@@ -89,44 +90,21 @@ async def test_process_perplexity_message_success():
     conversation_manager = ThreadSafeConversationManager()
     logger = MagicMock()
 
-    class FakeMessage:
-        def __init__(self, content):
-            self.content = content
-
-    class FakeChoice:
-        def __init__(self, content):
-            self.message = FakeMessage(content)
-
-    class FakeResponse:
-        def __init__(self, content):
-            self.choices = [FakeChoice(content)]
-
-    class FakePerplexityClient:
-        class Chat:
-            class Completions:
-                @staticmethod
-                def create(*args, **kwargs):
-                    return FakeResponse("Test response from Perplexity [1]")
-
-            completions = Completions()
-
-        chat = Chat()
-
     result = await process_perplexity_message(
         "What's the weather today?",
         mock_user,
         conversation_manager,
         logger,
-        FakePerplexityClient(),
+        FakePerplexityClient(response_text="Test response from Perplexity [1]"),
         "You are a helpful assistant.",
         8000,
         "sonar-pro",
     )
 
     assert result is not None
-    response_text, suppress_embeds, embed_data = result
-    assert "Test response from Perplexity" in response_text
-    assert isinstance(suppress_embeds, bool)
+    _response_text, _suppress_embeds, embed_data = result
+    assert "Test response from Perplexity" in _response_text
+    assert isinstance(_suppress_embeds, bool)
     # embed_data should be None since test response has no citations
     assert embed_data is None
 
@@ -147,23 +125,26 @@ async def test_process_perplexity_message_failure():
     conversation_manager = ThreadSafeConversationManager()
     logger = MagicMock()
 
-    class FakePerplexityClient:
+    # Create a client that will raise an exception
+    class FailingPerplexityClient:
+        def __init__(self):
+            self.chat = self.Chat()
+
         class Chat:
+            def __init__(self):
+                self.completions = self.Completions()
+
             class Completions:
                 @staticmethod
-                def create(*args, **kwargs):
+                async def create(*args, **kwargs):
                     raise Exception("API failure!")
-
-            completions = Completions()
-
-        chat = Chat()
 
     result = await process_perplexity_message(
         "What's the weather today?",
         mock_user,
         conversation_manager,
         logger,
-        FakePerplexityClient(),
+        FailingPerplexityClient(),
         "You are a helpful assistant.",
         8000,
         "sonar-pro",
@@ -183,49 +164,22 @@ async def test_process_perplexity_message_with_citations():
     conversation_manager = ThreadSafeConversationManager()
     logger = MagicMock()
 
-    class FakeMessage:
-        def __init__(self, content):
-            self.content = content
-
-    class FakeChoice:
-        def __init__(self, content):
-            self.message = FakeMessage(content)
-
-    class FakeResponse:
-        def __init__(self, content):
-            self.choices = [FakeChoice(content)]
-
-    class FakePerplexityClient:
-        class Chat:
-            class Completions:
-                @staticmethod
-                def create(*args, **kwargs):
-                    # Response with citations in metadata (new format)
-                    response = FakeResponse("AI is advancing rapidly [1] and shows promise [2].")
-                    # Add citations metadata
-                    response.citations = [
-                        "https://example.com/ai-research",
-                        "https://test.com/ai-future",
-                    ]
-                    return response
-
-            completions = Completions()
-
-        chat = Chat()
-
     result = await process_perplexity_message(
         "What's the latest in AI?",
         mock_user,
         conversation_manager,
         logger,
-        FakePerplexityClient(),
+        FakePerplexityClient(
+            "AI is advancing rapidly [1] and shows promise [2].",
+            ["https://example.com/ai-research", "https://test.com/ai-future"],
+        ),
         "You are a helpful assistant.",
         8000,
         "sonar-pro",
     )
 
     assert result is not None
-    response_text, suppress_embeds, embed_data = result
+    _response_text, _suppress_embeds, embed_data = result
 
     # Should have embed data since citations are present
     assert embed_data is not None
@@ -236,8 +190,8 @@ async def test_process_perplexity_message_with_citations():
     # When embed_data exists, response_text should contain the actual content
     # for conversation history, while the embed displays the formatted content
     assert (
-        response_text == "AI is advancing rapidly [1] and shows promise [2]."
-    ), f"Expected actual content in response_text, got: '{response_text}'"
+        _response_text == "AI is advancing rapidly [1] and shows promise [2]."
+    ), f"Expected actual content in response_text, got: '{_response_text}'"
 
     # Embed should contain the citations
     embed = embed_data["embed"]
@@ -257,50 +211,21 @@ async def test_process_perplexity_message_with_urls():
     conversation_manager = ThreadSafeConversationManager()
     logger = MagicMock()
 
-    class FakeMessage:
-        def __init__(self, content):
-            self.content = content
-
-    class FakeChoice:
-        def __init__(self, content):
-            self.message = FakeMessage(content)
-
-    class FakeResponse:
-        def __init__(self, content):
-            self.choices = [FakeChoice(content)]
-
-    class FakePerplexityClient:
-        class Chat:
-            class Completions:
-                @staticmethod
-                def create(*args, **kwargs):
-                    # Verify that the message contains the URL
-                    messages = kwargs["messages"]
-                    user_message = messages[1]["content"]
-                    assert "https://github.com/johndotpub/DiscordianAI/pull/197" in user_message
-
-                    # Return a response with citations
-                    response = FakeResponse("This PR looks great [1]!")
-                    response.citations = ["https://github.com/johndotpub/DiscordianAI/pull/197"]
-                    return response
-
-            completions = Completions()
-
-        chat = Chat()
-
     result = await process_perplexity_message(
         "Check this PR: https://github.com/johndotpub/DiscordianAI/pull/197",
         mock_user,
         conversation_manager,
         logger,
-        FakePerplexityClient(),
+        FakePerplexityClient(
+            "This PR looks great [1]!", ["https://github.com/johndotpub/DiscordianAI/pull/197"]
+        ),
         "You are a helpful assistant.",
         8000,
         "sonar-pro",
     )
 
     assert result is not None
-    response_text, suppress_embeds, embed_data = result
+    _response_text, _suppress_embeds, embed_data = result
 
     # Should have embed data since citations are present
     assert embed_data is not None

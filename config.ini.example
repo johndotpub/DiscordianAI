@@ -45,6 +45,19 @@ SYSTEM_MESSAGE=You are Bender, a sarcastic robot from Futurama. You're crude, se
 RATE_LIMIT=10
 RATE_LIMIT_PER=60
 
+[ConnectionPool]
+# Connection pooling settings for API clients
+# These settings optimize performance while respecting API rate limits
+# See docs/ConnectionPooling.md for detailed explanations
+
+# OpenAI typically handles more concurrent requests (500 RPM rate limit)
+OPENAI_MAX_CONNECTIONS=50
+OPENAI_MAX_KEEPALIVE=10
+
+# Perplexity has more conservative limits (rate limits not publicly documented)
+PERPLEXITY_MAX_CONNECTIONS=30
+PERPLEXITY_MAX_KEEPALIVE=5
+
 [Orchestrator]
 # AI Orchestrator Configuration for advanced routing and optimization
 # How many recent messages to check for AI service consistency

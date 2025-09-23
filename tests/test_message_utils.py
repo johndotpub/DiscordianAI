@@ -558,37 +558,37 @@ class TestParseCommandArgs:
         """Test parsing simple command."""
         content = "!help"
 
-        command, args = parse_command_args(content, prefix="!")
+        command, _args = parse_command_args(content, prefix="!")
 
         assert command == "help"
-        assert args == []
+        assert _args == []
 
     def test_parse_command_with_args(self):
         """Test parsing command with arguments."""
         content = "!ban user123 spam"
 
-        command, args = parse_command_args(content, prefix="!")
+        command, _args = parse_command_args(content, prefix="!")
 
         assert command == "ban"
-        assert args == ["user123", "spam"]
+        assert _args == ["user123", "spam"]
 
     def test_parse_command_multiple_spaces(self):
         """Test parsing with multiple spaces."""
         content = "!config   set    key    value"
 
-        command, args = parse_command_args(content, prefix="!")
+        command, _args = parse_command_args(content, prefix="!")
 
         assert command == "config"
-        assert args == ["set", "key", "value"]
+        assert _args == ["set", "key", "value"]
 
     def test_parse_no_command(self):
         """Test text without command prefix."""
         content = "Just regular text"
 
-        command, args = parse_command_args(content, prefix="!")
+        command, _args = parse_command_args(content, prefix="!")
 
         assert command == ""
-        assert args == []
+        assert _args == []
 
     def test_parse_custom_prefix(self):
         """Test with custom command prefix."""
@@ -603,16 +603,16 @@ class TestParseCommandArgs:
         """Test with just the prefix."""
         content = "!"
 
-        command, args = parse_command_args(content, prefix="!")
+        command, _args = parse_command_args(content, prefix="!")
 
         assert command == ""
-        assert args == []
+        assert _args == []
 
     def test_parse_quoted_args(self):
         """Test parsing arguments with quotes."""
         content = '!say "hello world" test'
 
-        command, args = parse_command_args(content, prefix="!")
+        command, _args = parse_command_args(content, prefix="!")
 
         assert command == "say"
 

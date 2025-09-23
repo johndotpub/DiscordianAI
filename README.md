@@ -32,8 +32,15 @@ DiscordianAI is an **advanced Discord bot** with sophisticated AI orchestration,
 - **Thread Safety**: Per-user locking prevents race conditions in concurrent scenarios
 - **Memory Management**: Automatic cleanup of inactive user data to prevent memory leaks
 - **Error Recovery**: Comprehensive error handling with graceful fallbacks
-- **Performance Optimization**: Pre-compiled regex patterns and optimized data structures
+- **Performance Optimization**: Pre-compiled regex patterns, optimized data structures, and HTTP/2 connection pooling
 - **Centralized Configuration**: Single source of truth for all patterns and settings
+
+### ⚡ **High-Performance Connection Pooling**
+- **HTTP/2 Support**: Multiplexed connections for better throughput
+- **API-Specific Tuning**: Optimized connection pools for OpenAI (50 max) and Perplexity (30 max)
+- **Shared Connections**: Multiple users share connection pools efficiently
+- **Rate Limit Compliance**: Respects OpenAI (500 RPM) and Perplexity API limits
+- **Memory Efficient**: Supports 10k+ users with <100MB conversation memory
 
 ## Requirements
 
@@ -126,6 +133,12 @@ PERPLEXITY_API_KEY=your_perplexity_key_here
 - `CONTEXT_WINDOW`: Context window size (default: 128000)
 - `RATE_LIMIT`: Messages per time period (default: 10)  
 - `RATE_LIMIT_PER`: Time period in seconds (default: 60)
+
+### Connection Pooling (Performance)
+- `OPENAI_MAX_CONNECTIONS`: Max concurrent connections to OpenAI API (default: 50)
+- `OPENAI_MAX_KEEPALIVE`: Max keepalive connections for OpenAI (default: 10)
+- `PERPLEXITY_MAX_CONNECTIONS`: Max concurrent connections to Perplexity API (default: 30)
+- `PERPLEXITY_MAX_KEEPALIVE`: Max keepalive connections for Perplexity (default: 5)
 
 ### System & Logging
 - `SYSTEM_MESSAGE`: AI personality/instructions

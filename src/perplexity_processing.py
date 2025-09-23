@@ -5,7 +5,6 @@ including citation extraction, Discord formatting, and thread-safe
 conversation management.
 """
 
-import asyncio
 import logging
 import re
 
@@ -385,9 +384,7 @@ async def process_perplexity_message(
 
         # Enable web search capabilities (citations are included by default)
 
-        response = await asyncio.to_thread(
-            lambda: perplexity_client.chat.completions.create(**api_params)
-        )
+        response = await perplexity_client.chat.completions.create(**api_params)
     except TimeoutError:
         logger.exception(f"Perplexity API call timed out for user {user.id}")
         return None

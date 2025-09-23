@@ -6,9 +6,9 @@ from typing import Any
 
 # Third-party imports
 import discord
-from openai import OpenAI
 
 from .config import EMBED_LIMIT, EMBED_SAFE_LIMIT, MAX_SPLIT_RECURSION, MESSAGE_LIMIT
+from .connection_pool import get_connection_pool_manager
 from .conversation_manager import ThreadSafeConversationManager
 from .discord_bot import set_activity_status
 from .discord_embeds import citation_embed_formatter
@@ -57,13 +57,19 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
     intents.presences = False  # Disable presence updates for better performance
     bot = discord.Client(intents=intents)
 
+    # Initialize connection pool manager for optimized API clients
+    pool_manager = get_connection_pool_manager(config)
+
     # Initialize OpenAI client if API key is provided
     client = None
     if config["OPENAI_API_KEY"]:
         try:
-            client = OpenAI(api_key=config["OPENAI_API_KEY"], base_url=config["OPENAI_API_URL"])
+            client = pool_manager.create_openai_client(
+                api_key=config["OPENAI_API_KEY"], base_url=config["OPENAI_API_URL"]
+            )
             logger.info(
-                f"OpenAI client initialized successfully with model: {config['GPT_MODEL']}"
+                f"OpenAI client initialized successfully with model: {config['GPT_MODEL']} "
+                f"(connection pooling enabled)"
             )
         except Exception as e:
             logger.exception("Failed to initialize OpenAI client")
@@ -75,10 +81,13 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
     perplexity_client = None
     if config["PERPLEXITY_API_KEY"]:
         try:
-            perplexity_client = OpenAI(
+            perplexity_client = pool_manager.create_perplexity_client(
                 api_key=config["PERPLEXITY_API_KEY"], base_url=config["PERPLEXITY_API_URL"]
             )
-            logger.info("Perplexity client initialized successfully for web search")
+            logger.info(
+                "Perplexity client initialized successfully for web search "
+                "(connection pooling enabled)"
+            )
         except Exception as e:
             logger.exception("Failed to initialize Perplexity client")
             raise RuntimeError("Perplexity client initialization failed") from e

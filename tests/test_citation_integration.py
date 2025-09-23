@@ -13,6 +13,7 @@ from src.config import EMBED_LIMIT
 from src.conversation_manager import ThreadSafeConversationManager
 from src.discord_embeds import CitationEmbedFormatter
 from src.perplexity_processing import process_perplexity_message
+from tests.test_utils import FakePerplexityClient
 
 
 class TestCitationIntegration:
@@ -28,36 +29,14 @@ class TestCitationIntegration:
         logger = MagicMock()
 
         # Mock Perplexity response with citations and URLs
-        class FakeMessage:
-            def __init__(self, content):
-                self.content = content
-
-        class FakeChoice:
-            def __init__(self, content):
-                self.message = FakeMessage(content)
-
-        class FakeResponse:
-            def __init__(self, content, citations=None):
-                self.choices = [FakeChoice(content)]
-                # Add citations metadata (new Perplexity API format)
-                self.citations = citations or [
-                    "https://ai-research.example.com/breakthrough",
-                    "https://ml-models.example.com/architectures",
-                ]
-
-        class FakePerplexityClient:
-            class Chat:
-                class Completions:
-                    @staticmethod
-                    def create(*args, **kwargs):
-                        return FakeResponse(
-                            "The latest AI developments include breakthrough research [1] "
-                            "and new model architectures [2]. Recent studies show progress."
-                        )
-
-                completions = Completions()
-
-            chat = Chat()
+        fake_client = FakePerplexityClient(
+            response_text="The latest AI developments include breakthrough research [1] "
+            "and new model architectures [2]. Recent studies show progress.",
+            citations=[
+                "https://ai-research.example.com/breakthrough",
+                "https://ml-models.example.com/architectures",
+            ],
+        )
 
         # Process the message
         result = await process_perplexity_message(
@@ -65,7 +44,7 @@ class TestCitationIntegration:
             user,
             conversation_manager,
             logger,
-            FakePerplexityClient(),
+            fake_client,
             "You are a helpful assistant with web search.",
             8000,
             "sonar-pro",
@@ -73,7 +52,7 @@ class TestCitationIntegration:
 
         # Validate results
         assert result is not None
-        response_text, suppress_embeds, embed_data = result
+        response_text, _suppress_embeds, embed_data = result
 
         # Should have embed data with citations
         assert embed_data is not None
@@ -156,36 +135,20 @@ class TestCitationIntegration:
         conversation_manager = ThreadSafeConversationManager()
         logger = MagicMock()
 
-        class FakePerplexityClient:
-            class Chat:
-                class Completions:
-                    @staticmethod
-                    def create(*args, **kwargs):
-                        # Response without citations
-                        return MagicMock(
-                            choices=[
-                                MagicMock(
-                                    message=MagicMock(
-                                        content="This is a simple response without citations."
-                                    )
-                                )
-                            ]
-                        )
-
-                completions = Completions()
-
-            chat = Chat()
+        fake_client = FakePerplexityClient(
+            response_text="This is a simple response without citations."
+        )
 
         result = await process_perplexity_message(
             "Tell me about AI",
             user,
             conversation_manager,
             logger,
-            FakePerplexityClient(),
+            fake_client,
         )
 
         assert result is not None
-        response_text, suppress_embeds, embed_data = result
+        response_text, _suppress_embeds, embed_data = result
 
         # Should not have embed data since no citations
         assert embed_data is None

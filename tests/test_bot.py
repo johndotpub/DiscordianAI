@@ -41,7 +41,12 @@ class TestBotInitialization:
             "OUTPUT_TOKENS": 1000,
         }
 
-        with patch("src.bot.OpenAI") as mock_openai:
+        with patch("src.bot.get_connection_pool_manager") as mock_pool_manager:
+            # Mock the connection pool manager methods
+            mock_pool = mock_pool_manager.return_value
+            mock_pool.create_openai_client.return_value = "mock_openai_client"
+            mock_pool.create_perplexity_client.return_value = "mock_perplexity_client"
+
             deps = initialize_bot_and_dependencies(config)
 
             assert "logger" in deps
@@ -52,7 +57,7 @@ class TestBotInitialization:
             assert deps["perplexity_client"] is None
             assert "rate_limiter" in deps
             assert "conversation_manager" in deps
-            mock_openai.assert_called_once()
+            mock_pool.create_openai_client.assert_called_once()
 
     def test_initialize_with_perplexity_only(self):
         """Test bot initialization with only Perplexity API key."""
@@ -76,12 +81,17 @@ class TestBotInitialization:
             "OUTPUT_TOKENS": 1000,
         }
 
-        with patch("src.bot.OpenAI") as mock_openai:
+        with patch("src.bot.get_connection_pool_manager") as mock_pool_manager:
+            # Mock the connection pool manager methods
+            mock_pool = mock_pool_manager.return_value
+            mock_pool.create_openai_client.return_value = "mock_openai_client"
+            mock_pool.create_perplexity_client.return_value = "mock_perplexity_client"
+
             deps = initialize_bot_and_dependencies(config)
 
             assert deps["client"] is None
             assert deps["perplexity_client"] is not None
-            mock_openai.assert_called_once()
+            mock_pool.create_perplexity_client.assert_called_once()
 
     def test_initialize_hybrid_mode(self):
         """Test bot initialization with both API keys."""
@@ -105,12 +115,18 @@ class TestBotInitialization:
             "OUTPUT_TOKENS": 1000,
         }
 
-        with patch("src.bot.OpenAI") as mock_openai:
+        with patch("src.bot.get_connection_pool_manager") as mock_pool_manager:
+            # Mock the connection pool manager methods
+            mock_pool = mock_pool_manager.return_value
+            mock_pool.create_openai_client.return_value = "mock_openai_client"
+            mock_pool.create_perplexity_client.return_value = "mock_perplexity_client"
+
             deps = initialize_bot_and_dependencies(config)
 
             assert deps["client"] is not None
             assert deps["perplexity_client"] is not None
-            assert mock_openai.call_count == 2  # Called for both clients
+            assert mock_pool.create_openai_client.call_count == 1
+            assert mock_pool.create_perplexity_client.call_count == 1
 
     def test_initialize_no_api_keys_raises_error(self):
         """Test that missing both API keys raises ValueError."""
@@ -141,7 +157,11 @@ class TestBotInitialization:
             "USER_LOCK_CLEANUP_INTERVAL": 3600,
         }
 
-        with patch("src.bot.OpenAI", side_effect=Exception("API Error")):
+        with patch("src.bot.get_connection_pool_manager") as mock_pool_manager:
+            # Mock the connection pool manager to raise an exception
+            mock_pool = mock_pool_manager.return_value
+            mock_pool.create_openai_client.side_effect = Exception("API Error")
+
             with pytest.raises(Exception) as exc_info:
                 initialize_bot_and_dependencies(config)
 
