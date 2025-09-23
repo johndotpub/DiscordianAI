@@ -3,4 +3,5 @@ openai>=1.101.0
 websockets>=15.0.1
 requests>=2.31.0
 beautifulsoup4>=4.12.2
-httpx[http2]>=0.24.0
+httpx[http2]>=0.28.0
+h2>=4.3.0
