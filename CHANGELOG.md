@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.7.1] - 2025-09-23
+
+### Fixed
+- **HTTP/2 Dependency Issues**: Fixed production environment HTTP/2 fallback to HTTP/1.1
+  - Updated `httpx[http2]>=0.28.0` and `h2>=4.3.0` in `requirements.txt`
+  - Added HTTP/2 dependencies to `pyproject.toml` for consistency
+  - Enhanced `docs/ConnectionPooling.md` with version requirements and troubleshooting guide
+  - Resolved issue where httpx 0.25.1 had unreliable HTTP/2 support causing fallback
+
+### Documentation
+- **Connection Pooling Guide**: Added comprehensive troubleshooting section for HTTP/2 issues
+- **Version Requirements**: Documented minimum versions for reliable HTTP/2 operation
+- **Installation Commands**: Updated with specific version requirements
+
 ## [v0.2.7] - 2025-01-23
 
 ### Added
