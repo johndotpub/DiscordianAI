@@ -11,7 +11,7 @@ This test suite covers:
 import asyncio
 import threading
 import time
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -346,7 +346,9 @@ class TestSystemIntegrationBenchmarks:
         mock_response.usage.prompt_tokens = 10
         mock_response.usage.completion_tokens = 5
         mock_response.usage.total_tokens = 15
-        openai_client.chat.completions.create.return_value = mock_response
+        mock_create = AsyncMock()
+        mock_create.return_value = mock_response
+        openai_client.chat.completions.create = mock_create
 
         logger = Mock()
 

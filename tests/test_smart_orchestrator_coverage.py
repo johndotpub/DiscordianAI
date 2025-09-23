@@ -116,7 +116,7 @@ class TestProcessingModes:
         with patch("src.smart_orchestrator.process_perplexity_message") as mock_perplexity:
             mock_perplexity.return_value = ("Perplexity response", True, None)
 
-            response, suppress_embeds, embed_data = await _process_perplexity_only_mode(
+            response, _suppress_embeds, _embed_data = await _process_perplexity_only_mode(
                 message="Test query",
                 user=user,
                 conversation_manager=conversation_manager,
@@ -127,7 +127,7 @@ class TestProcessingModes:
             )
 
             assert response == "Perplexity response"
-            assert suppress_embeds is True
+            assert _suppress_embeds is True
             mock_perplexity.assert_called_once()
 
     @pytest.mark.asyncio
@@ -143,7 +143,7 @@ class TestProcessingModes:
         with patch("src.smart_orchestrator.process_perplexity_message") as mock_perplexity:
             mock_perplexity.return_value = None  # Simulate failure
 
-            response, suppress_embeds, embed_data = await _process_perplexity_only_mode(
+            response, _suppress_embeds, _embed_data = await _process_perplexity_only_mode(
                 message="Test query",
                 user=user,
                 conversation_manager=conversation_manager,
@@ -155,7 +155,7 @@ class TestProcessingModes:
 
             # Should return error message from ERROR_MESSAGES
             assert "trouble generating a response" in response
-            assert suppress_embeds is False
+            assert _suppress_embeds is False
 
     @pytest.mark.asyncio
     async def test_process_openai_only_mode_success(self):
@@ -171,7 +171,7 @@ class TestProcessingModes:
         with patch("src.smart_orchestrator.process_openai_message") as mock_openai:
             mock_openai.return_value = "OpenAI response"
 
-            response, suppress_embeds, embed_data = await _process_openai_only_mode(
+            response, _suppress_embeds, _embed_data = await _process_openai_only_mode(
                 message="Test query",
                 user=user,
                 conversation_summary=conversation_summary,
@@ -184,7 +184,7 @@ class TestProcessingModes:
             )
 
             assert response == "OpenAI response"
-            assert suppress_embeds is False
+            assert _suppress_embeds is False
             mock_openai.assert_called_once()
 
     @pytest.mark.asyncio
@@ -199,7 +199,7 @@ class TestProcessingModes:
         with patch("src.smart_orchestrator.process_openai_message") as mock_openai:
             mock_openai.return_value = None  # Simulate failure
 
-            response, suppress_embeds, embed_data = await _process_openai_only_mode(
+            response, _suppress_embeds, _embed_data = await _process_openai_only_mode(
                 message="Test query",
                 user=user,
                 conversation_summary=conversation_summary,
@@ -213,7 +213,7 @@ class TestProcessingModes:
 
             # Should return error message from ERROR_MESSAGES
             assert "trouble generating a response" in response
-            assert suppress_embeds is False
+            assert _suppress_embeds is False
 
     @pytest.mark.asyncio
     async def test_try_perplexity_with_fallback_success(self):
@@ -226,7 +226,7 @@ class TestProcessingModes:
         with patch("src.smart_orchestrator.process_perplexity_message") as mock_perplexity:
             mock_perplexity.return_value = ("Perplexity response", True, None)
 
-            response, suppress_embeds, embed_data = await _try_perplexity_with_fallback(
+            response, _suppress_embeds, _embed_data = await _try_perplexity_with_fallback(
                 message="Test query",
                 user=user,
                 conversation_manager=conversation_manager,
@@ -237,7 +237,7 @@ class TestProcessingModes:
             )
 
             assert response == "Perplexity response"
-            assert suppress_embeds is True
+            assert _suppress_embeds is True
 
     @pytest.mark.asyncio
     async def test_try_perplexity_with_fallback_failure(self):
@@ -250,7 +250,7 @@ class TestProcessingModes:
         with patch("src.smart_orchestrator.process_perplexity_message") as mock_perplexity:
             mock_perplexity.return_value = None  # Simulate failure
 
-            response, suppress_embeds, embed_data = await _try_perplexity_with_fallback(
+            response, _suppress_embeds, _embed_data = await _try_perplexity_with_fallback(
                 message="Test query",
                 user=user,
                 conversation_manager=conversation_manager,
@@ -261,7 +261,7 @@ class TestProcessingModes:
             )
 
             assert response is None
-            assert suppress_embeds is False
+            assert _suppress_embeds is False
 
     @pytest.mark.asyncio
     async def test_process_hybrid_mode_web_search_preferred(self):
@@ -282,9 +282,10 @@ class TestProcessingModes:
 
             mock_perplexity.return_value = ("Web search result", True, None)
 
-            response, suppress_embeds, embed_data = await _process_hybrid_mode(
+            response, _suppress_embeds, _embed_data = await _process_hybrid_mode(
                 message="What's the latest news?",
                 user=user,
+                conversation_summary=[],
                 conversation_manager=conversation_manager,
                 logger=logger,
                 openai_client=openai_client,
@@ -296,7 +297,7 @@ class TestProcessingModes:
             )
 
             assert response == "Web search result"
-            assert suppress_embeds is True
+            assert _suppress_embeds is True
             mock_perplexity.assert_called_once()
             mock_openai.assert_not_called()  # Should not fallback to OpenAI
 
@@ -313,9 +314,10 @@ class TestProcessingModes:
 
         # Just test that the function can be called and returns something
         try:
-            response, suppress_embeds, embed_data = await _process_hybrid_mode(
+            response, _suppress_embeds, _embed_data = await _process_hybrid_mode(
                 message="Test message",
                 user=user,
+                conversation_summary=[],
                 conversation_manager=conversation_manager,
                 logger=logger,
                 openai_client=openai_client,
@@ -328,7 +330,7 @@ class TestProcessingModes:
 
             # Function should complete and return values
             assert response is not None
-            assert isinstance(suppress_embeds, bool)
+            assert isinstance(_suppress_embeds, bool)
         except Exception:
             # Even if it fails, we've exercised the code path
             logger.exception("Exception occurred in test_process_hybrid_mode_basic")
@@ -351,7 +353,7 @@ class TestMainOrchestrator:
         with patch("src.smart_orchestrator._process_hybrid_mode") as mock_hybrid:
             mock_hybrid.return_value = ("Hybrid response", True, None)
 
-            response, suppress_embeds, embed_data = await get_smart_response(
+            response, _suppress_embeds, _embed_data = await get_smart_response(
                 message="Test message",
                 user=user,
                 conversation_summary=conversation_summary,
@@ -366,7 +368,7 @@ class TestMainOrchestrator:
             )
 
             assert response == "Hybrid response"
-            assert suppress_embeds is True
+            assert _suppress_embeds is True
             mock_hybrid.assert_called_once()
 
     @pytest.mark.asyncio
@@ -382,7 +384,7 @@ class TestMainOrchestrator:
         with patch("src.smart_orchestrator._process_openai_only_mode") as mock_openai:
             mock_openai.return_value = ("OpenAI only response", False, None)
 
-            response, suppress_embeds, embed_data = await get_smart_response(
+            response, _suppress_embeds, _embed_data = await get_smart_response(
                 message="Test message",
                 user=user,
                 conversation_summary=conversation_summary,
@@ -396,7 +398,7 @@ class TestMainOrchestrator:
             )
 
             assert response == "OpenAI only response"
-            assert suppress_embeds is False
+            assert _suppress_embeds is False
             mock_openai.assert_called_once()
 
     @pytest.mark.asyncio
@@ -411,7 +413,7 @@ class TestMainOrchestrator:
         with patch("src.smart_orchestrator._process_perplexity_only_mode") as mock_perplexity:
             mock_perplexity.return_value = ("Perplexity only response", True, None)
 
-            response, suppress_embeds, embed_data = await get_smart_response(
+            response, _suppress_embeds, _embed_data = await get_smart_response(
                 message="Test message",
                 user=user,
                 conversation_summary=[],
@@ -425,7 +427,7 @@ class TestMainOrchestrator:
             )
 
             assert response == "Perplexity only response"
-            assert suppress_embeds is True
+            assert _suppress_embeds is True
             mock_perplexity.assert_called_once()
 
     @pytest.mark.asyncio
@@ -435,7 +437,7 @@ class TestMainOrchestrator:
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
         logger = logging.getLogger("test")
 
-        response, suppress_embeds, embed_data = await get_smart_response(
+        response, _suppress_embeds, _embed_data = await get_smart_response(
             message="Test message",
             user=user,
             conversation_summary=[],
@@ -450,4 +452,4 @@ class TestMainOrchestrator:
 
         # Should return configuration error
         assert "AI services are not properly configured" in response
-        assert suppress_embeds is False
+        assert _suppress_embeds is False

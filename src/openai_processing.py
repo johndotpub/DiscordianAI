@@ -4,7 +4,6 @@ This module handles all OpenAI API interactions including GPT-5 specific paramet
 conversation state management, and comprehensive error recovery.
 """
 
-import asyncio
 import logging
 
 from .caching import cached_response, deduplicated_request
@@ -73,9 +72,7 @@ async def process_openai_message(
 
         # Define the API call function for retry
         async def api_call_with_retry():
-            return await asyncio.to_thread(
-                lambda: openai_client.chat.completions.create(**api_params)
-            )
+            return await openai_client.chat.completions.create(**api_params)
 
         # Make API call with enhanced error handling and retries
         logger.debug("Executing OpenAI API call with retry logic")

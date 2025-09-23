@@ -103,7 +103,9 @@ class TestAPIHealthMonitor:
         mock_response.usage.prompt_tokens = 5
         mock_response.usage.completion_tokens = 3
 
-        openai_client.chat.completions.create.return_value = mock_response
+        mock_create = AsyncMock()
+        mock_create.return_value = mock_response
+        openai_client.chat.completions.create = mock_create
 
         config = {"GPT_MODEL": "gpt-5-mini"}
 
@@ -156,7 +158,9 @@ class TestAPIHealthMonitor:
         mock_response.usage.prompt_tokens = 10
         mock_response.usage.completion_tokens = 20
 
-        perplexity_client.chat.completions.create.return_value = mock_response
+        mock_create = AsyncMock()
+        mock_create.return_value = mock_response
+        perplexity_client.chat.completions.create = mock_create
 
         config = {"PERPLEXITY_MODEL": "sonar-pro"}
 
@@ -435,7 +439,7 @@ class TestConfigurationValidation:
             "RATE_LIMIT_PER": 60,
         }
 
-        warnings, errors = validate_api_configuration(config)
+        _warnings, errors = validate_api_configuration(config)
 
         # Should have no critical errors
         assert len(errors) == 0
@@ -448,7 +452,7 @@ class TestConfigurationValidation:
             "GPT_MODEL": "gpt-5-mini",
         }
 
-        warnings, errors = validate_api_configuration(config)
+        _warnings, errors = validate_api_configuration(config)
 
         # Should have error about missing API keys
         assert len(errors) > 0
@@ -463,10 +467,10 @@ class TestConfigurationValidation:
             "DISCORD_TOKEN": "discord-token",
         }
 
-        warnings, errors = validate_api_configuration(config)
+        _warnings, errors = validate_api_configuration(config)
 
         # Should have warning about invalid model
-        invalid_model_warning = any("invalid-model" in str(warnings) for warnings in warnings)
+        invalid_model_warning = any("invalid-model" in str(w) for w in _warnings)
         assert invalid_model_warning or len(errors) > 0
 
 

@@ -6,6 +6,7 @@ import pytest
 
 from src.conversation_manager import ThreadSafeConversationManager
 from src.openai_processing import process_openai_message
+from tests.test_utils import FakeOpenAIClient
 
 
 # Test the process_openai_message function for various scenarios
@@ -17,32 +18,6 @@ class TestProcessOpenAIMessage:
             "get_conversation_summary_formatted",
             return_value=[],
         ):
-
-            class FakeMessage:
-                def __init__(self, content):
-                    self.content = content
-
-                def strip(self):
-                    return self.content.strip()
-
-            class FakeChoice:
-                def __init__(self, content):
-                    self.message = FakeMessage(content)
-
-            class FakeResponse:
-                def __init__(self, content):
-                    self.choices = [FakeChoice(content)]
-
-            class FakeOpenAIClient:
-                class Chat:
-                    class Completions:
-                        @staticmethod
-                        def create(*args, **kwargs):
-                            return FakeResponse("Test response")
-
-                    completions = Completions()
-
-                chat = Chat()
 
             mock_user = MagicMock()
             mock_user.id = 123
@@ -77,21 +52,6 @@ class TestProcessOpenAIMessage:
             return_value=[],
         ):
 
-            class FakeResponse:
-                def __init__(self):
-                    self.choices = []
-
-            class FakeOpenAIClient:
-                class Chat:
-                    class Completions:
-                        @staticmethod
-                        def create(*args, **kwargs):
-                            return FakeResponse()
-
-                    completions = Completions()
-
-                chat = Chat()
-
             mock_user = MagicMock()
             mock_user.id = 123
             input_message = "Hello"
@@ -104,7 +64,7 @@ class TestProcessOpenAIMessage:
                 [],
                 conversation_manager,
                 logger,
-                FakeOpenAIClient(),
+                FakeOpenAIClient(return_none=True),
                 "gpt-5-mini",
                 "You are a helpful assistant.",
                 8000,
@@ -119,17 +79,6 @@ class TestProcessOpenAIMessage:
             return_value=[],
         ):
 
-            class FakeOpenAIClient:
-                class Chat:
-                    class Completions:
-                        @staticmethod
-                        def create(*args, **kwargs):
-                            raise Exception("Test exception")
-
-                    completions = Completions()
-
-                chat = Chat()
-
             mock_user = MagicMock()
             mock_user.id = 123
             input_message = "Hello"
@@ -142,7 +91,7 @@ class TestProcessOpenAIMessage:
                 [],
                 conversation_manager,
                 logger,
-                FakeOpenAIClient(),
+                FakeOpenAIClient(should_raise=True),
                 "gpt-5-mini",
                 "You are a helpful assistant.",
                 8000,

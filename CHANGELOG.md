@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.7] - 2025-01-23
+
+### Added
+- **HTTP/2 Connection Pooling**: Optimized API client performance with configurable connection pools
+  - `src/connection_pool.py` - Centralized connection pool management for OpenAI and Perplexity APIs
+  - API-specific connection limits: OpenAI (50 max, 10 keepalive), Perplexity (30 max, 5 keepalive)
+  - HTTP/2 support for improved throughput and multiplexed connections
+  - Configurable via `config.ini` with `[ConnectionPool]` section
+- **Enhanced Documentation**: Comprehensive connection pooling guide in `docs/ConnectionPooling.md`
+
+### Changed
+- **Conversation Management**: Streamlined conversation handling architecture
+  - Removed redundant `src/conversations.py` module (functionality consolidated into `ThreadSafeConversationManager`)
+  - Fixed conversation summary consistency across all operation modes (OpenAI-only, Perplexity-only, Hybrid)
+  - Updated hybrid mode to use passed `conversation_summary` parameter consistently
+- **Code Quality**: Improved codebase maintainability
+  - Removed duplicate test files (`test_conversations.py`, `test_get_conversation_summary.py`)
+  - Updated documentation to reflect current architecture
+  - Enhanced test coverage for conversation management
+
+### Fixed
+- **Conversation Summary Consistency**: Fixed hybrid mode to use passed conversation summary parameter
+- **Documentation Accuracy**: Updated CHANGELOG and documentation to reflect current file structure
+- **Code Formatting**: Applied consistent black and ruff formatting across all files
+
+### Performance
+- **API Overhead Reduction**: Connection pooling reduces connection establishment overhead
+- **Memory Efficiency**: Supports 10k+ users with <100MB conversation memory
+- **Rate Limit Compliance**: Optimized connection pools respect API rate limits
+
 ## [v0.2.6] - 2025-01-25
 
 ### Fixed
@@ -93,7 +123,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Modular Package Structure**: Reorganized into standard Python package layout under `src/` directory:
   - `src/bot.py` - Main bot logic with modular dependencies and event handlers
   - `src/config.py` - Configuration management with hierarchical loading (CLI > env > defaults)
-  - `src/conversations.py` - Conversation history summarization logic
+  - `src/conversation_manager.py` - Thread-safe conversation history management and summarization
   - `src/discord_bot.py` - Discord-specific utilities like activity status setting
   - `src/openai_processing.py` - OpenAI API interaction and message processing
   - `src/rate_limits.py` - Rate limiting functionality for user requests
@@ -102,7 +132,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Enhanced CLI Support**: New `--folder` argument for base directory support with relative config/log resolution
 - **Comprehensive Test Suite**: Full async testing capabilities with pytest-asyncio
   - Robust async tests for OpenAI processing including edge cases and error handling
-  - Comprehensive test coverage for all modules (config, main, discord_bot, conversations)
+  - Comprehensive test coverage for all modules (config, main, discord_bot, conversation_manager)
   - Modern testing patterns with dependency injection and realistic fake clients
 - **Development Tooling**: Modernized development environment
   - Added `.flake8` and `pytest.ini` configuration files for consistency

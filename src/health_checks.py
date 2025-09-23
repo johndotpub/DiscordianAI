@@ -109,9 +109,7 @@ class APIHealthMonitor:
             # GPT-5 models use max_completion_tokens
             api_params["max_completion_tokens"] = 10  # Minimal response
 
-            response = await asyncio.to_thread(
-                lambda: openai_client.chat.completions.create(**api_params)
-            )
+            response = await openai_client.chat.completions.create(**api_params)
 
             response_time_ms = (time.time() - start_time) * 1000
 
@@ -190,16 +188,14 @@ class APIHealthMonitor:
                 )
 
             # Test web search functionality
-            response = await asyncio.to_thread(
-                lambda: perplexity_client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": "Health check for web search"},
-                        {"role": "user", "content": "What is the current date?"},
-                    ],
-                    max_tokens=50,  # Minimal response
-                    temperature=0.1,  # Low temperature for consistent results
-                )
+            response = await perplexity_client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "Health check for web search"},
+                    {"role": "user", "content": "What is the current date?"},
+                ],
+                max_tokens=50,  # Minimal response
+                temperature=0.1,  # Low temperature for consistent results
             )
 
             response_time_ms = (time.time() - start_time) * 1000

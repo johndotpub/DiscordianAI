@@ -96,7 +96,15 @@ Choose **either** OpenAI only **or** Perplexity only based on your needs.
    USER_LOCK_CLEANUP_INTERVAL=3600
    ```
 
-## Step 4: Running the Bot
+## Step 4: Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+**Note**: This includes `httpx[http2]` for HTTP/2 connection pooling support. If HTTP/2 dependencies fail to install, the bot will gracefully fall back to HTTP/1.1.
+
+## Step 5: Running the Bot
 
 ### Basic Usage
 ```bash
@@ -125,7 +133,7 @@ The included `discordian.sh` script provides additional process management:
 # - Restart capabilities
 ```
 
-## Step 5: Testing Your Setup
+## Step 6: Testing Your Setup
 
 ### Test Basic Functionality
 Send these messages to your bot to verify it's working:

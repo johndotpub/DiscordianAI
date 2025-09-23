@@ -314,6 +314,7 @@ async def _try_perplexity_with_fallback(
 async def _process_hybrid_mode(
     message: str,
     user,
+    conversation_summary,
     conversation_manager,
     logger,
     openai_client,
@@ -323,7 +324,24 @@ async def _process_hybrid_mode(
     output_tokens: int,
     config: dict | None = None,
 ) -> tuple[str, bool, dict | None]:
-    """Process message using hybrid mode with intelligent service selection."""
+    """Process message using hybrid mode with intelligent service selection.
+
+    Args:
+        message: The user's message to process
+        user: Discord user object
+        conversation_summary: Summary of the conversation context
+        conversation_manager: Thread-safe conversation manager instance
+        logger: Logger instance for debugging and monitoring
+        openai_client: OpenAI API client instance
+        perplexity_client: Perplexity API client instance
+        gpt_model: GPT model identifier to use
+        system_message: System prompt for the AI
+        output_tokens: Maximum tokens for the response
+        config: Optional configuration dictionary
+
+    Returns:
+        Tuple of (response_text, success_flag, metadata_dict)
+    """
     logger.info("Running in hybrid mode - analyzing message for optimal routing")
 
     # Get configuration values with fallback defaults
@@ -359,12 +377,11 @@ async def _process_hybrid_mode(
 
     # Use OpenAI (either as first choice or fallback)
     logger.info("Routing to OpenAI")
-    fresh_conversation_summary = conversation_manager.get_conversation_summary_formatted(user.id)
     try:
         response_content = await process_openai_message(
             message,
             user,
-            fresh_conversation_summary,
+            conversation_summary,
             conversation_manager,
             logger,
             openai_client,
@@ -469,6 +486,7 @@ async def get_smart_response(
             return await _process_hybrid_mode(
                 message,
                 user,
+                conversation_summary,
                 conversation_manager,
                 logger,
                 openai_client,
