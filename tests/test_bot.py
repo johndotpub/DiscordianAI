@@ -412,10 +412,11 @@ class TestMessageSplitting:
         # Test with high recursion depth to trigger limit
         await send_split_message(channel, message, deps, _recursion_depth=15)
 
-        # Should send truncated message due to recursion limit
+        # Should attempt to send the full message despite recursion limit
         channel.send.assert_called_once()
         sent_message = channel.send.call_args[0][0]
-        assert "truncated" in sent_message.lower()
+        # The message should be the full original message (no truncation)
+        assert sent_message == message
 
     @pytest.mark.asyncio
     async def test_send_split_message_discord_error(self):
