@@ -28,6 +28,8 @@ The 3840-character safe limit (`EMBED_SAFE_LIMIT`) provides a 256-character safe
 
 ## Message Splitting Algorithm
 
+DiscordianAI uses a sophisticated message splitting algorithm that ensures content integrity while respecting Discord's character limits. The system includes recursion limit protection and intelligent boundary detection.
+
 The following diagram shows how messages are intelligently split:
 
 ```mermaid
@@ -243,6 +245,8 @@ def find_optimal_split_point(message: str, target_index: int) -> int:
 **Infinite recursion in splitting**:
 - Check recursion depth limits (max 10)
 - Ensure fallback truncation works
+- **NEW**: System now attempts to send remaining message when recursion limit is hit
+- **NEW**: Only truncates if the attempt fails, with separate truncation notice message
 
 ### Performance Considerations
 
@@ -250,6 +254,40 @@ def find_optimal_split_point(message: str, target_index: int) -> int:
 - **Code block detection**: O(n) where n is message length  
 - **Citation mapping**: O(c) where c is number of citations
 - **Memory usage**: Minimal additional overhead
+
+## Recursion Limit Protection
+
+### How It Works
+
+DiscordianAI includes sophisticated recursion limit protection to prevent infinite splitting loops:
+
+1. **Normal Splitting**: Messages are split using intelligent boundary detection
+2. **Recursion Limit Hit**: When recursion limit is reached, the system attempts to send the remaining message
+3. **Fallback Truncation**: Only if the attempt fails (too long), the system truncates and sends a separate notice
+
+### Recursion Limit Flow
+
+```mermaid
+flowchart TD
+    A[Message Needs Splitting] --> B[Split Using Intelligent Boundaries]
+    B --> C{Recursion Limit Reached?}
+    C -->|No| D[Continue Normal Splitting]
+    C -->|Yes| E[Attempt to Send Remaining Message]
+    E --> F{Attempt Success?}
+    F -->|Yes| G[Complete - No Truncation]
+    F -->|No| H[Truncate to Safe Length]
+    H --> I[Send Truncated Content]
+    I --> J[Send Truncation Notice]
+    J --> K[Complete with Notice]
+    D --> C
+```
+
+### Benefits
+
+- **Content Preservation**: Never truncates content unless absolutely necessary
+- **Graceful Degradation**: Attempts full content delivery before truncation
+- **User Awareness**: Clear truncation notice when limits are hit
+- **Performance**: Prevents infinite recursion loops
 
 ## Advanced Configuration
 

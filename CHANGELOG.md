@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.7.2] - 2025-01-23
+
+### Fixed
+- **Message Splitting Improvements**: Enhanced message splitting with recursion limit protection
+  - Fixed HTTPException 400 Bad Request for messages exceeding Discord's 2000-character limit
+  - Implemented proper recursion limit handling with graceful fallback
+  - Added comprehensive message splitting test suite (26 test cases)
+  - Ensured all message parts respect Discord's character limits
+  - Preserved content integrity during splitting process
+  - Added proper error handling and logging for recursion scenarios
+
+### Added
+- **Comprehensive Test Coverage**: New `tests/test_message_splitting.py` with 26 test cases
+  - Basic message splitting functionality tests
+  - Code block splitting tests
+  - Integration tests for long messages
+  - Edge case testing (empty messages, unicode, extreme lengths)
+  - Recursion limit and truncation behavior tests
+  - Content preservation verification
+
+### Documentation
+- **Enhanced Message Splitting Guide**: Updated `docs/MessageSplitting.md`
+  - Added recursion limit protection section
+  - Added troubleshooting for new features
+  - Included Mermaid diagrams for recursion flow
+
 ## [v0.2.7.1] - 2025-09-23
 
 ### Fixed
