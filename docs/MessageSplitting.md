@@ -272,10 +272,10 @@ flowchart TD
     A[Message Needs Splitting] --> B[Split Using Intelligent Boundaries]
     B --> C{Recursion Limit Reached?}
     C -->|No| D[Continue Normal Splitting]
-    C -->|Yes| E[Attempt to Send Remaining Message]
-    E --> F{Attempt Success?}
-    F -->|Yes| G[Complete - No Truncation]
-    F -->|No| H[Truncate to Safe Length]
+    C -->|Yes| E[Attempt to Send Entire Remaining Message]
+    E --> F{Message Too Long?}
+    F -->|No| G[Complete - No Truncation]
+    F -->|Yes| H[Truncate to Safe Length]
     H --> I[Send Truncated Content]
     I --> J[Send Truncation Notice]
     J --> K[Complete with Notice]
