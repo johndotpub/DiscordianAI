@@ -52,31 +52,43 @@ flowchart TD
     E --> F{Hybrid Mode?}
     F -->|No - OpenAI Only| G[OpenAI Processing]
     F -->|No - Perplexity Only| H[Perplexity Processing]
-    F -->|Yes| I[Analyze Message Content]
+    F -->|Yes| I[Check Conversation Context]
     
     I --> J{Follow-up Detected?}
     J -->|Yes| K[Use Same AI Service as Previous]
-    J -->|No| L[Smart Routing Decision]
+    J -->|No| L[Analyze Message Content]
     
-    L --> M{Web Search Needed?}
+    L --> M{URLs Detected?}
     M -->|Yes| H[Perplexity Processing]
-    M -->|No| G[OpenAI Processing]
+    M -->|No| N{Time-sensitive Keywords?}
     
-    G --> N[OpenAI Response]
-    H --> O[Perplexity Response + Citations]
-    K --> P{Previous Service}
-    P -->|OpenAI| G
-    P -->|Perplexity| H
+    N -->|Yes| H[Perplexity Processing]
+    N -->|No| O{Entities Detected?}
     
-    N --> Q[Format as Regular Message]
-    O --> R[Format as Citation Embed]
+    O -->|Yes| H[Perplexity Processing]
+    O -->|No| P{Conversational/Creative?}
     
-    Q --> S[send_formatted_message]
-    R --> S
+    P -->|Yes| G[OpenAI Processing]
+    P -->|No| Q{Factual Query?}
     
-    S --> T{Has Embed Data?}
-    T -->|Yes| U{Content > EMBED_LIMIT?}
-    T -->|No| V{Message > 2000 chars?}
+    Q -->|Yes| H[Perplexity Processing]
+    Q -->|No| G[OpenAI Processing]
+    
+    G --> R[OpenAI Response]
+    H --> S[Perplexity Response + Citations]
+    K --> T{Previous Service}
+    T -->|OpenAI| G
+    T -->|Perplexity| H
+    
+    R --> U[Format as Regular Message]
+    S --> V[Format as Citation Embed]
+    
+    U --> W[send_formatted_message]
+    V --> W
+    
+    W --> X{Has Embed Data?}
+    X -->|Yes| Y{Content > EMBED_LIMIT?}
+    X -->|No| Z2{Message > 2000 chars?}
     
     U -->|Yes| W[Split Embed with Citations]
     U -->|No| X[Send Single Embed]

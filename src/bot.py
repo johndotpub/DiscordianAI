@@ -504,12 +504,29 @@ async def send_split_message(
     max_recursion_depth = MAX_SPLIT_RECURSION
     if _recursion_depth > max_recursion_depth:
         deps["logger"].error(
-            f"Message splitting exceeded maximum recursion depth ({max_recursion_depth}). "
-            f"Message length: {len(message)}. Truncating message."
+            f"Message splitting exceeded maximum recursion depth "
+            f"({max_recursion_depth}). Message length: {len(message)}. "
+            f"Attempting to send as part {max_recursion_depth + 1}."
         )
-        # Send truncated message as fallback
-        truncated = message[:1950] + "\n\n[Message truncated due to complexity]"
-        await channel.send(truncated, suppress_embeds=suppress_embeds)
+        # Try to send the entire message as-is (Discord will handle the error if too long)
+        try:
+            await channel.send(message, suppress_embeds=suppress_embeds)
+            deps["logger"].warning(
+                f"Successfully sent part {max_recursion_depth + 1} despite recursion limit"
+            )
+        except discord.HTTPException as e:
+            deps["logger"].error(
+                f"Failed to send part {max_recursion_depth + 1} after recursion limit: {e}"
+            )
+            # As a last resort, truncate and send truncation notice as part 11
+            deps["logger"].warning("Truncating message due to recursion limit")
+            truncated_message = message[: MESSAGE_LIMIT - 50]
+            await channel.send(truncated_message, suppress_embeds=suppress_embeds)
+            # Send truncation notice as a separate message (acts as part 11)
+            truncation_notice = (
+                "[Message truncated due to length - maximum split recursion limit reached]"
+            )
+            await channel.send(truncation_notice, suppress_embeds=suppress_embeds)
         return
 
     # If message fits in one Discord message, send it directly
@@ -525,25 +542,74 @@ async def send_split_message(
             raise
         return
 
-    # Message needs splitting
+    # Message needs splitting - ensure first part is under MESSAGE_LIMIT
     deps["logger"].debug(
         f"Splitting long message ({len(message)} chars) at recursion depth {_recursion_depth}"
     )
 
-    middle_index = len(message) // 2
-    split_index = find_optimal_split_point(message, middle_index)
+    # Find a safe split point that ensures first part is under MESSAGE_LIMIT
+    # Start with a conservative split point well under the limit
+    split_buffer_size = 100  # Character buffer to ensure safe splitting
+    safe_split_point = min(MESSAGE_LIMIT - split_buffer_size, len(message) // 2)
+
+    # Find optimal split point near the safe point
+    split_index = find_optimal_split_point(message, safe_split_point)
+
+    # Ensure the split point is actually under the limit
+    if split_index >= MESSAGE_LIMIT:
+        # If optimal split is still too long, find the last safe character
+        split_index = MESSAGE_LIMIT - 1
+        # Try to find a better break point before the limit
+        boundary_search_range = 200  # Characters to search backwards for boundaries
+        for i in range(split_index, max(0, split_index - boundary_search_range), -1):
+            if message[i] in ["\n", ".", "!", "?", " "]:
+                split_index = i + 1
+                break
+
+    # Adjust for code blocks
     before_split, after_split = adjust_split_for_code_blocks(message, split_index)
 
-    # Clean up the splits
-    message_part1 = before_split.strip()
-    message_part2 = after_split.strip()
+    # Assign the split parts (preserving original content)
+    message_part1 = before_split
+    message_part2 = after_split
+
+    # Final safety check - if first part is still too long, find a better split point
+    if len(message_part1) > MESSAGE_LIMIT:
+        deps["logger"].warning(
+            f"First part still too long ({len(message_part1)} chars), "
+            f"finding better split point"
+        )
+        # Find the last safe character before the limit
+        extended_search_range = 500  # Extended search range for fallback splitting
+        for i in range(MESSAGE_LIMIT - 1, max(0, MESSAGE_LIMIT - extended_search_range), -1):
+            if message[i] in ["\n", ".", "!", "?", " "]:
+                split_index = i + 1
+                before_split, after_split = adjust_split_for_code_blocks(message, split_index)
+                message_part1 = before_split
+                message_part2 = after_split
+                deps["logger"].info(
+                    f"Found better split at position {split_index}, "
+                    f"first part now {len(message_part1)} chars"
+                )
+                break
+        else:
+            # If we still can't find a good split, force a split at the limit
+            deps["logger"].warning(
+                "Could not find optimal split point, forcing split at character limit"
+            )
+            split_index = MESSAGE_LIMIT - 1
+            message_part1 = message[:split_index]
+            message_part2 = message[split_index:]
 
     # Send first part (with embed suppression if needed)
     try:
+        deps["logger"].debug(f"Sending message part 1 ({len(message_part1)} chars)")
         await channel.send(message_part1, suppress_embeds=suppress_embeds)
         deps["logger"].debug(f"Sent message part 1 ({len(message_part1)} chars)")
     except discord.HTTPException as e:
         deps["logger"].error(f"Discord API error sending message part 1: {e}")
+        deps["logger"].error(f"Message part 1 length: {len(message_part1)} chars")
+        deps["logger"].error(f"Message part 1 preview: {message_part1[:200]}...")
         raise
 
     # Recursively send second part (without embed suppression to avoid affecting both parts)

@@ -25,7 +25,7 @@ DiscordianAI is an **advanced Discord bot** with sophisticated AI orchestration,
 - **🌐 Clickable Citations**: Perplexity responses with citations display as beautiful Discord embeds with clickable `[[1]](url)` hyperlinks
 - **📱 Smart Embed Usage**: Automatically creates embeds for citation-rich responses, plain text for conversations
 - **🔧 Modern API Support**: Supports latest Perplexity API format with `citations` and `search_results` metadata fields
-- **✂️ Message Splitting**: Intelligently splits long responses while preserving embed functionality
+- **✂️ Smart Message Splitting**: Intelligently splits long responses while preserving embed functionality and content integrity
 - **🔒 Thread-Safe Operations**: Handles concurrent users safely without data corruption
 
 ### 🛡️ **Production-Grade Architecture**
@@ -68,7 +68,7 @@ DiscordianAI is an **advanced Discord bot** with sophisticated AI orchestration,
 - Activity Status: Configurable activity status to display what the bot is doing.
 - Direct Message Handling: Processes direct messages separately from channel messages.
 - Channel Message Handling: Processes messages in specific channels where the bot is mentioned.
-- Automatic Message Splitting: Automatically splits long messages to fit within Discord's message length limits.
+- Smart Message Splitting: Intelligently splits long messages while preserving content integrity and respecting Discord's limits.
 - Global Exception Handling: Catches and logs unhandled exceptions to prevent crashes.
 - Shard Support: Supports sharding for better scalability and performance.
 
@@ -231,6 +231,7 @@ Daemon/background mode is handled by the `discordian.sh` shell script, which sup
 For more in-depth information about the DiscordianAI project, please refer to the following documentation files in the `docs/` directory:
 
 - **[Smart AI Mode](./docs/HybridMode.md)** : Complete guide to intelligent multi-AI operation with smart detection
+- **[Message Splitting](./docs/MessageSplitting.md)** : Advanced message splitting with recursion limit protection and content preservation
 - **[Development](./docs/Development.md)** : Modern development workflow using streamlined linting tools
 - [Configuration](./docs/Configuration.md) : Detailed instructions on how to configure the Discord bot and AI API settings  
 - [Daemon](./docs/Daemon.md) : Information on how to run the Discord bot as a daemon

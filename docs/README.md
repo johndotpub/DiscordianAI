@@ -29,26 +29,29 @@ The bot intelligently chooses between OpenAI and Perplexity based on message con
 flowchart TD
     A[User Message] --> B{Follow-up to previous?}
     B -->|Yes| C[Use same AI service]
-    B -->|No| D[Analyze message content]
+    B -->|No| D[Check conversation context]
     
-    D --> E{Time-sensitive keywords?}
+    D --> E{URLs detected?}
     E -->|Yes| F[Use Perplexity]
-    E -->|No| G{Entities detected?}
+    E -->|No| G{Time-sensitive keywords?}
     
     G -->|Yes| F
-    G -->|No| H{Conversational/Creative?}
+    G -->|No| H{Entities detected?}
     
-    H -->|Yes| I[Use OpenAI]
-    H -->|No| J{Factual query?}
+    H -->|Yes| F
+    H -->|No| I{Conversational/Creative?}
     
-    J -->|Yes| F
-    J -->|No| I
+    I -->|Yes| J[Use OpenAI]
+    I -->|No| K{Factual query?}
     
-    F --> K[Web search + Citations]
-    I --> L[Conversational AI]
-    C --> M{Previous service}
-    M -->|OpenAI| I
-    M -->|Perplexity| F
+    K -->|Yes| F
+    K -->|No| J
+    
+    F --> L[Web search + Citations]
+    J --> M[Conversational AI]
+    C --> N{Previous service}
+    N -->|OpenAI| J
+    N -->|Perplexity| F
 ```
 
 ### 🔧 Development
