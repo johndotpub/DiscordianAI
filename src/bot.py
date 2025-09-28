@@ -520,7 +520,7 @@ async def send_split_message(
             )
             # As a last resort, truncate and send truncation notice as part 11
             deps["logger"].warning("Truncating message due to recursion limit")
-            truncated_message = message[:MESSAGE_LIMIT - 50]
+            truncated_message = message[: MESSAGE_LIMIT - 50]
             await channel.send(truncated_message, suppress_embeds=suppress_embeds)
             # Send truncation notice as a separate message (acts as part 11)
             truncation_notice = (
@@ -549,7 +549,8 @@ async def send_split_message(
 
     # Find a safe split point that ensures first part is under MESSAGE_LIMIT
     # Start with a conservative split point well under the limit
-    safe_split_point = min(MESSAGE_LIMIT - 100, len(message) // 2)  # Leave 100 char buffer
+    split_buffer_size = 100  # Character buffer to ensure safe splitting
+    safe_split_point = min(MESSAGE_LIMIT - split_buffer_size, len(message) // 2)
 
     # Find optimal split point near the safe point
     split_index = find_optimal_split_point(message, safe_split_point)
@@ -559,7 +560,8 @@ async def send_split_message(
         # If optimal split is still too long, find the last safe character
         split_index = MESSAGE_LIMIT - 1
         # Try to find a better break point before the limit
-        for i in range(split_index, max(0, split_index - 200), -1):
+        boundary_search_range = 200  # Characters to search backwards for boundaries
+        for i in range(split_index, max(0, split_index - boundary_search_range), -1):
             if message[i] in ["\n", ".", "!", "?", " "]:
                 split_index = i + 1
                 break
@@ -567,7 +569,7 @@ async def send_split_message(
     # Adjust for code blocks
     before_split, after_split = adjust_split_for_code_blocks(message, split_index)
 
-    # Clean up the splits (preserve original content)
+    # Assign the split parts (preserving original content)
     message_part1 = before_split
     message_part2 = after_split
 
@@ -578,7 +580,8 @@ async def send_split_message(
             f"finding better split point"
         )
         # Find the last safe character before the limit
-        for i in range(MESSAGE_LIMIT - 1, max(0, MESSAGE_LIMIT - 500), -1):
+        extended_search_range = 500  # Extended search range for fallback splitting
+        for i in range(MESSAGE_LIMIT - 1, max(0, MESSAGE_LIMIT - extended_search_range), -1):
             if message[i] in ["\n", ".", "!", "?", " "]:
                 split_index = i + 1
                 before_split, after_split = adjust_split_for_code_blocks(message, split_index)

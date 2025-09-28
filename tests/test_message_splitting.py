@@ -10,11 +10,12 @@ This module tests all aspects of message splitting including:
 - Edge cases and error handling
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from src.bot import send_split_message
-from src.config import MESSAGE_LIMIT, MAX_SPLIT_RECURSION
+from src.config import MAX_SPLIT_RECURSION, MESSAGE_LIMIT
 from src.message_utils import (
     adjust_split_for_code_blocks,
     find_optimal_split_point,
@@ -41,7 +42,7 @@ class TestMessageSplittingBasic:
         message = "This is a very long message without any newlines at all"
         middle = len(message) // 2
         split_index = find_optimal_split_point(message, middle)
-        
+
         # Should find a word boundary near the middle
         assert split_index > 0
         assert split_index < len(message)
@@ -52,20 +53,19 @@ class TestMessageSplittingBasic:
         message = "First sentence. Second sentence. Third sentence."
         middle = len(message) // 2
         split_index = find_optimal_split_point(message, middle)
-        
+
         # Should find a sentence boundary
         assert split_index > 0
         assert split_index < len(message)
         # The function looks for sentence endings followed by whitespace
-        assert message[split_index - 1] in [".", "!", "?"] or \
-            message[split_index - 1] == " "
+        assert message[split_index - 1] in [".", "!", "?"] or message[split_index - 1] == " "
 
     def test_split_at_word_boundary(self):
         """Test splitting at word boundaries."""
         message = "word1 word2 word3 word4 word5"
         middle = len(message) // 2
         split_index = find_optimal_split_point(message, middle)
-        
+
         # Should find a word boundary
         assert split_index > 0
         assert split_index < len(message)
@@ -76,7 +76,7 @@ class TestMessageSplittingBasic:
         message = "no_boundaries_here_at_all"
         middle = len(message) // 2
         split_index = find_optimal_split_point(message, middle)
-        
+
         # Should fall back to target
         assert split_index == middle
 
@@ -85,7 +85,7 @@ class TestMessageSplittingBasic:
         message = "Short start\nLong middle part here\nEnd"
         target = 5  # Very close to start
         split_index = find_optimal_split_point(message, target)
-        
+
         # Should find a reasonable split point
         assert split_index > 0
         assert split_index < len(message)
@@ -95,7 +95,7 @@ class TestMessageSplittingBasic:
         message = "Start\nMiddle\nShort end"
         target = len(message) - 5  # Very close to end
         split_index = find_optimal_split_point(message, target)
-        
+
         # Should find a reasonable split point
         assert split_index > 0
         assert split_index < len(message)
@@ -109,7 +109,7 @@ class TestCodeBlockSplitting:
         message = "Normal text\n```\ncode block\n```\nMore text"
         split_point = 20
         before, after = adjust_split_for_code_blocks(message, split_point)
-        
+
         # Should split normally outside code block
         # The function detects that split_point is inside the code block and adjusts
         assert before == "Normal text\n"
@@ -120,7 +120,7 @@ class TestCodeBlockSplitting:
         message = "Text\n```\ncode line 1\ncode line 2\n```\nMore text"
         split_point = 25  # Inside the code block
         before, after = adjust_split_for_code_blocks(message, split_point)
-        
+
         # Should split after the code block (closer to end since 25 is closer to end)
         assert before == "Text\n```\ncode line 1\ncode line 2\n```"
         assert after == "\nMore text"
@@ -130,7 +130,7 @@ class TestCodeBlockSplitting:
         message = "Text\n```\ncode line 1\ncode line 2\n```\nMore text"
         split_point = 45  # Near end of code block
         before, after = adjust_split_for_code_blocks(message, split_point)
-        
+
         # Should split after the code block (closer to end)
         assert before == "Text\n```\ncode line 1\ncode line 2\n```\nMore tex"
         assert after == "t"
@@ -140,7 +140,7 @@ class TestCodeBlockSplitting:
         message = "Text\n```\ncode1\n```\nMiddle\n```\ncode2\n```\nEnd"
         split_point = 30  # In second code block
         before, after = adjust_split_for_code_blocks(message, split_point)
-        
+
         # Should handle multiple code blocks correctly
         assert "```" in before
         assert "```" in after
@@ -150,7 +150,7 @@ class TestCodeBlockSplitting:
         message = "Just regular text with no code blocks at all"
         split_point = 20
         before, after = adjust_split_for_code_blocks(message, split_point)
-        
+
         # Should split normally
         assert before == message[:split_point]
         assert after == message[split_point:]
@@ -164,12 +164,12 @@ class TestMessageSplittingIntegration:
         """Test sending short message that doesn't need splitting."""
         channel = create_mock_channel()
         channel.send = AsyncMock()
-        
+
         message = "Short message"
         deps = create_test_context()
-        
+
         await send_split_message(channel, message, deps)
-        
+
         # Should be called once
         channel.send.assert_called_once()
         sent_message = channel.send.call_args[0][0]
@@ -180,16 +180,16 @@ class TestMessageSplittingIntegration:
         """Test sending long message that needs splitting."""
         channel = create_mock_channel()
         channel.send = AsyncMock()
-        
+
         # Create a message longer than Discord's limit
         message = "A" * 3000
         deps = create_test_context()
-        
+
         await send_split_message(channel, message, deps)
-        
+
         # Should be called multiple times
         assert channel.send.call_count >= 2
-        
+
         # All parts should be under the limit
         for call in channel.send.call_args_list:
             part = call[0][0]
@@ -200,14 +200,14 @@ class TestMessageSplittingIntegration:
         """Test recursion limit protection in message splitting."""
         channel = create_mock_channel()
         channel.send = AsyncMock()
-        
+
         # Very long message that would cause deep recursion
         message = "x" * 5000  # Long message with no natural split points
         deps = create_test_context()
-        
+
         # Test with high recursion depth to trigger limit
         await send_split_message(channel, message, deps, _recursion_depth=15)
-        
+
         # Should attempt to send the full message despite recursion limit
         channel.send.assert_called_once()
         sent_message = channel.send.call_args[0][0]
@@ -219,10 +219,10 @@ class TestMessageSplittingIntegration:
         """Test handling of Discord API errors."""
         channel = create_mock_channel()
         channel.send = AsyncMock(side_effect=Exception("Discord API error"))
-        
+
         message = "Test message"
         deps = create_test_context()
-        
+
         # Should raise the exception
         with pytest.raises(Exception, match="Discord API error"):
             await send_split_message(channel, message, deps)
@@ -232,25 +232,29 @@ class TestMessageSplittingIntegration:
         """Test that very long messages are split into multiple parts correctly."""
         channel = create_mock_channel()
         channel.send = AsyncMock()
-        
+
         # Create a very long message (10,000 characters) to force multiple splits
-        long_message = "This is a very long message that needs to be split into multiple parts. " * 200
-        
+        long_message = (
+            "This is a very long message that needs to be split into multiple parts. " * 200
+        )
+
         deps = create_test_context()
-        
+
         await send_split_message(channel, long_message, deps)
-        
+
         # Verify that channel.send was called multiple times
         call_count = channel.send.call_count
         assert call_count > 2, f"Expected multiple parts, got only {call_count}"
-        
+
         # Collect all sent messages
         sent_messages = [call[0][0] for call in channel.send.call_args_list]
-        
+
         # Verify each part is under the limit
         for i, part in enumerate(sent_messages):
-            assert len(part) <= MESSAGE_LIMIT, f"Part {i+1} ({len(part)}) exceeds Discord limit ({MESSAGE_LIMIT})"
-        
+            assert (
+                len(part) <= MESSAGE_LIMIT
+            ), f"Part {i+1} ({len(part)}) exceeds Discord limit ({MESSAGE_LIMIT})"
+
         # Verify all content is preserved
         reconstructed_message = "".join(sent_messages)
         assert reconstructed_message == long_message, "Content was lost during splitting!"
@@ -260,14 +264,17 @@ class TestMessageSplittingIntegration:
         """Test that content is preserved without truncation during normal splitting."""
         channel = create_mock_channel()
         channel.send = AsyncMock()
-        
+
         # Create a very long message with natural break points
-        long_message = """
+        long_message = (
+            """
 This is a comprehensive explanation of Off the Grid controller settings from Gunzilla Games.
 
 ## Basic Controller Configuration
 
-The controller settings in Off the Grid are designed to provide players with maximum customization options while maintaining competitive balance. The game features several key areas of controller configuration:
+The controller settings in Off the Grid are designed to provide players with maximum
+customization options while maintaining competitive balance. The game features several
+key areas of controller configuration:
 
 ### Movement Settings
 - **Sensitivity**: Adjustable from 0.1 to 10.0 with 0.1 increments
@@ -314,27 +321,32 @@ Common issues and solutions:
 - **Under-aiming**: Increase sensitivity gradually
 - **Button Response**: Check trigger sensitivity settings
 
-The controller system in Off the Grid is one of the most advanced in the industry, offering players unprecedented control over their gaming experience.
-""" * 3  # Make it even longer
-        
+The controller system in Off the Grid is one of the most advanced in the industry,
+offering players unprecedented control over their gaming experience.
+"""
+            * 3
+        )  # Make it even longer
+
         deps = create_test_context()
-        
+
         await send_split_message(channel, long_message, deps)
-        
+
         # Verify that channel.send was called
         assert channel.send.called, "channel.send should have been called"
-        
+
         # Collect all sent messages
         sent_messages = [call[0][0] for call in channel.send.call_args_list]
-        
+
         # Verify no part exceeds the limit
         for i, part in enumerate(sent_messages):
-            assert len(part) <= MESSAGE_LIMIT, f"Part {i+1} ({len(part)}) exceeds Discord limit ({MESSAGE_LIMIT})"
-        
+            assert (
+                len(part) <= MESSAGE_LIMIT
+            ), f"Part {i+1} ({len(part)}) exceeds Discord limit ({MESSAGE_LIMIT})"
+
         # Verify all content is preserved (no truncation)
         reconstructed_message = "".join(sent_messages)
         assert reconstructed_message == long_message, "Content was lost during splitting!"
-        
+
         # Verify no truncation messages
         for part in sent_messages:
             assert "truncated" not in part.lower(), f"Found truncation message: {part[:100]}..."
@@ -344,43 +356,46 @@ The controller system in Off the Grid is one of the most advanced in the industr
     async def test_truncation_at_recursion_limit(self):
         """Test that truncation only happens at recursion limit with proper message."""
         channel = create_mock_channel()
-        
+
         # Make the mock raise an exception for messages over the limit
-        def mock_send(content, **kwargs):
+        async def mock_send(content, **kwargs):
             if len(content) > MESSAGE_LIMIT:
                 from discord import HTTPException
+
                 # Create a proper mock response object
                 mock_response = MagicMock()
                 mock_response.status = 400
                 raise HTTPException(mock_response, "Message too long")
-            return AsyncMock()
-        
+            return MagicMock()
+
         channel.send.side_effect = mock_send
-        
+
         # Create a logger that shows the recursion depth
         logger = MagicMock()
         deps = create_test_context()
         deps["logger"] = logger
-        
+
         # Create a message that will hit recursion limit
         message = "A" * 25000  # 25,000 A's - should need 13 parts but hit recursion limit at 10
-        
+
         await send_split_message(channel, message, deps)
-        
+
         # Verify that channel.send was called
         assert channel.send.called, "channel.send should have been called"
-        
+
         # Collect all sent messages
         sent_messages = [call[0][0] for call in channel.send.call_args_list]
-        
+
         # Check if truncation message is present
         has_truncation_message = any("truncated" in part.lower() for part in sent_messages)
-        
+
         # Verify all parts are under limit (except the one that gets truncated)
         for i, part in enumerate(sent_messages):
-            if "truncated" not in part.lower() and i != 11:  # Skip part 12 (index 11) as it's the failed attempt
+            # Skip the part that exceeds recursion limit (MAX_SPLIT_RECURSION + 1)
+            expected_fail_part_index = MAX_SPLIT_RECURSION + 1
+            if "truncated" not in part.lower() and i != expected_fail_part_index:
                 assert len(part) <= MESSAGE_LIMIT, f"Part {i+1} exceeds limit: {len(part)}"
-        
+
         # Verify truncation message is present
         assert has_truncation_message, "Expected truncation message when recursion limit is hit"
 
@@ -389,25 +404,23 @@ The controller system in Off the Grid is one of the most advanced in the industr
         """Test handling of extremely long messages."""
         channel = create_mock_channel()
         channel.send = AsyncMock()
-        
+
         # Create an extremely long message (50,000 characters)
         extreme_message = "A" * 50000
-        
+
         deps = create_test_context()
-        
+
         await send_split_message(channel, extreme_message, deps)
-        
+
         call_count = channel.send.call_count
-        
+
         # Should be split into many parts (but limited by recursion limit)
-        expected_min_parts = min(
-            len(extreme_message) // MESSAGE_LIMIT, MAX_SPLIT_RECURSION + 1
-        )
+        expected_min_parts = min(len(extreme_message) // MESSAGE_LIMIT, MAX_SPLIT_RECURSION + 1)
         assert call_count >= expected_min_parts, (
             f"Expected at least {expected_min_parts} parts for extreme length, "
             f"got only {call_count}"
         )
-        
+
         # Verify all parts are under limit (except the last one which might be truncated)
         for i, call in enumerate(channel.send.call_args_list):
             part = call[0][0]
@@ -417,7 +430,7 @@ The controller system in Off the Grid is one of the most advanced in the industr
                 pass  # Expected behavior
             else:
                 assert len(part) <= MESSAGE_LIMIT, f"Part {i+1} exceeds limit: {len(part)}"
-        
+
         # Verify content preservation
         sent_messages = [call[0][0] for call in channel.send.call_args_list]
         reconstructed = "".join(sent_messages)
@@ -428,25 +441,29 @@ The controller system in Off the Grid is one of the most advanced in the industr
         """Test splitting with a simple long message (no natural break points)."""
         channel = create_mock_channel()
         channel.send = AsyncMock()
-        
+
         # Create a simple long message (no natural break points)
         message = "A" * 5000  # 5000 A's
-        
+
         deps = create_test_context()
-        
+
         await send_split_message(channel, message, deps)
-        
+
         # Verify that channel.send was called multiple times
         call_count = channel.send.call_count
         expected_parts = (len(message) + MESSAGE_LIMIT - 1) // MESSAGE_LIMIT  # Ceiling division
-        assert call_count >= expected_parts - 1, f"Too few parts: {call_count} < {expected_parts - 1}"
-        assert call_count <= expected_parts + 2, f"Too many parts: {call_count} > {expected_parts + 2}"
-        
+        assert (
+            call_count >= expected_parts - 1
+        ), f"Too few parts: {call_count} < {expected_parts - 1}"
+        assert (
+            call_count <= expected_parts + 2
+        ), f"Too many parts: {call_count} > {expected_parts + 2}"
+
         # Verify all parts are under limit
         for i, call in enumerate(channel.send.call_args_list):
             part = call[0][0]
             assert len(part) <= MESSAGE_LIMIT, f"Part {i+1} exceeds limit: {len(part)}"
-        
+
         # Verify content preservation
         sent_messages = [call[0][0] for call in channel.send.call_args_list]
         reconstructed = "".join(sent_messages)
@@ -461,12 +478,12 @@ class TestMessageSplittingEdgeCases:
         """Test handling of empty message."""
         channel = create_mock_channel()
         channel.send = AsyncMock()
-        
+
         message = ""
         deps = create_test_context()
-        
+
         await send_split_message(channel, message, deps)
-        
+
         # Should be called once with empty message
         channel.send.assert_called_once()
         sent_message = channel.send.call_args[0][0]
@@ -477,12 +494,12 @@ class TestMessageSplittingEdgeCases:
         """Test message that is exactly at the limit."""
         channel = create_mock_channel()
         channel.send = AsyncMock()
-        
+
         message = "A" * MESSAGE_LIMIT
         deps = create_test_context()
-        
+
         await send_split_message(channel, message, deps)
-        
+
         # Should be called once
         channel.send.assert_called_once()
         sent_message = channel.send.call_args[0][0]
@@ -494,15 +511,15 @@ class TestMessageSplittingEdgeCases:
         """Test message that is one character over the limit."""
         channel = create_mock_channel()
         channel.send = AsyncMock()
-        
+
         message = "A" * (MESSAGE_LIMIT + 1)
         deps = create_test_context()
-        
+
         await send_split_message(channel, message, deps)
-        
+
         # Should be called twice (split)
         assert channel.send.call_count == 2
-        
+
         # Both parts should be under the limit
         for call in channel.send.call_args_list:
             part = call[0][0]
@@ -513,15 +530,15 @@ class TestMessageSplittingEdgeCases:
         """Test message with only newlines."""
         channel = create_mock_channel()
         channel.send = AsyncMock()
-        
+
         message = "\n" * 3000
         deps = create_test_context()
-        
+
         await send_split_message(channel, message, deps)
-        
+
         # Should be called multiple times
         assert channel.send.call_count > 1
-        
+
         # All parts should be under the limit
         for call in channel.send.call_args_list:
             part = call[0][0]
@@ -532,20 +549,20 @@ class TestMessageSplittingEdgeCases:
         """Test message with unicode characters."""
         channel = create_mock_channel()
         channel.send = AsyncMock()
-        
+
         message = "🚀" * 3000  # Unicode emoji repeated - make it long enough to split
         deps = create_test_context()
-        
+
         await send_split_message(channel, message, deps)
-        
+
         # Should be called multiple times (unicode chars are longer than 1 byte)
         assert channel.send.call_count > 1
-        
+
         # All parts should be under the limit
         for call in channel.send.call_args_list:
             part = call[0][0]
             assert len(part) <= MESSAGE_LIMIT
-        
+
         # Content should be preserved
         sent_messages = [call[0][0] for call in channel.send.call_args_list]
         reconstructed = "".join(sent_messages)
