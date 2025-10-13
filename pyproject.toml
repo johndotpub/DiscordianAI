@@ -37,7 +37,7 @@ discordianai = "src.main:main"
 [project.optional-dependencies]
 dev = [
     "black", 
-    "ruff>=0.1.0,<0.14.0",
+    "ruff>=0.1.0,<0.15.0",
     "pytest",
     "pytest-asyncio",
     "pytest-cov", 
