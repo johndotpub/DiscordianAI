@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.7.3] - 2025-01-23
+
+### Added
+- **🔐 Security Enhancements**: Comprehensive security improvements
+  - Added dependency vulnerability scanning with `pip-audit` in CI/CD pipeline
+  - Added GitHub Dependabot configuration for automated dependency updates
+  - Added API key format validation (OpenAI keys must start with `sk-`, Perplexity with `pplx-`)
+  - Validation provides clear error messages with links to key management pages
+- **📄 Documentation**: Added comprehensive QA/QE review report
+  - Detailed review covering security, code quality, tests, and infrastructure
+  - 20 prioritized improvement tasks with risk assessments
+  - Roadmap for future improvements
+
+### Fixed
+- **⚙️ CI/CD Optimization**: Fixed workflow cache inefficiency
+  - Removed redundant tox cache recreation and deletion steps
+  - Eliminated conflicting cache operations
+  - Reduced CI execution time by optimizing cache usage
+- **📄 Documentation**: Fixed model reference inconsistency
+  - Updated README example to use `gpt-5-mini` instead of outdated `gpt-4o-mini`
+  - Ensures documentation matches actual code defaults
+
+### Changed
+- **⚙️ Infrastructure**: Improved Docker healthcheck
+  - Enhanced healthcheck to validate bot configuration, not just Python import
+  - Verifies config file can be loaded and validated
+  - Provides better indication of bot readiness
+
 ## [v0.2.7.2] - 2025-01-23
 
 ### Fixed
