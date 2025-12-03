@@ -841,8 +841,6 @@ def run_bot(config: dict[str, Any]) -> None:
         register_event_handlers(deps["bot"], deps)
 
         # Set up signal handlers for graceful shutdown
-        import signal
-
         def signal_handler(signum, frame):
             logger.info(f"Received signal {signum}, initiating graceful shutdown...")
             # Create event loop for graceful shutdown
