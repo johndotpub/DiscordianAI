@@ -24,6 +24,54 @@ PERPLEXITY_MODELS = ["sonar-pro", "sonar"]  # Latest Perplexity model  # General
 VALID_OPENAI_URL_PATTERN = re.compile(r"https://api\.openai\.com/v\d+/?")
 VALID_PERPLEXITY_URL_PATTERN = re.compile(r"https://api\.perplexity\.ai/?")
 
+# API key format patterns
+OPENAI_API_KEY_PATTERN = re.compile(r"^sk-[a-zA-Z0-9]{32,}$")
+PERPLEXITY_API_KEY_PATTERN = re.compile(r"^pplx-[a-zA-Z0-9]{32,}$")
+
+
+def validate_openai_api_key_format(api_key: str | None) -> tuple[bool, str | None]:
+    """Validate OpenAI API key format.
+
+    Args:
+        api_key: API key to validate (can be None if not provided)
+
+    Returns:
+        Tuple[bool, Optional[str]]: (is_valid, error_message)
+    """
+    if not api_key:
+        return True, None  # Empty key is valid (optional)
+
+    if not OPENAI_API_KEY_PATTERN.match(api_key):
+        return False, (
+            "Invalid OpenAI API key format. "
+            "OpenAI API keys should start with 'sk-' followed by alphanumeric characters. "
+            "Please verify your API key from https://platform.openai.com/api-keys"
+        )
+
+    return True, None
+
+
+def validate_perplexity_api_key_format(api_key: str | None) -> tuple[bool, str | None]:
+    """Validate Perplexity API key format.
+
+    Args:
+        api_key: API key to validate (can be None if not provided)
+
+    Returns:
+        Tuple[bool, Optional[str]]: (is_valid, error_message)
+    """
+    if not api_key:
+        return True, None  # Empty key is valid (optional)
+
+    if not PERPLEXITY_API_KEY_PATTERN.match(api_key):
+        return False, (
+            "Invalid Perplexity API key format. "
+            "Perplexity API keys should start with 'pplx-' followed by alphanumeric characters. "
+            "Please verify your API key from https://www.perplexity.ai/settings/api"
+        )
+
+    return True, None
+
 
 def validate_openai_config(config: dict) -> list[str]:
     """Validate OpenAI API configuration parameters.
@@ -35,6 +83,13 @@ def validate_openai_config(config: dict) -> list[str]:
         List[str]: List of validation warnings/errors
     """
     issues = []
+
+    # Validate API key format
+    api_key = config.get("OPENAI_API_KEY")
+    if api_key:
+        is_valid, error_msg = validate_openai_api_key_format(api_key)
+        if not is_valid and error_msg:
+            issues.append(f"ERROR: {error_msg}")
 
     # Validate API URL
     api_url = config.get("OPENAI_API_URL", "")
@@ -76,6 +131,13 @@ def validate_perplexity_config(config: dict) -> list[str]:
         List[str]: List of validation warnings/errors
     """
     issues = []
+
+    # Validate API key format
+    api_key = config.get("PERPLEXITY_API_KEY")
+    if api_key:
+        is_valid, error_msg = validate_perplexity_api_key_format(api_key)
+        if not is_valid and error_msg:
+            issues.append(f"ERROR: {error_msg}")
 
     # Validate API URL
     api_url = config.get("PERPLEXITY_API_URL", "")
