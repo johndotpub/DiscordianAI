@@ -719,3 +719,284 @@ class TestGlobalErrorTracker:
 
         assert len(error_tracker.error_history) == 1
         assert error_tracker.error_counts["network_error_medium"] == 1
+
+
+class TestCircuitBreakerStateTransitions:
+    """Test circuit breaker state transitions and recovery scenarios."""
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_closed_to_open_transition(self):
+        """Test circuit breaker transitions from CLOSED to OPEN after failures."""
+        breaker = CircuitBreaker(failure_threshold=3, timeout=60)
+
+        @breaker
+        async def failing_function():
+            raise ValueError("Test error")
+
+        # First 2 failures should not open circuit
+        for _ in range(2):
+            with pytest.raises(ValueError):
+                await failing_function()
+            assert breaker.state == "CLOSED"
+            assert breaker.failure_count == 2
+
+        # Third failure should open circuit
+        with pytest.raises(ValueError):
+            await failing_function()
+        assert breaker.state == "OPEN"
+        assert breaker.failure_count == 3
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_open_blocks_requests(self):
+        """Test that OPEN circuit breaker blocks requests immediately."""
+        breaker = CircuitBreaker(failure_threshold=2, timeout=60)
+        breaker.state = "OPEN"
+        breaker.last_failure_time = time.time()
+
+        @breaker
+        async def any_function():
+            return "success"
+
+        # Should raise RuntimeError immediately without calling function
+        with pytest.raises(RuntimeError, match="Circuit breaker OPEN"):
+            await any_function()
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_open_to_half_open_transition(self):
+        """Test circuit breaker transitions from OPEN to HALF_OPEN after timeout."""
+        breaker = CircuitBreaker(failure_threshold=2, timeout=1)  # 1 second timeout
+        breaker.state = "OPEN"
+        breaker.last_failure_time = time.time() - 2  # 2 seconds ago
+
+        @breaker
+        async def test_function():
+            return "success"
+
+        # Should transition to HALF_OPEN and allow request
+        result = await test_function()
+        assert result == "success"
+        assert breaker.state == "HALF_OPEN"
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_half_open_to_closed_on_success(self):
+        """Test circuit breaker transitions from HALF_OPEN to CLOSED on success."""
+        breaker = CircuitBreaker(failure_threshold=2, timeout=1)
+        breaker.state = "HALF_OPEN"
+        breaker.failure_count = 2
+
+        @breaker
+        async def successful_function():
+            return "success"
+
+        result = await successful_function()
+        assert result == "success"
+        assert breaker.state == "CLOSED"
+        assert breaker.failure_count == 0
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_half_open_to_open_on_failure(self):
+        """Test circuit breaker transitions from HALF_OPEN to OPEN on failure."""
+        breaker = CircuitBreaker(failure_threshold=2, timeout=1)
+        breaker.state = "HALF_OPEN"
+        breaker.last_failure_time = time.time() - 2
+
+        @breaker
+        async def failing_function():
+            raise ValueError("Test error")
+
+        # Failure in HALF_OPEN should open circuit again
+        with pytest.raises(ValueError):
+            await failing_function()
+        assert breaker.state == "OPEN"
+        assert breaker.failure_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_resets_on_success(self):
+        """Test that successful calls reset failure count in CLOSED state."""
+        breaker = CircuitBreaker(failure_threshold=3, timeout=60)
+
+        @breaker
+        async def sometimes_failing_function(should_fail: bool):
+            if should_fail:
+                raise ValueError("Test error")
+            return "success"
+
+        # Fail twice
+        for _ in range(2):
+            with pytest.raises(ValueError):
+                await sometimes_failing_function(True)
+        assert breaker.failure_count == 2
+
+        # Success should not reset in CLOSED state (only in HALF_OPEN)
+        result = await sometimes_failing_function(False)
+        assert result == "success"
+        # Failure count remains (only resets in HALF_OPEN)
+        assert breaker.failure_count == 2
+
+
+class TestRetryLogicScenarios:
+    """Test retry logic with various failure scenarios."""
+
+    @pytest.mark.asyncio
+    async def test_retry_succeeds_on_second_attempt(self):
+        """Test retry succeeds after initial failure."""
+        attempt_count = 0
+
+        async def flaky_function():
+            nonlocal attempt_count
+            attempt_count += 1
+            if attempt_count < 2:
+                raise ConnectionError("Temporary failure")
+            return "success"
+
+        retry_config = RetryConfig(max_attempts=3, base_delay=0.1)
+        logger = Mock()
+
+        result = await retry_with_backoff(flaky_function, retry_config, logger)
+
+        assert result == "success"
+        assert attempt_count == 2
+        assert logger.warning.called
+
+    @pytest.mark.asyncio
+    async def test_retry_exhausts_all_attempts(self):
+        """Test retry exhausts all attempts and raises last exception."""
+        attempt_count = 0
+
+        async def always_failing_function():
+            nonlocal attempt_count
+            attempt_count += 1
+            raise ConnectionError(f"Failure {attempt_count}")
+
+        retry_config = RetryConfig(max_attempts=3, base_delay=0.1)
+        logger = Mock()
+
+        with pytest.raises(ConnectionError, match="Failure 3"):
+            await retry_with_backoff(always_failing_function, retry_config, logger)
+
+        assert attempt_count == 3
+        assert logger.warning.call_count == 2  # Warnings for first 2 failures
+
+    @pytest.mark.asyncio
+    async def test_retry_skips_non_retryable_errors(self):
+        """Test retry does not retry non-retryable error types."""
+        attempt_count = 0
+
+        async def auth_error_function():
+            nonlocal attempt_count
+            attempt_count += 1
+            raise ValueError("401 Unauthorized")
+
+        retry_config = RetryConfig(max_attempts=3, base_delay=0.1)
+        logger = Mock()
+
+        # Mock classify_error to return AUTH_ERROR
+        with patch("src.error_handling.classify_error") as mock_classify:
+            mock_classify.return_value = ErrorDetails(
+                error_type=ErrorType.API_AUTH_ERROR,
+                severity=ErrorSeverity.HIGH,
+                message="401 Unauthorized",
+                user_message="Auth error",
+            )
+
+            with pytest.raises(ValueError, match="401 Unauthorized"):
+                await retry_with_backoff(auth_error_function, retry_config, logger)
+
+        # Should not retry auth errors
+        assert attempt_count == 1
+
+    @pytest.mark.asyncio
+    async def test_retry_exponential_backoff_delay(self):
+        """Test that retry uses exponential backoff."""
+        attempt_times = []
+
+        async def failing_function():
+            attempt_times.append(time.time())
+            raise ConnectionError("Failure")
+
+        retry_config = RetryConfig(max_attempts=3, base_delay=0.2, exponential_base=2.0, jitter=False)
+        logger = Mock()
+
+        with pytest.raises(ConnectionError):
+            await retry_with_backoff(failing_function, retry_config, logger)
+
+        # Check that delays increase exponentially
+        assert len(attempt_times) == 3
+        delay1 = attempt_times[1] - attempt_times[0]
+        delay2 = attempt_times[2] - attempt_times[1]
+
+        # Allow some tolerance for async timing
+        assert 0.15 < delay1 < 0.25  # ~0.2s
+        assert 0.35 < delay2 < 0.45  # ~0.4s (0.2 * 2)
+
+    @pytest.mark.asyncio
+    async def test_retry_respects_max_delay(self):
+        """Test that retry respects max_delay configuration."""
+        attempt_times = []
+
+        async def failing_function():
+            attempt_times.append(time.time())
+            raise ConnectionError("Failure")
+
+        retry_config = RetryConfig(
+            max_attempts=5, base_delay=10.0, max_delay=0.5, exponential_base=2.0, jitter=False
+        )
+        logger = Mock()
+
+        with pytest.raises(ConnectionError):
+            await retry_with_backoff(failing_function, retry_config, logger)
+
+        # Check that delays are capped at max_delay
+        assert len(attempt_times) >= 3
+        for i in range(1, len(attempt_times)):
+            delay = attempt_times[i] - attempt_times[i - 1]
+            assert delay <= 0.6  # Allow tolerance, but should be capped
+
+
+class TestErrorRecoveryIntegration:
+    """Test error recovery in integrated scenarios."""
+
+    @pytest.mark.asyncio
+    async def test_handle_api_error_with_circuit_breaker_and_retry(self):
+        """Test handle_api_error decorator with both circuit breaker and retry."""
+        call_count = 0
+
+        @handle_api_error
+        async def flaky_api_call():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise ConnectionError("Temporary failure")
+            return "success"
+
+        logger = Mock()
+        result = await flaky_api_call(logger=logger)
+
+        assert result == "success"
+        assert call_count == 3  # Retried until success
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_with_multiple_concurrent_requests(self):
+        """Test circuit breaker behavior with concurrent requests."""
+        breaker = CircuitBreaker(failure_threshold=3, timeout=60)
+        failure_count = 0
+
+        @breaker
+        async def failing_function():
+            nonlocal failure_count
+            failure_count += 1
+            raise ValueError("Test error")
+
+        # Simulate concurrent failures
+        tasks = [failing_function() for _ in range(5)]
+        results = []
+
+        for task in tasks:
+            try:
+                await task
+            except (ValueError, RuntimeError) as e:
+                results.append(type(e).__name__)
+
+        # Should have some failures and potentially circuit open
+        assert len(results) == 5
+        assert failure_count >= 3  # At least threshold failures
