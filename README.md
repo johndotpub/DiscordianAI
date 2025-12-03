@@ -329,6 +329,68 @@ The script accepts the following command line arguments:
 
 This command will run the bot in daemon mode, using the configuration file at `/path/to/config.ini` and the base folder at `/path/to/base/folder`.
 
+# Security Best Practices
+
+## API Key Management
+
+- **Never commit API keys** to version control
+- **Use environment variables** in production:
+  ```bash
+  export DISCORD_TOKEN="your_token"
+  export OPENAI_API_KEY="your_openai_key"
+  export PERPLEXITY_API_KEY="your_perplexity_key"
+  ```
+- **Restrict config file permissions**: `chmod 600 config.ini`
+- **Rotate API keys regularly** and monitor usage
+- **Use separate keys for development and production**
+
+## Configuration Security
+
+- Keep `config.ini` in `.gitignore` (already configured)
+- Use strong, unique Discord bot tokens
+- Regularly review and update dependencies for security patches
+- Enable pre-commit hooks to prevent accidental secret commits:
+  ```bash
+  pip install pre-commit
+  pre-commit install
+  ```
+
+## Production Deployment
+
+- Run the bot with minimal required permissions
+- Use Docker for isolation and easier updates
+- Monitor logs for suspicious activity
+- Set up alerts for authentication failures
+- Regularly backup configuration (without secrets)
+
+## Rate Limiting & Backoff
+
+The bot implements comprehensive rate limiting and error recovery:
+
+- **Per-user rate limiting**: Prevents abuse (default: 10 messages per 60 seconds)
+- **Exponential backoff**: Automatic retry with increasing delays (1s, 2s, 4s...)
+- **Circuit breaker pattern**: Prevents cascade failures when APIs are down
+- **Jitter**: Random delay variation prevents thundering herd problems
+- **Non-retryable errors**: Auth errors fail fast without retries
+
+### Rate Limit Configuration
+
+```ini
+[Limits]
+RATE_LIMIT=10        # Messages per time period
+RATE_LIMIT_PER=60    # Time period in seconds
+```
+
+### Error Recovery Behavior
+
+- **Rate limit errors (429)**: Retry after 30 seconds
+- **Timeout errors**: Retry after 10 seconds with exponential backoff
+- **Server errors (5xx)**: Retry after 60 seconds
+- **Network errors**: Retry after 15 seconds
+- **Auth errors (401)**: Fail immediately (no retry)
+
+The bot automatically handles these scenarios and provides user-friendly error messages without exposing internal details.
+
 # Contributing
 
 Contributions are welcome! Please open an issue or pull request on the GitHub repository.

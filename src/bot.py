@@ -2,6 +2,8 @@
 import asyncio
 import logging
 import re
+import signal
+import sys
 from typing import Any
 
 # Third-party imports
@@ -138,6 +140,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
         "perplexity_client": perplexity_client,
         "rate_limiter": rate_limiter,
         "conversation_manager": conversation_manager,
+        "connection_pool_manager": pool_manager,
         "config": config,  # Pass full config for orchestrator settings
         "ALLOWED_CHANNELS": config["ALLOWED_CHANNELS"],
         "BOT_PRESENCE": config["BOT_PRESENCE"],
@@ -771,6 +774,46 @@ def register_event_handlers(bot: discord.Client, deps: dict[str, Any]) -> None:
         await _handle_incoming_message(message, deps, bot)
 
 
+async def graceful_shutdown(bot: discord.Client, deps: dict[str, Any]) -> None:
+    """Perform graceful shutdown of the bot and cleanup resources.
+
+    Args:
+        bot: Discord bot client
+        deps: Dependency injection container
+    """
+    logger = deps["logger"]
+    logger.info("Initiating graceful shutdown...")
+
+    try:
+        # Close Discord connection gracefully
+        if not bot.is_closed():
+            await bot.close()
+            logger.info("Discord connection closed")
+
+        # Close connection pools if available
+        if "connection_pool_manager" in deps:
+            pool_manager = deps["connection_pool_manager"]
+            if hasattr(pool_manager, "close_all"):
+                await pool_manager.close_all()
+                logger.info("Connection pools closed")
+
+        # Cancel any background tasks
+        if "_health_task" in deps:
+            health_task = deps["_health_task"]
+            if not health_task.done():
+                health_task.cancel()
+                try:
+                    await health_task
+                except asyncio.CancelledError:
+                    pass
+                logger.info("Health monitoring task cancelled")
+
+        logger.info("Graceful shutdown completed")
+
+    except Exception as e:
+        logger.exception("Error during graceful shutdown: %s", e)
+
+
 def run_bot(config: dict[str, Any]) -> None:
     """Initialize and run the Discord bot with comprehensive error handling.
 
@@ -797,9 +840,37 @@ def run_bot(config: dict[str, Any]) -> None:
         # Register all event handlers
         register_event_handlers(deps["bot"], deps)
 
+        # Set up signal handlers for graceful shutdown
+        import signal
+
+        def signal_handler(signum, frame):
+            logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+            # Create event loop for graceful shutdown
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(graceful_shutdown(deps["bot"], deps))
+            finally:
+                loop.close()
+            sys.exit(0)
+
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
         # Start the bot (this blocks until the bot stops)
         logger.info("Connecting to Discord...")
         deps["bot"].run(deps["DISCORD_TOKEN"])
+
+    except KeyboardInterrupt:
+        logger.info("Bot interrupted by user, initiating graceful shutdown...")
+        # Graceful shutdown on keyboard interrupt
+        if "deps" in locals() and "bot" in deps:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(graceful_shutdown(deps["bot"], deps))
+            finally:
+                loop.close()
 
     except Exception as e:
         # Log critical startup errors

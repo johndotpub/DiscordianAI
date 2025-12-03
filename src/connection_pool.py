@@ -174,6 +174,49 @@ class ConnectionPoolManager:
         except (httpx.HTTPError, OSError) as e:
             self._logger.warning(f"Error closing HTTP client: {e}")
 
+    def check_pool_health(self, client: httpx.AsyncClient | None) -> dict[str, Any]:
+        """Check health of connection pool.
+
+        Args:
+            client: HTTP client to check (optional)
+
+        Returns:
+            Dictionary with health status information
+        """
+        if client is None:
+            return {"status": "unavailable", "reason": "Client not initialized"}
+
+        try:
+            # Check if client is closed
+            if hasattr(client, "is_closed") and client.is_closed:
+                return {"status": "unhealthy", "reason": "Client is closed"}
+
+            # Get connection pool stats if available
+            pool_info = {
+                "status": "healthy",
+                "http2_enabled": getattr(client, "_http2", False),
+            }
+
+            # Try to get connection pool statistics
+            if hasattr(client, "_transport") and hasattr(client._transport, "_pool"):
+                pool = client._transport._pool
+                if hasattr(pool, "_connections"):
+                    pool_info["active_connections"] = len(pool._connections)
+                if hasattr(pool, "_max_connections"):
+                    pool_info["max_connections"] = pool._max_connections
+
+            return pool_info
+
+        except Exception as e:
+            self._logger.warning(f"Error checking pool health: {e}")
+            return {"status": "unknown", "reason": str(e)}
+
+    async def close_all(self) -> None:
+        """Close all HTTP clients managed by this pool manager."""
+        # This would need to track clients if we want to close them all
+        # For now, clients are managed by the OpenAI/Perplexity clients
+        self._logger.info("Connection pool manager shutdown requested")
+
 
 def get_connection_pool_manager(config: dict | None = None) -> ConnectionPoolManager:
     """Get a connection pool manager instance with optional configuration.

@@ -141,7 +141,7 @@ def extract_mentions(content: str) -> list[str]:
     return MENTION_PATTERN.findall(content)
 
 
-def format_user_context(user, is_dm: bool) -> str:
+def format_user_context(user: Any, is_dm: bool) -> str:
     """Format user context for logging and error messages.
 
     Args:
