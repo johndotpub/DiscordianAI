@@ -51,6 +51,11 @@ jobs:
       run: |
         # Run environments in parallel using cached tox environments
         tox --parallel auto -e py310,lint,format
+    
+    - name: Scan dependencies for vulnerabilities
+      run: |
+        pip install pip-audit
+        pip-audit --desc
         
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
