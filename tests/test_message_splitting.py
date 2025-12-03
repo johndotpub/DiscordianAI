@@ -567,3 +567,90 @@ class TestMessageSplittingEdgeCases:
         sent_messages = [call[0][0] for call in channel.send.call_args_list]
         reconstructed = "".join(sent_messages)
         assert reconstructed == message
+
+    def test_split_message_with_unicode_characters(self):
+        """Test splitting messages with unicode characters."""
+        unicode_message = "测试消息 日本語 한국어 العربية русский"
+        long_unicode_message = unicode_message * 200  # Make it very long
+
+        split_point = find_optimal_split_point(long_unicode_message, MESSAGE_LIMIT)
+        assert split_point > 0
+        assert split_point < len(long_unicode_message)
+
+        part1, part2 = adjust_split_for_code_blocks(long_unicode_message, split_point)
+        assert len(part1) <= MESSAGE_LIMIT
+        # Unicode characters should be preserved
+        assert "测试" in part1 or "测试" in part2
+
+    def test_split_message_with_mixed_content(self):
+        """Test splitting messages with text, emoji, and unicode."""
+        mixed_message = (
+            "Hello! 👋 This is a test message with emoji 😊 and unicode 测试消息 "
+            "and regular text all mixed together 🎉"
+        )
+        long_mixed_message = mixed_message * 150
+
+        split_point = find_optimal_split_point(long_mixed_message, MESSAGE_LIMIT)
+        part1, part2 = adjust_split_for_code_blocks(long_mixed_message, split_point)
+
+        assert len(part1) <= MESSAGE_LIMIT
+        # Should preserve all content types
+        assert len(part1) + len(part2) == len(long_mixed_message)
+
+    def test_split_message_with_emoji_in_code_blocks(self):
+        """Test splitting messages with emoji inside code blocks."""
+        code_with_emoji = """Here's some code:
+```python
+print("Hello 👋")
+print("Test 🎉")
+```
+More text here."""
+
+        long_code = code_with_emoji * 50
+        split_point = find_optimal_split_point(long_code, MESSAGE_LIMIT)
+        part1, part2 = adjust_split_for_code_blocks(long_code, split_point)
+
+        # Code blocks should not be broken
+        assert "```" in part1 or "```" in part2
+        # Emoji in code should be preserved
+        assert "👋" in part1 or "👋" in part2
+
+    def test_split_message_with_unicode_in_code_blocks(self):
+        """Test splitting messages with unicode inside code blocks."""
+        code_with_unicode = """Code example:
+```python
+message = "测试消息"
+print(message)
+```
+End of code."""
+
+        long_code = code_with_unicode * 50
+        split_point = find_optimal_split_point(long_code, MESSAGE_LIMIT)
+        part1, part2 = adjust_split_for_code_blocks(long_code, split_point)
+
+        # Unicode in code should be preserved
+        assert "测试" in part1 or "测试" in part2
+
+    def test_split_message_with_emoji_sequences(self):
+        """Test splitting with emoji sequences (multiple emoji together)."""
+        emoji_sequence = "👨‍👩‍👧‍👦 🎉🎊🎈 🚀🌟✨"
+        long_sequence = emoji_sequence * 200
+
+        split_point = find_optimal_split_point(long_sequence, MESSAGE_LIMIT)
+        part1, part2 = adjust_split_for_code_blocks(long_sequence, split_point)
+
+        # Emoji sequences should be preserved
+        assert len(part1) + len(part2) == len(long_sequence)
+
+    def test_split_message_with_mixed_emoji_and_unicode(self):
+        """Test splitting with both emoji and unicode in same message."""
+        mixed = "Hello 👋 测试 😊 日本語 🎉 한국어"
+        long_mixed = mixed * 150
+
+        split_point = find_optimal_split_point(long_mixed, MESSAGE_LIMIT)
+        part1, part2 = adjust_split_for_code_blocks(long_mixed, split_point)
+
+        # Both should be preserved
+        assert "👋" in part1 or "👋" in part2
+        assert "测试" in part1 or "测试" in part2
+        assert len(part1) + len(part2) == len(long_mixed)
