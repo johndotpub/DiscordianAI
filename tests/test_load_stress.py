@@ -25,8 +25,9 @@ class TestConcurrentUserLoad:
         async def simulate_user(user_id: int, num_messages: int):
             """Simulate a user sending multiple messages."""
             for i in range(num_messages):
-                message = {"role": "user", "content": f"Message {i} from user {user_id}"}
-                manager.add_message(user_id, message)
+                manager.add_message(
+                    user_id, "user", f"Message {i} from user {user_id}"
+                )
                 await asyncio.sleep(0.001)  # Small delay to simulate real usage
 
         # Simulate 1000 users, each sending 10 messages concurrently
@@ -59,7 +60,7 @@ class TestConcurrentUserLoad:
         # Add messages for many users
         num_users = 5000
         for user_id in range(num_users):
-            manager.add_message(user_id, {"role": "user", "content": f"Message from {user_id}"})
+            manager.add_message(user_id, "user", f"Message from {user_id}")
 
         # Verify all users have conversations
         assert len(manager._conversations) == num_users
@@ -123,9 +124,7 @@ class TestConcurrentUserLoad:
         async def process_message(user_id: int, message_num: int):
             """Simulate processing a message."""
             # Add message
-            manager.add_message(
-                user_id, {"role": "user", "content": f"Message {message_num}"}
-            )
+            manager.add_message(user_id, "user", f"Message {message_num}")
 
             # Get conversation
             conversation = manager.get_conversation(user_id)
@@ -165,9 +164,7 @@ class TestConcurrentUserLoad:
 
         for user_id in range(num_users):
             for i in range(messages_per_user):
-                manager.add_message(
-                    user_id, {"role": "user", "content": f"Message {i}"}
-                )
+                manager.add_message(user_id, "user", f"Message {i}")
 
         # Verify conversations are pruned to max_history_per_user
         for user_id in range(min(100, num_users)):  # Check sample
@@ -183,9 +180,7 @@ class TestConcurrentUserLoad:
         num_users = 1000
         for user_id in range(num_users):
             for i in range(30):
-                manager.add_message(
-                    user_id, {"role": "user", "content": f"Message {i}"}
-                )
+                manager.add_message(user_id, "user", f"Message {i}")
 
         async def get_summary(user_id: int):
             """Get conversation summary for a user."""
@@ -213,9 +208,7 @@ class TestConcurrentUserLoad:
         async def writer(user_id: int, num_writes: int):
             """Write messages concurrently."""
             for i in range(num_writes):
-                manager.add_message(
-                    user_id, {"role": "user", "content": f"Write {i}"}
-                )
+                manager.add_message(user_id, "user", f"Write {i}")
                 await asyncio.sleep(0.0001)
 
         async def reader(user_id: int, num_reads: int):
@@ -257,9 +250,7 @@ class TestConcurrentUserLoad:
         # Add many users
         num_users = 5000
         for user_id in range(num_users):
-            manager.add_message(
-                user_id, {"role": "user", "content": f"Message from {user_id}"}
-            )
+            manager.add_message(user_id, "user", f"Message from {user_id}")
 
         # Verify all users exist
         assert len(manager._conversations) == num_users
@@ -282,9 +273,7 @@ class TestConcurrentUserLoad:
 
         async def add_message(index: int):
             """Add a message with specific index."""
-            manager.add_message(
-                user_id, {"role": "user", "content": f"Message {index}"}
-            )
+            manager.add_message(user_id, "user", f"Message {index}")
 
         # Add messages concurrently
         tasks = [add_message(i) for i in range(num_messages)]
