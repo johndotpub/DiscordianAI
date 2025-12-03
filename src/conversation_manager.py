@@ -359,6 +359,40 @@ class ThreadSafeConversationManager:
         if not force and (current_time - self._last_cleanup) < self._cleanup_interval:
             return 0
 
+    def get_memory_stats(self) -> dict[str, Any]:
+        """Get memory usage statistics for monitoring.
+
+        Returns:
+            Dictionary with memory usage statistics
+        """
+        with self._global_lock:
+            total_messages = sum(len(conv) for conv in self._conversations.values())
+            return {
+                "total_users": len(self._conversations),
+                "total_locks": len(self._user_locks),
+                "total_messages": total_messages,
+                "max_history_per_user": self._max_history,
+                "average_messages_per_user": (
+                    total_messages / len(self._conversations) if self._conversations else 0
+                ),
+            }
+
+    def cleanup_inactive_user_locks(self, force: bool = False) -> int:
+        """Clean up inactive user locks to prevent memory leaks.
+
+        Args:
+            force (bool): If True, runs cleanup regardless of timing. If False, only runs
+                         if enough time has passed since last cleanup.
+
+        Returns:
+            int: Number of user locks that were cleaned up.
+        """
+        current_time = time.time()
+
+        # Only run cleanup at configured interval unless forced
+        if not force and (current_time - self._last_cleanup) < self._cleanup_interval:
+            return 0
+
         with self._global_lock:
             # Find user locks that have no corresponding conversation data
             inactive_user_ids = [
