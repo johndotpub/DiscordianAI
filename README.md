@@ -175,7 +175,7 @@ ACTIVITY_STATUS=you bite my shiny metal ass!
 # Both APIs for smart hybrid mode
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_API_URL=https://api.openai.com/v1/
-GPT_MODEL=gpt-4o-mini
+GPT_MODEL=gpt-5-mini
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
 PERPLEXITY_MODEL=sonar-pro
 
