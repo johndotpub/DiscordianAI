@@ -45,6 +45,8 @@ dev = [
     "coverage[toml]",
     "tox",
     "pip-audit",  # Dependency vulnerability scanning
+    "pre-commit",  # Pre-commit hooks framework
+    "detect-secrets",  # Secret detection for pre-commit
 ]
 
 [tool.pytest.ini_options]
