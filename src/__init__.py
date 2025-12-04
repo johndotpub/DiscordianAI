@@ -17,7 +17,7 @@ Example:
     >>> run_bot(config)
 """
 
-__version__ = "0.2.7.3"
+__version__ = "0.2.8.0"
 __author__ = "johndotpub"
 __email__ = "github@john.pub"
 
