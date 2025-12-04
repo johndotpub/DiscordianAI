@@ -64,11 +64,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **📄 Documentation**: Fixed model reference inconsistency
   - Updated README example to use `gpt-5-mini` instead of outdated `gpt-4o-mini`
   - Ensures documentation matches actual code defaults
+- **🐛 Signal Handler**: Fixed graceful shutdown crash on SIGTERM
+  - Signal handler was trying to create new event loop while one was running
+  - Now raises KeyboardInterrupt which discord.py handles gracefully
+  - Eliminates "Cannot run the event loop while another loop is running" error
+- **🔑 API Key Validation**: Fixed overly strict API key format patterns
+  - OpenAI keys can now be `sk-proj-xxx`, `sk-svcacct-xxx`, not just `sk-xxx`
+  - Updated regex to allow hyphens and underscores in key body
+  - Supports all modern OpenAI API key formats
 
 ### Changed
 - **🐍 Python Compatibility**: Expanded Python version support
   - Changed `requires-python` from `==3.10.*` to `>=3.10` for broader compatibility
   - Supports Python 3.10, 3.11, 3.12 and future versions
+  - Added Python 3.11/3.12 compatibility testing in CI (informational, non-blocking)
+- **🚀 CI/CD Improvements**: Optimized GitHub Actions workflow
+  - Upgraded to latest action versions (setup-python@v5, cache@v4, codecov@v4)
+  - Added concurrency control to cancel stale runs and save CI minutes
+  - Added job timeouts (15min tests, 5min lint/security) to prevent runaway jobs
+  - Use built-in pip caching in setup-python for cleaner configuration
+  - Added descriptive job names for better GitHub UI visibility
+  - Simplified lint job to run black/ruff directly (faster than tox wrapper)
+  - Fixed security scan to install dependencies before auditing
 - **🧹 Configuration Consolidation**: Modern Python packaging cleanup
   - Removed redundant `pytest.ini` (config in `pyproject.toml [tool.pytest.ini_options]`)
   - Removed redundant `.flake8` (using ruff with config in `pyproject.toml [tool.ruff]`)
