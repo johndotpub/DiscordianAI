@@ -5,21 +5,20 @@ Welcome to the DiscordianAI documentation! This guide covers everything you need
 ## 📚 Documentation Index
 
 ### 🚀 Getting Started
-- **[Installation](Installation.md)** - How to install and set up DiscordianAI
+- **[Setup Guide](Setup.md)** - Complete installation and setup instructions
 - **[Configuration](Configuration.md)** - Complete configuration guide
-- **[Quick Start](Quick_Start.md)** - Get up and running in minutes
 
 ### ⚙️ Configuration
-- **[API Configuration](API_Configuration.md)** - OpenAI and Perplexity API setup
-- **[Discord Setup](Discord_Setup.md)** - Bot creation and permissions
-- **[Environment Variables](Environment_Variables.md)** - Using environment variables
+- **[Configuration Guide](Configuration.md)** - Complete configuration reference
+- **[OpenAI Setup](OpenAI.md)** - OpenAI API configuration and models
+- **[Perplexity Setup](Perplexity.md)** - Perplexity API configuration
 
 ### 🤖 Bot Features
-- **[AI Models](AI_Models.md)** - Available AI models and capabilities
 - **[Smart Orchestration](HybridMode.md)** - How the bot chooses between AI services
 - **[Message Splitting](MessageSplitting.md)** - How long messages and embeds are handled
-- **[Conversation Management](Conversation_Management.md)** - How conversations are handled
-- **[Rate Limiting](Rate_Limiting.md)** - Bot rate limiting and spam prevention
+- **[OpenAI Integration](OpenAI.md)** - OpenAI models and capabilities
+- **[Perplexity Integration](Perplexity.md)** - Web search and citations
+- **[Web Scraping](WebScraping.md)** - URL content extraction
 
 ## AI Service Selection
 
@@ -57,28 +56,26 @@ flowchart TD
 ### 🔧 Development
 - **[Development Guide](Development.md)** - Modern development workflow with black + ruff
 - **[Python Versions](Python_Versions.md)** - Python version compatibility and testing
-- **[API Reference](API_Reference.md)** - Technical API documentation
-- **[Testing](Testing.md)** - How to run tests and contribute
+- **[API Validation](API_Validation.md)** - API parameter validation and health checks
+- **[Connection Pooling](ConnectionPooling.md)** - HTTP connection optimization
+- **[Embed Limits](EmbedLimits.md)** - Discord embed size handling
 
 ### 📖 Reference
 - **[API Validation](API_Validation.md)** - API parameter validation and health checks
-- **[Error Handling](Error_Handling.md)** - Error handling and recovery
-- **[Performance](Performance.md)** - Performance optimization and monitoring
-- **[Security](Security.md)** - Security considerations and best practices
+- **[Connection Pooling](ConnectionPooling.md)** - HTTP connection pool management
+- **[Embed Limits](EmbedLimits.md)** - Discord message and embed limits
 
 ### 🚀 Deployment
-- **[Deployment](Deployment.md)** - Production deployment guide
 - **[Docker](Docker.md)** - Containerized deployment
-- **[Monitoring](Monitoring.md)** - Health monitoring and alerting
-- **[Troubleshooting](Troubleshooting.md)** - Common issues and solutions
+- **[Daemon Mode](Daemon.md)** - Running as a system service
 
 ## 🎯 Quick Navigation
 
-- **New to DiscordianAI?** Start with [Installation](Installation.md)
-- **Setting up APIs?** Check [API Configuration](API_Configuration.md)
+- **New to DiscordianAI?** Start with [Setup Guide](Setup.md)
+- **Configuring the bot?** Check [Configuration Guide](Configuration.md)
+- **Setting up APIs?** See [OpenAI](OpenAI.md) and [Perplexity](Perplexity.md) guides
 - **Developing?** Read [Development Guide](Development.md)
-- **Deploying?** See [Deployment](Deployment.md)
-- **Having issues?** Check [Troubleshooting](Troubleshooting.md)
+- **Deploying?** See [Docker](Docker.md) and [Daemon](Daemon.md) guides
 
 ## 📝 Contributing
 
