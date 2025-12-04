@@ -6,7 +6,6 @@ simulating scenarios with 10k+ users as claimed in the documentation.
 
 import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
@@ -25,18 +24,14 @@ class TestConcurrentUserLoad:
         async def simulate_user(user_id: int, num_messages: int):
             """Simulate a user sending multiple messages."""
             for i in range(num_messages):
-                manager.add_message(
-                    user_id, "user", f"Message {i} from user {user_id}"
-                )
+                manager.add_message(user_id, "user", f"Message {i} from user {user_id}")
                 await asyncio.sleep(0.001)  # Small delay to simulate real usage
 
         # Simulate 1000 users, each sending 10 messages concurrently
         num_users = 1000
         messages_per_user = 10
 
-        tasks = [
-            simulate_user(user_id, messages_per_user) for user_id in range(num_users)
-        ]
+        tasks = [simulate_user(user_id, messages_per_user) for user_id in range(num_users)]
 
         start_time = time.time()
         await asyncio.gather(*tasks)
@@ -53,9 +48,7 @@ class TestConcurrentUserLoad:
     @pytest.mark.asyncio
     async def test_conversation_manager_memory_cleanup(self):
         """Test memory cleanup with many inactive users."""
-        manager = ThreadSafeConversationManager(
-            max_history_per_user=50, cleanup_interval=1
-        )
+        manager = ThreadSafeConversationManager(max_history_per_user=50, cleanup_interval=1)
 
         # Add messages for many users
         num_users = 5000
@@ -222,9 +215,7 @@ class TestConcurrentUserLoad:
         writes_per_user = 10
         reads_per_user = 20
 
-        write_tasks = [
-            writer(user_id, writes_per_user) for user_id in range(num_users)
-        ]
+        write_tasks = [writer(user_id, writes_per_user) for user_id in range(num_users)]
         read_tasks = [reader(user_id, reads_per_user) for user_id in range(num_users)]
 
         # Run reads and writes concurrently
@@ -243,9 +234,7 @@ class TestConcurrentUserLoad:
     @pytest.mark.asyncio
     async def test_cleanup_under_load(self):
         """Test cleanup mechanism works under load."""
-        manager = ThreadSafeConversationManager(
-            max_history_per_user=50, cleanup_interval=1
-        )
+        manager = ThreadSafeConversationManager(max_history_per_user=50, cleanup_interval=1)
 
         # Add many users
         num_users = 5000
@@ -286,4 +275,3 @@ class TestConcurrentUserLoad:
         # Check ordering (messages should be added in order despite concurrency)
         for i, msg in enumerate(conversation):
             assert msg["content"] == f"Message {i}", f"Message {i} out of order"
-

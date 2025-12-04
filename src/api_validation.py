@@ -22,7 +22,7 @@ PERPLEXITY_MODELS = ["sonar-pro", "sonar"]  # Latest Perplexity model  # General
 
 # API URL patterns
 VALID_OPENAI_URL_PATTERN = re.compile(r"https://api\.openai\.com/v\d+/?")
-VALID_PERPLEXITY_URL_PATTERN = re.compile(r"https://api\.perplexity\.ai/?")
+VALID_PERPLEXITY_URL_PATTERN = re.compile(r"https://api\.perplexity\.ai/?$")
 
 # API key format patterns
 OPENAI_API_KEY_PATTERN = re.compile(r"^sk-[a-zA-Z0-9]{32,}$")
@@ -38,8 +38,15 @@ def validate_openai_api_key_format(api_key: str | None) -> tuple[bool, str | Non
     Returns:
         Tuple[bool, Optional[str]]: (is_valid, error_message)
     """
-    if not api_key:
-        return True, None  # Empty key is valid (optional)
+    if api_key is None:
+        return True, None  # None is valid (optional)
+
+    if not api_key or not api_key.strip():
+        return False, (
+            "Invalid OpenAI API key format. "
+            "OpenAI API keys should start with 'sk-' followed by alphanumeric characters. "
+            "Please verify your API key from https://platform.openai.com/api-keys"
+        )
 
     if not OPENAI_API_KEY_PATTERN.match(api_key):
         return False, (
@@ -60,8 +67,15 @@ def validate_perplexity_api_key_format(api_key: str | None) -> tuple[bool, str |
     Returns:
         Tuple[bool, Optional[str]]: (is_valid, error_message)
     """
-    if not api_key:
-        return True, None  # Empty key is valid (optional)
+    if api_key is None:
+        return True, None  # None is valid (optional)
+
+    if not api_key or not api_key.strip():
+        return False, (
+            "Invalid Perplexity API key format. "
+            "Perplexity API keys should start with 'pplx-' followed by alphanumeric characters. "
+            "Please verify your API key from https://www.perplexity.ai/settings/api"
+        )
 
     if not PERPLEXITY_API_KEY_PATTERN.match(api_key):
         return False, (

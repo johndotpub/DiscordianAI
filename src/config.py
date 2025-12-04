@@ -233,19 +233,25 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
     config = configparser.ConfigParser()
     config_data = {}
 
+    # Get logger for error handling
+    logger = logging.getLogger(__name__)
+
     # If base_folder is provided, resolve config_file and log file paths
     if base_folder and config_file and not Path(config_file).is_absolute():
         config_file = str(Path(base_folder) / config_file)
 
     # 1. Load from file if provided and exists
     if config_file and Path(config_file).exists():
-        config.read(config_file)
+        try:
+            config.read(config_file)
+        except Exception:
+            # If config file is malformed, log warning and continue with defaults
+            logger.warning(f"Failed to parse config file {config_file}, using defaults")
 
         # Discord section
         config_data["DISCORD_TOKEN"] = config.get("Discord", "DISCORD_TOKEN", fallback=None)
-        config_data["ALLOWED_CHANNELS"] = config.get(
-            "Discord", "ALLOWED_CHANNELS", fallback=""
-        ).split(",")
+        channels_str = config.get("Discord", "ALLOWED_CHANNELS", fallback="")
+        config_data["ALLOWED_CHANNELS"] = [c.strip() for c in channels_str.split(",") if c.strip()]
         config_data["BOT_PRESENCE"] = config.get("Discord", "BOT_PRESENCE", fallback="online")
         config_data["ACTIVITY_TYPE"] = config.get("Discord", "ACTIVITY_TYPE", fallback="listening")
         config_data["ACTIVITY_STATUS"] = config.get(
@@ -269,16 +275,36 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
             "Default", "PERPLEXITY_MODEL", fallback="sonar-pro"
         )
         config_data["GPT_MODEL"] = config.get("Default", "GPT_MODEL", fallback="gpt-5-mini")
-        config_data["INPUT_TOKENS"] = config.getint("Default", "INPUT_TOKENS", fallback=120000)
-        config_data["OUTPUT_TOKENS"] = config.getint("Default", "OUTPUT_TOKENS", fallback=8000)
-        config_data["CONTEXT_WINDOW"] = config.getint("Default", "CONTEXT_WINDOW", fallback=128000)
+        try:
+            config_data["INPUT_TOKENS"] = config.getint("Default", "INPUT_TOKENS", fallback=120000)
+        except ValueError:
+            logger.warning("Invalid INPUT_TOKENS value, using default 120000")
+            config_data["INPUT_TOKENS"] = 120000
+        try:
+            config_data["OUTPUT_TOKENS"] = config.getint("Default", "OUTPUT_TOKENS", fallback=8000)
+        except ValueError:
+            logger.warning("Invalid OUTPUT_TOKENS value, using default 8000")
+            config_data["OUTPUT_TOKENS"] = 8000
+        try:
+            config_data["CONTEXT_WINDOW"] = config.getint("Default", "CONTEXT_WINDOW", fallback=128000)
+        except ValueError:
+            logger.warning("Invalid CONTEXT_WINDOW value, using default 128000")
+            config_data["CONTEXT_WINDOW"] = 128000
         config_data["SYSTEM_MESSAGE"] = config.get(
             "Default", "SYSTEM_MESSAGE", fallback="You are a helpful assistant."
         )
 
         # Limits section
-        config_data["RATE_LIMIT"] = config.getint("Limits", "RATE_LIMIT", fallback=10)
-        config_data["RATE_LIMIT_PER"] = config.getint("Limits", "RATE_LIMIT_PER", fallback=60)
+        try:
+            config_data["RATE_LIMIT"] = config.getint("Limits", "RATE_LIMIT", fallback=10)
+        except ValueError:
+            logger.warning("Invalid RATE_LIMIT value, using default 10")
+            config_data["RATE_LIMIT"] = 10
+        try:
+            config_data["RATE_LIMIT_PER"] = config.getint("Limits", "RATE_LIMIT_PER", fallback=60)
+        except ValueError:
+            logger.warning("Invalid RATE_LIMIT_PER value, using default 60")
+            config_data["RATE_LIMIT_PER"] = 60
 
         # Orchestrator section
         config_data["LOOKBACK_MESSAGES_FOR_CONSISTENCY"] = config.getint(
@@ -287,9 +313,13 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
         config_data["MAX_HISTORY_PER_USER"] = config.getint(
             "Orchestrator", "MAX_HISTORY_PER_USER", fallback=50
         )
-        config_data["USER_LOCK_CLEANUP_INTERVAL"] = config.getint(
-            "Orchestrator", "USER_LOCK_CLEANUP_INTERVAL", fallback=3600
-        )
+        try:
+            config_data["USER_LOCK_CLEANUP_INTERVAL"] = config.getint(
+                "Orchestrator", "USER_LOCK_CLEANUP_INTERVAL", fallback=3600
+            )
+        except ValueError:
+            logger.warning("Invalid USER_LOCK_CLEANUP_INTERVAL value, using default 3600")
+            config_data["USER_LOCK_CLEANUP_INTERVAL"] = 3600
 
         # Logging section
         config_data["LOG_FILE"] = config.get("Logging", "LOG_FILE", fallback="bot.log")

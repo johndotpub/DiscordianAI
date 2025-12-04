@@ -5,6 +5,7 @@ API clients to reduce connection overhead and improve performance.
 """
 
 import logging
+from typing import Any
 
 import httpx
 from openai import AsyncOpenAI

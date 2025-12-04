@@ -5,6 +5,7 @@ and splitting Discord messages in a clean and reusable way.
 """
 
 import re
+from typing import Any
 
 from .config import BARE_URL_PATTERN, MENTION_PATTERN, MESSAGE_LIMIT
 

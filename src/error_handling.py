@@ -330,7 +330,7 @@ def handle_api_error(func):
         retry_config = RetryConfig(max_attempts=2, base_delay=1.0)
 
         # Extract the original logger if it exists in kwargs to avoid conflicts
-        original_logger = kwargs.get("logger", func_logger)
+        original_logger = kwargs.pop("logger", func_logger)
 
         try:
             return await retry_with_backoff(func, retry_config, original_logger, *args, **kwargs)

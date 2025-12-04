@@ -432,6 +432,7 @@ ACTIVITY_TYPE=false
         """Test handling of special characters in config values."""
         config_content = """[Default]
 SYSTEM_MESSAGE=Test message with "quotes" and 'apostrophes' and \\backslashes
+[Discord]
 ACTIVITY_STATUS=Status with 🎉 emoji and unicode: 测试
 """
         with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:

@@ -914,7 +914,9 @@ class TestRetryLogicScenarios:
             attempt_times.append(time.time())
             raise ConnectionError("Failure")
 
-        retry_config = RetryConfig(max_attempts=3, base_delay=0.2, exponential_base=2.0, jitter=False)
+        retry_config = RetryConfig(
+            max_attempts=3, base_delay=0.2, exponential_base=2.0, jitter=False
+        )
         logger = Mock()
 
         with pytest.raises(ConnectionError):

@@ -1,8 +1,6 @@
 # Tests for api_validation.py functionality
-import pytest
 
 from src.api_validation import (
-    PERPLEXITY_MODELS,
     VALID_OPENAI_URL_PATTERN,
     VALID_PERPLEXITY_URL_PATTERN,
     validate_full_config,
@@ -329,4 +327,3 @@ class TestURLPatternValidation:
 
         for url in invalid_urls:
             assert not VALID_PERPLEXITY_URL_PATTERN.match(url), f"URL {url} should be invalid"
-
