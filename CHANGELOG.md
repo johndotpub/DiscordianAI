@@ -9,120 +9,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **🔐 Security Enhancements**: Comprehensive security improvements
-  - Added dependency vulnerability scanning with `pip-audit` in CI/CD pipeline
-  - Added GitHub Dependabot configuration for automated dependency updates
-  - Added API key format validation (OpenAI keys must start with `sk-`, Perplexity with `pplx-`)
-  - Validation provides clear error messages with links to key management pages
-  - Added pre-commit hooks with `detect-secrets` to prevent committing API keys
-  - Added black and ruff hooks for automated code quality checks
-- **📖 Architecture Documentation**: Added comprehensive `docs/Architecture.md`
-  - High-level system architecture with ASCII diagrams
-  - Component overview and responsibilities
-  - Request flow with Mermaid sequence diagrams
-  - Design patterns documentation (circuit breaker, caching, DI, retry logic)
-  - Security architecture, observability, and performance optimizations
-  - Future considerations and scalability path
-- **🔒 Security Documentation**: Added comprehensive `docs/Security.md`
-  - API key management (environment variables, config files, Docker secrets)
-  - Key format validation and rotation procedures
-  - Pre-commit hooks configuration (detect-secrets)
-  - Rate limiting documentation (per-user and API-level)
-  - Input validation and sanitization
-  - Network security (TLS, connection pooling, timeouts)
-  - Docker security hardening recommendations
-  - Incident response procedures and security checklist
-- **📦 Package Improvements**: Modern Python packaging enhancements
-  - Added `src/__init__.py` with proper package exports and metadata
-  - Added `src/py.typed` marker file for PEP 561 type hints support
-  - Enables type checkers (mypy, pyright) to use package type hints
-  - Added module docstrings to `bot.py` and `config.py`
-- **🧪 Test Coverage**: Comprehensive testing improvements
-  - Added 15+ edge case tests for configuration loading (malformed files, invalid values, etc.)
-  - Added comprehensive API validation tests (40+ test cases)
-  - Added error recovery scenario tests (circuit breaker state transitions, retry logic)
-  - Added message splitting edge case tests (unicode, emoji, mixed content)
-  - Added load and stress tests for 10k+ concurrent users
-  - Added dependency check tests (`test_dependency_check.py`) for startup validation
-  - Tests cover invalid URLs, type coercion errors, API key format validation
-  - Tests cover missing sections, empty files, special characters, unicode handling
-  - Tests verify performance requirements and thread safety under high load
-  - **Test coverage increased to 80.80%** (exceeds 80% minimum requirement)
+  - Dependency vulnerability scanning with `pip-audit` in CI/CD pipeline
+  - GitHub Dependabot configuration for automated dependency updates
+  - API key format validation with clear error messages and help links
+  - Pre-commit hooks with `detect-secrets`, `black`, and `ruff`
+- **📖 Documentation**: New comprehensive documentation
+  - `docs/Architecture.md` - System design, components, request flow diagrams, design patterns
+  - `docs/Security.md` - API key management, rate limiting, input validation, Docker hardening
+  - Updated documentation index with new guides
+- **📦 Package Improvements**: Modern Python packaging
+  - `src/__init__.py` with proper package exports and metadata
+  - `src/py.typed` marker for PEP 561 type hints support
+  - Module docstrings added to `bot.py` and `config.py`
+- **🧪 Test Coverage**: Comprehensive testing (545+ tests, 80.80% coverage)
+  - Configuration edge cases (malformed files, invalid values, unicode)
+  - API validation tests (40+ cases including key format validation)
+  - Error recovery tests (circuit breaker, retry logic)
+  - Message splitting tests (unicode, emoji, code blocks)
+  - Load/stress tests (10k+ concurrent users, thread safety)
 
 ### Fixed
-- **⚙️ CI/CD Optimization**: Fixed workflow cache inefficiency
-  - Removed redundant tox cache recreation and deletion steps
-  - Eliminated conflicting cache operations
-  - Reduced CI execution time by optimizing cache usage
-  - Updated tox.ini to exclude build artifacts (`discordianai-*`) from linting
-- **🔧 Code Quality**: Fixed 26 ruff lint errors across codebase
-  - Used `contextlib.suppress()` for cleaner exception handling in graceful shutdown
-  - Made exception handling more specific (replaced blind `Exception` catches)
-  - Removed duplicate `cleanup_inactive_user_locks` method in conversation manager
-  - Fixed unused variables and arguments across test files
-  - Added `noqa` comments for intentional private member access in health monitoring
-  - Fixed flaky timing test with generous tolerance for parallel execution
-- **📄 Documentation**: Fixed model reference inconsistency
-  - Updated README example to use `gpt-5-mini` instead of outdated `gpt-4o-mini`
-  - Ensures documentation matches actual code defaults
 - **🐛 Signal Handler**: Fixed graceful shutdown crash on SIGTERM
-  - Signal handler was trying to create new event loop while one was running
-  - Now raises KeyboardInterrupt which discord.py handles gracefully
-  - Eliminates "Cannot run the event loop while another loop is running" error
-- **🔑 API Key Validation**: Fixed overly strict API key format patterns
-  - OpenAI keys can now be `sk-proj-xxx`, `sk-svcacct-xxx`, not just `sk-xxx`
-  - Updated regex to allow hyphens and underscores in key body
-  - Supports all modern OpenAI API key formats
+  - Eliminated "Cannot run the event loop while another loop is running" error
+  - Now raises KeyboardInterrupt for proper discord.py cleanup
+- **🔑 API Key Validation**: Relaxed overly strict format patterns
+  - Supports modern OpenAI formats: `sk-proj-xxx`, `sk-svcacct-xxx`
+  - Updated regex to allow hyphens/underscores in key body
+- **🔧 Code Quality**: Fixed 26 ruff lint errors
+  - Cleaner exception handling with `contextlib.suppress()`
+  - More specific exception catches (no blind `Exception`)
+  - Removed duplicate methods, fixed unused variables
+- **📄 Documentation**: Fixed broken links and outdated references
+  - Fixed 16 broken documentation links
+  - Updated GPT-4 references to GPT-5 series throughout
 
 ### Changed
-- **🐍 Python Compatibility**: Expanded Python version support
-  - Changed `requires-python` from `==3.10.*` to `>=3.10` for broader compatibility
+- **🚀 CI/CD**: Modernized GitHub Actions workflow
+  - Upgraded actions (setup-python@v5, cache@v4, codecov@v4)
+  - Added concurrency control to cancel stale runs
+  - Added job timeouts (15min tests, 5min lint/security)
+  - Python 3.11/3.12 compatibility testing (informational, non-blocking)
+  - Simplified lint job, fixed security scan dependency installation
+- **🐍 Python Compatibility**: Expanded version support
+  - Changed `requires-python` from `==3.10.*` to `>=3.10`
   - Supports Python 3.10, 3.11, 3.12 and future versions
-  - Added Python 3.11/3.12 compatibility testing in CI (informational, non-blocking)
-- **🚀 CI/CD Improvements**: Optimized GitHub Actions workflow
-  - Upgraded to latest action versions (setup-python@v5, cache@v4, codecov@v4)
-  - Added concurrency control to cancel stale runs and save CI minutes
-  - Added job timeouts (15min tests, 5min lint/security) to prevent runaway jobs
-  - Use built-in pip caching in setup-python for cleaner configuration
-  - Added descriptive job names for better GitHub UI visibility
-  - Simplified lint job to run black/ruff directly (faster than tox wrapper)
-  - Fixed security scan to install dependencies before auditing
-- **🧹 Configuration Consolidation**: Modern Python packaging cleanup
-  - Removed redundant `pytest.ini` (config in `pyproject.toml [tool.pytest.ini_options]`)
-  - Removed redundant `.flake8` (using ruff with config in `pyproject.toml [tool.ruff]`)
-  - Consolidated all tool configuration into `pyproject.toml` (PEP 518, PEP 621)
-- **♻️ Code Refactoring**: Eliminated duplicate constants
-  - Consolidated `OPENAI_VALID_MODELS`, `PERPLEXITY_MODELS`, `DISCORD_ACTIVITY_TYPES` into `config.py`
-  - Updated `api_validation.py` to import from `config.py` (single source of truth)
-  - Added stricter URL validation patterns with end anchors
-- **⬆️ Dependencies**: Upgraded all packages to latest bleeding edge versions
-  - discord.py: 2.6.2 → 2.6.4
-  - openai: 1.101.0 → 2.8.1 (major version upgrade with backward compatibility)
-  - requests: 2.31.0 → 2.32.5
-  - beautifulsoup4: 4.12.2 → 4.14.3
-  - httpx: 0.28.0 → 0.28.1
-  - black: → 25.11.0, ruff: → 0.14.7, pytest: → 9.0.1
-  - pytest-asyncio: → 1.3.0, pytest-cov: → 7.0.0, pytest-xdist: → 3.8.0
-  - coverage: → 7.12.0, tox: → 4.32.0, pip-audit: → 2.10.0
-  - pre-commit: → 4.5.0, detect-secrets: → 1.5.0
+- **⬆️ Dependencies**: Upgraded to latest bleeding edge versions
+  - discord.py 2.6.4, openai 2.8.1, requests 2.32.5, beautifulsoup4 4.14.3
+  - black 25.11.0, ruff 0.14.7, pytest 9.0.1, tox 4.32.0
+  - Full list: httpx 0.28.1, pytest-asyncio 1.3.0, coverage 7.12.0, pip-audit 2.10.0
+- **🧹 Configuration**: Consolidated tool configuration
+  - Removed redundant `pytest.ini` and `.flake8` (now in `pyproject.toml`)
+  - Consolidated constants into `config.py` (single source of truth)
+- **🛡️ Reliability**: Enhanced stability and monitoring
+  - Graceful shutdown with signal handlers (SIGTERM, SIGINT)
+  - Connection pool health monitoring and status checks
+  - Memory usage statistics in conversation manager
 - **⚙️ Infrastructure**: Improved Docker healthcheck
-  - Enhanced healthcheck to validate bot configuration, not just Python import
-  - Verifies config file can be loaded and validated
-  - Provides better indication of bot readiness
-- **🛡️ Reliability**: Enhanced reliability and monitoring
-  - Added graceful shutdown handling with signal handlers (SIGTERM, SIGINT)
-  - Added connection pool health monitoring and status checks
-  - Added memory usage statistics to conversation manager
-  - Graceful shutdown closes Discord connection, connection pools, and background tasks
-- **📄 Documentation**: Enhanced documentation
-  - Fixed 16 broken documentation links pointing to non-existent files
-  - Fixed outdated GPT-4 model references (now GPT-5 series throughout)
-  - Updated documentation index with Architecture and Security links
-  - Added rate limiting and backoff strategy documentation to README
+  - Validates bot configuration on startup, not just Python import
 
 ### Removed
-- **🧹 Test Cleanup**: Removed duplicate test files
-  - Removed `test_config_basic.py` (duplicates `test_config.py`)
-  - Removed `test_bot_basic.py` (duplicates `test_openai_processing.py`)
+- Redundant test files: `test_config_basic.py`, `test_bot_basic.py`
+- Redundant config files: `pytest.ini`, `.flake8`
 
 ## [v0.2.7.2] - 2025-01-23
 
