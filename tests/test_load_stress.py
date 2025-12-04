@@ -59,12 +59,12 @@ class TestConcurrentUserLoad:
         assert len(manager._conversations) == num_users
 
         # Simulate cleanup (normally done by background task)
-        manager._cleanup_inactive_users()
+        manager.cleanup_inactive_user_locks(force=True)
 
-        # After cleanup, inactive users should be removed
+        # After cleanup, inactive user locks should be removed
         # (In real scenario, cleanup happens based on activity time)
         # For this test, we verify cleanup mechanism works
-        assert hasattr(manager, "_cleanup_inactive_users")
+        assert hasattr(manager, "cleanup_inactive_user_locks")
 
     @pytest.mark.asyncio
     async def test_rate_limiter_concurrent_requests(self):
@@ -75,7 +75,9 @@ class TestConcurrentUserLoad:
 
         async def check_rate_limit(user_id: int):
             """Check rate limit for a user."""
-            return rate_limiter.check_rate_limit(user_id, rate_limit, rate_limit_per)
+            import logging
+            logger = logging.getLogger(__name__)
+            return rate_limiter.check_rate_limit(user_id, rate_limit, rate_limit_per, logger)
 
         # Simulate 5000 users checking rate limits concurrently
         num_users = 5000
@@ -100,13 +102,16 @@ class TestConcurrentUserLoad:
 
         user_id = 12345
 
+        import logging
+        logger = logging.getLogger(__name__)
+        
         # First 10 requests should pass
         for i in range(10):
-            result = rate_limiter.check_rate_limit(user_id, rate_limit, rate_limit_per)
+            result = rate_limiter.check_rate_limit(user_id, rate_limit, rate_limit_per, logger)
             assert result, f"Request {i+1} should pass"
 
         # 11th request should be rate limited
-        result = rate_limiter.check_rate_limit(user_id, rate_limit, rate_limit_per)
+        result = rate_limiter.check_rate_limit(user_id, rate_limit, rate_limit_per, logger)
         assert not result, "11th request should be rate limited"
 
     @pytest.mark.asyncio
@@ -177,7 +182,7 @@ class TestConcurrentUserLoad:
 
         async def get_summary(user_id: int):
             """Get conversation summary for a user."""
-            return manager.get_conversation_summary(user_id, max_messages=10)
+            return manager.get_conversation_summary(user_id)
 
         # Get summaries concurrently
         tasks = [get_summary(user_id) for user_id in range(num_users)]

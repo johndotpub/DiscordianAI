@@ -777,10 +777,11 @@ class TestCircuitBreakerStateTransitions:
         async def test_function():
             return "success"
 
-        # Should transition to HALF_OPEN and allow request
+        # Should transition to HALF_OPEN and allow request, then to CLOSED on success
         result = await test_function()
         assert result == "success"
-        assert breaker.state == "HALF_OPEN"
+        # After successful call in HALF_OPEN, state should transition to CLOSED
+        assert breaker.state == "CLOSED"
 
     @pytest.mark.asyncio
     async def test_circuit_breaker_half_open_to_closed_on_success(self):

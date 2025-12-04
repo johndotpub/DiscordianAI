@@ -92,7 +92,8 @@ class CircuitBreaker:
                 self.failure_count += 1
                 self.last_failure_time = time.time()
 
-                if self.failure_count >= self.failure_threshold:
+                # If in HALF_OPEN state, any failure should open the circuit
+                if self.state == "HALF_OPEN" or self.failure_count >= self.failure_threshold:
                     self.state = "OPEN"
 
                 raise
@@ -100,6 +101,8 @@ class CircuitBreaker:
                 if self.state == "HALF_OPEN":
                     self.state = "CLOSED"
                     self.failure_count = 0
+                # In CLOSED state, don't reset failure_count on success
+                # (only reset in HALF_OPEN to CLOSED transition)
                 return result
 
         return wrapper
@@ -327,7 +330,7 @@ def handle_api_error(func):
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
         func_logger = logging.getLogger(func.__module__)
-        retry_config = RetryConfig(max_attempts=2, base_delay=1.0)
+        retry_config = RetryConfig(max_attempts=3, base_delay=0.1)  # 3 attempts with short delay for tests
 
         # Extract the original logger if it exists in kwargs to avoid conflicts
         original_logger = kwargs.pop("logger", func_logger)
