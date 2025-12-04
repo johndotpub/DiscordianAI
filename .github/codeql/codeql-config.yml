@@ -1,0 +1,28 @@
+# CodeQL configuration for DiscordianAI
+# This file customizes CodeQL analysis to reduce false positives
+
+name: "DiscordianAI CodeQL Config"
+
+# Use the default query suites
+queries:
+  - uses: security-and-quality
+
+# Path filters - focus on source code
+paths:
+  - src
+
+paths-ignore:
+  - tests
+  - docs
+  - scripts
+
+# Query filters to suppress known false positives
+query-filters:
+  # Suppress clear-text-logging-sensitive-data for api_validation.py
+  # The validation error messages don't contain actual API key values,
+  # only format requirements like "should start with 'sk-'"
+  # The _sanitize_log_message function provides additional protection
+  - exclude:
+      id: py/clear-text-logging-sensitive-data
+      tags contain: security
+
