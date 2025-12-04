@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.2.7.3] - 2025-01-23
+## [v0.2.7.3] - 2025-12-04
 
 ### Added
 - **🔐 Security Enhancements**: Comprehensive security improvements
@@ -15,26 +15,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Validation provides clear error messages with links to key management pages
   - Added pre-commit hooks with `detect-secrets` to prevent committing API keys
   - Added black and ruff hooks for automated code quality checks
+- **📖 Architecture Documentation**: Added comprehensive `docs/Architecture.md`
+  - High-level system architecture with ASCII diagrams
+  - Component overview and responsibilities
+  - Request flow with Mermaid sequence diagrams
+  - Design patterns documentation (circuit breaker, caching, DI, retry logic)
+  - Security architecture, observability, and performance optimizations
+  - Future considerations and scalability path
+- **📦 Package Improvements**: Modern Python packaging enhancements
+  - Added `src/__init__.py` with proper package exports and metadata
+  - Added `src/py.typed` marker file for PEP 561 type hints support
+  - Enables type checkers (mypy, pyright) to use package type hints
 - **🧪 Test Coverage**: Comprehensive testing improvements
   - Added 15+ edge case tests for configuration loading (malformed files, invalid values, etc.)
   - Added comprehensive API validation tests (40+ test cases)
   - Added error recovery scenario tests (circuit breaker state transitions, retry logic)
   - Added message splitting edge case tests (unicode, emoji, mixed content)
   - Added load and stress tests for 10k+ concurrent users
+  - Added dependency check tests (`test_dependency_check.py`) for startup validation
   - Tests cover invalid URLs, type coercion errors, API key format validation
   - Tests cover missing sections, empty files, special characters, unicode handling
   - Tests verify performance requirements and thread safety under high load
+  - **Test coverage increased to 80.80%** (exceeds 80% minimum requirement)
 
 ### Fixed
 - **⚙️ CI/CD Optimization**: Fixed workflow cache inefficiency
   - Removed redundant tox cache recreation and deletion steps
   - Eliminated conflicting cache operations
   - Reduced CI execution time by optimizing cache usage
+  - Updated tox.ini to exclude build artifacts (`discordianai-*`) from linting
+- **🔧 Code Quality**: Fixed 26 ruff lint errors across codebase
+  - Used `contextlib.suppress()` for cleaner exception handling in graceful shutdown
+  - Made exception handling more specific (replaced blind `Exception` catches)
+  - Removed duplicate `cleanup_inactive_user_locks` method in conversation manager
+  - Fixed unused variables and arguments across test files
+  - Added `noqa` comments for intentional private member access in health monitoring
+  - Fixed flaky timing test with generous tolerance for parallel execution
 - **📄 Documentation**: Fixed model reference inconsistency
   - Updated README example to use `gpt-5-mini` instead of outdated `gpt-4o-mini`
   - Ensures documentation matches actual code defaults
 
 ### Changed
+- **🐍 Python Compatibility**: Expanded Python version support
+  - Changed `requires-python` from `==3.10.*` to `>=3.10` for broader compatibility
+  - Supports Python 3.10, 3.11, 3.12 and future versions
+- **🧹 Configuration Consolidation**: Modern Python packaging cleanup
+  - Removed redundant `pytest.ini` (config in `pyproject.toml [tool.pytest.ini_options]`)
+  - Removed redundant `.flake8` (using ruff with config in `pyproject.toml [tool.ruff]`)
+  - Consolidated all tool configuration into `pyproject.toml` (PEP 518, PEP 621)
+- **♻️ Code Refactoring**: Eliminated duplicate constants
+  - Consolidated `OPENAI_VALID_MODELS`, `PERPLEXITY_MODELS`, `DISCORD_ACTIVITY_TYPES` into `config.py`
+  - Updated `api_validation.py` to import from `config.py` (single source of truth)
+  - Added stricter URL validation patterns with end anchors
+- **⬆️ Dependencies**: Upgraded all packages to latest bleeding edge versions
+  - discord.py: 2.6.2 → 2.6.4
+  - openai: 1.101.0 → 2.8.1 (major version upgrade with backward compatibility)
+  - requests: 2.31.0 → 2.32.5
+  - beautifulsoup4: 4.12.2 → 4.14.3
+  - httpx: 0.28.0 → 0.28.1
+  - black: → 25.11.0, ruff: → 0.14.7, pytest: → 9.0.1
+  - pytest-asyncio: → 1.3.0, pytest-cov: → 7.0.0, pytest-xdist: → 3.8.0
+  - coverage: → 7.12.0, tox: → 4.32.0, pip-audit: → 2.10.0
+  - pre-commit: → 4.5.0, detect-secrets: → 1.5.0
 - **⚙️ Infrastructure**: Improved Docker healthcheck
   - Enhanced healthcheck to validate bot configuration, not just Python import
   - Verifies config file can be loaded and validated
@@ -45,10 +87,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added memory usage statistics to conversation manager
   - Graceful shutdown closes Discord connection, connection pools, and background tasks
 - **📄 Documentation**: Enhanced documentation
+  - Fixed 16 broken documentation links pointing to non-existent files
+  - Updated GPT model references from GPT-4 to GPT-5 series throughout docs
+  - Reorganized documentation index for better navigation
   - Added comprehensive security best practices section
   - Added API key management guidelines and production deployment security
   - Added detailed rate limiting and backoff strategy documentation
   - Documents error recovery behavior and retry logic
+
+### Removed
+- **🧹 Test Cleanup**: Removed duplicate test files
+  - Removed `test_config_basic.py` (duplicates `test_config.py`)
+  - Removed `test_bot_basic.py` (duplicates `test_openai_processing.py`)
 
 ## [v0.2.7.2] - 2025-01-23
 
