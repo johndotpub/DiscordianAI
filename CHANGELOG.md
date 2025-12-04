@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - GitHub Dependabot configuration for automated dependency updates
   - API key format validation with clear error messages and help links
   - Pre-commit hooks with `detect-secrets`, `black`, and `ruff`
+  - Log sanitization to prevent API key exposure (fixes CodeQL alert)
 - **📖 Documentation**: New comprehensive documentation
   - `docs/Architecture.md` - System design, components, request flow diagrams, design patterns
   - `docs/Security.md` - API key management, rate limiting, input validation, Docker hardening
