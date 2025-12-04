@@ -17,7 +17,6 @@ import contextlib
 import logging
 import re
 import signal
-import sys
 from typing import Any
 
 # Third-party imports
