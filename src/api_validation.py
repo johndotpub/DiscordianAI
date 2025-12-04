@@ -291,6 +291,24 @@ def validate_full_config(config: dict) -> tuple[list[str], list[str]]:
     return warnings, errors
 
 
+def _sanitize_log_message(message: str) -> str:
+    """Sanitize log messages to prevent exposing sensitive information.
+
+    Args:
+        message: The message to sanitize
+
+    Returns:
+        str: Sanitized message with sensitive data redacted
+    """
+    import re
+
+    # Redact potential API keys (sk-xxx, pplx-xxx patterns)
+    sanitized = re.sub(r"(sk-|pplx-)[a-zA-Z0-9\-_]+", r"\1[REDACTED]", message)
+    # Redact anything that looks like a token or key value
+    sanitized = re.sub(r"(key|token|secret|password)(['\"]?\s*[:=]\s*['\"]?)[^\s'\"]+", r"\1\2[REDACTED]", sanitized, flags=re.IGNORECASE)
+    return sanitized
+
+
 def log_validation_results(config: dict, logger: logging.Logger | None = None) -> bool:
     """Validate configuration and log results.
 
@@ -306,13 +324,13 @@ def log_validation_results(config: dict, logger: logging.Logger | None = None) -
 
     warnings, errors = validate_full_config(config)
 
-    # Log warnings
+    # Log warnings (sanitized to prevent exposing sensitive data)
     for warning in warnings:
-        logger.warning(f"Config validation: {warning}")
+        logger.warning("Config validation: %s", _sanitize_log_message(warning))
 
-    # Log errors
+    # Log errors (sanitized to prevent exposing sensitive data)
     for error in errors:
-        logger.error(f"Config validation: {error}")
+        logger.error("Config validation: %s", _sanitize_log_message(error))
 
     # Summary
     if errors:
