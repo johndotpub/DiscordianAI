@@ -5,8 +5,18 @@ name: CI
 on:
   push:
     branches: [ main, develop ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/codeql/**'
+      - 'LICENSE'
   pull_request:
     branches: [ main, develop ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/codeql/**'
+      - 'LICENSE'
   workflow_dispatch:  # Allow manual trigger
 
 # Cancel in-progress runs on same branch to save CI minutes
