@@ -1,6 +1,6 @@
 [![CI](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql)
-[![codecov](https://codecov.io/gh/johndotpub/DiscordianAI/branch/main/graph/badge.svg)](https://codecov.io/gh/johndotpub/DiscordianAI)
+[![codecov](https://codecov.io/github/johndotpub/DiscordianAI/graph/badge.svg?token=4WOMJ952A2)](https://codecov.io/github/johndotpub/DiscordianAI)
 [![Security: pip-audit](https://img.shields.io/badge/security-pip--audit-blueviolet)](https://pypi.org/project/pip-audit/)
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/downloads/)
