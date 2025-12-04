@@ -356,7 +356,12 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
     for key, value in env_overrides.items():
         if value is not None:
             if key == "ALLOWED_CHANNELS":
-                config_data[key] = value.split(",")
+                # Handle empty string - split will return [''], filter it out
+                if value == "":
+                    config_data[key] = []
+                else:
+                    channels = [c.strip() for c in value.split(",") if c.strip()]
+                    config_data[key] = channels
             elif key in {
                 "INPUT_TOKENS",
                 "OUTPUT_TOKENS",

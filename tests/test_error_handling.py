@@ -733,12 +733,17 @@ class TestCircuitBreakerStateTransitions:
         async def failing_function():
             raise ValueError("Test error")
 
-        # First 2 failures should not open circuit
-        for _ in range(2):
-            with pytest.raises(ValueError):
-                await failing_function()
-            assert breaker.state == "CLOSED"
-            assert breaker.failure_count == 2
+        # First failure should not open circuit
+        with pytest.raises(ValueError):
+            await failing_function()
+        assert breaker.state == "CLOSED"
+        assert breaker.failure_count == 1
+
+        # Second failure should not open circuit
+        with pytest.raises(ValueError):
+            await failing_function()
+        assert breaker.state == "CLOSED"
+        assert breaker.failure_count == 2
 
         # Third failure should open circuit
         with pytest.raises(ValueError):
@@ -914,9 +919,7 @@ class TestRetryLogicScenarios:
             attempt_times.append(time.time())
             raise ConnectionError("Failure")
 
-        retry_config = RetryConfig(
-            max_attempts=3, base_delay=0.2, exponential_base=2.0, jitter=False
-        )
+        retry_config = RetryConfig(max_attempts=3, base_delay=0.2, exponential_base=2.0, jitter=False)
         logger = Mock()
 
         with pytest.raises(ConnectionError):
