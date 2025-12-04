@@ -1,24 +1,18 @@
-<!-- CI/CD & Quality -->
 [![CI](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql)
 [![codecov](https://codecov.io/gh/johndotpub/DiscordianAI/branch/main/graph/badge.svg)](https://codecov.io/gh/johndotpub/DiscordianAI)
+[![Security: pip-audit](https://img.shields.io/badge/security-pip--audit-blueviolet)](https://pypi.org/project/pip-audit/)
 
-<!-- Python & Code Style -->
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com/)
 
-<!-- Integrations -->
 [![Discord.py](https://img.shields.io/badge/discord.py-2.6.4-5865F2.svg?logo=discord&logoColor=white)](https://discordpy.readthedocs.io/)
 [![OpenAI](https://img.shields.io/badge/OpenAI-GPT--5-412991.svg?logo=openai&logoColor=white)](https://openai.com/)
 [![Perplexity](https://img.shields.io/badge/Perplexity-Sonar--Pro-20B2AA.svg)](https://www.perplexity.ai/)
-
-<!-- Security & License -->
-[![Security: pip-audit](https://img.shields.io/badge/security-pip--audit-blueviolet)](https://pypi.org/project/pip-audit/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](http://unlicense.org/)
 
-<!-- Project Stats -->
 [![GitHub release](https://img.shields.io/github/v/release/johndotpub/DiscordianAI)](https://github.com/johndotpub/DiscordianAI/releases)
 [![GitHub last commit](https://img.shields.io/github/last-commit/johndotpub/DiscordianAI)](https://github.com/johndotpub/DiscordianAI/commits/main)
 [![GitHub issues](https://img.shields.io/github/issues/johndotpub/DiscordianAI)](https://github.com/johndotpub/DiscordianAI/issues)
