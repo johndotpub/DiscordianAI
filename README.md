@@ -14,7 +14,8 @@
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](http://unlicense.org/)
 
 [![GitHub release](https://img.shields.io/github/v/release/johndotpub/DiscordianAI)](https://github.com/johndotpub/DiscordianAI/releases)
-[![GitHub last commit](https://img.shields.io/github/last-commit/johndotpub/DiscordianAI)](https://github.com/johndotpub/DiscordianAI/commits/main)
+[![GitHub stars](https://img.shields.io/github/stars/johndotpub/DiscordianAI)](https://github.com/johndotpub/DiscordianAI/stargazers)
+[![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg?logo=docker&logoColor=white)](https://github.com/johndotpub/DiscordianAI/pkgs/container/discordianai)
 [![GitHub issues](https://img.shields.io/github/issues/johndotpub/DiscordianAI)](https://github.com/johndotpub/DiscordianAI/issues)
 
 # DiscordianAI
