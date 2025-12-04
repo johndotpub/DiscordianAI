@@ -56,9 +56,13 @@ flowchart TD
 ### 🔧 Development
 - **[Development Guide](Development.md)** - Modern development workflow with black + ruff
 - **[Python Versions](Python_Versions.md)** - Python version compatibility and testing
+- **[Architecture](Architecture.md)** - System design, patterns, and component overview
 - **[API Validation](API_Validation.md)** - API parameter validation and health checks
 - **[Connection Pooling](ConnectionPooling.md)** - HTTP connection optimization
 - **[Embed Limits](EmbedLimits.md)** - Discord embed size handling
+
+### 🔒 Security
+- **[Security Best Practices](Security.md)** - API key management, rate limiting, hardening
 
 ### 📖 Reference
 - **[API Validation](API_Validation.md)** - API parameter validation and health checks
@@ -68,6 +72,7 @@ flowchart TD
 ### 🚀 Deployment
 - **[Docker](Docker.md)** - Containerized deployment
 - **[Daemon Mode](Daemon.md)** - Running as a system service
+- **[Security](Security.md)** - Production security checklist
 
 ## 🎯 Quick Navigation
 
