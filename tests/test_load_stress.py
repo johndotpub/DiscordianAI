@@ -128,7 +128,7 @@ class TestConcurrentUserLoad:
             conversation = manager.get_conversation(user_id)
 
             # Get summary
-            summary = manager.get_conversation_summary(user_id, max_messages=10)
+            summary = manager.get_conversation_summary(user_id)
 
             return len(conversation), len(summary)
 
@@ -251,16 +251,16 @@ class TestConcurrentUserLoad:
 
         # Simulate cleanup
         initial_count = len(manager._conversations)
-        manager._cleanup_inactive_users()
+        manager.cleanup_inactive_user_locks(force=True)
 
         # Cleanup should work (exact behavior depends on implementation)
         # At minimum, cleanup function should execute without error
-        assert hasattr(manager, "_cleanup_inactive_users")
+        assert hasattr(manager, "cleanup_inactive_user_locks")
 
     @pytest.mark.asyncio
     async def test_high_concurrency_message_ordering(self):
         """Test message ordering is preserved under high concurrency."""
-        manager = ThreadSafeConversationManager()
+        manager = ThreadSafeConversationManager(max_history_per_user=150)  # Allow 100+ messages
 
         user_id = 9999
         num_messages = 100
