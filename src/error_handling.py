@@ -330,7 +330,9 @@ def handle_api_error(func):
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
         func_logger = logging.getLogger(func.__module__)
-        retry_config = RetryConfig(max_attempts=3, base_delay=0.1)  # 3 attempts with short delay for tests
+        retry_config = RetryConfig(
+            max_attempts=3, base_delay=0.1
+        )  # 3 attempts with short delay for tests
 
         # Extract the original logger if it exists in kwargs to avoid conflicts
         original_logger = kwargs.pop("logger", func_logger)

@@ -198,19 +198,22 @@ class ConnectionPoolManager:
                 "http2_enabled": getattr(client, "_http2", False),
             }
 
-            # Try to get connection pool statistics
-            if hasattr(client, "_transport") and hasattr(client._transport, "_pool"):
-                pool = client._transport._pool
+            # Try to get connection pool statistics (accessing internal attrs is intentional)
+            if hasattr(client, "_transport") and hasattr(
+                client._transport,  # noqa: SLF001
+                "_pool",
+            ):
+                pool = client._transport._pool  # noqa: SLF001
                 if hasattr(pool, "_connections"):
-                    pool_info["active_connections"] = len(pool._connections)
+                    pool_info["active_connections"] = len(pool._connections)  # noqa: SLF001
                 if hasattr(pool, "_max_connections"):
-                    pool_info["max_connections"] = pool._max_connections
+                    pool_info["max_connections"] = pool._max_connections  # noqa: SLF001
 
-            return pool_info
-
-        except Exception as e:
+        except AttributeError as e:
             self._logger.warning(f"Error checking pool health: {e}")
             return {"status": "unknown", "reason": str(e)}
+        else:
+            return pool_info
 
     async def close_all(self) -> None:
         """Close all HTTP clients managed by this pool manager."""

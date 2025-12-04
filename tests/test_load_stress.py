@@ -76,6 +76,7 @@ class TestConcurrentUserLoad:
         async def check_rate_limit(user_id: int):
             """Check rate limit for a user."""
             import logging
+
             logger = logging.getLogger(__name__)
             return rate_limiter.check_rate_limit(user_id, rate_limit, rate_limit_per, logger)
 
@@ -103,8 +104,9 @@ class TestConcurrentUserLoad:
         user_id = 12345
 
         import logging
+
         logger = logging.getLogger(__name__)
-        
+
         # First 10 requests should pass
         for i in range(10):
             result = rate_limiter.check_rate_limit(user_id, rate_limit, rate_limit_per, logger)
@@ -136,10 +138,11 @@ class TestConcurrentUserLoad:
         num_users = 2000
         messages_per_user = 5
 
-        tasks = []
-        for user_id in range(num_users):
-            for msg_num in range(messages_per_user):
-                tasks.append(process_message(user_id, msg_num))
+        tasks = [
+            process_message(user_id, msg_num)
+            for user_id in range(num_users)
+            for msg_num in range(messages_per_user)
+        ]
 
         start_time = time.time()
         results = await asyncio.gather(*tasks)
@@ -212,7 +215,7 @@ class TestConcurrentUserLoad:
         async def reader(user_id: int, num_reads: int):
             """Read conversations concurrently."""
             for _ in range(num_reads):
-                conversation = manager.get_conversation(user_id)
+                manager.get_conversation(user_id)  # Read operation
                 await asyncio.sleep(0.0001)
 
         # Concurrent read/write operations
@@ -249,8 +252,7 @@ class TestConcurrentUserLoad:
         # Verify all users exist
         assert len(manager._conversations) == num_users
 
-        # Simulate cleanup
-        initial_count = len(manager._conversations)
+        # Simulate cleanup - verify cleanup function executes without error
         manager.cleanup_inactive_user_locks(force=True)
 
         # Cleanup should work (exact behavior depends on implementation)

@@ -5,7 +5,7 @@
 repos:
   # Secret detection to prevent committing API keys and tokens
   - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.4.0
+    rev: v1.5.0
     hooks:
       - id: detect-secrets
         args: ['--baseline', '.secrets.baseline']
@@ -22,7 +22,7 @@ repos:
 
   # Code formatting with black
   - repo: https://github.com/psf/black
-    rev: 24.1.1
+    rev: 25.11.0
     hooks:
       - id: black
         language_version: python3.10
@@ -41,7 +41,7 @@ repos:
 
   # Linting with ruff
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.1.15
+    rev: v0.14.7
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]

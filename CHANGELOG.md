@@ -98,12 +98,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Graceful shutdown closes Discord connection, connection pools, and background tasks
 - **📄 Documentation**: Enhanced documentation
   - Fixed 16 broken documentation links pointing to non-existent files
-  - Updated GPT model references from GPT-4 to GPT-5 series throughout docs
-  - Reorganized documentation index for better navigation
-  - Added comprehensive security best practices section
-  - Added API key management guidelines and production deployment security
-  - Added detailed rate limiting and backoff strategy documentation
-  - Documents error recovery behavior and retry logic
+  - Fixed outdated GPT-4 model references (now GPT-5 series throughout)
+  - Updated documentation index with Architecture and Security links
+  - Added rate limiting and backoff strategy documentation to README
 
 ### Removed
 - **🧹 Test Cleanup**: Removed duplicate test files

@@ -26,11 +26,10 @@ from .bot import run_bot
 from .config import load_config, parse_arguments
 
 __all__ = [
-    "__version__",
     "__author__",
     "__email__",
-    "run_bot",
+    "__version__",
     "load_config",
     "parse_arguments",
+    "run_bot",
 ]
-

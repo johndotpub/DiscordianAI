@@ -468,13 +468,15 @@ SYSTEM_MESSAGE={long_value}
 
     def test_load_config_whitespace_handling(self):
         """Test handling of whitespace in config values."""
-        config_content = """[Discord]
-DISCORD_TOKEN=  token_with_spaces  
-ALLOWED_CHANNELS=  channel1  ,  channel2  ,  channel3  
-
-[Default]
-SYSTEM_MESSAGE=  Message with leading and trailing spaces  
-"""
+        # Note: Using explicit strings to avoid trailing whitespace lint errors
+        config_content = (
+            "[Discord]\n"
+            "DISCORD_TOKEN=  token_with_spaces\n"
+            "ALLOWED_CHANNELS=  channel1  ,  channel2  ,  channel3\n"
+            "\n"
+            "[Default]\n"
+            "SYSTEM_MESSAGE=  Message with leading and trailing spaces\n"
+        )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
             f.write(config_content)
             temp_config_path = f.name
@@ -496,7 +498,9 @@ DISCORD_TOKEN=test_token
 [测试]
 TEST_VALUE=test
 """
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False, encoding="utf-8") as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".ini", delete=False, encoding="utf-8"
+        ) as f:
             f.write(config_content)
             temp_config_path = f.name
 

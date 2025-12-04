@@ -224,7 +224,7 @@ class TestFullConfigValidation:
             "ALLOWED_CHANNELS": ["general"],
         }
 
-        warnings, errors = validate_full_config(config)
+        _, errors = validate_full_config(config)
         assert len(errors) == 0
 
     def test_validate_full_config_missing_discord_token(self):
@@ -233,7 +233,7 @@ class TestFullConfigValidation:
             "OPENAI_API_KEY": "sk-" + "a" * 32,
         }
 
-        warnings, errors = validate_full_config(config)
+        _, errors = validate_full_config(config)
         assert len(errors) > 0
         assert any("DISCORD_TOKEN is required" in error for error in errors)
 
@@ -243,7 +243,7 @@ class TestFullConfigValidation:
             "DISCORD_TOKEN": "test_token",
         }
 
-        warnings, errors = validate_full_config(config)
+        _, errors = validate_full_config(config)
         assert len(errors) > 0
         assert any("At least one API key" in error for error in errors)
 
@@ -260,7 +260,7 @@ class TestFullConfigValidation:
             "RATE_LIMIT_PER": 0,  # Invalid
         }
 
-        warnings, errors = validate_full_config(config)
+        _, errors = validate_full_config(config)
         # Should have multiple errors
         assert len(errors) >= 2
 

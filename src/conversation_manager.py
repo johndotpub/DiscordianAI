@@ -340,25 +340,6 @@ class ThreadSafeConversationManager:
                 "active_locks": len(self._user_locks),
             }
 
-    def cleanup_inactive_user_locks(self, force: bool = False) -> int:
-        """Clean up locks for users with no conversation history to prevent memory leaks.
-
-        This method is automatically called periodically, but can be forced to run immediately.
-        Only cleans up locks for users who have no conversation data.
-
-        Args:
-            force (bool): If True, runs cleanup regardless of timing. If False, only runs
-                         if enough time has passed since last cleanup.
-
-        Returns:
-            int: Number of user locks that were cleaned up.
-        """
-        current_time = time.time()
-
-        # Only run cleanup at configured interval unless forced
-        if not force and (current_time - self._last_cleanup) < self._cleanup_interval:
-            return 0
-
     def get_memory_stats(self) -> dict[str, Any]:
         """Get memory usage statistics for monitoring.
 

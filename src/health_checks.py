@@ -273,9 +273,9 @@ class APIHealthMonitor:
         """
         results = {}
 
-        # Check OpenAI connection pool if client exists
+        # Check OpenAI connection pool if client exists (accessing internal attrs is intentional)
         if openai_client and hasattr(openai_client, "_client"):
-            http_client = getattr(openai_client._client, "_client", None)
+            http_client = getattr(openai_client._client, "_client", None)  # noqa: SLF001
             if http_client:
                 pool_health = pool_manager.check_pool_health(http_client)
                 results["openai_pool"] = HealthCheckResult(
@@ -287,8 +287,9 @@ class APIHealthMonitor:
                 )
 
         # Check Perplexity connection pool if client exists
+        # (accessing internal attrs is intentional for health monitoring)
         if perplexity_client and hasattr(perplexity_client, "_client"):
-            http_client = getattr(perplexity_client._client, "_client", None)
+            http_client = getattr(perplexity_client._client, "_client", None)  # noqa: SLF001
             if http_client:
                 pool_health = pool_manager.check_pool_health(http_client)
                 results["perplexity_pool"] = HealthCheckResult(
