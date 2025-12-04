@@ -102,7 +102,7 @@ ACTIVITY_STATUS=you bite my shiny metal ass!
 
 [Default]
 # === OPENAI CONFIGURATION ===
-# For GPT-4 series, etc. - Leave blank to disable OpenAI
+# For GPT-5 series models - Leave blank to disable OpenAI
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_API_URL=https://api.openai.com/v1/
 GPT_MODEL=gpt-5-mini
