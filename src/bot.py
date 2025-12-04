@@ -855,14 +855,10 @@ def run_bot(config: dict[str, Any]) -> None:
         # Set up signal handlers for graceful shutdown
         def signal_handler(signum, _frame):
             logger.info(f"Received signal {signum}, initiating graceful shutdown...")
-            # Create event loop for graceful shutdown
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(graceful_shutdown(deps["bot"], deps))
-            finally:
-                loop.close()
-            sys.exit(0)
+            # Don't try to run async code from signal handler - it causes
+            # "Cannot run the event loop while another loop is running" error
+            # Instead, raise KeyboardInterrupt which discord.py handles gracefully
+            raise KeyboardInterrupt
 
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)

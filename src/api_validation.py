@@ -35,8 +35,10 @@ __all__ = [
 ]
 
 # API key format patterns
-OPENAI_API_KEY_PATTERN = re.compile(r"^sk-[a-zA-Z0-9]{32,}$")
-PERPLEXITY_API_KEY_PATTERN = re.compile(r"^pplx-[a-zA-Z0-9]{32,}$")
+# OpenAI keys can be: sk-xxx, sk-proj-xxx, sk-svcacct-xxx, etc.
+OPENAI_API_KEY_PATTERN = re.compile(r"^sk-[a-zA-Z0-9\-_]{20,}$")
+# Perplexity keys: pplx-xxx
+PERPLEXITY_API_KEY_PATTERN = re.compile(r"^pplx-[a-zA-Z0-9\-_]{20,}$")
 
 
 def validate_openai_api_key_format(api_key: str | None) -> tuple[bool, str | None]:
