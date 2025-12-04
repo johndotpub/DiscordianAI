@@ -253,14 +253,32 @@ Daemon/background mode is handled by the `discordian.sh` shell script, which sup
 
 For more in-depth information about the DiscordianAI project, please refer to the following documentation files in the `docs/` directory:
 
+### 🏗️ Architecture & Design
+- **[Architecture](./docs/Architecture.md)** : System design, components, request flow diagrams, and design patterns
 - **[Smart AI Mode](./docs/HybridMode.md)** : Complete guide to intelligent multi-AI operation with smart detection
-- **[Message Splitting](./docs/MessageSplitting.md)** : Advanced message splitting with recursion limit protection and content preservation
-- **[Development](./docs/Development.md)** : Modern development workflow using streamlined linting tools
-- [Configuration](./docs/Configuration.md) : Detailed instructions on how to configure the Discord bot and AI API settings  
-- [Daemon](./docs/Daemon.md) : Information on how to run the Discord bot as a daemon
-- [Docker](./docs/Docker.md) : Instructions on how to containerize the Discord bot using Docker
-- [OpenAI](./docs/OpenAI.md) : Information on how the Discord bot uses the OpenAI GPT API to generate responses
+
+### ⚙️ Configuration & Setup
+- [Configuration](./docs/Configuration.md) : Detailed instructions on configuring the Discord bot and AI API settings
 - [Setup](./docs/Setup.md) : Step-by-step guide on how to set up and run the Discord bot
+- [Python Versions](./docs/Python_Versions.md) : Supported Python versions and compatibility notes
+
+### 🤖 AI Integration
+- [OpenAI](./docs/OpenAI.md) : How the bot uses OpenAI GPT API to generate responses
+- [Perplexity](./docs/Perplexity.md) : Web search integration with Perplexity AI and citations
+- [Web Scraping](./docs/WebScraping.md) : URL content extraction for context-aware responses
+
+### 💬 Message Handling
+- **[Message Splitting](./docs/MessageSplitting.md)** : Advanced message splitting with recursion limit protection
+- [Embed Limits](./docs/EmbedLimits.md) : Discord embed size limits and handling strategies
+
+### 🔧 Infrastructure
+- [Connection Pooling](./docs/ConnectionPooling.md) : HTTP/2 connection pooling for API performance
+- [Docker](./docs/Docker.md) : Instructions on containerizing the Discord bot
+- [Daemon](./docs/Daemon.md) : Running the Discord bot as a background service
+
+### 🛡️ Security & Development
+- **[Security](./docs/Security.md)** : API key management, rate limiting, and security best practices
+- [Development](./docs/Development.md) : Modern development workflow and linting tools
 
 ## Development & Testing
 
