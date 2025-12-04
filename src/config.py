@@ -25,9 +25,9 @@ OPENAI_VALID_MODELS = [
 # Perplexity Models
 PERPLEXITY_MODELS = ["sonar-pro", "sonar"]  # Latest Perplexity model
 
-# API URL Patterns for validation
-VALID_OPENAI_URL_PATTERN = re.compile(r"https://api\.openai\.com/v\d+/?")
-VALID_PERPLEXITY_URL_PATTERN = re.compile(r"https://api\.perplexity\.ai/?")
+# API URL Patterns for validation (stricter patterns with end anchor)
+VALID_OPENAI_URL_PATTERN = re.compile(r"https://api\.openai\.com/v\d+/?$")
+VALID_PERPLEXITY_URL_PATTERN = re.compile(r"https://api\.perplexity\.ai/?$")
 
 # Default API URLs
 DEFAULT_OPENAI_API_URL = "https://api.openai.com/v1/"
@@ -244,8 +244,8 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
     if config_file and Path(config_file).exists():
         try:
             config.read(config_file)
-        except Exception:
-            # If config file is malformed, log warning and continue with defaults
+        except (configparser.Error, OSError):
+            # If config file is malformed or unreadable, log warning and continue with defaults
             logger.warning(f"Failed to parse config file {config_file}, using defaults")
 
         # Discord section
@@ -286,7 +286,9 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
             logger.warning("Invalid OUTPUT_TOKENS value, using default 8000")
             config_data["OUTPUT_TOKENS"] = 8000
         try:
-            config_data["CONTEXT_WINDOW"] = config.getint("Default", "CONTEXT_WINDOW", fallback=128000)
+            config_data["CONTEXT_WINDOW"] = config.getint(
+                "Default", "CONTEXT_WINDOW", fallback=128000
+            )
         except ValueError:
             logger.warning("Invalid CONTEXT_WINDOW value, using default 128000")
             config_data["CONTEXT_WINDOW"] = 128000

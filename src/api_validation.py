@@ -7,22 +7,32 @@ against current API specifications to ensure compatibility and optimal performan
 import logging
 import re
 
-# Valid API parameters and values
-OPENAI_VALID_MODELS = [
-    "gpt-5",  # Latest generation - standard
-    "gpt-5-mini",  # Latest generation - cost-effective
-    "gpt-5-nano",  # Latest generation - high-speed
-    "gpt-5-chat",  # Latest generation - conversational
+# Import constants from config.py (single source of truth)
+from .config import (
+    DISCORD_ACTIVITY_TYPES,
+    OPENAI_VALID_MODELS,
+    PERPLEXITY_MODELS,
+    VALID_OPENAI_URL_PATTERN,
+    VALID_PERPLEXITY_URL_PATTERN,
+)
+
+# Re-export for backward compatibility
+__all__ = [
+    "DISCORD_ACTIVITY_TYPES",
+    "OPENAI_API_KEY_PATTERN",
+    "OPENAI_VALID_MODELS",
+    "PERPLEXITY_API_KEY_PATTERN",
+    "PERPLEXITY_MODELS",
+    "VALID_OPENAI_URL_PATTERN",
+    "VALID_PERPLEXITY_URL_PATTERN",
+    "log_validation_results",
+    "validate_discord_config",
+    "validate_full_config",
+    "validate_openai_api_key_format",
+    "validate_openai_config",
+    "validate_perplexity_api_key_format",
+    "validate_perplexity_config",
 ]
-
-
-DISCORD_ACTIVITY_TYPES = ["playing", "streaming", "listening", "watching", "custom", "competing"]
-
-PERPLEXITY_MODELS = ["sonar-pro", "sonar"]  # Latest Perplexity model  # General Perplexity model
-
-# API URL patterns
-VALID_OPENAI_URL_PATTERN = re.compile(r"https://api\.openai\.com/v\d+/?")
-VALID_PERPLEXITY_URL_PATTERN = re.compile(r"https://api\.perplexity\.ai/?$")
 
 # API key format patterns
 OPENAI_API_KEY_PATTERN = re.compile(r"^sk-[a-zA-Z0-9]{32,}$")
