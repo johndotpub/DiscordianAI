@@ -258,6 +258,50 @@ class APIHealthMonitor:
                 },
             )
 
+    async def check_connection_pool_health(
+        self, pool_manager, openai_client, perplexity_client
+    ) -> dict[str, HealthCheckResult]:
+        """Check health of connection pools.
+
+        Args:
+            pool_manager: Connection pool manager instance
+            openai_client: OpenAI client (optional)
+            perplexity_client: Perplexity client (optional)
+
+        Returns:
+            Dictionary mapping service names to health check results
+        """
+        results = {}
+
+        # Check OpenAI connection pool if client exists (accessing internal attrs is intentional)
+        if openai_client and hasattr(openai_client, "_client"):
+            http_client = getattr(openai_client._client, "_client", None)  # noqa: SLF001
+            if http_client:
+                pool_health = pool_manager.check_pool_health(http_client)
+                results["openai_pool"] = HealthCheckResult(
+                    service="openai_connection_pool",
+                    status=pool_health.get("status", "unknown"),
+                    response_time_ms=0.0,
+                    timestamp=datetime.now(timezone.utc),
+                    details=pool_health,
+                )
+
+        # Check Perplexity connection pool if client exists
+        # (accessing internal attrs is intentional for health monitoring)
+        if perplexity_client and hasattr(perplexity_client, "_client"):
+            http_client = getattr(perplexity_client._client, "_client", None)  # noqa: SLF001
+            if http_client:
+                pool_health = pool_manager.check_pool_health(http_client)
+                results["perplexity_pool"] = HealthCheckResult(
+                    service="perplexity_connection_pool",
+                    status=pool_health.get("status", "unknown"),
+                    response_time_ms=0.0,
+                    timestamp=datetime.now(timezone.utc),
+                    details=pool_health,
+                )
+
+        return results
+
     async def check_discord_health(self, bot_client) -> HealthCheckResult:
         """Perform health check of Discord API connectivity.
 

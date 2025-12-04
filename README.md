@@ -1,6 +1,29 @@
-[![Code Quality & Testing](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml) [![CodeQL](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql) [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](http://unlicense.org/)
+<!-- CI/CD & Quality -->
+[![CI](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/johndotpub/DiscordianAI/actions/workflows/github-code-scanning/codeql)
+[![codecov](https://codecov.io/gh/johndotpub/DiscordianAI/branch/main/graph/badge.svg)](https://codecov.io/gh/johndotpub/DiscordianAI)
 
-# Description
+<!-- Python & Code Style -->
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com/)
+
+<!-- Integrations -->
+[![Discord.py](https://img.shields.io/badge/discord.py-2.6.4-5865F2.svg?logo=discord&logoColor=white)](https://discordpy.readthedocs.io/)
+[![OpenAI](https://img.shields.io/badge/OpenAI-GPT--5-412991.svg?logo=openai&logoColor=white)](https://openai.com/)
+[![Perplexity](https://img.shields.io/badge/Perplexity-Sonar--Pro-20B2AA.svg)](https://www.perplexity.ai/)
+
+<!-- Security & License -->
+[![Security: pip-audit](https://img.shields.io/badge/security-pip--audit-blueviolet)](https://pypi.org/project/pip-audit/)
+[![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](http://unlicense.org/)
+
+<!-- Project Stats -->
+[![GitHub release](https://img.shields.io/github/v/release/johndotpub/DiscordianAI)](https://github.com/johndotpub/DiscordianAI/releases)
+[![GitHub last commit](https://img.shields.io/github/last-commit/johndotpub/DiscordianAI)](https://github.com/johndotpub/DiscordianAI/commits/main)
+[![GitHub issues](https://img.shields.io/github/issues/johndotpub/DiscordianAI)](https://github.com/johndotpub/DiscordianAI/issues)
+
+# DiscordianAI
 
 DiscordianAI is an **advanced Discord bot** with sophisticated AI orchestration, conversation consistency, and production-grade thread-safe architecture. It intelligently uses multiple AI services to provide the best responses with **three operation modes**:
 
@@ -44,7 +67,7 @@ DiscordianAI is an **advanced Discord bot** with sophisticated AI orchestration,
 
 ## Requirements
 
-- **Python**: 3.10
+- **Python**: 3.10+ (3.10, 3.11, 3.12 supported)
 - **Discord Bot Token**: From [Discord Developer Portal](https://discord.com/developers/applications)
 - **OpenAI API Key**: From [OpenAI Platform](https://platform.openai.com/api-keys) (optional)
 - **Perplexity API Key**: From [Perplexity AI](https://www.perplexity.ai/settings/api) (optional)
@@ -175,7 +198,7 @@ ACTIVITY_STATUS=you bite my shiny metal ass!
 # Both APIs for smart hybrid mode
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_API_URL=https://api.openai.com/v1/
-GPT_MODEL=gpt-4o-mini
+GPT_MODEL=gpt-5-mini
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
 PERPLEXITY_MODEL=sonar-pro
 
@@ -328,6 +351,68 @@ The script accepts the following command line arguments:
 ```
 
 This command will run the bot in daemon mode, using the configuration file at `/path/to/config.ini` and the base folder at `/path/to/base/folder`.
+
+# Security Best Practices
+
+## API Key Management
+
+- **Never commit API keys** to version control
+- **Use environment variables** in production:
+  ```bash
+  export DISCORD_TOKEN="your_token"
+  export OPENAI_API_KEY="your_openai_key"
+  export PERPLEXITY_API_KEY="your_perplexity_key"
+  ```
+- **Restrict config file permissions**: `chmod 600 config.ini`
+- **Rotate API keys regularly** and monitor usage
+- **Use separate keys for development and production**
+
+## Configuration Security
+
+- Keep `config.ini` in `.gitignore` (already configured)
+- Use strong, unique Discord bot tokens
+- Regularly review and update dependencies for security patches
+- Enable pre-commit hooks to prevent accidental secret commits:
+  ```bash
+  pip install pre-commit
+  pre-commit install
+  ```
+
+## Production Deployment
+
+- Run the bot with minimal required permissions
+- Use Docker for isolation and easier updates
+- Monitor logs for suspicious activity
+- Set up alerts for authentication failures
+- Regularly backup configuration (without secrets)
+
+## Rate Limiting & Backoff
+
+The bot implements comprehensive rate limiting and error recovery:
+
+- **Per-user rate limiting**: Prevents abuse (default: 10 messages per 60 seconds)
+- **Exponential backoff**: Automatic retry with increasing delays (1s, 2s, 4s...)
+- **Circuit breaker pattern**: Prevents cascade failures when APIs are down
+- **Jitter**: Random delay variation prevents thundering herd problems
+- **Non-retryable errors**: Auth errors fail fast without retries
+
+### Rate Limit Configuration
+
+```ini
+[Limits]
+RATE_LIMIT=10        # Messages per time period
+RATE_LIMIT_PER=60    # Time period in seconds
+```
+
+### Error Recovery Behavior
+
+- **Rate limit errors (429)**: Retry after 30 seconds
+- **Timeout errors**: Retry after 10 seconds with exponential backoff
+- **Server errors (5xx)**: Retry after 60 seconds
+- **Network errors**: Retry after 15 seconds
+- **Auth errors (401)**: Fail immediately (no retry)
+
+The bot automatically handles these scenarios and provides user-friendly error messages without exposing internal details.
 
 # Contributing
 

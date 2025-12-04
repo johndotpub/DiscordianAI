@@ -1,0 +1,4 @@
+# PEP 561 marker file
+# This file indicates that the package supports type hints
+# and can be used by type checkers like mypy, pyright, etc.
+

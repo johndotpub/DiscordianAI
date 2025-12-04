@@ -102,10 +102,10 @@ ACTIVITY_STATUS=you bite my shiny metal ass!
 
 [Default]
 # === OPENAI CONFIGURATION ===
-# For GPT-4 series, etc. - Leave blank to disable OpenAI
+# For GPT-5 series models - Leave blank to disable OpenAI
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_API_URL=https://api.openai.com/v1/
-GPT_MODEL=gpt-4o-mini
+GPT_MODEL=gpt-5-mini
 
 # === PERPLEXITY CONFIGURATION ===  
 # For web search capabilities - Leave blank to disable web search
@@ -159,7 +159,7 @@ export ALLOWED_CHANNELS="general,bot-testing"
 # AI service settings  
 export OPENAI_API_KEY="your_openai_key"
 export PERPLEXITY_API_KEY="your_perplexity_key"
-export GPT_MODEL="gpt-4o-mini"
+export GPT_MODEL="gpt-5-mini"
 
 # Orchestrator settings
 export LOOKBACK_MESSAGES_FOR_CONSISTENCY=8

@@ -1,6 +1,6 @@
 # OpenAI Integration Guide
 
-DiscordianAI provides comprehensive OpenAI integration with support for GPT-4 series and other official OpenAI models, including advanced features like conversation consistency and metadata tracking.
+DiscordianAI provides comprehensive OpenAI integration with support for GPT-5 series models, including advanced features like conversation consistency and metadata tracking.
 
 ## Supported Models
 
@@ -93,9 +93,10 @@ INPUT_TOKENS=60000    # Adjust based on conversation length
 ```
 
 ### Model Selection
-- **GPT-5**: Best quality, highest cost
-- **GPT-4**: Good balance of quality and cost  
-- **GPT-4o-mini**: Most cost-effective for simple tasks
+- **GPT-5**: Best quality, highest cost - for complex reasoning tasks
+- **GPT-5-mini**: Cost-effective default - best balance of quality and cost
+- **GPT-5-nano**: High-speed processing - for low-latency responses
+- **GPT-5-chat**: Advanced conversational interactions
 
 ### Parameter support
 - This project does not use unofficial parameters. There is no `reasoning_effort` or `verbosity`.
@@ -123,7 +124,7 @@ WARNING: OpenAI returned no response, trying fallback
 ## Cost Optimization Tips
 
 ### Smart Usage
-1. **Use GPT-4o-mini** for simple queries to reduce costs
+1. **Use GPT-5-mini** for simple queries to reduce costs (default)
 2. **Set appropriate OUTPUT_TOKENS** limit based on your needs
 3. **Monitor token usage** in logs to track spending
 4. Keep `max_tokens` conservative for cost control
@@ -154,13 +155,13 @@ MAX_HISTORY_PER_USER=30  # Reduce to save tokens on context
 - Implement appropriate rate limiting in bot configuration
 
 **"Model not found"**:
-- Verify the model name is correct (examples: `gpt-4o-mini`, `gpt-4o`, `gpt-4`, `gpt-4-turbo`)
+- Verify the model name is correct (examples: `gpt-5-mini`, `gpt-5`, `gpt-5-nano`, `gpt-5-chat`)
 - Check if you have access to the specified model
 
 **High costs**:
 - Lower `OUTPUT_TOKENS` setting
-- Use `gpt-4o-mini` for cost-effective responses (default)
-- Use `gpt-4o` or `gpt-4-turbo` for enhanced capabilities
+- Use `gpt-5-mini` for cost-effective responses (default)
+- Use `gpt-5` for enhanced capabilities when needed
 - Reduce `MAX_HISTORY_PER_USER` to minimize context tokens
 
 ### Getting Help

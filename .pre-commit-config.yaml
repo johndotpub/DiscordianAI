@@ -1,0 +1,51 @@
+# Pre-commit hooks configuration
+# Install with: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # Secret detection to prevent committing API keys and tokens
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: |
+          (?x)^(
+            .*\.lock|
+            .*\.log|
+            .*\.pyc|
+            .*\.egg-info|
+            .secrets.baseline|
+            config\.ini\.example|
+            tests/.*
+          )$
+
+  # Code formatting with black
+  - repo: https://github.com/psf/black
+    rev: 25.11.0
+    hooks:
+      - id: black
+        language_version: python3.10
+        exclude: |
+          (?x)^(
+            \.git|
+            \.tox|
+            \.venv|
+            venv|
+            __pycache__|
+            \.eggs|
+            build|
+            dist|
+            scripts
+          )/
+
+  # Linting with ruff
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.7
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        exclude: scripts/
+      - id: ruff-format
+        exclude: scripts/
+

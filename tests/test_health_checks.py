@@ -427,10 +427,11 @@ class TestConfigurationValidation:
     def test_validate_api_configuration_valid(self):
         """Test validation with valid configuration."""
         config = {
-            "OPENAI_API_KEY": "sk-test123",
+            "OPENAI_API_KEY": "sk-" + "a" * 32,  # Valid format: sk- followed by 32+ alphanumeric
             "OPENAI_API_URL": "https://api.openai.com/v1/",
             "GPT_MODEL": "gpt-5-mini",
-            "PERPLEXITY_API_KEY": "pplx-test123",
+            "PERPLEXITY_API_KEY": "pplx-"
+            + "a" * 32,  # Valid format: pplx- followed by 32+ alphanumeric
             "PERPLEXITY_MODEL": "sonar-pro",
             "DISCORD_TOKEN": "discord-token",
             "ACTIVITY_TYPE": "watching",

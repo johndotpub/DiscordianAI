@@ -5,6 +5,80 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.8.0] - 2025-12-04
+
+### Added
+- **🔐 Security Enhancements**: Comprehensive security improvements
+  - Dependency vulnerability scanning with `pip-audit` in CI/CD pipeline
+  - GitHub Dependabot configuration for automated dependency updates
+  - API key format validation with clear error messages and help links
+  - Pre-commit hooks with `detect-secrets`, `black`, and `ruff`
+  - Log sanitization to prevent API key exposure (fixes CodeQL alert)
+  - Custom CodeQL workflow with v4 actions and false-positive filtering
+  - Dependency Review action for PR vulnerability scanning
+  - Copilot Review auto-request for all PRs
+  - Enhanced sanitization: hex secrets, JWT tokens, API keys redacted at source
+- **📖 Documentation**: New comprehensive documentation
+  - `docs/Architecture.md` - System design, components, request flow diagrams, design patterns
+  - `docs/Security.md` - API key management, rate limiting, input validation, Docker hardening
+  - Updated documentation index with new guides
+  - Added comprehensive README badges (CI, coverage, Python, code style, integrations, security)
+- **📦 Package Improvements**: Modern Python packaging
+  - `src/__init__.py` with proper package exports and metadata
+  - `src/py.typed` marker for PEP 561 type hints support
+  - Module docstrings added to `bot.py` and `config.py`
+- **🧪 Test Coverage**: Comprehensive testing (545+ tests, 80.80% coverage)
+  - Configuration edge cases (malformed files, invalid values, unicode)
+  - API validation tests (40+ cases including key format validation)
+  - Error recovery tests (circuit breaker, retry logic)
+  - Message splitting tests (unicode, emoji, code blocks)
+  - Load/stress tests (10k+ concurrent users, thread safety)
+
+### Fixed
+- **🐛 Signal Handler**: Fixed graceful shutdown crash on SIGTERM
+  - Eliminated "Cannot run the event loop while another loop is running" error
+  - Now raises KeyboardInterrupt for proper discord.py cleanup
+- **🔑 API Key Validation**: Relaxed overly strict format patterns
+  - Supports modern OpenAI formats: `sk-proj-xxx`, `sk-svcacct-xxx`
+  - Updated regex to allow hyphens/underscores in key body
+- **🔧 Code Quality**: Fixed 26 ruff lint errors
+  - Cleaner exception handling with `contextlib.suppress()`
+  - More specific exception catches (no blind `Exception`)
+  - Removed duplicate methods, fixed unused variables
+- **📄 Documentation**: Fixed broken links and outdated references
+  - Fixed 16 broken documentation links
+  - Updated GPT-4 references to GPT-5 series throughout
+
+### Changed
+- **🚀 CI/CD**: Modernized GitHub Actions workflow
+  - Upgraded actions (setup-python@v5, cache@v4, codecov@v4)
+  - Added concurrency control to cancel stale runs
+  - Added job timeouts (15min tests, 5min lint/security)
+  - Python 3.11/3.12 compatibility testing (informational, non-blocking)
+  - Simplified lint job, fixed security scan dependency installation
+  - Added Dependency Review action (required, blocks PRs with vulnerabilities)
+  - Added Copilot Review auto-request (optional, informational)
+- **🐍 Python Compatibility**: Expanded version support
+  - Changed `requires-python` from `==3.10.*` to `>=3.10`
+  - Supports Python 3.10, 3.11, 3.12 and future versions
+- **⬆️ Dependencies**: Upgraded to latest bleeding edge versions
+  - discord.py 2.6.4, openai 2.8.1, requests 2.32.5, beautifulsoup4 4.14.3
+  - black 25.11.0, ruff 0.14.7, pytest 9.0.1, tox 4.32.0
+  - Full list: httpx 0.28.1, pytest-asyncio 1.3.0, coverage 7.12.0, pip-audit 2.10.0
+- **🧹 Configuration**: Consolidated tool configuration
+  - Removed redundant `pytest.ini` and `.flake8` (now in `pyproject.toml`)
+  - Consolidated constants into `config.py` (single source of truth)
+- **🛡️ Reliability**: Enhanced stability and monitoring
+  - Graceful shutdown with signal handlers (SIGTERM, SIGINT)
+  - Connection pool health monitoring and status checks
+  - Memory usage statistics in conversation manager
+- **⚙️ Infrastructure**: Improved Docker healthcheck
+  - Validates bot configuration on startup, not just Python import
+
+### Removed
+- Redundant test files: `test_config_basic.py`, `test_bot_basic.py`
+- Redundant config files: `pytest.ini`, `.flake8`
+
 ## [v0.2.7.2] - 2025-01-23
 
 ### Fixed

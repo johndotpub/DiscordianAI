@@ -40,7 +40,7 @@ PERPLEXITY_MAX_KEEPALIVE=5
 
 ### OpenAI API Limits
 - **Requests per minute**: 500 RPM (varies by model and account tier)
-- **Tokens per minute**: 200,000 TPM for gpt-3.5-turbo, 10,000 TPM for gpt-4
+- **Tokens per minute**: Varies by model (check OpenAI documentation for current limits)
 - **Connection limits**: No explicit connection limits, but rate limits apply
 
 ### Perplexity API Limits

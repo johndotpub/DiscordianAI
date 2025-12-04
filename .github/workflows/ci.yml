@@ -1,4 +1,5 @@
-# Optimized CI workflow with parallel tox execution and caching
+# Optimized CI workflow with parallel execution and caching
+# Runs tests on Python 3.10 (required), 3.11/3.12 (informational)
 name: CI
 
 on:
@@ -6,58 +7,138 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
+  workflow_dispatch:  # Allow manual trigger
+
+# Cancel in-progress runs on same branch to save CI minutes
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  # Single optimized job using tox for everything
-  test-and-lint:
+  # Primary test suite - Python 3.10 (required to pass)
+  test:
+    name: Tests (Python 3.10)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10"]
-
+    timeout-minutes: 15
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
       with:
-        python-version: ${{ matrix.python-version }}
-    
-    - name: Cache pip dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt', '**/pyproject.toml') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-${{ matrix.python-version }}-
-    
+        python-version: "3.10"
+        cache: pip
+        cache-dependency-path: |
+          requirements.txt
+          pyproject.toml
+
     - name: Cache tox environments
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: .tox
-        key: ${{ runner.os }}-tox-v2-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
+        key: ${{ runner.os }}-tox-v3-3.10-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
         restore-keys: |
-          ${{ runner.os }}-tox-v2-${{ matrix.python-version }}-
-    
-    - name: Clear tox cache and install dependencies
+          ${{ runner.os }}-tox-v3-3.10-
+
+    - name: Install tox
       run: |
         python -m pip install --upgrade pip
         pip install tox
-        # Clear any cached tox environments to ensure fresh build
-        tox --recreate
-    
-    - name: Run tox in parallel
-      run: |
-        # Clear any remaining cache and run environments in parallel
-        rm -rf .tox
-        tox --parallel auto -e py310,lint,format
-        
+
+    - name: Run tests
+      run: tox -e py310
+
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       with:
         file: coverage.xml
         fail_ci_if_error: false
-        verbose: true
+
+  # Python 3.11/3.12 compatibility tests (informational, allowed to fail)
+  test-compat:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true  # Don't fail the workflow if these fail
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: pip
+        cache-dependency-path: |
+          requirements.txt
+          pyproject.toml
+
+    - name: Cache tox environments
+      uses: actions/cache@v4
+      with:
+        path: .tox
+        key: ${{ runner.os }}-tox-v3-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
+        restore-keys: |
+          ${{ runner.os }}-tox-v3-${{ matrix.python-version }}-
+
+    - name: Install tox
+      run: |
+        python -m pip install --upgrade pip
+        pip install tox
+
+    - name: Run tests
+      run: tox -e py${{ matrix.python-version | replace('.', '') }}
+
+  # Lint and format check
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
+        cache: pip
+        cache-dependency-path: pyproject.toml
+
+    - name: Install linters
+      run: pip install black ruff
+
+    - name: Check formatting (black)
+      run: black . --check --diff
+
+    - name: Check linting (ruff)
+      run: ruff check . --show-fixes
+
+  # Security scanning
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
+        cache: pip
+        cache-dependency-path: |
+          requirements.txt
+          pyproject.toml
+
+    - name: Install dependencies and scan
+      run: |
+        pip install -r requirements.txt
+        pip install pip-audit
+        pip-audit --desc

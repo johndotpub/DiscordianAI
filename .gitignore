@@ -144,6 +144,9 @@ config.ini
 *.db
 *.sqlite3
 
+# Pre-commit secrets baseline
+.secrets.baseline
+
 # Docker specific
 *.dockerenv
 *.env.docker

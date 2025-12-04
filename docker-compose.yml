@@ -23,8 +23,10 @@ services:
       - TZ=UTC
     
     # Health check
+    # Verifies bot can import modules and validate configuration
+    # Note: Full bot health (Discord connection) is monitored via logs
     healthcheck:
-      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      test: ["CMD", "python", "-c", "from src.config import load_config; from src.api_validation import validate_full_config; import sys; config = load_config('/app/config.ini'); warnings, errors = validate_full_config(config); sys.exit(1 if errors else 0)"]
       interval: 30s
       timeout: 10s
       retries: 3

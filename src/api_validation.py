@@ -7,22 +7,96 @@ against current API specifications to ensure compatibility and optimal performan
 import logging
 import re
 
-# Valid API parameters and values
-OPENAI_VALID_MODELS = [
-    "gpt-5",  # Latest generation - standard
-    "gpt-5-mini",  # Latest generation - cost-effective
-    "gpt-5-nano",  # Latest generation - high-speed
-    "gpt-5-chat",  # Latest generation - conversational
+# Import constants from config.py (single source of truth)
+from .config import (
+    DISCORD_ACTIVITY_TYPES,
+    OPENAI_VALID_MODELS,
+    PERPLEXITY_MODELS,
+    VALID_OPENAI_URL_PATTERN,
+    VALID_PERPLEXITY_URL_PATTERN,
+)
+
+# Re-export for backward compatibility
+__all__ = [
+    "DISCORD_ACTIVITY_TYPES",
+    "OPENAI_API_KEY_PATTERN",
+    "OPENAI_VALID_MODELS",
+    "PERPLEXITY_API_KEY_PATTERN",
+    "PERPLEXITY_MODELS",
+    "VALID_OPENAI_URL_PATTERN",
+    "VALID_PERPLEXITY_URL_PATTERN",
+    "log_validation_results",
+    "validate_discord_config",
+    "validate_full_config",
+    "validate_openai_api_key_format",
+    "validate_openai_config",
+    "validate_perplexity_api_key_format",
+    "validate_perplexity_config",
 ]
 
+# API key format patterns
+# OpenAI keys can be: sk-xxx, sk-proj-xxx, sk-svcacct-xxx, etc.
+OPENAI_API_KEY_PATTERN = re.compile(r"^sk-[a-zA-Z0-9\-_]{20,}$")
+# Perplexity keys: pplx-xxx
+PERPLEXITY_API_KEY_PATTERN = re.compile(r"^pplx-[a-zA-Z0-9\-_]{20,}$")
 
-DISCORD_ACTIVITY_TYPES = ["playing", "streaming", "listening", "watching", "custom", "competing"]
 
-PERPLEXITY_MODELS = ["sonar-pro", "sonar"]  # Latest Perplexity model  # General Perplexity model
+def validate_openai_api_key_format(api_key: str | None) -> tuple[bool, str | None]:
+    """Validate OpenAI API key format.
 
-# API URL patterns
-VALID_OPENAI_URL_PATTERN = re.compile(r"https://api\.openai\.com/v\d+/?")
-VALID_PERPLEXITY_URL_PATTERN = re.compile(r"https://api\.perplexity\.ai/?")
+    Args:
+        api_key: API key to validate (can be None if not provided)
+
+    Returns:
+        Tuple[bool, Optional[str]]: (is_valid, error_message)
+    """
+    if api_key is None:
+        return True, None  # None is valid (optional)
+
+    if not api_key or not api_key.strip():
+        return False, (
+            "Invalid OpenAI API key format. "
+            "OpenAI API keys should start with 'sk-' followed by alphanumeric characters. "
+            "Please verify your API key from https://platform.openai.com/api-keys"
+        )
+
+    if not OPENAI_API_KEY_PATTERN.match(api_key):
+        return False, (
+            "Invalid OpenAI API key format. "
+            "OpenAI API keys should start with 'sk-' followed by alphanumeric characters. "
+            "Please verify your API key from https://platform.openai.com/api-keys"
+        )
+
+    return True, None
+
+
+def validate_perplexity_api_key_format(api_key: str | None) -> tuple[bool, str | None]:
+    """Validate Perplexity API key format.
+
+    Args:
+        api_key: API key to validate (can be None if not provided)
+
+    Returns:
+        Tuple[bool, Optional[str]]: (is_valid, error_message)
+    """
+    if api_key is None:
+        return True, None  # None is valid (optional)
+
+    if not api_key or not api_key.strip():
+        return False, (
+            "Invalid Perplexity API key format. "
+            "Perplexity API keys should start with 'pplx-' followed by alphanumeric characters. "
+            "Please verify your API key from https://www.perplexity.ai/settings/api"
+        )
+
+    if not PERPLEXITY_API_KEY_PATTERN.match(api_key):
+        return False, (
+            "Invalid Perplexity API key format. "
+            "Perplexity API keys should start with 'pplx-' followed by alphanumeric characters. "
+            "Please verify your API key from https://www.perplexity.ai/settings/api"
+        )
+
+    return True, None
 
 
 def validate_openai_config(config: dict) -> list[str]:
@@ -35,6 +109,17 @@ def validate_openai_config(config: dict) -> list[str]:
         List[str]: List of validation warnings/errors
     """
     issues = []
+
+    # Validate API key format
+    api_key = config.get("OPENAI_API_KEY")
+    if api_key:
+        is_valid, error_msg = validate_openai_api_key_format(api_key)
+        # Ensure error_msg does not echo the original API key
+        if not is_valid and error_msg:
+            safe_msg = (
+                error_msg.replace(api_key, "[REDACTED]") if api_key in error_msg else error_msg
+            )
+            issues.append(f"ERROR: {safe_msg}")
 
     # Validate API URL
     api_url = config.get("OPENAI_API_URL", "")
@@ -76,6 +161,17 @@ def validate_perplexity_config(config: dict) -> list[str]:
         List[str]: List of validation warnings/errors
     """
     issues = []
+
+    # Validate API key format
+    api_key = config.get("PERPLEXITY_API_KEY")
+    if api_key:
+        is_valid, error_msg = validate_perplexity_api_key_format(api_key)
+        # Ensure error_msg does not echo the original API key
+        if not is_valid and error_msg:
+            safe_msg = (
+                error_msg.replace(api_key, "[REDACTED]") if api_key in error_msg else error_msg
+            )
+            issues.append(f"ERROR: {safe_msg}")
 
     # Validate API URL
     api_url = config.get("PERPLEXITY_API_URL", "")
@@ -203,6 +299,60 @@ def validate_full_config(config: dict) -> tuple[list[str], list[str]]:
     return warnings, errors
 
 
+def _sanitize_log_message(message: str) -> str:
+    """Sanitize log messages to prevent exposing sensitive information.
+
+    This function creates a NEW string that is guaranteed not to contain
+    sensitive data, breaking any taint tracking from the original message.
+
+    Args:
+        message: The message to sanitize
+
+    Returns:
+        str: Sanitized message with sensitive data redacted
+    """
+    # Redact potential API keys (sk-xxx, pplx-xxx patterns)
+    sanitized = re.sub(r"(sk-|pplx-)[a-zA-Z0-9\-_]+", r"\1[REDACTED]", message)
+    # Redact anything that looks like a token or key value
+    sanitized = re.sub(
+        r"(key|token|secret|password)(['\"]?\s*[:=]\s*['\"]?)[^\s,'\"\\]+",
+        r"\1\2[REDACTED]",
+        sanitized,
+        flags=re.IGNORECASE,
+    )
+    # Redact hex secrets (32+ chars) and JWT-like tokens
+    sanitized = re.sub(
+        r"\b(?:[A-Fa-f0-9]{32,}|eyJ[A-Za-z0-9_\-]+?\.ey[A-Za-z0-9_\-]+?\.[A-Za-z0-9_\-]+)\b",
+        "[REDACTED]",
+        sanitized,
+    )
+    # Return a new string to break taint tracking
+    return str(sanitized)
+
+
+def _log_validation_messages(
+    logger: logging.Logger, warnings: list[str], errors: list[str]
+) -> None:
+    """Log validation messages with sensitive data redacted.
+
+    Note: The validation messages themselves do NOT contain actual API key values.
+    They only contain format requirements like "should start with 'sk-'".
+    The _sanitize_log_message function provides additional protection.
+
+    Args:
+        logger: Logger instance
+        warnings: List of warning messages
+        errors: List of error messages
+    """
+    # Log warnings with sanitization
+    for warning in warnings:
+        logger.warning("Config validation: %s", _sanitize_log_message(warning))
+
+    # Log errors with sanitization
+    for error in errors:
+        logger.error("Config validation: %s", _sanitize_log_message(error))
+
+
 def log_validation_results(config: dict, logger: logging.Logger | None = None) -> bool:
     """Validate configuration and log results.
 
@@ -218,13 +368,9 @@ def log_validation_results(config: dict, logger: logging.Logger | None = None) -
 
     warnings, errors = validate_full_config(config)
 
-    # Log warnings
-    for warning in warnings:
-        logger.warning(f"Config validation: {warning}")
-
-    # Log errors
-    for error in errors:
-        logger.error(f"Config validation: {error}")
+    # Log validation results using sanitized messages
+    # The _sanitize_log_message function redacts any potential sensitive data
+    _log_validation_messages(logger, warnings, errors)
 
     # Summary
     if errors:

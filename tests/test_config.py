@@ -320,3 +320,244 @@ class TestGetErrorMessages:
 
         # Should be different object instances (not cached references)
         assert messages1 is not messages2
+
+
+class TestConfigValidationEdgeCases:
+    """Test edge cases and error scenarios for configuration validation."""
+
+    def test_load_config_malformed_ini_file(self):
+        """Test handling of malformed INI file."""
+        # Create a malformed config file
+        config_content = """[Discord
+DISCORD_TOKEN=test_token
+[Default
+OPENAI_API_KEY=test_key
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
+            f.write(config_content)
+            temp_config_path = f.name
+
+        try:
+            # Should not crash, but may not load all values correctly
+            config = load_config(temp_config_path)
+            # At minimum, defaults should be present
+            assert "GPT_MODEL" in config
+            assert config["GPT_MODEL"] == "gpt-5-mini"
+        finally:
+            os.unlink(temp_config_path)
+
+    def test_load_config_missing_sections(self):
+        """Test config loading with missing sections."""
+        # Config file with only one section
+        config_content = """[Discord]
+DISCORD_TOKEN=test_token
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
+            f.write(config_content)
+            temp_config_path = f.name
+
+        try:
+            config = load_config(temp_config_path)
+            # Should use defaults for missing sections
+            assert config["DISCORD_TOKEN"] == "test_token"  # noqa: S105
+            assert config["GPT_MODEL"] == "gpt-5-mini"  # Default value
+            assert config["OPENAI_API_KEY"] is None  # Default value
+        finally:
+            os.unlink(temp_config_path)
+
+    def test_load_config_empty_file(self):
+        """Test config loading with empty file."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
+            f.write("")
+            temp_config_path = f.name
+
+        try:
+            config = load_config(temp_config_path)
+            # Should return all defaults
+            assert config["GPT_MODEL"] == "gpt-5-mini"
+            assert config["DISCORD_TOKEN"] is None
+        finally:
+            os.unlink(temp_config_path)
+
+    def test_load_config_invalid_integer_values(self):
+        """Test handling of invalid integer values in config."""
+        config_content = """[Default]
+INPUT_TOKENS=not_an_integer
+OUTPUT_TOKENS=also_not_an_integer
+CONTEXT_WINDOW=123.45
+
+[Limits]
+RATE_LIMIT=invalid
+RATE_LIMIT_PER=also_invalid
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
+            f.write(config_content)
+            temp_config_path = f.name
+
+        try:
+            with patch("src.config.logging.getLogger") as mock_logger:
+                mock_logger.return_value = MagicMock()
+                config = load_config(temp_config_path)
+
+                # Should fall back to defaults for invalid integers
+                assert config["INPUT_TOKENS"] == 120000  # Default
+                assert config["OUTPUT_TOKENS"] == 8000  # Default
+                assert config["RATE_LIMIT"] == 10  # Default
+                assert config["RATE_LIMIT_PER"] == 60  # Default
+
+                # Should log warnings for invalid values
+                assert mock_logger.return_value.warning.called
+        finally:
+            os.unlink(temp_config_path)
+
+    def test_load_config_invalid_boolean_like_values(self):
+        """Test handling of boolean-like values that should be strings."""
+        config_content = """[Discord]
+BOT_PRESENCE=true
+ACTIVITY_TYPE=false
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
+            f.write(config_content)
+            temp_config_path = f.name
+
+        try:
+            config = load_config(temp_config_path)
+            # Should treat as strings, not booleans
+            assert config["BOT_PRESENCE"] == "true"
+            assert config["ACTIVITY_TYPE"] == "false"
+        finally:
+            os.unlink(temp_config_path)
+
+    def test_load_config_special_characters_in_values(self):
+        """Test handling of special characters in config values."""
+        config_content = """[Default]
+SYSTEM_MESSAGE=Test message with "quotes" and 'apostrophes' and \\backslashes
+[Discord]
+ACTIVITY_STATUS=Status with 🎉 emoji and unicode: 测试
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
+            f.write(config_content)
+            temp_config_path = f.name
+
+        try:
+            config = load_config(temp_config_path)
+            # Should preserve special characters
+            assert "quotes" in config["SYSTEM_MESSAGE"]
+            assert "🎉" in config["ACTIVITY_STATUS"]
+            assert "测试" in config["ACTIVITY_STATUS"]
+        finally:
+            os.unlink(temp_config_path)
+
+    def test_load_config_very_long_values(self):
+        """Test handling of very long config values."""
+        long_value = "x" * 10000
+        config_content = f"""[Default]
+SYSTEM_MESSAGE={long_value}
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
+            f.write(config_content)
+            temp_config_path = f.name
+
+        try:
+            config = load_config(temp_config_path)
+            # Should handle long values
+            assert len(config["SYSTEM_MESSAGE"]) == 10000
+            assert config["SYSTEM_MESSAGE"] == long_value
+        finally:
+            os.unlink(temp_config_path)
+
+    def test_load_config_whitespace_handling(self):
+        """Test handling of whitespace in config values."""
+        # Note: Using explicit strings to avoid trailing whitespace lint errors
+        config_content = (
+            "[Discord]\n"
+            "DISCORD_TOKEN=  token_with_spaces\n"
+            "ALLOWED_CHANNELS=  channel1  ,  channel2  ,  channel3\n"
+            "\n"
+            "[Default]\n"
+            "SYSTEM_MESSAGE=  Message with leading and trailing spaces\n"
+        )
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
+            f.write(config_content)
+            temp_config_path = f.name
+
+        try:
+            config = load_config(temp_config_path)
+            # ConfigParser should handle whitespace (may trim or preserve)
+            assert "token_with_spaces" in config["DISCORD_TOKEN"]
+            # Channels should be split correctly
+            assert len(config["ALLOWED_CHANNELS"]) >= 1
+        finally:
+            os.unlink(temp_config_path)
+
+    def test_load_config_unicode_in_section_names(self):
+        """Test handling of unicode in section names (should work or fail gracefully)."""
+        config_content = """[Discord]
+DISCORD_TOKEN=test_token
+
+[测试]
+TEST_VALUE=test
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".ini", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(config_content)
+            temp_config_path = f.name
+
+        try:
+            # Should not crash, may or may not load unicode section
+            config = load_config(temp_config_path)
+            assert config["DISCORD_TOKEN"] == "test_token"  # noqa: S105
+        finally:
+            os.unlink(temp_config_path)
+
+    def test_load_config_environment_override_invalid_urls(self):
+        """Test environment variable overrides with invalid URLs."""
+        with patch.dict(
+            os.environ,
+            {
+                "OPENAI_API_URL": "not-a-valid-url",
+                "PERPLEXITY_API_URL": "also-not-valid",
+            },
+        ):
+            config = load_config()
+            # Should accept the values (validation happens elsewhere)
+            assert config["OPENAI_API_URL"] == "not-a-valid-url"
+            assert config["PERPLEXITY_API_URL"] == "also-not-valid"
+
+    def test_load_config_environment_override_empty_strings(self):
+        """Test environment variable overrides with empty strings."""
+        with patch.dict(
+            os.environ,
+            {
+                "DISCORD_TOKEN": "",
+                "OPENAI_API_KEY": "",
+                "ALLOWED_CHANNELS": "",
+            },
+        ):
+            config = load_config()
+            # Empty strings should be treated as None/empty
+            assert config["DISCORD_TOKEN"] == ""
+            assert config["OPENAI_API_KEY"] == ""
+            assert config["ALLOWED_CHANNELS"] == []
+
+    def test_load_config_relative_path_handling(self):
+        """Test relative path handling with base_folder."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create nested directory structure
+            nested_dir = os.path.join(temp_dir, "nested", "config")
+            os.makedirs(nested_dir, exist_ok=True)
+
+            config_path = os.path.join(nested_dir, "config.ini")
+            with open(config_path, "w") as f:
+                f.write("[Discord]\nDISCORD_TOKEN=test_token\n")
+
+            # Test with relative path from base_folder
+            config = load_config("nested/config/config.ini", temp_dir)
+            assert config["DISCORD_TOKEN"] == "test_token"  # noqa: S105
+
+    def test_load_config_nonexistent_base_folder(self):
+        """Test handling of nonexistent base_folder."""
+        config = load_config(None, "/nonexistent/path/that/does/not/exist")
+        # Should not crash, should use defaults
+        assert config["GPT_MODEL"] == "gpt-5-mini"
