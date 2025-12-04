@@ -1,3 +1,18 @@
+"""Configuration management and constants for DiscordianAI.
+
+This module serves as the single source of truth for all configuration:
+- API constants (models, URLs, patterns)
+- Discord settings (limits, activity types)
+- Performance tuning (cache TTL, connection pools)
+- Smart routing patterns for AI service selection
+- Configuration loading from files and environment variables
+
+Configuration hierarchy (highest priority first):
+1. Environment variables
+2. Config file (config.ini)
+3. Default values
+"""
+
 import argparse
 import configparser
 import logging

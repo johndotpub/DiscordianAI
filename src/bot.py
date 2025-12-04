@@ -1,5 +1,19 @@
+"""Discord bot core module with event handling and message processing.
+
+This module provides the main Discord bot implementation including:
+- Bot initialization and dependency injection
+- Event handlers for Discord messages
+- Message splitting for long responses
+- Graceful shutdown with signal handlers
+- Integration with AI services (OpenAI, Perplexity)
+
+The bot uses a dependency injection pattern via a `deps` dictionary
+to provide loose coupling and testability.
+"""
+
 # Standard library imports
 import asyncio
+import contextlib
 import logging
 import re
 import signal
@@ -802,16 +816,14 @@ async def graceful_shutdown(bot: discord.Client, deps: dict[str, Any]) -> None:
             health_task = deps["_health_task"]
             if not health_task.done():
                 health_task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await health_task
-                except asyncio.CancelledError:
-                    pass
                 logger.info("Health monitoring task cancelled")
 
         logger.info("Graceful shutdown completed")
 
-    except Exception as e:
-        logger.exception("Error during graceful shutdown: %s", e)
+    except Exception:
+        logger.exception("Error during graceful shutdown")
 
 
 def run_bot(config: dict[str, Any]) -> None:
@@ -841,7 +853,7 @@ def run_bot(config: dict[str, Any]) -> None:
         register_event_handlers(deps["bot"], deps)
 
         # Set up signal handlers for graceful shutdown
-        def signal_handler(signum, frame):
+        def signal_handler(signum, _frame):
             logger.info(f"Received signal {signum}, initiating graceful shutdown...")
             # Create event loop for graceful shutdown
             loop = asyncio.new_event_loop()
