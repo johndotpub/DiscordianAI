@@ -23,8 +23,10 @@ jobs:
         with:
           # Fail on high and critical severity vulnerabilities
           fail-on-severity: high
-          # Also check license compatibility
-          deny-licenses: GPL-3.0, AGPL-3.0
+          # Don't fail on unknown licenses (beautifulsoup4 has null license metadata)
+          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, PSF-2.0, Unlicense, LGPL-2.1, LGPL-3.0, MPL-2.0
           # Comment on the PR with findings
           comment-summary-in-pr: always
+          # Retry if dependency snapshot isn't ready
+          retry-on-snapshot-warnings: true
 
