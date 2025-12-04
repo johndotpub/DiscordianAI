@@ -6,21 +6,34 @@ Welcome to the DiscordianAI documentation! This guide covers everything you need
 
 ### 🚀 Getting Started
 - **[Setup Guide](Setup.md)** - Complete installation and setup instructions
-- **[Configuration](Configuration.md)** - Complete configuration guide
+- **[Configuration](Configuration.md)** - Complete configuration reference
+- **[Python Versions](Python_Versions.md)** - Python version compatibility
 
-### ⚙️ Configuration
-- **[Configuration Guide](Configuration.md)** - Complete configuration reference
-- **[OpenAI Setup](OpenAI.md)** - OpenAI API configuration and models
-- **[Perplexity Setup](Perplexity.md)** - Perplexity API configuration
-
-### 🤖 Bot Features
+### 🤖 AI Integration
+- **[OpenAI Integration](OpenAI.md)** - OpenAI API configuration and GPT models
+- **[Perplexity Integration](Perplexity.md)** - Web search, citations, and Sonar models
 - **[Smart Orchestration](HybridMode.md)** - How the bot chooses between AI services
-- **[Message Splitting](MessageSplitting.md)** - How long messages and embeds are handled
-- **[OpenAI Integration](OpenAI.md)** - OpenAI models and capabilities
-- **[Perplexity Integration](Perplexity.md)** - Web search and citations
-- **[Web Scraping](WebScraping.md)** - URL content extraction
+- **[Web Scraping](WebScraping.md)** - URL content extraction for context
 
-## AI Service Selection
+### 💬 Message Handling
+- **[Message Splitting](MessageSplitting.md)** - How long messages are handled
+- **[Embed Limits](EmbedLimits.md)** - Discord embed size limits and strategies
+
+### 🔧 Infrastructure
+- **[Architecture](Architecture.md)** - System design, patterns, and components
+- **[Connection Pooling](ConnectionPooling.md)** - HTTP/2 connection optimization
+
+### 🚀 Deployment
+- **[Docker](Docker.md)** - Containerized deployment
+- **[Daemon Mode](Daemon.md)** - Running as a background service
+
+### 🛡️ Security & Development
+- **[Security](Security.md)** - API key management, rate limiting, hardening
+- **[Development Guide](Development.md)** - Modern workflow with black + ruff
+
+---
+
+## 🤖 AI Service Selection
 
 The bot intelligently chooses between OpenAI and Perplexity based on message content:
 
@@ -53,40 +66,24 @@ flowchart TD
     N -->|Perplexity| F
 ```
 
-### 🔧 Development
-- **[Development Guide](Development.md)** - Modern development workflow with black + ruff
-- **[Python Versions](Python_Versions.md)** - Python version compatibility and testing
-- **[Architecture](Architecture.md)** - System design, patterns, and component overview
-- **[API Validation](API_Validation.md)** - API parameter validation and health checks
-- **[Connection Pooling](ConnectionPooling.md)** - HTTP connection optimization
-- **[Embed Limits](EmbedLimits.md)** - Discord embed size handling
-
-### 🔒 Security
-- **[Security Best Practices](Security.md)** - API key management, rate limiting, hardening
-
-### 📖 Reference
-- **[API Validation](API_Validation.md)** - API parameter validation and health checks
-- **[Connection Pooling](ConnectionPooling.md)** - HTTP connection pool management
-- **[Embed Limits](EmbedLimits.md)** - Discord message and embed limits
-
-### 🚀 Deployment
-- **[Docker](Docker.md)** - Containerized deployment
-- **[Daemon Mode](Daemon.md)** - Running as a system service
-- **[Security](Security.md)** - Production security checklist
+---
 
 ## 🎯 Quick Navigation
 
-- **New to DiscordianAI?** Start with [Setup Guide](Setup.md)
-- **Configuring the bot?** Check [Configuration Guide](Configuration.md)
-- **Setting up APIs?** See [OpenAI](OpenAI.md) and [Perplexity](Perplexity.md) guides
-- **Developing?** Read [Development Guide](Development.md)
-- **Deploying?** See [Docker](Docker.md) and [Daemon](Daemon.md) guides
+| If you want to... | Read this |
+|-------------------|-----------|
+| Set up the bot from scratch | [Setup Guide](Setup.md) |
+| Configure bot settings | [Configuration](Configuration.md) |
+| Set up OpenAI API | [OpenAI Integration](OpenAI.md) |
+| Set up Perplexity API | [Perplexity Integration](Perplexity.md) |
+| Understand the architecture | [Architecture](Architecture.md) |
+| Deploy with Docker | [Docker](Docker.md) |
+| Run as a service | [Daemon Mode](Daemon.md) |
+| Contribute to development | [Development Guide](Development.md) |
 
-## 📝 Contributing
+---
 
-Found an error or want to improve the documentation? See our [Contributing Guide](../CONTRIBUTING.md) for details on how to submit changes.
-
-## 🔗 External Links
+## 🔗 External Resources
 
 - **[GitHub Repository](https://github.com/johndotpub/DiscordianAI)**
 - **[Issue Tracker](https://github.com/johndotpub/DiscordianAI/issues)**
