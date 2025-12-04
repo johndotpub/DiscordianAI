@@ -116,7 +116,9 @@ def validate_openai_config(config: dict) -> list[str]:
         is_valid, error_msg = validate_openai_api_key_format(api_key)
         # Ensure error_msg does not echo the original API key
         if not is_valid and error_msg:
-            safe_msg = error_msg.replace(api_key, "[REDACTED]") if api_key in error_msg else error_msg
+            safe_msg = (
+                error_msg.replace(api_key, "[REDACTED]") if api_key in error_msg else error_msg
+            )
             issues.append(f"ERROR: {safe_msg}")
 
     # Validate API URL
@@ -166,7 +168,9 @@ def validate_perplexity_config(config: dict) -> list[str]:
         is_valid, error_msg = validate_perplexity_api_key_format(api_key)
         # Ensure error_msg does not echo the original API key
         if not is_valid and error_msg:
-            safe_msg = error_msg.replace(api_key, "[REDACTED]") if api_key in error_msg else error_msg
+            safe_msg = (
+                error_msg.replace(api_key, "[REDACTED]") if api_key in error_msg else error_msg
+            )
             issues.append(f"ERROR: {safe_msg}")
 
     # Validate API URL
@@ -310,9 +314,18 @@ def _sanitize_log_message(message: str) -> str:
     # Redact potential API keys (sk-xxx, pplx-xxx patterns)
     sanitized = re.sub(r"(sk-|pplx-)[a-zA-Z0-9\-_]+", r"\1[REDACTED]", message)
     # Redact anything that looks like a token or key value
-    sanitized = re.sub(r"(key|token|secret|password)(['\"]?\s*[:=]\s*['\"]?)[^\s,'\"\\]+", r"\1\2[REDACTED]", sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(
+        r"(key|token|secret|password)(['\"]?\s*[:=]\s*['\"]?)[^\s,'\"\\]+",
+        r"\1\2[REDACTED]",
+        sanitized,
+        flags=re.IGNORECASE,
+    )
     # Redact hex secrets (32+ chars) and JWT-like tokens
-    sanitized = re.sub(r"\b(?:[A-Fa-f0-9]{32,}|eyJ[A-Za-z0-9_\-]+?\.ey[A-Za-z0-9_\-]+?\.[A-Za-z0-9_\-]+)\b", "[REDACTED]", sanitized)
+    sanitized = re.sub(
+        r"\b(?:[A-Fa-f0-9]{32,}|eyJ[A-Za-z0-9_\-]+?\.ey[A-Za-z0-9_\-]+?\.[A-Za-z0-9_\-]+)\b",
+        "[REDACTED]",
+        sanitized,
+    )
     # Return a new string to break taint tracking
     return str(sanitized)
 

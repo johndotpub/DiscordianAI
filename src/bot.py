@@ -857,7 +857,7 @@ def run_bot(config: dict[str, Any]) -> None:
             # Don't try to run async code from signal handler - it causes
             # "Cannot run the event loop while another loop is running" error
             # Instead, raise KeyboardInterrupt which discord.py handles gracefully
-            raise KeyboardInterrupt
+            raise KeyboardInterrupt  # noqa: TRY301
 
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
