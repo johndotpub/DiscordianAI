@@ -52,6 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added job timeouts (15min tests, 5min lint/security)
   - Python 3.11/3.12 compatibility testing (informational, non-blocking)
   - Simplified lint job, fixed security scan dependency installation
+  - Added Dependency Review action (required, blocks PRs with vulnerabilities)
+  - Added Copilot Review auto-request (optional, informational)
 - **🐍 Python Compatibility**: Expanded version support
   - Changed `requires-python` from `==3.10.*` to `>=3.10`
   - Supports Python 3.10, 3.11, 3.12 and future versions
