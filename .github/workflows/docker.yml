@@ -25,7 +25,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25  # Increased from 15 to account for retries
 
     permissions:
       contents: read
@@ -48,19 +48,19 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Log in to Docker Hub (Secondary)
+    - name: Log in to Docker Hub
       uses: docker/login-action@v3
       with:
         registry: docker.io
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
-      continue-on-error: true  # Docker Hub is secondary
+      continue-on-error: true  # Docker Hub login optional
 
-    - name: Extract metadata (tags, labels) for Docker
-      id: meta
+    - name: Extract metadata for GHCR
+      id: meta-ghcr
       uses: docker/metadata-action@v5
       with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},${{ env.DOCKERHUB_IMAGE }}
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         tags: |
           type=raw,value=latest,event=branch
           type=ref,event=tag
@@ -69,16 +69,82 @@ jobs:
           org.opencontainers.image.revision=${{ github.sha }}
           org.opencontainers.image.version=${{ github.ref_name }}
 
-    - name: Build and push to both registries
+    - name: Extract metadata for Docker Hub
+      id: meta-dockerhub
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.DOCKERHUB_IMAGE }}
+        tags: |
+          type=raw,value=latest,event=branch
+          type=ref,event=tag
+        labels: |
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.version=${{ github.ref_name }}
+
+    # Step 1: Build multi-platform image (cache only, no push)
+    - name: Build multi-platform image
       uses: docker/build-push-action@v6
       with:
         context: .
         platforms: linux/amd64,linux/arm64
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
+        push: false  # Don't push yet, just build to cache
+        tags: |
+          ${{ steps.meta-ghcr.outputs.tags }}
+          ${{ steps.meta-dockerhub.outputs.tags }}
+        labels: ${{ steps.meta-ghcr.outputs.labels }}
+        cache-from: |
+          type=gha
+          type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
         cache-to: type=gha,mode=max
         build-args: |
           BUILDKIT_INLINE_CACHE=1
         provenance: false
+        outputs: type=cacheonly
+
+    # Step 2: Push to GHCR (primary registry) with retry
+    - name: Push to GitHub Container Registry (Primary)
+      uses: nick-fields/retry@v3
+      with:
+        timeout_minutes: 15
+        max_attempts: 3
+        retry_wait_seconds: 30
+        warning_on_retry: true
+        on_retry_command: echo "Retrying GHCR push due to transient failure..."
+        command: |
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --push \
+            --tag ${{ steps.meta-ghcr.outputs.tags }} \
+            --label "${{ steps.meta-ghcr.outputs.labels }}" \
+            --cache-from type=gha \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --provenance=false \
+            .
+
+    # Step 3: Push to Docker Hub (backup registry) with retry + continue-on-error
+    - name: Push to Docker Hub (Backup)
+      uses: nick-fields/retry@v3
+      continue-on-error: true  # Don't fail workflow if Docker Hub fails
+      with:
+        timeout_minutes: 15
+        max_attempts: 3
+        retry_wait_seconds: 30
+        warning_on_retry: true
+        on_retry_command: echo "Retrying Docker Hub push due to transient failure..."
+        command: |
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --push \
+            --tag ${{ steps.meta-dockerhub.outputs.tags }} \
+            --label "${{ steps.meta-dockerhub.outputs.labels }}" \
+            --cache-from type=gha \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --provenance=false \
+            .
+
+    - name: Docker Hub push status
+      if: failure()
+      run: |
+        echo "::warning::Docker Hub push failed after retries. Image is available on GHCR."
+        echo "Manual push may be needed: docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
