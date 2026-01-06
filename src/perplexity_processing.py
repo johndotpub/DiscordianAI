@@ -55,50 +55,48 @@ def extract_citations_from_response(
     logger.debug(f"Unique citations: {unique_citations}")
 
     # NEW: Use citations from API response metadata (modern Perplexity format)
-    if unique_citations:
-        # Try citations field first (direct URL array)
-        if response_citations:
-            logger.debug(f"Using API citations field: {len(response_citations)} URLs available")
+    # Try citations field first (direct URL array)
+    if unique_citations and response_citations:
+        logger.debug(f"Using API citations field: {len(response_citations)} URLs available")
 
-            # Map citation numbers to URLs from the citations array
-            for citation_num in unique_citations:
-                citation_index = int(citation_num) - 1  # Convert to 0-based index
-                if 0 <= citation_index < len(response_citations):
-                    url = response_citations[citation_index]
-                    citations[citation_num] = url
-                    logger.debug(f"Mapped citation [{citation_num}] to URL: {url}")
-                else:
-                    logger.warning(
-                        f"Citation [{citation_num}] index {citation_index} out of range for "
-                        f"{len(response_citations)} URLs"
-                    )
+        # Map citation numbers to URLs from the citations array
+        for citation_num in unique_citations:
+            citation_index = int(citation_num) - 1  # Convert to 0-based index
+            if 0 <= citation_index < len(response_citations):
+                url = response_citations[citation_index]
+                citations[citation_num] = url
+                logger.debug(f"Mapped citation [{citation_num}] to URL: {url}")
+            else:
+                logger.warning(
+                    f"Citation [{citation_num}] index {citation_index} out of range for "
+                    f"{len(response_citations)} URLs"
+                )
 
-        # Try search_results field as fallback (more detailed objects)
-        elif search_results:
-            logger.debug(
-                f"Using API search_results field: {len(search_results)} results available"
-            )
+    # Try search_results field as fallback (more detailed objects)
+    elif unique_citations and search_results:
+        logger.debug(f"Using API search_results field: {len(search_results)} results available")
 
-            # Extract URLs from search_results objects
-            search_urls = [result.get("url") for result in search_results if result.get("url")]
-            logger.debug(f"Extracted {len(search_urls)} URLs from search_results")
+        # Extract URLs from search_results objects
+        search_urls = [result.get("url") for result in search_results if result.get("url")]
+        logger.debug(f"Extracted {len(search_urls)} URLs from search_results")
 
-            # Map citation numbers to URLs from search results
-            for citation_num in unique_citations:
-                citation_index = int(citation_num) - 1  # Convert to 0-based index
-                if 0 <= citation_index < len(search_urls):
-                    url = search_urls[citation_index]
-                    citations[citation_num] = url
-                    logger.debug(f"Mapped citation [{citation_num}] to search result URL: {url}")
-                else:
-                    logger.warning(
-                        f"Citation [{citation_num}] index {citation_index} out of range for "
-                        f"{len(search_urls)} search results"
-                    )
+        # Map citation numbers to URLs from search results
+        for citation_num in unique_citations:
+            citation_index = int(citation_num) - 1  # Convert to 0-based index
+            if 0 <= citation_index < len(search_urls):
+                url = search_urls[citation_index]
+                citations[citation_num] = url
+                logger.debug(f"Mapped citation [{citation_num}] to search result URL: {url}")
+            else:
+                logger.warning(
+                    f"Citation [{citation_num}] index {citation_index} out of range for "
+                    f"{len(search_urls)} search results"
+                )
 
     # FALLBACK: Try to extract URLs from text (legacy format support)
-    else:
-        logger.debug("No API metadata citations, trying legacy URL extraction from text")
+    # If we have citations in text but they weren't mapped by metadata (or no metadata)
+    if unique_citations and len(citations) < len(unique_citations):
+        logger.debug("No API metadata citations or partial mapping, trying legacy URL extraction")
         urls = URL_PATTERN.findall(response_text)
         logger.debug(f"Legacy extraction: found {len(urls)} URLs in text: {urls[:3]}...")
 
@@ -438,9 +436,9 @@ async def process_perplexity_message(
                     # No citations - this could mean web scraping was used or
                     # Perplexity couldn't access URLs
                     if any(
-                        "Content from" in msg
+                        "Content from" in msg.get("content", "")
                         for msg in api_params["messages"]
-                        if isinstance(msg, dict) and "content" in msg
+                        if isinstance(msg, dict)
                     ):
                         # Web scraping was used - content was provided directly to Perplexity
                         logger.debug(

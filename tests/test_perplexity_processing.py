@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -229,6 +229,208 @@ async def test_process_perplexity_message_with_urls():
 
     # Should have embed data since citations are present
     assert embed_data is not None
-    assert "citations" in embed_data
     assert "1" in embed_data["citations"]
     assert embed_data["citations"]["1"] == "https://github.com/johndotpub/DiscordianAI/pull/197"
+
+
+@pytest.mark.asyncio
+async def test_process_perplexity_message_scraping_failure():
+    """Test handling of URL scraping failure with graceful fallback."""
+    mock_user = MagicMock()
+    mock_user.id = 5
+
+    from src.conversation_manager import ThreadSafeConversationManager
+
+    conversation_manager = ThreadSafeConversationManager()
+    logger = MagicMock()
+
+    # Mock scraping failure
+    with patch(
+        "src.perplexity_processing.scrape_url_content", new_callable=AsyncMock
+    ) as mock_scrape:
+        mock_scrape.return_value = None  # Simulate scraping failure
+
+        result = await process_perplexity_message(
+            "Check this link: https://broken-link.com",
+            mock_user,
+            conversation_manager,
+            logger,
+            FakePerplexityClient("I couldn't access that link directly, but basic info is...", []),
+            "System prompt",
+            1000,
+            "sonar-pro",
+        )
+
+        assert result is not None
+        _response_text, _, _ = result
+
+        # Should contain the user-facing note about access failure
+        assert (
+            "**Note**: I couldn't access the URL https://broken-link.com directly"
+            in _response_text
+        )
+
+
+@pytest.mark.asyncio
+async def test_process_perplexity_message_multi_url_mixed_success():
+    """Test handling multiple URLs where some fail and some succeed."""
+    mock_user = MagicMock()
+    mock_user.id = 6
+
+    from src.conversation_manager import ThreadSafeConversationManager
+
+    conversation_manager = ThreadSafeConversationManager()
+    logger = MagicMock()
+
+    # Mock scraping: first URL succeeds, second fails
+    async def mock_scrape_side_effect(url, *args, **kwargs):
+        if "good.com" in url:
+            return "Valid content from good site"
+        return None
+
+    with patch(
+        "src.perplexity_processing.scrape_url_content", side_effect=mock_scrape_side_effect
+    ):
+        result = await process_perplexity_message(
+            "Compare https://good.com and https://bad.com",
+            mock_user,
+            conversation_manager,
+            logger,
+            FakePerplexityClient("Here is the comparison...", []),
+            "System prompt",
+            1000,
+            "sonar-pro",
+        )
+
+        assert result is not None
+        _response_text, _, _ = result
+
+        # With the fix, valid content is detected, so NO generic fallback note is added
+        # (Current limitation: partial failures are silent if at least one succeeds)
+        assert "**Note**: I couldn't access" not in _response_text
+
+
+@pytest.mark.asyncio
+async def test_process_perplexity_message_with_scraped_content_formatting():
+    """Test that scraped content is correctly formatted into the system prompt context."""
+    mock_user = MagicMock()
+    mock_user.id = 7
+    conversation_manager = MagicMock()
+    logger = MagicMock()
+
+    # Create a spy client to inspect messages sent to it
+    spy_client = MagicMock()
+    spy_client.chat.completions.create = AsyncMock(
+        return_value=MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Response"))], citations=[]
+        )
+    )
+
+    with patch(
+        "src.perplexity_processing.scrape_url_content", new_callable=AsyncMock
+    ) as mock_scrape:
+        mock_scrape.return_value = "Title: Test Page\nMain content: Important info about AI."
+
+        await process_perplexity_message(
+            "Summarize https://example.com",
+            mock_user,
+            conversation_manager,
+            logger,
+            spy_client,
+            "Base system prompt",
+            1000,
+            "sonar-pro",
+        )
+
+        # Verify the call to the client included the scraped content in messages
+        call_kwargs = spy_client.chat.completions.create.call_args[1]
+        messages = call_kwargs["messages"]
+
+        # Find the user message or system message containing the scraped content
+        content_found = False
+        for msg in messages:
+            if (
+                "Content from https://example.com" in msg["content"]
+                and "Important info about AI" in msg["content"]
+            ):
+                content_found = True
+                break
+
+        assert (
+            content_found
+        ), "Scraped content was not properly injected into the API messages payload"
+
+
+@pytest.mark.asyncio
+async def test_extract_citations_from_search_results():
+    """Test citation extraction from search_results metadata (fallback)."""
+    response_text = "According to sources [1] and [2]..."
+    # No direct citations field
+    search_results = [
+        {"url": "https://example.com/1", "snippet": "..."},
+        {"url": "https://example.com/2", "snippet": "..."},
+    ]
+
+    _clean_text, citations = extract_citations_from_response(
+        response_text, response_citations=None, search_results=search_results
+    )
+
+    assert citations["1"] == "https://example.com/1"
+    assert citations["2"] == "https://example.com/2"
+
+
+@pytest.mark.asyncio
+async def test_extract_citations_legacy_fallback():
+    """Test legacy citation extraction where URLs are in the text."""
+    # Legacy format: text + list of URLs at bottom or inline
+    # Pattern matching typically looks for [N] and URL
+    response_text = "Source: https://legacy.com/source [1]"
+
+    _clean_text, citations = extract_citations_from_response(
+        response_text, response_citations=None, search_results=None
+    )
+
+    assert citations["1"] == "https://legacy.com/source"
+
+
+@pytest.mark.asyncio
+async def test_process_perplexity_message_timeout():
+    """Test handling of Perplexity API timeout."""
+    mock_user = MagicMock()
+    mock_user.id = 999
+    conversation_manager = MagicMock()
+    logger = MagicMock()
+
+    # Mock client raising TimeoutError
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(side_effect=TimeoutError("Timeout"))
+
+    result = await process_perplexity_message(
+        "Query", mock_user, conversation_manager, logger, mock_client
+    )
+
+    assert result is None
+    # Verify we logged the timeout exception
+    logger.exception.assert_called()
+    assert "timed out" in logger.exception.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_process_perplexity_message_empty_response():
+    """Test handling of empty response from Perplexity."""
+    mock_user = MagicMock()
+    conversation_manager = MagicMock()
+    logger = MagicMock()
+
+    mock_client = MagicMock()
+    # Content is whitespace to pass the first check but fail the strip() check
+    mock_client.chat.completions.create = AsyncMock(
+        return_value=MagicMock(choices=[MagicMock(message=MagicMock(content="   "))])
+    )
+
+    result = await process_perplexity_message(
+        "Query", mock_user, conversation_manager, logger, mock_client
+    )
+
+    assert result is None
+    logger.warning.assert_called_with("Perplexity returned empty response content")
