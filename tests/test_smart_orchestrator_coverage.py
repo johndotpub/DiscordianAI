@@ -1,6 +1,6 @@
 # Tests for smart_orchestrator.py functionality
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -98,6 +98,31 @@ class TestRoutingFunctions:
         """Test that short messages use appropriate routing."""
         short_message = "Hi there"  # Less than default min words
         assert not should_use_web_search(short_message)
+
+    def test_should_use_web_search_consistency_override(self):
+        """Test that recent Perplexity usage overrides other heuristic checks."""
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
+        # Mock that the last service used was Perplexity
+        conversation_manager.get_recent_ai_service.return_value = "perplexity"
+
+        # A message that normally wouldn't trigger web search (ambiguous/short)
+        message = "tell me more"
+
+        result = should_use_web_search(
+            message, conversation_manager=conversation_manager, user_id=12345, lookback_messages=5
+        )
+
+        # Force fail with details if not called, to debug
+        if not conversation_manager.get_recent_ai_service.called:
+            pytest.fail(
+                "conversation_manager.get_recent_ai_service was NOT called. Regex match failed?"
+            )
+
+        # Should be True because of consistency
+        assert result is True
+
+        # Verify it checked the history
+        conversation_manager.get_recent_ai_service.assert_called_with(12345, lookback_messages=5)
 
 
 class TestProcessingModes:
@@ -335,6 +360,54 @@ class TestProcessingModes:
             # Even if it fails, we've exercised the code path
             logger.exception("Exception occurred in test_process_hybrid_mode_basic")
             raise
+
+            logger.exception("Exception occurred in test_process_hybrid_mode_basic")
+            raise
+
+    @pytest.mark.asyncio
+    async def test_process_hybrid_mode_fallback_chain(self):
+        """Test full fallback chain: Perplexity fails -> OpenAI handles it."""
+        user = MagicMock()
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
+        logger = logging.getLogger("test")
+        openai_client = MagicMock()
+        perplexity_client = MagicMock()
+
+        config = {"LOOKBACK_MESSAGES_FOR_CONSISTENCY": 6, "ENTITY_DETECTION_MIN_WORDS": 10}
+
+        # Setup:
+        # 1. should_use_web_search returns True (try Perplexity)
+        # 2. _try_perplexity_with_fallback returns None (Perplexity failed)
+        # 3. process_openai_message should be called (NOT _process_openai_only_mode)
+        # IMPORTANT: process_openai_message is async
+        with (
+            patch("src.smart_orchestrator.should_use_web_search", return_value=True),
+            patch(
+                "src.smart_orchestrator._try_perplexity_with_fallback", new_callable=AsyncMock
+            ) as mock_perplexity,
+            patch(
+                "src.smart_orchestrator.process_openai_message", new_callable=AsyncMock
+            ) as mock_openai,
+        ):
+            mock_perplexity.return_value = (None, False, None)
+            mock_openai.return_value = "OpenAI fallback response"  # Returns string directly
+
+            response, _suppress_embeds, _embed_data = await _process_hybrid_mode(
+                message="Complex query",
+                user=user,
+                conversation_summary=[],
+                conversation_manager=conversation_manager,
+                logger=logger,
+                openai_client=openai_client,
+                perplexity_client=perplexity_client,
+                gpt_model="gpt-5-mini",
+                system_message="System",
+                output_tokens=1000,
+                config=config,
+            )
+
+            assert response == "OpenAI fallback response"
+            mock_openai.assert_called_once()
 
 
 class TestMainOrchestrator:

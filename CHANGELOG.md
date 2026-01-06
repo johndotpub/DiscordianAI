@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.8.1] - 2026-01-06
+
+### Fixed
+- **🧪 Test Coverage**: Enhanced coverage for critical AI processing modules to >80%
+  - `src/perplexity_processing.py`: Improved to 89% coverage (URL scraping failures, timeouts, legacy citation fallback)
+  - `src/smart_orchestrator.py`: Improved to 88% coverage (consistency overrides, hybrid fallback chains)
+  - Fixed logic bug in legacy citation extraction when API metadata is missing
+- **🔧 Code Quality**: Standardized linting configuration
+  - Unified `tox.ini` and `pyproject.toml` configuration for `ruff` and `black` to ensure single source of truth
+  - Fixed unused variable warnings in test suite
+
+### Changed
+- **Testing Infrastructure**: Robust mock usage
+  - Implemented correct `AsyncMock` patterns for async orchestrator tests
+
 ## [v0.2.8.0] - 2025-12-04
 
 ### Added
