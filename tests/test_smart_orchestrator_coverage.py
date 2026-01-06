@@ -361,9 +361,6 @@ class TestProcessingModes:
             logger.exception("Exception occurred in test_process_hybrid_mode_basic")
             raise
 
-            logger.exception("Exception occurred in test_process_hybrid_mode_basic")
-            raise
-
     @pytest.mark.asyncio
     async def test_process_hybrid_mode_fallback_chain(self):
         """Test full fallback chain: Perplexity fails -> OpenAI handles it."""

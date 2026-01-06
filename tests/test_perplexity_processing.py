@@ -229,6 +229,9 @@ async def test_process_perplexity_message_with_urls():
 
     # Should have embed data since citations are present
     assert embed_data is not None
+    assert "embed" in embed_data
+    assert "citations" in embed_data
+    assert "clean_text" in embed_data
     assert "1" in embed_data["citations"]
     assert embed_data["citations"]["1"] == "https://github.com/johndotpub/DiscordianAI/pull/197"
 
