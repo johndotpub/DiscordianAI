@@ -100,7 +100,6 @@ jobs:
         build-args: |
           BUILDKIT_INLINE_CACHE=1
         provenance: false
-        outputs: type=cacheonly
 
     # Step 2: Push to GHCR (primary registry) with retry
     - name: Push to GitHub Container Registry (Primary)
