@@ -25,7 +25,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 25  # Increased from 15 to account for retries
+    timeout-minutes: 20
 
     permissions:
       contents: read
@@ -79,8 +79,8 @@ jobs:
           type=raw,value=latest,event=branch
           type=ref,event=tag
 
-    # Build and push to both registries in one go for speed
-    # Using registry-based caching on GHCR because GitHub Actions cache service is currently unstable (HTTP 400)
+    # Build and push to both registries in one go for speed and multi-platform support
+    # Using registry-based caching on GHCR to ensure stability
     - name: Build and push
       uses: docker/build-push-action@v6
       with:
@@ -100,4 +100,4 @@ jobs:
     - name: Final Status Notification
       if: failure()
       run: |
-        echo "::error::Primary Build & Push to GHCR failed after all retries. The GHA cache service may be down, but we switched to registry cache to bypass it."
+        echo "::error::Docker build or push failed. Check logs for details."
