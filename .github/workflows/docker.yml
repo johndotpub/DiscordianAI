@@ -58,76 +58,66 @@ jobs:
         password: ${{ secrets.DOCKERHUB_TOKEN }}
       continue-on-error: true
 
-    - name: Extract Docker metadata
-      id: meta
+    - name: Extract Metadata (GHCR)
+      id: meta-ghcr
       uses: docker/metadata-action@v5
       with:
-        images: |
-          ${{ env.REGISTRY }}/${{ env.IMAGE_LOWER }}
-          ${{ env.DOCKERHUB_IMAGE }}
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_LOWER }}
         tags: |
           type=raw,value=latest,event=branch
           type=ref,event=tag
         labels: |
           org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           org.opencontainers.image.revision=${{ github.sha }}
-          org.opencontainers.image.version=${{ github.ref_name }}
 
-    # Step 1: Build multi-platform image (cache only)
-    # Wrapped in retry to handle GHA cache service instability (HTTP 400)
-    - name: Build multi-platform image
+    - name: Extract Metadata (Docker Hub)
+      id: meta-dockerhub
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.DOCKERHUB_IMAGE }}
+        tags: |
+          type=raw,value=latest,event=branch
+          type=ref,event=tag
+
+    # Step 1: Build & Push to GHCR (Primary)
+    # Using registry cache instead of GHA cache because GHA cache is currently unstable (HTTP 400)
+    - name: Build & Push to GHCR
       uses: nick-fields/retry@v3
       with:
         timeout_minutes: 20
         max_attempts: 3
-        retry_wait_seconds: 30
+        retry_wait_seconds: 45
         command: |
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
-            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_LOWER }}:latest \
-            --label "${{ steps.meta.outputs.labels }}" \
-            --cache-from type=gha \
+            --push \
+            --tag ${{ steps.meta-ghcr.outputs.tags }} \
+            --label "${{ steps.meta-ghcr.outputs.labels }}" \
             --cache-from type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_LOWER }}:latest \
-            --cache-to type=gha,mode=max \
+            --cache-to type=inline \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
             --provenance=false \
             .
 
-    # Step 2: Push to GHCR (Primary)
-    - name: Push to GitHub Container Registry
-      uses: nick-fields/retry@v3
-      with:
-        timeout_minutes: 10
-        max_attempts: 3
-        retry_wait_seconds: 20
-        command: |
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            --push \
-            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_LOWER }}:latest \
-            --cache-from type=gha \
-            --provenance=false \
-            .
-
-    # Step 3: Push to Docker Hub (Backup)
-    - name: Push to Docker Hub
+    # Step 2: Build & Push to Docker Hub (Backup)
+    # Reuses the layers from GHCR push (very fast)
+    - name: Build & Push to Docker Hub
       uses: nick-fields/retry@v3
       continue-on-error: true
       with:
-        timeout_minutes: 10
+        timeout_minutes: 20
         max_attempts: 3
-        retry_wait_seconds: 20
+        retry_wait_seconds: 45
         command: |
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
             --push \
-            --tag ${{ env.DOCKERHUB_IMAGE }}:latest \
-            --cache-from type=gha \
+            --tag ${{ steps.meta-dockerhub.outputs.tags }} \
+            --cache-from type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_LOWER }}:latest \
             --provenance=false \
             .
 
     - name: Final Status Notification
       if: failure()
       run: |
-        echo "::warning::Docker Hub backup push failed or GHCR primary build failed after retries."
-        echo "Check logs for specific registry errors."
+        echo "::error::Primary Build & Push to GHCR failed after all retries. The GHA cache service may be down, but we switched to registry cache to bypass it."
