@@ -266,8 +266,7 @@ class TestMessageSplittingIntegration:
         channel.send = AsyncMock()
 
         # Create a very long message with natural break points
-        long_message = (
-            """
+        long_message = """
 This is a comprehensive explanation of Off the Grid controller settings from Gunzilla Games.
 
 ## Basic Controller Configuration
@@ -323,9 +322,7 @@ Common issues and solutions:
 
 The controller system in Off the Grid is one of the most advanced in the industry,
 offering players unprecedented control over their gaming experience.
-"""
-            * 3
-        )  # Make it even longer
+""" * 3  # Make it even longer
 
         deps = create_test_context()
 

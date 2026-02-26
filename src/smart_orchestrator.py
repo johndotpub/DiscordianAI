@@ -126,12 +126,12 @@ def should_use_web_search(
         7. Default -> False (use ChatGPT)
     """
     logger = logging.getLogger("discordianai.smart_orchestrator")
-    logger.debug(f"Analyzing message for web search routing: {message[:100]}...")
+    logger.debug("Analyzing message for web search routing: %s...", message[:100])
 
     # PRIORITY CHECK: If message contains URLs, always use web search
     # Use centralized URL patterns from config
     has_urls = any(pattern.search(message) for pattern in COMPILED_URL_DETECTION_PATTERNS)
-    logger.debug(f"URL detection: {has_urls}")
+    logger.debug("URL detection: %s", has_urls)
     if has_urls:
         logger.debug("Message contains URLs - routing to Perplexity for web search")
         return True
@@ -146,41 +146,41 @@ def should_use_web_search(
                 follow_up_matches.append(f"Pattern {i}: '{pattern.pattern}' -> '{match.group()}'")
 
         has_follow_up = len(follow_up_matches) > 0
-        logger.debug(f"Follow-up detection: {has_follow_up}")
+        logger.debug("Follow-up detection: %s", has_follow_up)
         if follow_up_matches:
             for match in follow_up_matches:
-                logger.debug(f"  {match}")
+                logger.debug("  %s", match)
 
         if has_follow_up:
             # Use metadata-based service detection instead of fragile heuristics
             recent_ai_service = conversation_manager.get_recent_ai_service(
-                user_id, lookback_messages=lookback_messages
+                user_id, lookback_messages=lookback_messages,
             )
-            logger.debug(f"Recent AI service: {recent_ai_service}")
+            logger.debug("Recent AI service: %s", recent_ai_service)
 
             if recent_ai_service:
                 # Maintain consistency with previous AI choice for follow-ups
                 result = recent_ai_service == "perplexity"
-                logger.debug(f"Maintaining consistency with {recent_ai_service}: {result}")
+                logger.debug("Maintaining consistency with %s: %s", recent_ai_service, result)
                 return result
 
     # If it's clearly conversational or creative, don't use web search
     is_conv = is_conversational_or_creative(message)
-    logger.debug(f"Conversational/creative detection: {is_conv}")
+    logger.debug("Conversational/creative detection: %s", is_conv)
     if is_conv:
         logger.debug("Message classified as conversational - routing to OpenAI")
         return False
 
     # If it has time sensitivity, definitely use web search
     is_time_sensitive = has_time_sensitivity(message)
-    logger.debug(f"Time sensitivity detection: {is_time_sensitive}")
+    logger.debug("Time sensitivity detection: %s", is_time_sensitive)
     if is_time_sensitive:
         logger.debug("Message classified as time-sensitive - routing to Perplexity")
         return True
 
     # If it's a factual query, lean towards web search
     is_factual = is_factual_query(message)
-    logger.debug(f"Factual query detection: {is_factual}")
+    logger.debug("Factual query detection: %s", is_factual)
     if is_factual:
         logger.debug("Message classified as factual - routing to Perplexity")
         return True
@@ -188,7 +188,7 @@ def should_use_web_search(
     # Check for entities in the message (proper names, acronyms, etc.)
     # This helps identify specific queries that benefit from web search
     has_entities = any(pattern.search(message) for pattern in COMPILED_ENTITY_PATTERNS)
-    logger.debug(f"Entity detection: {has_entities}")
+    logger.debug("Entity detection: %s", has_entities)
     if has_entities:
         logger.debug("Message has entities - routing to Perplexity")
         return True
@@ -224,7 +224,8 @@ async def _process_perplexity_only_mode(
         if result:
             response_content, suppress_embeds, embed_data = result
             logger.info(
-                f"Perplexity response generated successfully ({len(response_content)} chars)"
+                "Perplexity response generated successfully (%d chars)",
+                len(response_content),
             )
             return response_content, suppress_embeds, embed_data
         logger.error("Perplexity API returned no response")
@@ -261,7 +262,7 @@ async def _process_openai_only_mode(
             output_tokens,
         )
         if response_content:
-            logger.info(f"OpenAI response generated successfully ({len(response_content)} chars)")
+            logger.info("OpenAI response generated successfully (%d chars)", len(response_content))
             # OpenAI responses don't have citations, so no embed data needed
             return response_content, False, None
         logger.error("OpenAI API returned no response")
@@ -284,7 +285,7 @@ async def _try_perplexity_with_fallback(
 ) -> tuple[str | None, bool, dict | None]:
     """Try Perplexity API with fallback handling."""
     logger.info(
-        "Message analysis suggests web search would be beneficial - trying Perplexity first"
+        "Message analysis suggests web search would be beneficial - trying Perplexity first",
     )
     try:
         result = await process_perplexity_message(
@@ -297,14 +298,15 @@ async def _try_perplexity_with_fallback(
             output_tokens,
             model,
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.warning("Perplexity failed in hybrid mode, falling back to OpenAI: %s", e)
         return None, False, None
     else:
         if result:
             response_content, suppress_embeds, embed_data = result
             logger.info(
-                f"Perplexity response successful in hybrid mode ({len(response_content)} chars)"
+                "Perplexity response successful in hybrid mode (%d chars)",
+                len(response_content),
             )
             return response_content, suppress_embeds, embed_data
         logger.warning("Perplexity returned no response, falling back to OpenAI")
@@ -354,7 +356,7 @@ async def _process_hybrid_mode(
         lookback_messages=lookback_messages,
     )
 
-    logger.info(f"Smart routing decision: needs_web_search = {needs_web}")
+    logger.info("Smart routing decision: needs_web_search = %s", needs_web)
 
     # Try Perplexity first if web search is beneficial
     if needs_web:
@@ -392,7 +394,8 @@ async def _process_hybrid_mode(
 
         if response_content:
             logger.info(
-                f"OpenAI response successful in hybrid mode ({len(response_content)} chars)"
+                "OpenAI response successful in hybrid mode (%d chars)",
+                len(response_content),
             )
             return response_content, False, None  # OpenAI doesn't use embeds
         logger.error("OpenAI returned no response in hybrid mode")
@@ -448,7 +451,9 @@ async def get_smart_response(
     """
     try:
         logger.info(
-            f"Smart orchestrator processing message from user {user.id}: {message[:100]}..."
+            "Smart orchestrator processing message from user %s: %s...",
+            user.id,
+            message[:100],
         )
 
         # Mode 1: Perplexity only

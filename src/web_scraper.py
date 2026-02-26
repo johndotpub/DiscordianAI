@@ -55,7 +55,6 @@ class ContentExtractionError(WebScrapingError):
 def _add_respectful_delay():
     """Add a respectful delay between requests to avoid overwhelming servers."""
     # Using random for non-cryptographic purposes (rate limiting)
-    # ruff: noqa: S311
     delay = random.uniform(MIN_DELAY_BETWEEN_REQUESTS, MAX_DELAY_BETWEEN_REQUESTS)
     time.sleep(delay)
 
@@ -256,13 +255,13 @@ async def scrape_url_content(
     if not logger:
         logger = logging.getLogger(__name__)
 
-    logger.info(f"Starting web scraping for URL: {url}")
+    logger.info("Starting web scraping for URL: %s", url)
 
     try:
         # Validate URL format
         parsed_url = urlparse(url)
         if not parsed_url.scheme or not parsed_url.netloc:
-            logger.error(f"Invalid URL format: {url}")
+            logger.error("Invalid URL format: %s", url)
             return None
 
         # Add respectful delay before making request
@@ -276,7 +275,7 @@ async def scrape_url_content(
             for attempt in range(REQUEST_RETRIES + 1):
                 try:
                     logger.debug(
-                        f"HTTP request attempt {attempt + 1}/{REQUEST_RETRIES + 1} for: {url}"
+                        "HTTP request attempt %d/%d for: %s", attempt + 1, REQUEST_RETRIES + 1, url,
                     )
 
                     response = session.get(url, timeout=timeout, allow_redirects=True, stream=True)
@@ -285,14 +284,16 @@ async def scrape_url_content(
                     # Check content type - only process HTML content
                     content_type = response.headers.get("content-type", "").lower()
                     if "text/html" not in content_type:
-                        logger.warning(f"Non-HTML content type: {content_type} for URL: {url}")
+                        logger.warning("Non-HTML content type: %s for URL: %s", content_type, url)
                         return None
 
                     # Check content length before downloading
                     content_length = response.headers.get("content-length")
                     if content_length and int(content_length) > MAX_DOWNLOAD_SIZE:
                         logger.warning(
-                            f"Content too large ({content_length} bytes), skipping: {url}"
+                            "Content too large (%s bytes), skipping: %s",
+                            content_length,
+                            url,
                         )
                         return None
 
@@ -301,45 +302,49 @@ async def scrape_url_content(
                     for chunk in response.iter_content(chunk_size=8192):
                         content += chunk
                         if len(content) > MAX_DOWNLOAD_SIZE:
-                            logger.warning(f"Content exceeded download limit during fetch: {url}")
+                            logger.warning("Content exceeded download limit during fetch: %s", url)
                             break
 
-                    logger.debug(f"Successfully downloaded {len(content)} bytes from {url}")
+                    logger.debug("Successfully downloaded %d bytes from %s", len(content), url)
                     return content.decode("utf-8", errors="ignore")
 
                 except requests.exceptions.Timeout:
-                    logger.warning(f"Request timeout (attempt {attempt + 1}) for URL: {url}")
+                    logger.warning("Request timeout (attempt %d) for URL: %s", attempt + 1, url)
                     if attempt == REQUEST_RETRIES:
                         logger.exception(
-                            f"Final timeout after {REQUEST_RETRIES + 1} attempts: {url}"
+                            "Final timeout after %d attempts: %s", REQUEST_RETRIES + 1, url,
                         )
                         return None
 
                 except requests.exceptions.ConnectionError:
-                    logger.warning(f"Connection error (attempt {attempt + 1}) for URL: {url}")
+                    logger.warning("Connection error (attempt %d) for URL: %s", attempt + 1, url)
                     if attempt == REQUEST_RETRIES:
                         logger.exception(
-                            f"Final connection failure after {REQUEST_RETRIES + 1} attempts: {url}"
+                            "Final connection failure after %d attempts: %s",
+                            REQUEST_RETRIES + 1,
+                            url,
                         )
                         return None
 
                 except requests.exceptions.HTTPError as e:
                     status_code = e.response.status_code if e.response else "unknown"
-                    logger.exception(f"HTTP {status_code} error for URL: {url}")
+                    logger.exception("HTTP %s error for URL: %s", status_code, url)
                     return None  # Don't retry HTTP errors
 
                 except requests.exceptions.RequestException:
-                    logger.warning(f"Request error (attempt {attempt + 1}) for URL: {url}")
+                    logger.warning("Request error (attempt %d) for URL: %s", attempt + 1, url)
                     if attempt == REQUEST_RETRIES:
                         logger.exception(
-                            f"Final request failure after {REQUEST_RETRIES + 1} attempts: {url}"
+                            "Final request failure after %d attempts: %s",
+                            REQUEST_RETRIES + 1,
+                            url,
                         )
                         return None
 
                 # Wait before retry (exponential backoff)
                 if attempt < REQUEST_RETRIES:
                     wait_time = 2**attempt  # 1s, 2s, 4s...
-                    logger.debug(f"Waiting {wait_time}s before retry")
+                    logger.debug("Waiting %ds before retry", wait_time)
                     time.sleep(wait_time)
 
             return None
@@ -348,24 +353,24 @@ async def scrape_url_content(
         html_content = await asyncio.to_thread(_fetch_content)
 
         if not html_content:
-            logger.warning(f"Failed to fetch content from URL: {url}")
+            logger.warning("Failed to fetch content from URL: %s", url)
             return None
 
-        logger.debug(f"Successfully fetched {len(html_content)} characters from {url}")
+        logger.debug("Successfully fetched %d characters from %s", len(html_content), url)
 
         # Parse HTML content
         try:
             soup = BeautifulSoup(html_content, "html.parser")
         except Exception:
-            logger.exception(f"Failed to parse HTML content from {url}")
+            logger.exception("Failed to parse HTML content from %s", url)
             return None
 
         # Extract content using generic selectors
         extracted_content = _extract_content(soup)
-        logger.debug(f"Extracted content ({len(extracted_content)} chars)")
+        logger.debug("Extracted content (%d chars)", len(extracted_content))
 
         if not extracted_content:
-            logger.warning(f"No content could be extracted from URL: {url}")
+            logger.warning("No content could be extracted from URL: %s", url)
             return None
 
         # Clean and limit content for token management
@@ -375,20 +380,21 @@ async def scrape_url_content(
             cleaned_content = (
                 cleaned_content[:max_content_length] + "\n\n[Content truncated due to length]"
             )
-            logger.info(f"Content truncated to {max_content_length} characters")
+            logger.info("Content truncated to %d characters", max_content_length)
 
         logger.info(
-            f"Successfully scraped and processed content from {url}: "
-            f"{len(cleaned_content)} characters"
+            "Successfully scraped and processed content from %s: %d characters",
+            url,
+            len(cleaned_content),
         )
-        logger.debug(f"Scraped content preview: {cleaned_content[:200]}...")
+        logger.debug("Scraped content preview: %s...", cleaned_content[:200])
 
         # Log the scraped content for debugging (as requested)
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Full scraped content from {url}:\n{cleaned_content}")
+            logger.debug("Full scraped content from %s:\n%s", url, cleaned_content)
 
     except Exception:
-        logger.exception(f"Unexpected error during web scraping for {url}")
+        logger.exception("Unexpected error during web scraping for %s", url)
         return None
     else:
         return cleaned_content

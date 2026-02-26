@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.8.2] - 2026-02-26
+
+### Changed
+- **Dependencies**: Upgraded various Python packages to their latest versions across `requirements.txt`, `pyproject.toml`, and `.pre-commit-config.yaml`:
+  - `openai` (>=2.24.0)
+  - `websockets` (>=16.0)
+  - `black` (>=26.1.0)
+  - `ruff` (>=0.15.2)
+  - `pytest` (>=9.0.2)
+  - `coverage[toml]` (>=7.13.4)
+  - `tox` (>=4.46.3)
+  - `pre-commit` (>=4.5.1)
+
 ## [v0.2.8.1] - 2026-01-06
 
 ### Fixed

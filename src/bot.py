@@ -80,11 +80,11 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
     if config["OPENAI_API_KEY"]:
         try:
             client = pool_manager.create_openai_client(
-                api_key=config["OPENAI_API_KEY"], base_url=config["OPENAI_API_URL"]
+                api_key=config["OPENAI_API_KEY"], base_url=config["OPENAI_API_URL"],
             )
             logger.info(
-                f"OpenAI client initialized successfully with model: {config['GPT_MODEL']} "
-                f"(connection pooling enabled)"
+                "OpenAI client initialized successfully with model: %s (connection pooling enabled)",
+                config["GPT_MODEL"],
             )
         except Exception as e:
             logger.exception("Failed to initialize OpenAI client")
@@ -97,11 +97,11 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
     if config["PERPLEXITY_API_KEY"]:
         try:
             perplexity_client = pool_manager.create_perplexity_client(
-                api_key=config["PERPLEXITY_API_KEY"], base_url=config["PERPLEXITY_API_URL"]
+                api_key=config["PERPLEXITY_API_KEY"], base_url=config["PERPLEXITY_API_URL"],
             )
             logger.info(
                 "Perplexity client initialized successfully for web search "
-                "(connection pooling enabled)"
+                "(connection pooling enabled)",
             )
         except Exception as e:
             logger.exception("Failed to initialize Perplexity client")
@@ -120,7 +120,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(error_msg)
     if client and perplexity_client:
         logger.info(
-            "Running in HYBRID mode (OpenAI + Perplexity) - Smart AI orchestration enabled"
+            "Running in HYBRID mode (OpenAI + Perplexity) - Smart AI orchestration enabled",
         )
     elif client:
         logger.info("Running in OpenAI-only mode")
@@ -132,7 +132,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
     max_history = config.get("MAX_HISTORY_PER_USER", 50)
     cleanup_interval = config.get("USER_LOCK_CLEANUP_INTERVAL", 3600)
     conversation_manager = ThreadSafeConversationManager(
-        max_history_per_user=max_history, cleanup_interval=cleanup_interval
+        max_history_per_user=max_history, cleanup_interval=cleanup_interval,
     )
 
     logger.info("All bot dependencies initialized successfully")
@@ -142,8 +142,8 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
         logger.info("Running API health checks...")
         # Health checks will be initiated after bot is ready (in on_ready event)
         logger.info("Health checks will be initiated after bot startup")
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"Failed to setup health monitoring: {e}")
+    except Exception as e:
+        logger.warning("Failed to setup health monitoring: %s", e)
 
     # Return dependency injection container
     return {
@@ -169,7 +169,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _process_message_core(
-    message: discord.Message, deps: dict[str, Any], is_dm: bool = True
+    message: discord.Message, deps: dict[str, Any], is_dm: bool = True,
 ) -> None:
     """Core message processing logic shared by DM and channel message handlers.
 
@@ -196,7 +196,7 @@ async def _process_message_core(
 
     # Prepare context-specific strings for logging and error messages
     if is_dm:
-        context = f"DM from {message.author.name} (ID: {message.author.id})"
+        context = "DM from %s (ID: %s)" % (message.author.name, message.author.id)
         rate_limit_msg = (
             "⏱️ Rate limit exceeded! Please wait a moment before sending another message."
         )
@@ -209,8 +209,8 @@ async def _process_message_core(
         # Clean message content for logging (remove mentions)
         clean_content = re.sub(r"<@\d+>", "", message.content).strip()
         context = (
-            f"channel message in #{message.channel.name} from "
-            f"{message.author.name} (ID: {message.author.id})"
+            "channel message in #%s from %s (ID: %s)"
+            % (message.channel.name, message.author.name, message.author.id)
         )
         rate_limit_msg = "⏱️ Rate limit exceeded! Please wait a moment before mentioning me again."
         error_msg = MessageFormatter.error_message(
@@ -221,7 +221,7 @@ async def _process_message_core(
         display_content = clean_message_content(clean_content, 100)
 
     try:
-        logger.info(f"Processing {context}: {display_content}...")
+        logger.info("Processing %s: %s...", context, display_content)
 
         # Apply thread-safe rate limiting
         if not await check_rate_limit(
@@ -231,15 +231,15 @@ async def _process_message_core(
             deps["RATE_LIMIT_PER"],
             logger,
         ):
-            rate_msg = f"{message.author.mention} {rate_limit_msg}"
+            rate_msg = "%s %s" % (message.author.mention, rate_limit_msg)
             if not await safe_discord_send(message.channel, rate_msg, logger):
-                logger.error(f"Failed to send rate limit message to {context}")
-            logger.warning(f"Rate limit exceeded for {context}")
+                logger.error("Failed to send rate limit message to %s", context)
+            logger.warning("Rate limit exceeded for %s", context)
             return
 
         # Get conversation summary using consolidated thread-safe manager
         conversation_summary = conversation_manager.get_conversation_summary_formatted(
-            message.author.id
+            message.author.id,
         )
 
         # Generate AI response using smart orchestrator
@@ -258,12 +258,12 @@ async def _process_message_core(
         )
 
         # Send response with automatic message splitting if needed
-        logger.debug(f"About to send response to Discord: {response[:200]}...")
-        logger.debug(f"Response length: {len(response)} characters")
+        logger.debug("About to send response to Discord: %s...", response[:200])
+        logger.debug("Response length: %d characters", len(response))
         await send_formatted_message(
-            message.channel, response, deps, suppress_embeds=suppress_embeds, embed_data=embed_data
+            message.channel, response, deps, suppress_embeds=suppress_embeds, embed_data=embed_data,
         )
-        logger.info(f"Successfully processed and responded to {context}")
+        logger.info("Successfully processed and responded to %s", context)
 
     except Exception as e:
         logger.exception("Error processing %s", context)
@@ -385,14 +385,14 @@ async def send_formatted_message(
             # Content was truncated - need to split and send remaining parts
             citations = embed_data.get("citations", {})
             logger.debug(
-                f"Embed content was truncated ({len(clean_text)} chars), splitting message"
+                "Embed content was truncated (%d chars), splitting message", len(clean_text),
             )
             await send_split_message_with_embed(channel, clean_text, deps, embed, citations)
             return
 
         # Content fits in embed - send ONLY the embed, not the message text
         try:
-            logger.debug(f"Sending citation embed only ({len(clean_text)} chars in embed)")
+            logger.debug("Sending citation embed only (%d chars in embed)", len(clean_text))
             # Send empty message text to avoid duplicate content - all content is in the embed
             await channel.send("", embed=embed)
             logger.debug("Successfully sent message with embed")
@@ -407,9 +407,9 @@ async def send_formatted_message(
     if len(message) <= MESSAGE_LIMIT:
         # Message fits in single regular message
         try:
-            logger.debug(f"Sending regular message ({len(message)} chars)")
+            logger.debug("Sending regular message (%d chars)", len(message))
             await channel.send(message, suppress_embeds=suppress_embeds)
-            logger.debug(f"Sent message ({len(message)} chars)")
+            logger.debug("Sent message (%d chars)", len(message))
         except discord.HTTPException:
             logger.exception("Discord API error sending message")
             raise
@@ -445,7 +445,8 @@ async def send_split_message_with_embed(
     try:
         await channel.send("", embed=embed)  # Empty message text, content is in embed
         logger.debug(
-            f"Sent message part 1 with embed ({len(embed.description or '')} chars in embed)"
+            "Sent message part 1 with embed (%d chars in embed)",
+            len(embed.description or ""),
         )
     except discord.HTTPException:
         logger.exception("Discord API error sending message part 1 with embed")
@@ -462,23 +463,23 @@ async def send_split_message_with_embed(
 
         if remaining_citations:
             # Create embed for remaining content with citations
-            logger.debug(f"Creating continuation embed with {len(remaining_citations)} citations")
+            logger.debug("Creating continuation embed with %d citations", len(remaining_citations))
             continuation_embed, _ = citation_embed_formatter.create_citation_embed(
-                message_part2, remaining_citations, footer_text="🌐 Web search results (continued)"
+                message_part2, remaining_citations, footer_text="🌐 Web search results (continued)",
             )
 
             # Check if this part also needs splitting
             if len(message_part2) > EMBED_LIMIT:
                 await send_split_message_with_embed(
-                    channel, message_part2, deps, continuation_embed, remaining_citations
+                    channel, message_part2, deps, continuation_embed, remaining_citations,
                 )
             else:
                 try:
                     await channel.send("", embed=continuation_embed)
-                    logger.debug(f"Sent continuation embed ({len(message_part2)} chars)")
+                    logger.debug("Sent continuation embed (%d chars)", len(message_part2))
                 except discord.HTTPException:
                     logger.exception(
-                        "Failed to send continuation embed, falling back to plain text"
+                        "Failed to send continuation embed, falling back to plain text",
                     )
                     await send_split_message(channel, message_part2, deps, suppress_embeds=False)
         else:
@@ -520,19 +521,24 @@ async def send_split_message(
     max_recursion_depth = MAX_SPLIT_RECURSION
     if _recursion_depth > max_recursion_depth:
         deps["logger"].error(
-            f"Message splitting exceeded maximum recursion depth "
-            f"({max_recursion_depth}). Message length: {len(message)}. "
-            f"Attempting to send as part {max_recursion_depth + 1}."
+            "Message splitting exceeded maximum recursion depth (%d). "
+            "Message length: %d. Attempting to send as part %d.",
+            max_recursion_depth,
+            len(message),
+            max_recursion_depth + 1,
         )
         # Try to send the entire message as-is (Discord will handle the error if too long)
         try:
             await channel.send(message, suppress_embeds=suppress_embeds)
             deps["logger"].warning(
-                f"Successfully sent part {max_recursion_depth + 1} despite recursion limit"
+                "Successfully sent part %d despite recursion limit",
+                max_recursion_depth + 1,
             )
         except discord.HTTPException as e:
             deps["logger"].error(
-                f"Failed to send part {max_recursion_depth + 1} after recursion limit: {e}"
+                "Failed to send part %d after recursion limit: %s",
+                max_recursion_depth + 1,
+                e,
             )
             # As a last resort, truncate and send truncation notice as part 11
             deps["logger"].warning("Truncating message due to recursion limit")
@@ -548,11 +554,11 @@ async def send_split_message(
     # If message fits in one Discord message, send it directly
     if len(message) <= MESSAGE_LIMIT:
         try:
-            deps["logger"].debug(f"Discord API call - message content: {message[:200]}...")
-            deps["logger"].debug(f"Discord API call - suppress_embeds: {suppress_embeds}")
+            deps["logger"].debug("Discord API call - message content: %s...", message[:200])
+            deps["logger"].debug("Discord API call - suppress_embeds: %s", suppress_embeds)
             await channel.send(message, suppress_embeds=suppress_embeds)
             if _recursion_depth == 0:  # Only log for top-level calls
-                deps["logger"].debug(f"Sent message ({len(message)} chars)")
+                deps["logger"].debug("Sent message (%d chars)", len(message))
         except discord.HTTPException as e:
             deps["logger"].error(f"Discord API error sending message: {e}")
             raise
@@ -560,7 +566,7 @@ async def send_split_message(
 
     # Message needs splitting - ensure first part is under MESSAGE_LIMIT
     deps["logger"].debug(
-        f"Splitting long message ({len(message)} chars) at recursion depth {_recursion_depth}"
+        f"Splitting long message ({len(message)} chars) at recursion depth {_recursion_depth}",
     )
 
     # Find a safe split point that ensures first part is under MESSAGE_LIMIT
@@ -593,7 +599,7 @@ async def send_split_message(
     if len(message_part1) > MESSAGE_LIMIT:
         deps["logger"].warning(
             f"First part still too long ({len(message_part1)} chars), "
-            f"finding better split point"
+            f"finding better split point",
         )
         # Find the last safe character before the limit
         extended_search_range = 500  # Extended search range for fallback splitting
@@ -605,13 +611,13 @@ async def send_split_message(
                 message_part2 = after_split
                 deps["logger"].info(
                     f"Found better split at position {split_index}, "
-                    f"first part now {len(message_part1)} chars"
+                    f"first part now {len(message_part1)} chars",
                 )
                 break
         else:
             # If we still can't find a good split, force a split at the limit
             deps["logger"].warning(
-                "Could not find optimal split point, forcing split at character limit"
+                "Could not find optimal split point, forcing split at character limit",
             )
             split_index = MESSAGE_LIMIT - 1
             message_part1 = message[:split_index]
@@ -640,7 +646,7 @@ async def send_split_message(
 
 
 async def _handle_incoming_message(
-    message: discord.Message, deps: dict[str, Any], bot: discord.Client
+    message: discord.Message, deps: dict[str, Any], bot: discord.Client,
 ) -> None:
     """Handle incoming message with comprehensive routing and error handling.
 
@@ -670,7 +676,7 @@ async def _handle_incoming_message(
             logger.debug(
                 f"Channel message in #{channel_name} from {message.author.name}: "
                 f"allowed={is_allowed_channel}, mentioned={is_mentioned}, "
-                f"allowed_channels={deps['ALLOWED_CHANNELS']}"
+                f"allowed_channels={deps['ALLOWED_CHANNELS']}",
             )
 
             if is_allowed_channel and is_mentioned:
@@ -681,13 +687,13 @@ async def _handle_incoming_message(
             elif not is_allowed_channel:
                 logger.debug(
                     f"Channel #{channel_name} not in allowed channels: "
-                    f"{deps['ALLOWED_CHANNELS']}"
+                    f"{deps['ALLOWED_CHANNELS']}",
                 )
 
         # Log ignored messages at debug level
         logger.debug(
             f"Ignored message from {message.author.name} in #{message.channel.name} "
-            f"(not mentioned or allowed)"
+            f"(not mentioned or allowed)",
         )
 
     except Exception:
@@ -700,7 +706,7 @@ async def _handle_incoming_message(
             if isinstance(message.channel, discord.DMChannel | discord.TextChannel):
                 await message.channel.send(
                     "🔧 An unexpected error occurred. The issue has been logged "
-                    "for investigation."
+                    "for investigation.",
                 )
         except Exception:
             # If even the error message fails, just log it
@@ -730,7 +736,7 @@ def register_event_handlers(bot: discord.Client, deps: dict[str, Any]) -> None:
             logger.info(f"Connected to {len(bot.guilds)} Discord servers")
             logger.info(f"Configured bot presence: {deps['BOT_PRESENCE']}")
             logger.info(
-                f"Configured activity: {deps['ACTIVITY_TYPE']} - {deps['ACTIVITY_STATUS']}"
+                f"Configured activity: {deps['ACTIVITY_TYPE']} - {deps['ACTIVITY_STATUS']}",
             )
             logger.info(f"Allowed channels: {deps['ALLOWED_CHANNELS']}")
             logger.info(f"Bot will respond in channels: {deps['ALLOWED_CHANNELS']}")
@@ -739,7 +745,7 @@ def register_event_handlers(bot: discord.Client, deps: dict[str, Any]) -> None:
             # Set bot presence and activity
             activity = set_activity_status(deps["ACTIVITY_TYPE"], deps["ACTIVITY_STATUS"])
             await bot.change_presence(
-                activity=activity, status=discord.Status(deps["BOT_PRESENCE"])
+                activity=activity, status=discord.Status(deps["BOT_PRESENCE"]),
             )
 
             # Now that the event loop is running, initiate health checks
@@ -751,7 +757,7 @@ def register_event_handlers(bot: discord.Client, deps: dict[str, Any]) -> None:
                     "perplexity": deps.get("perplexity_client"),
                 }
                 deps["_health_task"] = asyncio.create_task(
-                    health_monitor.run_all_health_checks(clients_for_health_check, deps)
+                    health_monitor.run_all_health_checks(clients_for_health_check, deps),
                 )
                 logger.info("Health monitoring initiated successfully")
             except Exception:
@@ -857,7 +863,7 @@ def run_bot(config: dict[str, Any]) -> None:
             # Don't try to run async code from signal handler - it causes
             # "Cannot run the event loop while another loop is running" error
             # Instead, raise KeyboardInterrupt which discord.py handles gracefully
-            raise KeyboardInterrupt  # noqa: TRY301
+            raise KeyboardInterrupt
 
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)

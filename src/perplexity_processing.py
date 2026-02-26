@@ -50,14 +50,16 @@ def extract_citations_from_response(
     unique_citations = list(set(citation_matches))  # Remove duplicates
 
     logger.debug(
-        f"Citation extraction: found {len(citation_matches)} citations: {citation_matches}"
+        "Citation extraction: found %d citations: %s",
+        len(citation_matches),
+        citation_matches,
     )
-    logger.debug(f"Unique citations: {unique_citations}")
+    logger.debug("Unique citations: %s", unique_citations)
 
     # NEW: Use citations from API response metadata (modern Perplexity format)
     # Try citations field first (direct URL array)
     if unique_citations and response_citations:
-        logger.debug(f"Using API citations field: {len(response_citations)} URLs available")
+        logger.debug("Using API citations field: %d URLs available", len(response_citations))
 
         # Map citation numbers to URLs from the citations array
         for citation_num in unique_citations:
@@ -65,20 +67,22 @@ def extract_citations_from_response(
             if 0 <= citation_index < len(response_citations):
                 url = response_citations[citation_index]
                 citations[citation_num] = url
-                logger.debug(f"Mapped citation [{citation_num}] to URL: {url}")
+                logger.debug("Mapped citation [%s] to URL: %s", citation_num, url)
             else:
                 logger.warning(
-                    f"Citation [{citation_num}] index {citation_index} out of range for "
-                    f"{len(response_citations)} URLs"
+                    "Citation [%s] index %d out of range for %d URLs",
+                    citation_num,
+                    citation_index,
+                    len(response_citations),
                 )
 
     # Try search_results field as fallback (more detailed objects)
     elif unique_citations and search_results:
-        logger.debug(f"Using API search_results field: {len(search_results)} results available")
+        logger.debug("Using API search_results field: %d results available", len(search_results))
 
         # Extract URLs from search_results objects
         search_urls = [result.get("url") for result in search_results if result.get("url")]
-        logger.debug(f"Extracted {len(search_urls)} URLs from search_results")
+        logger.debug("Extracted %d URLs from search_results", len(search_urls))
 
         # Map citation numbers to URLs from search results
         for citation_num in unique_citations:
@@ -86,11 +90,13 @@ def extract_citations_from_response(
             if 0 <= citation_index < len(search_urls):
                 url = search_urls[citation_index]
                 citations[citation_num] = url
-                logger.debug(f"Mapped citation [{citation_num}] to search result URL: {url}")
+                logger.debug("Mapped citation [%s] to search result URL: %s", citation_num, url)
             else:
                 logger.warning(
-                    f"Citation [{citation_num}] index {citation_index} out of range for "
-                    f"{len(search_urls)} search results"
+                    "Citation [%s] index %d out of range for %d search results",
+                    citation_num,
+                    citation_index,
+                    len(search_urls),
                 )
 
     # FALLBACK: Try to extract URLs from text (legacy format support)
@@ -98,7 +104,7 @@ def extract_citations_from_response(
     if unique_citations and len(citations) < len(unique_citations):
         logger.debug("No API metadata citations or partial mapping, trying legacy URL extraction")
         urls = URL_PATTERN.findall(response_text)
-        logger.debug(f"Legacy extraction: found {len(urls)} URLs in text: {urls[:3]}...")
+        logger.debug("Legacy extraction: found %d URLs in text: %s...", len(urls), urls[:3])
 
         if urls:
             # Split text into lines to find citations at line endings
@@ -117,7 +123,7 @@ def extract_citations_from_response(
                         # Use the first URL found in the line with the citation
                         citations[citation_num] = line_urls[0]
                         logger.debug(
-                            f"Legacy mapped citation [{citation_num}] to URL: {line_urls[0]}"
+                            "Legacy mapped citation [%s] to URL: %s", citation_num, line_urls[0],
                         )
 
             # If we still don't have all citations mapped, try the fallback approach
@@ -128,10 +134,10 @@ def extract_citations_from_response(
                 for i, url in enumerate(urls, 1):
                     if str(i) in unique_citations and str(i) not in citations:
                         citations[str(i)] = url
-                        logger.debug(f"Legacy fallback mapped citation [{i}] to URL: {url}")
+                        logger.debug("Legacy fallback mapped citation [%d] to URL: %s", i, url)
 
     # Final debug logging
-    logger.debug(f"Final citation mapping: {citations}")
+    logger.debug("Final citation mapping: %s", citations)
 
     # Clean up any bare URLs in the text (if any were found in legacy mode)
     urls_for_cleanup = list(citations.values()) if citations else []
@@ -258,8 +264,8 @@ async def process_perplexity_message(
         - Logs API calls, responses, and citation processing
     """
     try:
-        logger.info(f"Processing Perplexity web search request for user {user.id}")
-        logger.debug(f"Query: {message[:200]}...")
+        logger.info("Processing Perplexity web search request for user %s", user.id)
+        logger.debug("Query: %s...", message[:200])
 
         # to maintain consistency and allow rollback on failures
 
@@ -282,7 +288,7 @@ async def process_perplexity_message(
 
         # Enable web search and citations with intelligent URL content extraction
         if urls_in_message:
-            logger.info(f"Processing {len(urls_in_message)} URL(s) for content extraction")
+            logger.info("Processing %d URL(s) for content extraction", len(urls_in_message))
 
             # Try to scrape content from URLs for better context
             scraped_contents = []
@@ -290,23 +296,23 @@ async def process_perplexity_message(
 
             for url in urls_in_message:
                 if is_scrapable_url(url):
-                    logger.debug(f"Attempting to scrape content from: {url}")
+                    logger.debug("Attempting to scrape content from: %s", url)
                     try:
                         scraped_content = await scrape_url_content(url, logger)
                         if scraped_content:
                             scraped_contents.append(f"Content from {url}:\n{scraped_content}")
                             successful_scrapes.append(url)
                             logger.info(
-                                f"Successfully scraped {len(scraped_content)} "
-                                f"characters from {url}"
+                                "Successfully scraped %d characters from %s",
+                                len(scraped_content),
+                                url,
                             )
                         else:
-                            logger.warning(f"Web scraping returned no content for: {url}")
+                            logger.warning("Web scraping returned no content for: %s", url)
                     except Exception as e:
-                        # ruff: noqa: TRY401
-                        logger.exception(f"Web scraping failed for {url}: {e}")
+                        logger.exception("Web scraping failed for %s", url)
                 else:
-                    logger.debug(f"URL not suitable for scraping: {url}")
+                    logger.debug("URL not suitable for scraping: %s", url)
 
             # Build enhanced message based on scraping results
             if scraped_contents:
@@ -333,16 +339,17 @@ async def process_perplexity_message(
                     )
 
                 logger.info(
-                    f"Enhanced message with scraped content from {len(successful_scrapes)} URL(s)"
+                    "Enhanced message with scraped content from %d URL(s)",
+                    len(successful_scrapes),
                 )
                 logger.debug(
-                    f"Total scraped content length: "
-                    f"{sum(len(content) for content in scraped_contents)} characters"
+                    "Total scraped content length: %d characters",
+                    sum(len(content) for content in scraped_contents),
                 )
             else:
                 # No scraped content - fall back to enhanced prompting
                 logger.warning(
-                    "No content could be scraped from URLs, falling back to enhanced prompting"
+                    "No content could be scraped from URLs, falling back to enhanced prompting",
                 )
                 if len(urls_in_message) == 1:
                     url = urls_in_message[0]
@@ -365,16 +372,18 @@ async def process_perplexity_message(
 
             # Update the message in the API call
             api_params["messages"][1]["content"] = enhanced_message
-            logger.debug(f"Enhanced message for URL processing: {enhanced_message[:200]}...")
+            logger.debug("Enhanced message for URL processing: %s...", enhanced_message[:200])
 
             # Log the full enhanced message for debugging (but truncated for readability)
             if len(enhanced_message) > 1000:
                 logger.debug(
-                    f"Full enhanced message ({len(enhanced_message)} chars): "
-                    f"{enhanced_message[:500]}...[TRUNCATED]...{enhanced_message[-200:]}"
+                    "Full enhanced message (%d chars): %s...[TRUNCATED]...%s",
+                    len(enhanced_message),
+                    enhanced_message[:500],
+                    enhanced_message[-200:],
                 )
             else:
-                logger.debug(f"Full enhanced message: {enhanced_message}")
+                logger.debug("Full enhanced message: %s", enhanced_message)
 
         else:
             # If no URLs, still enable web search for general queries
@@ -384,25 +393,26 @@ async def process_perplexity_message(
 
         response = await perplexity_client.chat.completions.create(**api_params)
     except TimeoutError:
-        logger.exception(f"Perplexity API call timed out for user {user.id}")
+        logger.exception("Perplexity API call timed out for user %s", user.id)
         return None
     except Exception:
         logger.exception("Perplexity API call failed for user %s", user.id)
         # Log additional context for debugging
-        logger.debug(f"Failed Perplexity call context - Message length: {len(message)}")
+        logger.debug("Failed Perplexity call context - Message length: %d", len(message))
         # Don't add failed responses to conversation history
         return None
     else:
         # Log response metadata
         logger.debug(
-            f"Perplexity API response received - ID: {getattr(response, 'id', 'unknown')}"
+            "Perplexity API response received - ID: %s", getattr(response, "id", "unknown"),
         )
         if hasattr(response, "usage"):
             usage = response.usage
             logger.info(
-                f"Perplexity token usage - Prompt: {getattr(usage, 'prompt_tokens', 'unknown')}, "
-                f"Completion: {getattr(usage, 'completion_tokens', 'unknown')}, "
-                f"Total: {getattr(usage, 'total_tokens', 'unknown')}"
+                "Perplexity token usage - Prompt: %s, Completion: %s, Total: %s",
+                getattr(usage, "prompt_tokens", "unknown"),
+                getattr(usage, "completion_tokens", "unknown"),
+                getattr(usage, "total_tokens", "unknown"),
             )
 
         # Extract and process response
@@ -413,21 +423,21 @@ async def process_perplexity_message(
                 logger.warning("Perplexity returned empty response content")
                 return None
 
-            logger.debug(f"Raw Perplexity response: {len(raw_response)} characters")
-            logger.debug(f"Response preview: {raw_response[:200]}...")
+            logger.debug("Raw Perplexity response: %d characters", len(raw_response))
+            logger.debug("Response preview: %s...", raw_response[:200])
 
             # Extract citations from API response metadata (new Perplexity format)
             response_citations = getattr(response, "citations", None)
             response_search_results = getattr(response, "search_results", None)
 
-            logger.debug(f"API response citations metadata: {response_citations}")
-            logger.debug(f"API response search_results metadata: {response_search_results}")
+            logger.debug("API response citations metadata: %s", response_citations)
+            logger.debug("API response search_results metadata: %s", response_search_results)
 
             # Process citations if present
             clean_text, citations = extract_citations_from_response(
-                raw_response, response_citations, response_search_results
+                raw_response, response_citations, response_search_results,
             )
-            logger.debug(f"Extracted {len(citations)} citations from response")
+            logger.debug("Extracted %d citations from response", len(citations))
 
             # Check if we processed URLs and provide helpful context about what happened
             if urls_in_message:
@@ -442,7 +452,7 @@ async def process_perplexity_message(
                     ):
                         # Web scraping was used - content was provided directly to Perplexity
                         logger.debug(
-                            "Web scraping content was provided to Perplexity for analysis"
+                            "Web scraping content was provided to Perplexity for analysis",
                         )
                     else:
                         # No web scraping and no citations - add fallback message
@@ -460,18 +470,19 @@ async def process_perplexity_message(
                         )
                         clean_text += fallback_text
                         logger.debug(
-                            f"Added URL access fallback message for {len(urls_in_message)} URL(s)"
+                            "Added URL access fallback message for %d URL(s)",
+                            len(urls_in_message),
                         )
                 else:
                     # We have citations - log successful URL processing
-                    logger.info(f"Successfully processed URL(s) with {len(citations)} citations")
+                    logger.info("Successfully processed URL(s) with %d citations", len(citations))
 
             # Determine if we should use embed formatting
             embed_data = None
             if citation_embed_formatter.should_use_embed_for_response(citations):
                 # Create embed data for Discord embed rendering
                 embed, embed_metadata = citation_embed_formatter.create_citation_embed(
-                    clean_text, citations, footer_text="🌐 Web search results"
+                    clean_text, citations, footer_text="🌐 Web search results",
                 )
                 embed_data = {
                     "embed": embed,
@@ -485,7 +496,7 @@ async def process_perplexity_message(
                 # Set suppress_embeds to False to prevent Discord from auto-generating embeds,
                 # since we are sending a custom citation embed instead.
                 suppress_embeds = False
-                logger.info(f"Created citation embed with {len(citations)} citations")
+                logger.info("Created citation embed with %d citations", len(citations))
             else:
                 # Fallback to plain text with markdown citations (won't be clickable)
                 formatted_text = format_citations_for_discord(clean_text, citations)
@@ -493,9 +504,12 @@ async def process_perplexity_message(
                 logger.debug("Using plain text formatting (no citations for embed)")
 
             logger.info(
-                f"Perplexity response processed: {len(formatted_text)} chars, "
-                f"{len(citations)} citations, embed_mode={embed_data is not None}, "
-                f"suppress_embeds={suppress_embeds}"
+                "Perplexity response processed: %d chars, %d citations, "
+                "embed_mode=%s, suppress_embeds=%s",
+                len(formatted_text),
+                len(citations),
+                embed_data is not None,
+                suppress_embeds,
             )
 
             # Add both user and assistant messages to conversation history (thread-safe)
@@ -514,5 +528,5 @@ async def process_perplexity_message(
 
             return formatted_text, suppress_embeds, embed_data
 
-        logger.error(f"Perplexity API returned invalid response structure: {response}")
+        logger.error("Perplexity API returned invalid response structure: %s", response)
         return None
