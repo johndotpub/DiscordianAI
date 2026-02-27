@@ -52,7 +52,7 @@ class DiscordBotManager:
                 "perplexity": self.deps.get("perplexity_client"),
             }
             self.deps["_health_task"] = asyncio.create_task(
-                health_monitor.run_all_health_checks(clients_for_health_check, self.deps),
+                health_monitor.run_all_health_checks(clients_for_health_check, self.config),
             )
             self.logger.info("Bot ready to process messages")
 
@@ -88,7 +88,7 @@ class DiscordBotManager:
             if not health_task.done():
                 health_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
-                    await health_task
+                    _ = await health_task
                 self.logger.info("Health monitoring task cancelled")
 
     def setup_signal_handlers(self):

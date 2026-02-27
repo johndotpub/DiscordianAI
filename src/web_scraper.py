@@ -389,26 +389,23 @@ def is_safe_url(url: str) -> bool:
     """
     try:
         parsed = urlparse(url)
-        if not parsed.scheme or not parsed.netloc:
-            return False
-
-        if parsed.scheme not in ["http", "https"]:
-            return False
-
-        # Resolve hostname to IP
         hostname = parsed.hostname
-        if not hostname:
+        if not (parsed.scheme in ["http", "https"] and parsed.netloc and hostname):
             return False
 
-        ip_addr = socket.gethostbyname(hostname)
-        ip = ipaddress.ip_address(ip_addr)
+        addr_info = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+        if not addr_info:
+            return False
 
-        # Check if IP is private or local
-        is_public = not (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast)
-    except (ValueError, socket.gaierror, TypeError):
+        for _family, _, _, _, sockaddr in addr_info:
+            ip_obj = ipaddress.ip_address(sockaddr[0])
+            # ip.is_global filters non-public ranges
+            if not ip_obj.is_global:
+                return False
+    except (ValueError, socket.gaierror, TypeError, OSError):
         return False
     else:
-        return is_public
+        return True
 
 
 def is_scrapable_url(url: str) -> bool:

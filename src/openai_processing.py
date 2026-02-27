@@ -12,15 +12,14 @@ from .models import AIRequest, OpenAIConfig
 
 @cached_response(ttl=DEFAULT_CACHE_TTL)
 @deduplicated_request()
-async def process_openai_message(
+async def _fetch_openai_response(
     request: AIRequest,
     conversation_summary: list[dict],
     openai_client,
     config: OpenAIConfig,
 ) -> str | None:
-    """Process message using OpenAI API with thread-safe conversation management."""
+    """Fetch an OpenAI response (cached/deduped) without side effects."""
     try:
-        # Build API parameters dynamically
         api_params = {
             "model": config.model,
             "messages": [
@@ -30,17 +29,14 @@ async def process_openai_message(
             ],
             "max_completion_tokens": config.output_tokens,
         }
-        # GPT-5 frontier models use fixed sampling and ignore temperature overrides.
 
         request.logger.debug(
             "Making OpenAI API call with %d messages", len(api_params["messages"])
         )
 
-        # Define the API call function for retry
         async def api_call_with_retry():
             return await openai_client.chat.completions.create(**api_params)
 
-        # Make API call with enhanced error handling and retries
         retry_config = RetryConfig(max_attempts=2, base_delay=1.0, max_delay=30.0)
 
         try:
@@ -56,7 +52,6 @@ async def process_openai_message(
         request.logger.exception("OpenAI API call failed for user %s", request.user.id)
         return None
     else:
-        # Extract and validate response
         if response.choices and response.choices[0].message.content:
             response_content = response.choices[0].message.content.strip()
 
@@ -70,17 +65,33 @@ async def process_openai_message(
                 getattr(response.choices[0], "finish_reason", "unknown"),
             )
 
-            # Add both user and assistant messages to conversation history (thread-safe)
-            # Only add after successful response to maintain consistency
-            request.conversation_manager.add_message(request.user.id, "user", request.message)
-            request.conversation_manager.add_message(
-                request.user.id,
-                "assistant",
-                response_content,
-                metadata={"ai_service": "openai", "model": config.model},
-            )
-
             return response_content
 
         request.logger.error("OpenAI API returned invalid response structure: %s", response)
         return None
+
+
+async def process_openai_message(
+    request: AIRequest,
+    conversation_summary: list[dict],
+    openai_client,
+    config: OpenAIConfig,
+) -> str | None:
+    """Process message using OpenAI API and persist conversation history."""
+    response_content = await _fetch_openai_response(
+        request, conversation_summary, openai_client, config
+    )
+
+    if not response_content:
+        return None
+
+    # Add both user and assistant messages to conversation history (thread-safe)
+    request.conversation_manager.add_message(request.user.id, "user", request.message)
+    request.conversation_manager.add_message(
+        request.user.id,
+        "assistant",
+        response_content,
+        metadata={"ai_service": "openai", "model": config.model},
+    )
+
+    return response_content

@@ -65,7 +65,7 @@ async def send_split_message(  # noqa: PLR0913
                 ),
             )
         else:
-            await channel.send(message, suppress_embeds=suppress_embeds)
+            await channel.send(content, suppress_embeds=suppress_embeds)
         return
 
     # Logical split: aim near the Discord limit to minimize message count
@@ -90,7 +90,7 @@ async def send_split_message(  # noqa: PLR0913
             ),
         )
     else:
-        await channel.send(before_split, suppress_embeds=suppress_embeds)
+        await channel.send(content_first, suppress_embeds=suppress_embeds)
 
     if after_split:
         await send_split_message(
@@ -206,7 +206,8 @@ async def send_formatted_message(  # noqa: PLR0913
     if embed_data and "embed" in embed_data:
         embed = embed_data["embed"]
         clean_text = embed_data.get("clean_text", message)
-        was_truncated = embed_data.get("embed_metadata", {}).get("was_truncated", False)
+        metadata = embed_data.get("embed_metadata") or embed_data.get("meta") or {}
+        was_truncated = metadata.get("was_truncated", False)
 
         if was_truncated:
             citations = embed_data.get("citations", {})

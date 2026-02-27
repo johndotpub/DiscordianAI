@@ -194,7 +194,7 @@ async def process_perplexity_message(
             )
 
         response = await perplexity_client.chat.completions.create(**api_params)
-        return _handle_api_response(response, request, urls_in_message, api_params)
+        return _handle_api_response(response, request, urls_in_message, api_params, config)
 
     except TimeoutError:
         request.logger.exception("Perplexity API call timed out for user %s", request.user.id)
@@ -221,6 +221,7 @@ def _handle_api_response(
     request: AIRequest,
     urls_in_message: list[str],
     api_params: dict[str, Any],
+    config: PerplexityConfig,
 ) -> tuple[str, bool, dict | None] | None:
     """Process and format the API response."""
     if not (response.choices and response.choices[0].message.content):
@@ -260,7 +261,12 @@ def _handle_api_response(
         embed_data = {"embed": embed, "citations": cit_map, "clean_text": final_text, "meta": meta}
 
     # Persist
-    request.conversation_manager.add_message(request.user.id, "assistant", final_text)
+    request.conversation_manager.add_message(
+        request.user.id,
+        "assistant",
+        final_text,
+        metadata={"ai_service": "perplexity", "model": config.model},
+    )
     return final_text, suppress_embeds, embed_data
 
 
