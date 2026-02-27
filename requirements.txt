@@ -1,4 +1,5 @@
 discord.py>=2.6.4
+aiohttp>=3.13.3
 openai>=2.24.0
 websockets>=16.0
 requests>=2.32.5

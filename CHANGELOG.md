@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Frontier-Only AI Configuration**: Standardized defaults to GPT-5 + Sonar-Pro, removed unsupported temperature parameters for GPT-5 and Perplexity, and updated validation messaging accordingly.
 - **Docs & README Refresh**: Rebuilt `README.md` into a concise quick-start with deep links to `docs/` sections, refreshed `OpenAI`, `Perplexity`, `HybridMode`, `Architecture`, and `API_Validation` guides to reflect new guardrails and diagrams.
 - **Test Suite Updates**: Updated OpenAI/Perplexity builder tests to target GPT-5 defaults, removed temperature expectations, and ensured model validation coverage for GPT-5 snapshots.
+- **Security**: Pinned `aiohttp>=3.13.3` to resolve upstream CVEs flagged by Dependabot (GHSA-3pmm-p7ch-p9vm family) and pip-audit.
 
 ## [v0.2.8.1] - 2026-01-06
 
