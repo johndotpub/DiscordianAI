@@ -63,7 +63,6 @@ async def send_split_message(  # noqa: PLR0913
                 allowed_mentions=discord.AllowedMentions(
                     users=[original_message.author], replied_user=False
                 ),
-                reference=original_message.to_reference(),
             )
         else:
             await channel.send(message, suppress_embeds=suppress_embeds)
@@ -89,7 +88,6 @@ async def send_split_message(  # noqa: PLR0913
             allowed_mentions=discord.AllowedMentions(
                 users=[original_message.author], replied_user=False
             ),
-            reference=original_message.to_reference(),
         )
     else:
         await channel.send(before_split, suppress_embeds=suppress_embeds)
@@ -130,7 +128,6 @@ async def send_split_message_with_embed(  # noqa: PLR0913
             allowed_mentions=discord.AllowedMentions(
                 users=[original_message.author], replied_user=False
             ),
-            reference=original_message.to_reference(),
         )
     else:
         await channel.send("", embed=embed)
@@ -163,7 +160,6 @@ async def send_split_message_with_embed(  # noqa: PLR0913
                         allowed_mentions=discord.AllowedMentions(
                             users=[original_message.author], replied_user=False
                         ),
-                        reference=original_message.to_reference(),
                     )
                 else:
                     await channel.send("", embed=cont_embed)
@@ -224,7 +220,6 @@ async def send_formatted_message(  # noqa: PLR0913
                     allowed_mentions=discord.AllowedMentions(
                         users=[original_message.author], replied_user=False
                     ),
-                    reference=original_message.to_reference(),
                 )
             else:
                 await channel.send("", embed=embed)

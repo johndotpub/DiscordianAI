@@ -178,7 +178,6 @@ class TestSendFormattedMessage:
         original_message = MagicMock(spec=discord.Message)
         original_message.author = author
         original_message.reply = AsyncMock()
-        original_message.to_reference.return_value = MagicMock()
 
         message = "Hello there"
         deps = {"logger": MagicMock()}
@@ -195,7 +194,6 @@ class TestSendFormattedMessage:
         call_args, call_kwargs = original_message.reply.call_args
         assert call_args[0].startswith(f"{author.mention} ")
         assert call_kwargs["mention_author"] is False
-        assert call_kwargs["reference"] == original_message.to_reference.return_value
 
     @pytest.mark.asyncio
     async def test_send_formatted_message_regular_long(self):
@@ -226,7 +224,6 @@ class TestSendFormattedMessage:
         original_message = MagicMock(spec=discord.Message)
         original_message.author = author
         original_message.reply = AsyncMock()
-        original_message.to_reference.return_value = MagicMock()
 
         long_message = "A" * 2500
         deps = {"logger": MagicMock()}
