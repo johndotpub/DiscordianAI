@@ -74,9 +74,9 @@ class TestCitationIntegration:
             "The latest AI developments include breakthrough research "
             "[1] and new model architectures [2]. Recent studies show progress."
         )
-        assert response_text == expected_text, (
-            "Expected marker-only text for history, got: " + repr(response_text)
-        )
+        assert (
+            response_text == expected_text
+        ), "Expected marker-only text for history, got: " + repr(response_text)
         assert "https://ai-research.example.com/breakthrough" not in response_text
         assert "https://ml-models.example.com/architectures" not in response_text
 
@@ -103,9 +103,9 @@ class TestCitationIntegration:
             "The latest AI developments include breakthrough research "
             "[1] and new model architectures [2]. Recent studies show progress."
         )
-        assert response_text == expected_text, (
-            "Expected marker-only text for history, got: " + repr(response_text)
-        )
+        assert (
+            response_text == expected_text
+        ), "Expected marker-only text for history, got: " + repr(response_text)
         assert "https://ai-research.example.com/breakthrough" not in response_text
         assert "https://ml-models.example.com/architectures" not in response_text
 

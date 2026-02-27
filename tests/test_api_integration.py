@@ -258,9 +258,9 @@ class TestPerplexityAPIIntegration:
             "AI development continues to advance. "
             "The latest findings [2] show promising results."
         )
-        assert response_text == expected_text, (
-            "Expected marker-only text for history, got: " + repr(response_text)
-        )
+        assert (
+            response_text == expected_text
+        ), "Expected marker-only text for history, got: " + repr(response_text)
         assert "https://example.com/research1" not in response_text
         assert "https://example.com/research2" not in response_text
 
