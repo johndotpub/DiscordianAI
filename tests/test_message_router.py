@@ -22,6 +22,9 @@ class DummyUser:
     def __eq__(self, other):
         return getattr(other, "id", None) == self.id
 
+    def __hash__(self):
+        return hash(self.id)
+
 
 class DummyChannel:
     def __init__(self, channel_id: int):
@@ -51,9 +54,10 @@ class DummyFailingChannel(DummyDMChannel):
         super().__init__(channel_id=channel_id)
         self.send_attempts = 0
 
-    async def send(self, content: str):
+    async def send(self, _content: str):
         self.send_attempts += 1
-        raise RuntimeError("send failed")
+        message = "send failed"
+        raise RuntimeError(message)
 
 
 @pytest.fixture(autouse=True)
@@ -62,7 +66,7 @@ def patch_discord_channel_types(monkeypatch):
     monkeypatch.setattr(message_router.discord, "TextChannel", DummyTextChannel)
 
 
-@pytest.fixture()
+@pytest.fixture
 def deps():
     logger = logging.getLogger("router-test")
     logger.addHandler(logging.NullHandler())

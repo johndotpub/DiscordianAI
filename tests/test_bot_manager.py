@@ -41,11 +41,11 @@ class DummyTask(asyncio.Future):
 
 
 class DummyHealthMonitor:
-    async def run_all_health_checks(self, clients, deps):
+    async def run_all_health_checks(self, _clients, _deps):
         return None
 
 
-@pytest.fixture()
+@pytest.fixture
 def base_deps(monkeypatch):
     logger = logging.getLogger("bot-manager-test")
     logger.addHandler(logging.NullHandler())
@@ -171,10 +171,10 @@ def test_run_handles_keyboard_interrupt(monkeypatch, base_deps):
     manager.graceful_shutdown = AsyncMock()
     manager.register_events = lambda: None
 
-    base_deps["bot"].run = lambda token: (_ for _ in ()).throw(KeyboardInterrupt)
+    base_deps["bot"].run = lambda _token=None: (_ for _ in ()).throw(KeyboardInterrupt)
 
-    monkeypatch.setattr(asyncio, "new_event_loop", lambda: FakeLoop())
-    monkeypatch.setattr(asyncio, "set_event_loop", lambda loop: None)
+    monkeypatch.setattr(asyncio, "new_event_loop", FakeLoop)
+    monkeypatch.setattr(asyncio, "set_event_loop", lambda _loop=None: None)
 
     manager.run()
 
@@ -185,9 +185,18 @@ def test_run_happy_path(base_deps):
     manager = DiscordBotManager(base_deps)
     ran = {}
 
-    manager.register_events = lambda: ran.setdefault("registered", True)
-    manager.setup_signal_handlers = lambda: ran.setdefault("signals", True)
-    base_deps["bot"].run = lambda token: ran.setdefault("token", token)
+    def mark_registered():
+        ran.setdefault("registered", True)
+
+    def mark_signals():
+        ran.setdefault("signals", True)
+
+    def run_bot(token):
+        ran.setdefault("token", token)
+
+    manager.register_events = mark_registered
+    manager.setup_signal_handlers = mark_signals
+    base_deps["bot"].run = run_bot
 
     manager.run()
 
