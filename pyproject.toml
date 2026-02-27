@@ -53,6 +53,7 @@ dev = [
 addopts = "-ra -q"
 filterwarnings = [
     "ignore:'audioop' is deprecated and slated for removal in Python 3.13:DeprecationWarning",
+    "ignore::DeprecationWarning:discord.player",
 ]
 asyncio_default_fixture_loop_scope = "function"
 

@@ -28,9 +28,9 @@ async def process_openai_message(
                 *conversation_summary,
                 {"role": "user", "content": request.message},
             ],
-            "temperature": config.temperature,
             "max_completion_tokens": config.output_tokens,
         }
+        # GPT-5 frontier models use fixed sampling and ignore temperature overrides.
 
         request.logger.debug(
             "Making OpenAI API call with %d messages", len(api_params["messages"])

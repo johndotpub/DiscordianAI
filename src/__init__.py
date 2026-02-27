@@ -17,9 +17,24 @@ Example:
     >>> run_bot(config)
 """
 
+from __future__ import annotations
+
+import warnings
+
 __version__ = "0.2.8.0"
 __author__ = "johndotpub"
 __email__ = "github@john.pub"
+
+# Discord.py still imports the legacy stdlib audioop module on initialization,
+# which emits a DeprecationWarning under Python 3.12+. Ensure we filter that
+# specific upstream warning before importing heavyweight modules so our global
+# "-W error" test runs stay clean.
+warnings.filterwarnings(
+    "ignore",
+    message="'audioop' is deprecated and slated for removal in Python 3.13",
+    category=DeprecationWarning,
+    module=r"discord\.player",
+)
 
 # Public API exports
 try:

@@ -24,7 +24,7 @@ This document validates the API parameters used in DiscordianAI against current 
   - `sonar-pro` ✅ **VALID** (Default - latest with web access)
   - `sonar` ✅ **VALID** (General model with web access)
 - **Parameter**: `max_tokens` ✅ **VALID**
-- **Temperature**: `0.7` ✅ **VALID** (Optimal for web search synthesis)
+- **Sampling Parameters**: Managed by Perplexity (temperature overrides are not supported)
 
 **Status**: All parameters are current and properly validated.
 

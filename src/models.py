@@ -19,10 +19,9 @@ class AIRequest:
 class OpenAIConfig:
     """Configuration for OpenAI specific parameters."""
 
-    model: str = "gpt-4-turbo"
+    model: str = "gpt-5-mini"
     system_message: str = "You are a helpful assistant."
-    output_tokens: int = 4000
-    temperature: float = 0.7
+    output_tokens: int = 8000
 
 
 @dataclass(frozen=True)
@@ -35,7 +34,6 @@ class PerplexityConfig:
         "When providing citations, include source URLs when available."
     )
     output_tokens: int = 8000
-    temperature: float = 0.7
 
 
 @dataclass(frozen=True)

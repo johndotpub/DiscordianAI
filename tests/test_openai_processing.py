@@ -139,7 +139,7 @@ class TestProcessOpenAIMessageBasic:
             logger=logger,
         )
         config = OpenAIConfig(
-            model="gpt-4",
+            model="gpt-5",
             system_message="Test",
             output_tokens=1000,
         )
@@ -182,7 +182,7 @@ class TestProcessOpenAIMessageBasic:
             logger=logger,
         )
         config = OpenAIConfig(
-            model="gpt-4",
+            model="gpt-5",
             system_message="Test",
             output_tokens=1000,
         )
@@ -225,7 +225,7 @@ class TestProcessOpenAIMessageBasic:
             logger=logger,
         )
         config = OpenAIConfig(
-            model="gpt-4",
+            model="gpt-5",
             system_message="Test",
             output_tokens=1000,
         )
@@ -280,7 +280,7 @@ class TestProcessOpenAIMessageAdditionalCoverage:
                 logger=logger,
             )
             config = OpenAIConfig(
-                model="gpt-4",
+                model="gpt-5",
                 system_message="System message",
                 output_tokens=1000,
             )
@@ -332,7 +332,7 @@ class TestProcessOpenAIMessageAdditionalCoverage:
                 logger=logger,
             )
             config = OpenAIConfig(
-                model="gpt-4",
+                model="gpt-5",
                 system_message="System message",
                 output_tokens=1000,
             )
@@ -380,7 +380,7 @@ class TestProcessOpenAIMessageAdditionalCoverage:
                 logger=logger,
             )
             config = OpenAIConfig(
-                model="gpt-4",
+                model="gpt-5",
                 system_message="System message",
                 output_tokens=1000,
             )
@@ -428,7 +428,7 @@ class TestProcessOpenAIMessageAdditionalCoverage:
                 logger=logger,
             )
             config = OpenAIConfig(
-                model="gpt-4",
+                model="gpt-5",
                 system_message="System message",
                 output_tokens=1000,
             )
@@ -473,7 +473,7 @@ class TestProcessOpenAIMessageAdditionalCoverage:
                 logger=logger,
             )
             config = OpenAIConfig(
-                model="gpt-4",
+                model="gpt-5",
                 system_message="System message",
                 output_tokens=1000,
             )

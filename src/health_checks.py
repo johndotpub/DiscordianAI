@@ -18,7 +18,7 @@ from typing import Any
 from .api_validation import (
     validate_full_config,
 )
-from .config import OPENAI_VALID_MODELS, PERPLEXITY_MODELS
+from .config import OPENAI_VALID_MODELS, PERPLEXITY_MODELS, is_supported_openai_model
 from .error_handling import ErrorTracker, classify_error
 
 # Health check thresholds
@@ -99,7 +99,7 @@ class APIHealthMonitor:
             model = config.get("GPT_MODEL", "gpt-5-mini")
 
             # Validate model is still supported
-            if model not in OPENAI_VALID_MODELS:
+            if not is_supported_openai_model(model):
                 return HealthCheckResult(
                     service="openai",
                     status="degraded",
@@ -208,7 +208,6 @@ class APIHealthMonitor:
                     {"role": "user", "content": "What is the current date?"},
                 ],
                 max_tokens=50,  # Minimal response
-                temperature=0.1,  # Low temperature for consistent results
             )
 
             response_time_ms = (time.time() - start_time) * 1000

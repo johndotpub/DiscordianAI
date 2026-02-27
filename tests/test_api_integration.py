@@ -275,7 +275,6 @@ class TestPerplexityAPIIntegration:
         call_args = perplexity_client.chat.completions.create.call_args[1]
         assert call_args["model"] == "sonar-pro"
         assert call_args["max_tokens"] == 1500
-        assert call_args["temperature"] == 0.7
         # Citations are now included by default, no special parameters needed
 
     @pytest.mark.asyncio
@@ -445,12 +444,10 @@ class TestAPIUtilities:
             user_message="Search query",
             model="sonar-pro",
             max_tokens=1500,
-            temperature=0.8,
         )
 
         assert params["model"] == "sonar-pro"
         assert params["max_tokens"] == 1500
-        assert params["temperature"] == 0.8
         assert len(params["messages"]) == 2  # system + user
 
     def test_log_api_call(self):

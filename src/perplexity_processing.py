@@ -175,7 +175,6 @@ def _build_api_params(model: str, system: str, user_msg: str, tokens: int) -> di
             {"role": "user", "content": user_msg},
         ],
         "max_tokens": tokens,
-        "temperature": 0.7,
     }
 
 

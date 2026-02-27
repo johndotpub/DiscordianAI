@@ -9,6 +9,8 @@ import logging
 import re
 from typing import Any
 
+from .config import OPENAI_VALID_MODELS, is_supported_openai_model
+
 
 class OpenAIParams:
     """Builder class for OpenAI API parameters."""
@@ -56,7 +58,6 @@ class PerplexityParams:
         self.params = {
             "model": model or "sonar-pro",  # Default fallback if not provided
             "max_tokens": max_tokens,
-            "temperature": 0.7,  # Good for web search synthesis
         }
 
     def add_messages(self, system_message: str, user_message: str):
@@ -65,11 +66,6 @@ class PerplexityParams:
             {"role": "system", "content": system_message},
             {"role": "user", "content": user_message},
         ]
-        return self
-
-    def set_temperature(self, temperature: float):
-        """Set temperature for response creativity."""
-        self.params["temperature"] = max(0.0, min(1.0, temperature))
         return self
 
     def build(self) -> dict[str, Any]:
@@ -87,15 +83,13 @@ def validate_gpt_model(model: str, logger: logging.Logger | None = None) -> bool
     Returns:
         True if model is recognized
     """
-    valid_models = {"gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-chat"}
-
-    is_valid = model in valid_models
+    is_valid = is_supported_openai_model(model)
 
     if not is_valid and logger:
         logger.warning(
-            "Unrecognized GPT model: %s. Known models: %s",
+            "Unrecognized GPT model: %s. Allowed identifiers start with 'gpt-5' (e.g., %s)",
             model,
-            ", ".join(sorted(valid_models)),
+            ", ".join(sorted(OPENAI_VALID_MODELS)),
         )
 
     return is_valid
@@ -302,14 +296,10 @@ class APICallBuilder:
         user_message: str,
         model: str | None = None,
         max_tokens: int = 8000,
-        temperature: float = 0.7,
     ) -> dict[str, Any]:
         """Build Perplexity API call parameters."""
         return (
-            PerplexityParams(model, max_tokens)
-            .add_messages(system_message, user_message)
-            .set_temperature(temperature)
-            .build()
+            PerplexityParams(model, max_tokens).add_messages(system_message, user_message).build()
         )
 
 

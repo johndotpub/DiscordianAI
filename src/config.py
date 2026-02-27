@@ -30,15 +30,35 @@ from typing import Any
 # ============================================================================
 
 # OpenAI Models
+OPENAI_MODEL_PREFIX = "gpt-5"
+
+# Canonical GPT-5 model identifiers that we document. Snapshot variants are allowed via regex.
 OPENAI_VALID_MODELS = [
-    "gpt-5",  # Latest generation - standard
+    OPENAI_MODEL_PREFIX,  # Latest generation - standard
     "gpt-5-mini",  # Latest generation - cost-effective
     "gpt-5-nano",  # Latest generation - high-speed
     "gpt-5-chat",  # Latest generation - conversational
 ]
 
+
 # Perplexity Models
 PERPLEXITY_MODELS = ["sonar-pro", "sonar"]  # Latest Perplexity model
+
+
+SNAPSHOT_MODEL_PREFIX = f"{OPENAI_MODEL_PREFIX}."
+
+
+def is_supported_openai_model(model: str | None) -> bool:
+    """Return True if the provided GPT model matches supported GPT-5 identifiers."""
+    if not model:
+        return False
+
+    if model in OPENAI_VALID_MODELS:
+        return True
+
+    # Snapshot builds arrive as dotted identifiers (e.g., gpt-5.2025-02-18, gpt-5.1).
+    return bool(model.startswith(SNAPSHOT_MODEL_PREFIX))
+
 
 # API URL Patterns for validation (stricter patterns with end anchor)
 VALID_OPENAI_URL_PATTERN = re.compile(r"https://api\.openai\.com/v\d+/?$")

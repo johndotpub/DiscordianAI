@@ -77,8 +77,13 @@ async def _process_message_core(
             system_message=deps["SYSTEM_MESSAGE"],
             output_tokens=deps["OUTPUT_TOKENS"],
         )
+        perplexity_model = (
+            deps.get("PERPLEXITY_MODEL")
+            or (deps.get("config") or {}).get("PERPLEXITY_MODEL")
+            or "sonar-pro"
+        )
         perplexity_config = PerplexityConfig(
-            model="sonar-pro",
+            model=perplexity_model,
             system_message=deps["SYSTEM_MESSAGE"],
             output_tokens=deps["OUTPUT_TOKENS"],
         )

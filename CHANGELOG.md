@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Major Python Architecture Restructure**: Consolidated legacy fixes into a unified release. De-coupled the monolithic `bot.py` into distinct single-responsibility components (`message_router.py`, `message_processor.py`, `message_splitter.py`, `bot_manager.py`).
 - **Enhanced Test Coverage**: Improved reliability for AI processing modules. Achieved 100% clean test suite with zero warnings resulting in 536 passed tests. Added robust coverage for the full inline citation architecture.
 - **Lazy Logging Framework**: Standardized application to use lazy evaluation strings (`%s`/`%d`) for all logging calls to massively improve latency and adhere to production best practices.
+- **Pytest Warning Guardrail**: Added a dedicated `tests/conftest.py` and matching `pyproject.toml` filter to suppress the upstream `discord.player` `audioop` deprecation so `-W error` runs remain green on Python 3.12+.
+- **Frontier Model Validation Helper**: Introduced `is_supported_openai_model()` with GPT-5 snapshot support to centralize validation across health checks, API validation, and builders.
 
 ### Changed
 - **Dependencies**: Upgraded various Python packages to their latest stable environments across `requirements.txt`, `pyproject.toml`, and `.pre-commit-config.yaml`:
@@ -27,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Perplexity Inline Citations**: Refactored the core embedding logic making Perplexity links neatly formatted inline clickable hyperlink citations `[[1]](url)` directly within the Discord Embed.
 - **Warnings Mitigation**: Cleanly silenced upstream layer warnings within the `[tool.pytest.ini_options]` (e.g., the `audioop` DeprecationWarning from `discord.py`) to keep CI/CD pipelines crisp.
 - **Documentation Overhaul**: Modernized all references inside `Architecture.md` and filled missing docstring constraints (`D10x` compliant) across every Python module.
+- **Frontier-Only AI Configuration**: Standardized defaults to GPT-5 + Sonar-Pro, removed unsupported temperature parameters for GPT-5 and Perplexity, and updated validation messaging accordingly.
+- **Docs & README Refresh**: Rebuilt `README.md` into a concise quick-start with deep links to `docs/` sections, refreshed `OpenAI`, `Perplexity`, `HybridMode`, `Architecture`, and `API_Validation` guides to reflect new guardrails and diagrams.
+- **Test Suite Updates**: Updated OpenAI/Perplexity builder tests to target GPT-5 defaults, removed temperature expectations, and ensured model validation coverage for GPT-5 snapshots.
 
 ## [v0.2.8.1] - 2026-01-06
 

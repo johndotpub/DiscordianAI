@@ -28,11 +28,12 @@ PERPLEXITY_MODEL=sonar-pro
 
 # Response settings
 OUTPUT_TOKENS=8000
-TEMPERATURE=0.7  # Good for web search synthesis
 
 # System message for web search
 SYSTEM_MESSAGE=You are a helpful assistant with access to current web information. When providing citations, include source URLs when available.
 ```
+
+Perplexity Sonar models manage sampling internally, so manual `temperature` controls are not exposed in DiscordianAI.
 
 ## Operation Modes
 
@@ -232,7 +233,6 @@ The bot analyzes queries to determine when web search is beneficial:
 ### Performance Optimization
 
 - **Adjust OUTPUT_TOKENS**: Higher values allow for more complete responses with citations
-- **Use temperature 0.7**: Optimal for factual synthesis while maintaining readability
 - **Monitor API costs**: Track usage patterns and optimize for your use case
 
 ## Environment Variables

@@ -19,6 +19,7 @@ from .config import (
     SECONDS_PER_MINUTE,
     VALID_OPENAI_URL_PATTERN,
     VALID_PERPLEXITY_URL_PATTERN,
+    is_supported_openai_model,
 )
 
 # Re-export for backward compatibility
@@ -135,9 +136,11 @@ def validate_openai_config(config: dict) -> list[str]:
 
     # Validate GPT model
     gpt_model = config.get("GPT_MODEL", "")
-    if gpt_model and gpt_model not in OPENAI_VALID_MODELS:
+    if gpt_model and not is_supported_openai_model(gpt_model):
         issues.append(
-            f"Unknown GPT model: {gpt_model}. Known models: {', '.join(OPENAI_VALID_MODELS)}",
+            "Unknown GPT model: "
+            f"{gpt_model}. Allowed identifiers start with 'gpt-5' (e.g., "
+            f"{', '.join(OPENAI_VALID_MODELS)}).",
         )
 
     # Removed unsupported GPT-5 parameter validation
