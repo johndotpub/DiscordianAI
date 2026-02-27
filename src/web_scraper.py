@@ -375,6 +375,7 @@ def is_safe_url(url: str) -> bool:
     Returns:
         True if URL is external and safe
     """
+    is_safe = False
     try:
         parsed = urlparse(url)
         if not parsed.scheme or not parsed.netloc:
