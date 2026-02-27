@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from src.config import EMBED_SAFE_LIMIT
+from src.config import EMBED_SAFE_LIMIT, MAX_SPLIT_RECURSION
 from src.message_splitter import (
     send_formatted_message,
     send_split_message,
@@ -313,6 +313,55 @@ class TestSendSplitMessageWithEmbed:
         # First call should be with the original embed
         assert channel.send.call_args_list[0] == (("",), {"embed": embed})
 
+    @pytest.mark.asyncio
+    async def test_split_embed_continuation_reply_with_mentions(self):
+        """Continuation embed replies with allowed mentions and mention prefix only once."""
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+
+        author = MagicMock()
+        author.mention = "<@user>"
+        original_message = MagicMock(spec=discord.Message)
+        original_message.author = author
+        original_message.reply = AsyncMock()
+
+        # Craft content that exceeds the safe limit so a continuation is needed
+        long_content = "A" * (EMBED_SAFE_LIMIT + 50) + " [1] " + ("B" * 50) + " [2]"
+        citations = {"1": "https://example.com/one", "2": "https://example.com/two"}
+
+        first_embed = MagicMock(spec=discord.Embed)
+        continuation_embed = MagicMock(spec=discord.Embed)
+        deps = {"logger": MagicMock()}
+
+        with patch(
+            "src.message_splitter.citation_embed_formatter.create_citation_embed",
+            return_value=(continuation_embed, None),
+        ) as mock_create:
+            await send_split_message_with_embed(
+                channel,
+                long_content,
+                deps,
+                first_embed,
+                citations,
+                original_message=original_message,
+                mention_prefix=f"{author.mention} ",
+            )
+
+        # First reply should include the mention prefix
+        first_call_args, first_call_kwargs = original_message.reply.call_args_list[0]
+        assert first_call_args[0].startswith(f"{author.mention} ")
+        assert first_call_kwargs["embed"] is first_embed
+        assert first_call_kwargs["mention_author"] is False
+        assert isinstance(first_call_kwargs["allowed_mentions"], discord.AllowedMentions)
+
+        # Continuation reply should omit the mention prefix and use the continuation embed
+        second_call_args, second_call_kwargs = original_message.reply.call_args_list[1]
+        assert second_call_args[0] == ""
+        assert second_call_kwargs["embed"] is continuation_embed
+        assert second_call_kwargs["mention_author"] is False
+        assert isinstance(second_call_kwargs["allowed_mentions"], discord.AllowedMentions)
+        mock_create.assert_called_once()
+
 
 class TestEmbedCharacterLimits:
     """Test proper handling of Discord character limits."""
@@ -356,6 +405,25 @@ class TestEmbedCharacterLimits:
             assert args[1] == long_message
             assert args[2] == deps
             assert args[3] is False
+
+
+@pytest.mark.asyncio
+async def test_send_split_message_recursion_guard():
+    """Recursion guard truncates and exits when depth exceeds limit."""
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock()
+
+    deps = {"logger": MagicMock()}
+
+    await send_split_message(
+        channel,
+        "X" * 50,
+        deps,
+        _recursion_depth=MAX_SPLIT_RECURSION + 1,
+    )
+
+    # Should send a truncated message and a follow-up notice
+    assert channel.send.call_count == 2
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ from src.perplexity_processing import (
     extract_citations_from_response,
     format_citations_for_discord,
     process_perplexity_message,
+    should_suppress_embeds,
 )
 from tests.test_utils import FakePerplexityClient
 
@@ -245,6 +246,14 @@ async def test_process_perplexity_strips_citation_url_footers():
     assert "https://example.com/source-two" not in res_text
     assert "[1]" in res_text
     assert "[2]" in res_text
+
+
+def test_should_suppress_embeds_mixed_links():
+    text_with_multiple_links = "See [ref](https://one.test) and https://two.test for details"
+    assert should_suppress_embeds(text_with_multiple_links) is True
+
+    text_with_single_link = "Only one link here https://one.test"
+    assert should_suppress_embeds(text_with_single_link) is False
 
 
 def test_extract_citations_converts_markdown_links_to_markers():
