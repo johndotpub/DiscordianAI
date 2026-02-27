@@ -104,7 +104,7 @@ async def send_split_message(  # noqa: PLR0913
         )
 
 
-async def send_split_message_with_embed(  # noqa: PLR0913
+async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
     channel: discord.TextChannel | discord.DMChannel,
     message: str,
     deps: dict[str, Any],
@@ -180,7 +180,7 @@ async def send_split_message_with_embed(  # noqa: PLR0913
                 mention_prefix=None,
             )
     elif citations and message and original_message:
-        # Embed was truncated but clean text fit; send remaining text to avoid dropping tail content
+        # Embed was truncated but clean text fit; send remaining text to avoid dropping tail
         await send_split_message(
             channel,
             message,

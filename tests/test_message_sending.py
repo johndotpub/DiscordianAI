@@ -362,6 +362,42 @@ class TestSendSplitMessageWithEmbed:
         assert isinstance(second_call_kwargs["allowed_mentions"], discord.AllowedMentions)
         mock_create.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_split_embed_truncated_with_remaining_text(self):
+        """When truncated embed leaves no after_split, remaining text still sends as reply."""
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+
+        author = MagicMock()
+        author.mention = "<@user>"
+        original_message = MagicMock(spec=discord.Message)
+        original_message.author = author
+        original_message.reply = AsyncMock()
+
+        citations = {"1": "https://example.com/one"}
+        first_embed = MagicMock(spec=discord.Embed)
+        deps = {"logger": MagicMock()}
+
+        with patch("src.message_splitter.send_split_message") as mock_split:
+            await send_split_message_with_embed(
+                channel,
+                "Short content [1]",
+                deps,
+                first_embed,
+                citations,
+                original_message=original_message,
+                mention_prefix=f"{author.mention} ",
+            )
+
+        # continuation path should send remaining text once via split helper
+        mock_split.assert_called_once()
+        args, kwargs = mock_split.call_args
+        assert args[0] is channel
+        assert args[1] == "Short content [1]"
+        assert kwargs["original_message"] is original_message
+        assert kwargs["mention_prefix"] is None
+        assert kwargs["suppress_embeds"] is False
+
 
 class TestEmbedCharacterLimits:
     """Test proper handling of Discord character limits."""
