@@ -65,20 +65,9 @@ def extract_citations_from_response(
     if len(citations) < len(unique_citations):
         _map_from_text_fallback(response_text, unique_citations, citations)
 
-    # Clean up results
-    urls_for_cleanup = list(citations.values()) if citations else []
-    cleaned_text = response_text
+    cleaned_text = _normalize_citation_text(response_text, citations)
 
-    if citations:
-        # Replace markdown links like [1](url) with bare markers [1]
-        cleaned_text = _strip_markdown_citation_links(cleaned_text, citations)
-
-    cleaned_text = _clean_bare_urls_safely(cleaned_text, urls_for_cleanup)
-
-    if citations:
-        cleaned_text = _strip_citation_url_footers(cleaned_text, citations)
-
-    return cleaned_text.strip(), citations
+    return cleaned_text, citations
 
 
 def _map_from_metadata(unique: list[str], metadata: list[Any], target: dict[str, str]) -> None:
@@ -112,34 +101,21 @@ def _map_from_text_fallback(text: str, unique: list[str], target: dict[str, str]
                     target[num] = urls[0]
 
 
-def _clean_bare_urls_safely(text: str, urls: list) -> str:
-    """Safely remove bare URLs that aren't part of markdown links."""
-    for url in urls:
-        escaped_url = re.escape(url)
-        pattern = rf"(?<!\]\(){escaped_url}(?!\s*\))"
-        text = re.sub(pattern, "", text)
-    return text
+def _normalize_citation_text(text: str, citations: dict[str, str]) -> str:
+    """Normalize response text to numbered markers only (no visible URLs)."""
+    if not citations:
+        return text.strip()
 
+    urls_for_cleanup = list(citations.values())
 
-def _strip_markdown_citation_links(text: str, citations: dict[str, str]) -> str:
-    """Convert [n](url) citation links into bare [n] markers."""
-
-    def replace(match: re.Match[str]) -> str:
+    def replace_markdown(match: re.Match[str]) -> str:
         num = match.group(1)
         url = match.group(2)
-        if not citations:
-            return match.group(0)
-        if citations.get(num) == url:
-            return f"[{num}]"
-        return match.group(0)
+        return f"[{num}]" if citations.get(num) == url else match.group(0)
 
-    return re.sub(r"\[(\d+)\]\((https?://[^)]+)\)", replace, text)
+    text = re.sub(r"\[(\d+)\]\((https?://[^)]+)\)", replace_markdown, text)
 
-
-def _strip_citation_url_footers(text: str, citations: dict[str, str]) -> str:
-    """Remove trailing citation URL footers so only numbered markers remain."""
-    if not citations:
-        return text
+    text = _clean_bare_urls_safely(text, urls_for_cleanup)
 
     cleaned_lines = []
     for line in text.splitlines():
@@ -158,7 +134,16 @@ def _strip_citation_url_footers(text: str, citations: dict[str, str]) -> str:
 
         cleaned_lines.append(line)
 
-    return "\n".join(cleaned_lines)
+    return "\n".join(cleaned_lines).strip()
+
+
+def _clean_bare_urls_safely(text: str, urls: list) -> str:
+    """Safely remove bare URLs that aren't part of markdown links."""
+    for url in urls:
+        escaped_url = re.escape(url)
+        pattern = rf"(?<!\]\(){escaped_url}(?!\s*\))"
+        text = re.sub(pattern, "", text)
+    return text
 
 
 def format_citations_for_discord(
