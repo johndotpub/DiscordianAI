@@ -72,13 +72,13 @@ class TestCitationIntegration:
         # for conversation history, while the embed displays the formatted content
         expected_text = (
             "The latest AI developments include breakthrough research "
-            "[1](https://ai-research.example.com/breakthrough) "
-            "and new model architectures [2](https://ml-models.example.com/architectures). "
-            "Recent studies show progress."
+            "[1] and new model architectures [2]. Recent studies show progress."
         )
-        assert (
-            response_text == expected_text
-        ), f"Expected actual content in response_text, got: '{response_text}'"
+        assert response_text == expected_text, (
+            "Expected marker-only text for history, got: " + repr(response_text)
+        )
+        assert "https://ai-research.example.com/breakthrough" not in response_text
+        assert "https://ml-models.example.com/architectures" not in response_text
 
         # The embed should contain the actual content
         embed = embed_data["embed"]
@@ -101,13 +101,13 @@ class TestCitationIntegration:
         # for conversation history, while the embed displays the formatted content
         expected_text = (
             "The latest AI developments include breakthrough research "
-            "[1](https://ai-research.example.com/breakthrough) "
-            "and new model architectures [2](https://ml-models.example.com/architectures). "
-            "Recent studies show progress."
+            "[1] and new model architectures [2]. Recent studies show progress."
         )
-        assert (
-            response_text == expected_text
-        ), f"Expected actual content in response_text, got: '{response_text}'"
+        assert response_text == expected_text, (
+            "Expected marker-only text for history, got: " + repr(response_text)
+        )
+        assert "https://ai-research.example.com/breakthrough" not in response_text
+        assert "https://ml-models.example.com/architectures" not in response_text
 
         # The embed should contain the actual content
         embed = embed_data["embed"]

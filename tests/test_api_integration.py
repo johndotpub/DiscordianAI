@@ -254,18 +254,22 @@ class TestPerplexityAPIIntegration:
         # When embed_data exists, response_text should contain the actual content
         # for conversation history, while the embed displays the formatted content
         expected_text = (
-            "Based on recent research [1](https://example.com/research1), "
+            "Based on recent research [1], "
             "AI development continues to advance. "
-            "The latest findings [2](https://example.com/research2) show promising results."
+            "The latest findings [2] show promising results."
         )
-        assert (
-            response_text == expected_text
-        ), f"Expected actual content in response_text, got: '{response_text}'"
+        assert response_text == expected_text, (
+            "Expected marker-only text for history, got: " + repr(response_text)
+        )
+        assert "https://example.com/research1" not in response_text
+        assert "https://example.com/research2" not in response_text
 
         # Should have embed data since citations are present
         assert embed_data is not None
         assert "embed" in embed_data
         assert "citations" in embed_data
+        assert embed_data["citations"]["1"] == "https://example.com/research1"
+        assert embed_data["citations"]["2"] == "https://example.com/research2"
 
         # The content should be in the embed, not in response_text
         embed = embed_data["embed"]
