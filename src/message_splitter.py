@@ -27,11 +27,13 @@ from .discord_embeds import citation_embed_formatter
 # ============================================================================
 
 
-async def send_split_message(
+async def send_split_message(  # noqa: PLR0913
     channel: discord.TextChannel | discord.DMChannel,
     message: str,
     deps: dict[str, Any],
     suppress_embeds: bool = False,
+    original_message: discord.Message | None = None,
+    mention_prefix: str | None = None,
     _recursion_depth: int = 0,
 ) -> None:
     """Send messages with automatic splitting for Discord's message character limit."""
@@ -52,7 +54,19 @@ async def send_split_message(
 
     # Fits in one message
     if len(message) <= MESSAGE_LIMIT:
-        await channel.send(message, suppress_embeds=suppress_embeds)
+        content = f"{mention_prefix}{message}" if mention_prefix else message
+        if original_message:
+            await original_message.reply(
+                content,
+                suppress_embeds=suppress_embeds,
+                mention_author=False,
+                allowed_mentions=discord.AllowedMentions(
+                    users=[original_message.author], replied_user=False
+                ),
+                reference=original_message.to_reference(),
+            )
+        else:
+            await channel.send(message, suppress_embeds=suppress_embeds)
         return
 
     # Logical split
@@ -65,23 +79,41 @@ async def send_split_message(
     before_split, after_split = adjust_split_for_code_blocks(message, split_index)
 
     # Send parts
-    await channel.send(before_split, suppress_embeds=suppress_embeds)
+    content_first = f"{mention_prefix}{before_split}" if mention_prefix else before_split
+
+    if original_message:
+        await original_message.reply(
+            content_first,
+            suppress_embeds=suppress_embeds,
+            mention_author=False,
+            allowed_mentions=discord.AllowedMentions(
+                users=[original_message.author], replied_user=False
+            ),
+            reference=original_message.to_reference(),
+        )
+    else:
+        await channel.send(before_split, suppress_embeds=suppress_embeds)
+
     if after_split:
         await send_split_message(
             channel,
             after_split,
             deps,
             suppress_embeds=False,
+            original_message=original_message,
+            mention_prefix=None,
             _recursion_depth=_recursion_depth + 1,
         )
 
 
-async def send_split_message_with_embed(
+async def send_split_message_with_embed(  # noqa: PLR0913
     channel: discord.TextChannel | discord.DMChannel,
     message: str,
     deps: dict[str, Any],
     embed: discord.Embed,
     citations: dict[str, str] | None = None,
+    original_message: discord.Message | None = None,
+    mention_prefix: str | None = None,
 ) -> None:
     """Send a long message with citation embeds, maintaining citations across parts."""
     if len(message) > EMBED_SAFE_LIMIT:
@@ -90,7 +122,18 @@ async def send_split_message_with_embed(
     else:
         after_split = ""
 
-    await channel.send("", embed=embed)
+    if original_message:
+        await original_message.reply(
+            mention_prefix or "",
+            embed=embed,
+            mention_author=False,
+            allowed_mentions=discord.AllowedMentions(
+                users=[original_message.author], replied_user=False
+            ),
+            reference=original_message.to_reference(),
+        )
+    else:
+        await channel.send("", embed=embed)
 
     if after_split.strip():
         message_part2 = after_split.strip()
@@ -109,21 +152,47 @@ async def send_split_message_with_embed(
                         deps,
                         cont_embed,
                         remaining_citations,
+                        original_message,
+                        None,
+                    )
+                elif original_message:
+                    await original_message.reply(
+                        "",
+                        embed=cont_embed,
+                        mention_author=False,
+                        allowed_mentions=discord.AllowedMentions(
+                            users=[original_message.author], replied_user=False
+                        ),
+                        reference=original_message.to_reference(),
                     )
                 else:
                     await channel.send("", embed=cont_embed)
             else:
-                await send_split_message(channel, message_part2, deps)
+                await send_split_message(
+                    channel,
+                    message_part2,
+                    deps,
+                    original_message=original_message,
+                    mention_prefix=None,
+                )
         else:
-            await send_split_message(channel, message_part2, deps)
+            await send_split_message(
+                channel,
+                message_part2,
+                deps,
+                original_message=original_message,
+                mention_prefix=None,
+            )
 
 
-async def send_formatted_message(
+async def send_formatted_message(  # noqa: PLR0913
     channel: discord.TextChannel | discord.DMChannel,
     message: str,
     deps: dict[str, Any],
     suppress_embeds: bool = False,
     embed_data: dict | None = None,
+    original_message: discord.Message | None = None,
+    mention_prefix: str | None = None,
 ) -> None:
     """Send formatted message to Discord, using extracted splitter logic."""
     logger = deps["logger"]
@@ -135,16 +204,49 @@ async def send_formatted_message(
 
         if was_truncated:
             citations = embed_data.get("citations", {})
-            await send_split_message_with_embed(channel, clean_text, deps, embed, citations)
+            await send_split_message_with_embed(
+                channel,
+                clean_text,
+                deps,
+                embed,
+                citations,
+                original_message,
+                mention_prefix,
+            )
             return
 
         try:
-            await channel.send("", embed=embed)
+            if original_message:
+                await original_message.reply(
+                    mention_prefix or "",
+                    embed=embed,
+                    mention_author=False,
+                    allowed_mentions=discord.AllowedMentions(
+                        users=[original_message.author], replied_user=False
+                    ),
+                    reference=original_message.to_reference(),
+                )
+            else:
+                await channel.send("", embed=embed)
         except discord.HTTPException:
             logger.exception("Failed to send embed, falling back to split text")
-            await send_split_message(channel, message, deps, suppress_embeds)
+            await send_split_message(
+                channel,
+                message,
+                deps,
+                suppress_embeds,
+                original_message=original_message,
+                mention_prefix=mention_prefix,
+            )
     else:
-        await send_split_message(channel, message, deps, suppress_embeds)
+        await send_split_message(
+            channel,
+            message,
+            deps,
+            suppress_embeds,
+            original_message=original_message,
+            mention_prefix=mention_prefix,
+        )
 
 
 # ============================================================================

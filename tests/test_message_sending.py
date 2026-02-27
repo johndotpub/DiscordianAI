@@ -14,7 +14,11 @@ import discord
 import pytest
 
 from src.config import EMBED_SAFE_LIMIT
-from src.message_splitter import send_formatted_message, send_split_message_with_embed
+from src.message_splitter import (
+    send_formatted_message,
+    send_split_message,
+    send_split_message_with_embed,
+)
 
 
 class TestSendFormattedMessage:
@@ -122,6 +126,8 @@ class TestSendFormattedMessage:
                 deps,
                 embed,
                 embed_data["citations"],
+                None,
+                None,
             )
 
     @pytest.mark.asyncio
@@ -164,6 +170,34 @@ class TestSendFormattedMessage:
         channel.send.assert_called_once_with(message, suppress_embeds=False)
 
     @pytest.mark.asyncio
+    async def test_send_formatted_message_reply_with_mention(self):
+        """Send uses reply with mention prefix when original_message is provided."""
+        channel = MagicMock(spec=discord.TextChannel)
+        author = MagicMock()
+        author.mention = "<@user>"
+        original_message = MagicMock(spec=discord.Message)
+        original_message.author = author
+        original_message.reply = AsyncMock()
+        original_message.to_reference.return_value = MagicMock()
+
+        message = "Hello there"
+        deps = {"logger": MagicMock()}
+
+        await send_formatted_message(
+            channel,
+            message,
+            deps,
+            original_message=original_message,
+            mention_prefix=f"{author.mention} ",
+        )
+
+        original_message.reply.assert_called_once()
+        call_args, call_kwargs = original_message.reply.call_args
+        assert call_args[0].startswith(f"{author.mention} ")
+        assert call_kwargs["mention_author"] is False
+        assert call_kwargs["reference"] == original_message.to_reference.return_value
+
+    @pytest.mark.asyncio
     async def test_send_formatted_message_regular_long(self):
         """Test sending regular message > 2000 chars (needs splitting)."""
         channel = MagicMock(spec=discord.TextChannel)
@@ -177,7 +211,40 @@ class TestSendFormattedMessage:
             await send_formatted_message(channel, long_message, deps)
 
             # Should call split function
-            mock_split.assert_called_once_with(channel, long_message, deps, False)
+            mock_split.assert_called_once()
+            args, _kwargs = mock_split.call_args
+            assert args[0] is channel
+            assert args[1] == long_message
+            assert args[2] == deps
+            assert args[3] is False
+
+    @pytest.mark.asyncio
+    async def test_send_split_message_mentions_once_when_split(self):
+        """First reply includes mention prefix; subsequent parts do not repeat it."""
+        author = MagicMock()
+        author.mention = "<@user>"
+        original_message = MagicMock(spec=discord.Message)
+        original_message.author = author
+        original_message.reply = AsyncMock()
+        original_message.to_reference.return_value = MagicMock()
+
+        long_message = "A" * 2500
+        deps = {"logger": MagicMock()}
+
+        await send_split_message(
+            MagicMock(spec=discord.TextChannel),
+            long_message,
+            deps,
+            original_message=original_message,
+            mention_prefix=f"{author.mention} ",
+        )
+
+        # Should have multiple replies (due to split)
+        assert original_message.reply.call_count >= 2
+        first_content = original_message.reply.call_args_list[0][0][0]
+        second_content = original_message.reply.call_args_list[1][0][0]
+        assert first_content.startswith(f"{author.mention} ")
+        assert not second_content.startswith(f"{author.mention} ")
 
     @pytest.mark.asyncio
     async def test_no_duplicate_messages_sent(self):
@@ -286,7 +353,12 @@ class TestEmbedCharacterLimits:
             await send_formatted_message(channel, long_message, deps)
 
             # Should trigger splitting for > 2000 chars
-            mock_split.assert_called_once_with(channel, long_message, deps, False)
+            mock_split.assert_called_once()
+            args, _kwargs = mock_split.call_args
+            assert args[0] is channel
+            assert args[1] == long_message
+            assert args[2] == deps
+            assert args[3] is False
 
 
 if __name__ == "__main__":

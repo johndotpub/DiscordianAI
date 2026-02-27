@@ -115,6 +115,8 @@ async def _process_message_core(
             deps,
             suppress_embeds=suppress_embeds,
             embed_data=embed_data,
+            original_message=message,
+            mention_prefix=f"{message.author.mention} ",
         )
         logger.info("Successfully processed and responded")
 
