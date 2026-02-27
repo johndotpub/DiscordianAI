@@ -136,10 +136,10 @@ class APIHealthMonitor:
 
             # Check response time thresholds
             status = "healthy"
-            if response_time_ms > OPENAI_RESPONSE_DEGRADED_THRESHOLD_MS:
-                status = "degraded"
-            elif response_time_ms > OPENAI_RESPONSE_UNHEALTHY_THRESHOLD_MS:
+            if response_time_ms > OPENAI_RESPONSE_UNHEALTHY_THRESHOLD_MS:
                 status = "unhealthy"
+            elif response_time_ms > OPENAI_RESPONSE_DEGRADED_THRESHOLD_MS:
+                status = "degraded"
 
             # Removed unsupported GPT-5 parameter checks
 
@@ -232,10 +232,10 @@ class APIHealthMonitor:
             )
 
             status = "healthy"
-            if response_time_ms > PERPLEXITY_RESPONSE_DEGRADED_THRESHOLD_MS:
-                status = "degraded"
-            elif response_time_ms > PERPLEXITY_RESPONSE_UNHEALTHY_THRESHOLD_MS:
+            if response_time_ms > PERPLEXITY_RESPONSE_UNHEALTHY_THRESHOLD_MS:
                 status = "unhealthy"
+            elif response_time_ms > PERPLEXITY_RESPONSE_DEGRADED_THRESHOLD_MS:
+                status = "degraded"
 
             return HealthCheckResult(
                 service="perplexity",
@@ -346,10 +346,10 @@ class APIHealthMonitor:
             )
 
             status = "healthy"
-            if latency_ms and latency_ms > DISCORD_LATENCY_DEGRADED_THRESHOLD_MS:
-                status = "degraded"
-            elif latency_ms and latency_ms > DISCORD_LATENCY_UNHEALTHY_THRESHOLD_MS:
+            if latency_ms and latency_ms > DISCORD_LATENCY_UNHEALTHY_THRESHOLD_MS:
                 status = "unhealthy"
+            elif latency_ms and latency_ms > DISCORD_LATENCY_DEGRADED_THRESHOLD_MS:
+                status = "degraded"
 
             guild_count = len(bot_client.guilds) if hasattr(bot_client, "guilds") else 0
             user_count = (

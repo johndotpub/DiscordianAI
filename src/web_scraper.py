@@ -387,7 +387,6 @@ def is_safe_url(url: str) -> bool:
     Returns:
         True if URL is external and safe
     """
-    is_safe = False
     try:
         parsed = urlparse(url)
         if not parsed.scheme or not parsed.netloc:
@@ -405,11 +404,11 @@ def is_safe_url(url: str) -> bool:
         ip = ipaddress.ip_address(ip_addr)
 
         # Check if IP is private or local
-        is_safe = not (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast)
+        is_public = not (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast)
     except (ValueError, socket.gaierror, TypeError):
         return False
     else:
-        return is_safe
+        return is_public
 
 
 def is_scrapable_url(url: str) -> bool:

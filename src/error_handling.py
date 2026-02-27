@@ -184,6 +184,10 @@ async def retry_with_backoff(
                 delay,
             )
             await asyncio.sleep(delay)
+    if last_exception is None:
+        # Defensive guard: should not happen, but avoid raising NoneType
+        msg = "Retry attempts exhausted without an exception captured"
+        raise RuntimeError(msg)
 
     raise last_exception
 
