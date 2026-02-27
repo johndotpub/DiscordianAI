@@ -18,6 +18,9 @@ Welcome to the DiscordianAI documentation! This guide covers everything you need
 ### 💬 Message Handling
 - **[Message Splitting](MessageSplitting.md)** - How long messages are handled
 - **[Embed Limits](EmbedLimits.md)** - Discord embed size limits and strategies
+- **Conversational UX**
+    - Bot shows typing indicators while AI responses are being generated
+    - All replies are threaded (reply-to) and start with the requesting user's mention for clarity
 
 ### 🔧 Infrastructure
 - **[Architecture](Architecture.md)** - System design, patterns, and components
