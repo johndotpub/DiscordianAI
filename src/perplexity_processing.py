@@ -69,6 +69,26 @@ def extract_citations_from_response(
     urls_for_cleanup = list(citations.values()) if citations else []
     cleaned_text = _clean_bare_urls_safely(response_text, urls_for_cleanup)
 
+    if citations:
+        cleaned_lines = []
+        for line in cleaned_text.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                cleaned_lines.append(line)
+                continue
+
+            if stripped in citations.values():
+                continue
+
+            match = re.match(r"\[\s*(\d+)\s*\]\s*[:\-]?\s*(https?://\S+)", stripped)
+            if match and citations.get(match.group(1)) == match.group(2):
+                cleaned_lines.append(line.replace(match.group(0), f"[{match.group(1)}]"))
+                continue
+
+            cleaned_lines.append(line)
+
+        cleaned_text = "\n".join(cleaned_lines)
+
     return cleaned_text.strip(), citations
 
 

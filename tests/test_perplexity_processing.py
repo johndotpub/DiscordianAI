@@ -1,5 +1,6 @@
 """Tests for Perplexity API processing and citation handling."""
 
+import re
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -189,3 +190,41 @@ async def test_process_perplexity_message_with_urls():
     assert result is not None
     _, _, embed_data = result
     assert embed_data["citations"]["1"] == "https://example.com"
+
+
+@pytest.mark.asyncio
+async def test_process_perplexity_strips_citation_url_footers():
+    """Ensure footnote-style citation URLs are removed from the message body."""
+    mock_user = MagicMock()
+    mock_user.id = 5
+
+    from src.conversation_manager import ThreadSafeConversationManager
+
+    manager = ThreadSafeConversationManager()
+    logger = MagicMock()
+
+    response_text = (
+        "Headline update [1] and details [2].\n"
+        "[1] https://example.com/source-one\n"
+        "[2] https://example.com/source-two"
+    )
+
+    client = FakePerplexityClient(
+        response_text,
+        ["https://example.com/source-one", "https://example.com/source-two"],
+    )
+
+    request = AIRequest(
+        message="Latest news?",
+        user=mock_user,
+        conversation_manager=manager,
+        logger=logger,
+    )
+
+    result = await process_perplexity_message(request, client, PerplexityConfig())
+
+    assert result is not None
+    res_text, _, _ = result
+
+    lines = [ln.strip() for ln in res_text.splitlines() if ln.strip()]
+    assert all(not re.match(r"^\[?\d+\]?\s*https?://", ln) for ln in lines)
