@@ -68,8 +68,8 @@ async def send_split_message(  # noqa: PLR0913
             await channel.send(message, suppress_embeds=suppress_embeds)
         return
 
-    # Logical split
-    safe_split_point = min(MESSAGE_LIMIT - 100, len(message) // 2)
+    # Logical split: aim near the Discord limit to minimize message count
+    safe_split_point = min(MESSAGE_LIMIT - 100, len(message) - 1)
     split_index = find_optimal_split_point(message, safe_split_point)
 
     if split_index >= MESSAGE_LIMIT:
@@ -97,7 +97,7 @@ async def send_split_message(  # noqa: PLR0913
             channel,
             after_split,
             deps,
-            suppress_embeds=False,
+            suppress_embeds=suppress_embeds,
             original_message=original_message,
             mention_prefix=None,
             _recursion_depth=_recursion_depth + 1,
@@ -179,6 +179,16 @@ async def send_split_message_with_embed(  # noqa: PLR0913
                 original_message=original_message,
                 mention_prefix=None,
             )
+    elif citations and message and original_message:
+        # Embed was truncated but clean text fit; send remaining text to avoid dropping tail content
+        await send_split_message(
+            channel,
+            message,
+            deps,
+            suppress_embeds=False,
+            original_message=original_message,
+            mention_prefix=None,
+        )
 
 
 async def send_formatted_message(  # noqa: PLR0913

@@ -299,16 +299,24 @@ def _validate_url(url: str, logger: logging.Logger) -> bool:
     return True
 
 
+_STOP_RETRY = object()
+
+
 def _fetch_content_with_retries(url: str, timeout: int, logger: logging.Logger) -> str | None:
     """Perform HTTP request with retries."""
     session = requests.Session()
     session.headers.update(DEFAULT_HEADERS)
-    for attempt in range(REQUEST_RETRIES + 1):
-        result = _fetch_attempt_with_retry_logic(session, url, attempt, timeout, logger)
-        if result is not None:
-            return result
-        if attempt < REQUEST_RETRIES:
-            time.sleep(2**attempt)
+    try:
+        for attempt in range(REQUEST_RETRIES + 1):
+            result = _fetch_attempt_with_retry_logic(session, url, attempt, timeout, logger)
+            if result is _STOP_RETRY:
+                return None
+            if result is not None:
+                return result
+            if attempt < REQUEST_RETRIES:
+                time.sleep(2**attempt)
+    finally:
+        session.close()
     return None
 
 
@@ -321,7 +329,7 @@ def _fetch_attempt_with_retry_logic(
     except requests.exceptions.RequestException as e:
         if attempt == REQUEST_RETRIES or isinstance(e, requests.exceptions.HTTPError):
             _log_fetch_error(e, url, attempt, logger)
-            return None
+            return _STOP_RETRY
         # Let the loop handle the sleep for non-fatal errors
         return None
 
@@ -337,15 +345,18 @@ def _fetch_attempt(
     if "text/html" not in response.headers.get("content-type", "").lower():
         return None
 
-    if int(response.headers.get("content-length", 0)) > MAX_DOWNLOAD_SIZE:
+    try:
+        if int(response.headers.get("content-length", 0)) > MAX_DOWNLOAD_SIZE:
+            return None
+    except (TypeError, ValueError):
         return None
 
-    content = b""
+    content = bytearray()
     for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
-        content += chunk
+        content.extend(chunk)
         if len(content) > MAX_DOWNLOAD_SIZE:
             break
-    return content.decode("utf-8", errors="ignore")
+    return bytes(content).decode("utf-8", errors="ignore")
 
 
 def _log_fetch_error(e: Exception, url: str, attempt: int, logger: logging.Logger) -> None:
@@ -360,9 +371,10 @@ def _log_fetch_error(e: Exception, url: str, attempt: int, logger: logging.Logge
 def _process_final_content(content: str, max_length: int, url: str, logger: logging.Logger) -> str:
     """Clean and truncate extracted content."""
     clean = re.sub(r"\s+", " ", content).strip()
-    if len(clean) > max_length:
+    original_len = len(clean)
+    if original_len > max_length:
         clean = clean[:max_length] + "\n\n[Content truncated due to length]"
-    logger.info("Scraped %d chars from %s", len(clean), url)
+    logger.info("Scraped %d chars from %s", original_len, url)
     return clean
 
 
