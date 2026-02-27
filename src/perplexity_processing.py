@@ -67,27 +67,16 @@ def extract_citations_from_response(
 
     # Clean up results
     urls_for_cleanup = list(citations.values()) if citations else []
-    cleaned_text = _clean_bare_urls_safely(response_text, urls_for_cleanup)
+    cleaned_text = response_text
 
     if citations:
-        cleaned_lines = []
-        for line in cleaned_text.splitlines():
-            stripped = line.strip()
-            if not stripped:
-                cleaned_lines.append(line)
-                continue
+        # Replace markdown links like [1](url) with bare markers [1]
+        cleaned_text = _strip_markdown_citation_links(cleaned_text, citations)
 
-            if stripped in citations.values():
-                continue
+    cleaned_text = _clean_bare_urls_safely(cleaned_text, urls_for_cleanup)
 
-            match = re.match(r"\[\s*(\d+)\s*\]\s*[:\-]?\s*(https?://\S+)", stripped)
-            if match and citations.get(match.group(1)) == match.group(2):
-                cleaned_lines.append(line.replace(match.group(0), f"[{match.group(1)}]"))
-                continue
-
-            cleaned_lines.append(line)
-
-        cleaned_text = "\n".join(cleaned_lines)
+    if citations:
+        cleaned_text = _strip_citation_url_footers(cleaned_text, citations)
 
     return cleaned_text.strip(), citations
 
@@ -132,17 +121,61 @@ def _clean_bare_urls_safely(text: str, urls: list) -> str:
     return text
 
 
-def format_citations_for_discord(text: str, citations: dict[str, str]) -> str:
-    """Convert numbered citations to Discord-compatible hyperlinks."""
+def _strip_markdown_citation_links(text: str, citations: dict[str, str]) -> str:
+    """Convert [n](url) citation links into bare [n] markers."""
+
+    def replace(match: re.Match[str]) -> str:
+        num = match.group(1)
+        url = match.group(2)
+        if not citations:
+            return match.group(0)
+        if citations.get(num) == url:
+            return f"[{num}]"
+        return match.group(0)
+
+    return re.sub(r"\[(\d+)\]\((https?://[^)]+)\)", replace, text)
+
+
+def _strip_citation_url_footers(text: str, citations: dict[str, str]) -> str:
+    """Remove trailing citation URL footers so only numbered markers remain."""
+    if not citations:
+        return text
+
+    cleaned_lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            cleaned_lines.append(line)
+            continue
+
+        if stripped in citations.values():
+            continue
+
+        match = re.match(r"\[\s*(\d+)\s*\]\s*[:\-]?\s*(https?://\S+)", stripped)
+        if match and citations.get(match.group(1)) == match.group(2):
+            cleaned_lines.append(line.replace(match.group(0), f"[{match.group(1)}]"))
+            continue
+
+        cleaned_lines.append(line)
+
+    return "\n".join(cleaned_lines)
+
+
+def format_citations_for_discord(
+    text: str, citations: dict[str, str], *, linkify: bool = True
+) -> str:
+    """Convert numbered citations to Discord-friendly markers or links."""
     if not citations:
         return text
 
     def replace_citation(match):
         citation_num = match.group(1)
-        if citation_num in citations:
-            url = citations[citation_num]
-            return f"[{citation_num}]({url})"
-        return match.group(0)
+        if citation_num not in citations:
+            return match.group(0)
+        if not linkify:
+            return f"[{citation_num}]"
+        url = citations[citation_num]
+        return f"[{citation_num}]({url})"
 
     return CITATION_PATTERN.sub(replace_citation, text)
 
@@ -233,7 +266,7 @@ def _handle_api_response(
             f"but based on my search: \n\n{fmt_text}"
         )
 
-    final_text = format_citations_for_discord(fmt_text, cit_map)
+    final_text = format_citations_for_discord(fmt_text, cit_map, linkify=False)
     suppress_embeds = should_suppress_embeds(final_text)
 
     embed_data = None

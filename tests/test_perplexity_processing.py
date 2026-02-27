@@ -35,9 +35,19 @@ def test_format_citations_for_discord():
     text = "AI is advancing [1] and machine learning [2] is improving."
     citations = {"1": "https://test-site.example", "2": "https://demo-site.example"}
 
-    formatted = format_citations_for_discord(text, citations)
+    formatted = format_citations_for_discord(text, citations, linkify=True)
     assert "[1](https://test-site.example)" in formatted
     assert "[2](https://demo-site.example)" in formatted
+
+
+def test_format_citations_plain_markers():
+    text = "AI is advancing [1] and machine learning [2] is improving."
+    citations = {"1": "https://test-site.example", "2": "https://demo-site.example"}
+
+    formatted = format_citations_for_discord(text, citations, linkify=False)
+    assert "[1]" in formatted and "[2]" in formatted
+    assert "https://test-site.example" not in formatted
+    assert "https://demo-site.example" not in formatted
 
 
 @pytest.mark.asyncio
@@ -163,8 +173,10 @@ async def test_process_perplexity_message_with_citations():
     assert result is not None
     res_text, _, embed_data = result
     assert "AI is advancing [1]" in res_text
+    assert "https://example.com" not in res_text
     assert embed_data is not None
     assert "embed" in embed_data
+    assert "[[1]](https://example.com)" in embed_data["embed"].description
 
 
 @pytest.mark.asyncio
@@ -228,3 +240,18 @@ async def test_process_perplexity_strips_citation_url_footers():
 
     lines = [ln.strip() for ln in res_text.splitlines() if ln.strip()]
     assert all(not re.match(r"^\[?\d+\]?\s*https?://", ln) for ln in lines)
+    assert "https://example.com/source-one" not in res_text
+    assert "https://example.com/source-two" not in res_text
+    assert "[1]" in res_text and "[2]" in res_text
+
+
+def test_extract_citations_converts_markdown_links_to_markers():
+    text = "Headline [1](https://example.com/a) and follow-up [2](https://example.com/b)."
+    clean_text, citations = extract_citations_from_response(
+        text,
+        ["https://example.com/a", "https://example.com/b"],
+    )
+
+    assert "[1]" in clean_text and "[2]" in clean_text
+    assert "(https://example.com/a)" not in clean_text
+    assert "(https://example.com/b)" not in clean_text
