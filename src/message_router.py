@@ -21,7 +21,8 @@ async def handle_incoming_message(
             return
 
         if isinstance(message.channel, discord.DMChannel):
-            await process_dm_message(message, deps)
+            async with message.channel.typing():
+                await process_dm_message(message, deps)
             return
 
         if (
@@ -29,7 +30,8 @@ async def handle_incoming_message(
             and message.channel.name in deps["ALLOWED_CHANNELS"]
             and bot.user in message.mentions
         ):
-            await process_channel_message(message, deps)
+            async with message.channel.typing():
+                await process_channel_message(message, deps)
             return
 
     except Exception:
