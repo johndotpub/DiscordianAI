@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Lazy Logging Framework**: Standardized application to use lazy evaluation strings (`%s`/`%d`) for all logging calls to massively improve latency and adhere to production best practices.
 - **Pytest Warning Guardrail**: Added a dedicated `tests/conftest.py` and matching `pyproject.toml` filter to suppress the upstream `discord.player` `audioop` deprecation so `-W error` runs remain green on Python 3.12+.
 - **Frontier Model Validation Helper**: Introduced `is_supported_openai_model()` with GPT-5 snapshot support to centralize validation across health checks, API validation, and builders.
+- **Conversational UX Polish**: Added Discord typing indicators during AI processing, enforced reply-to threading for all responses, and prefixed responses with the requesting user's mention for more conversational replies.
 
 ### Changed
 - **Dependencies**: Upgraded various Python packages to their latest stable environments across `requirements.txt`, `pyproject.toml`, and `.pre-commit-config.yaml`:
