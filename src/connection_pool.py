@@ -79,12 +79,13 @@ class ConnectionPoolManager:
                 # Follow redirects
                 follow_redirects=True,
             )
-            self._logger.info(f"HTTP/2 enabled for {api_type} connection pool")
+            self._logger.info("HTTP/2 enabled for %s connection pool", api_type)
         except ImportError as e:
             if "h2" in str(e):
                 self._logger.warning(
-                    f"HTTP/2 not available for {api_type}, falling back to HTTP/1.1. "
-                    "Install httpx[http2] for better performance."
+                    "HTTP/2 not available for %s, falling back to HTTP/1.1. "
+                    "Install httpx[http2] for better performance.",
+                    api_type,
                 )
                 client = httpx.AsyncClient(
                     limits=limits,
@@ -98,15 +99,20 @@ class ConnectionPoolManager:
                 raise
 
         self._logger.debug(
-            f"Created HTTP client with connection pool: "
-            f"max_connections={max_connections}, "
-            f"max_keepalive_connections={max_keepalive}"
+            "Created HTTP client with connection pool: "
+            "max_connections=%d, "
+            "max_keepalive_connections=%d",
+            max_connections,
+            max_keepalive,
         )
 
         return client
 
     def create_openai_client(
-        self, api_key: str, base_url: str, http_client: httpx.AsyncClient | None = None
+        self,
+        api_key: str,
+        base_url: str,
+        http_client: httpx.AsyncClient | None = None,
     ) -> AsyncOpenAI:
         """Create an OpenAI client with optimized connection pooling.
 
@@ -128,14 +134,20 @@ class ConnectionPoolManager:
         )
 
         self._logger.debug(
-            f"Created OpenAI client with connection pooling for {base_url} "
-            f"(max_connections={self.openai_max_connections}, "
-            f"max_keepalive={self.openai_max_keepalive})"
+            "Created OpenAI client with connection pooling for %s "
+            "(max_connections=%d, "
+            "max_keepalive=%d)",
+            base_url,
+            self.openai_max_connections,
+            self.openai_max_keepalive,
         )
         return client
 
     def create_perplexity_client(
-        self, api_key: str, base_url: str, http_client: httpx.AsyncClient | None = None
+        self,
+        api_key: str,
+        base_url: str,
+        http_client: httpx.AsyncClient | None = None,
     ) -> AsyncOpenAI:
         """Create a Perplexity client with optimized connection pooling.
 
@@ -157,9 +169,12 @@ class ConnectionPoolManager:
         )
 
         self._logger.debug(
-            f"Created Perplexity client with connection pooling for {base_url} "
-            f"(max_connections={self.perplexity_max_connections}, "
-            f"max_keepalive={self.perplexity_max_keepalive})"
+            "Created Perplexity client with connection pooling for %s "
+            "(max_connections=%d, "
+            "max_keepalive=%d)",
+            base_url,
+            self.perplexity_max_connections,
+            self.perplexity_max_keepalive,
         )
         return client
 
@@ -173,7 +188,7 @@ class ConnectionPoolManager:
             await client.aclose()
             self._logger.debug("HTTP client closed successfully")
         except (httpx.HTTPError, OSError) as e:
-            self._logger.warning(f"Error closing HTTP client: {e}")
+            self._logger.warning("Error closing HTTP client: %s", e)
 
     def check_pool_health(self, client: httpx.AsyncClient | None) -> dict[str, Any]:
         """Check health of connection pool.
@@ -210,7 +225,7 @@ class ConnectionPoolManager:
                     pool_info["max_connections"] = pool._max_connections  # noqa: SLF001
 
         except AttributeError as e:
-            self._logger.warning(f"Error checking pool health: {e}")
+            self._logger.warning("Error checking pool health: %s", e)
             return {"status": "unknown", "reason": str(e)}
         else:
             return pool_info

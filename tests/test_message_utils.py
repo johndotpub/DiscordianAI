@@ -13,7 +13,7 @@ This test suite covers:
 
 from unittest.mock import Mock
 
-from src.message_utils import (
+from src.message_splitter import (
     MessageFormatter,
     adjust_split_for_code_blocks,
     clean_message_content,

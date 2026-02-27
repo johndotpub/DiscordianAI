@@ -51,7 +51,8 @@ class FakeOpenAIClient:
 
             async def create(self, *_args, **_kwargs):
                 if self.client.should_raise:
-                    raise Exception("Test exception")
+                    msg = "Test exception"
+                    raise Exception(msg)
                 if self.client.return_none:
                     return FakeResponse("")
                 return FakeResponse(self.client.response_text)

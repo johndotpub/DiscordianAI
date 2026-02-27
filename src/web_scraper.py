@@ -6,10 +6,13 @@ production deployment with comprehensive error handling and logging.
 """
 
 import asyncio
+import ipaddress
 import logging
 import random
 import re
+import socket
 import time
+from typing import Any
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
@@ -22,6 +25,13 @@ MAX_DOWNLOAD_SIZE = 1000000  # 1MB raw HTML download limit
 REQUEST_RETRIES = 2
 MIN_DELAY_BETWEEN_REQUESTS = 1.0  # Respectful delay between requests
 MAX_DELAY_BETWEEN_REQUESTS = 3.0  # Maximum random delay
+TRUNCATION_LIMIT = 8000
+MIN_TEXT_LENGTH = 100
+MIN_PARA_LENGTH = 50
+MAX_HEADING_LENGTH = 200
+MIN_PARTS_FOR_KEY_SECTIONS = 2
+MIN_TOTAL_LENGTH_FOR_BODY = 200
+CHUNK_SIZE = 8192
 
 # Production-ready headers to avoid blocking
 DEFAULT_HEADERS = {
@@ -55,7 +65,7 @@ class ContentExtractionError(WebScrapingError):
 def _add_respectful_delay():
     """Add a respectful delay between requests to avoid overwhelming servers."""
     # Using random for non-cryptographic purposes (rate limiting)
-    delay = random.uniform(MIN_DELAY_BETWEEN_REQUESTS, MAX_DELAY_BETWEEN_REQUESTS)
+    delay = random.uniform(MIN_DELAY_BETWEEN_REQUESTS, MAX_DELAY_BETWEEN_REQUESTS)  # noqa: S311
     time.sleep(delay)
 
 
@@ -96,32 +106,8 @@ def _clean_text(text: str) -> str:
     return text.strip()
 
 
-def _extract_content(soup: BeautifulSoup) -> str:
-    """Extract content from any web page using production-ready generic selectors.
-
-    Args:
-        soup: BeautifulSoup object of the page
-
-    Returns:
-        Extracted content from the webpage
-    """
-    content_parts = []
-
-    # Page title (always useful)
-    title = soup.find("title")
-    if title:
-        title_text = title.get_text(strip=True)
-        if title_text:
-            content_parts.append(f"Title: {title_text}")
-
-    # Meta description (SEO content, usually high quality)
-    meta_desc = soup.find("meta", attrs={"name": "description"})
-    if meta_desc and meta_desc.get("content"):
-        desc_text = meta_desc.get("content").strip()
-        if desc_text:
-            content_parts.append(f"Description: {desc_text}")
-
-    # Remove noise elements that don't contain useful content
+def _remove_noise_elements(soup: BeautifulSoup) -> None:
+    """Remove noise elements that don't contain useful content."""
     noise_selectors = [
         "nav",
         "footer",
@@ -146,86 +132,110 @@ def _extract_content(soup: BeautifulSoup) -> str:
         ".newsletter",
         ".subscribe",
     ]
-
     for selector in noise_selectors:
         for elem in soup.select(selector):
             elem.decompose()
 
-    # Extract main content using comprehensive selector strategy
+
+def _extract_content(soup: BeautifulSoup) -> str:
+    """Extract content from any web page using production-ready generic selectors."""
+    content_parts = []
+
+    # Page title
+    title = soup.find("title")
+    if title and title.get_text(strip=True):
+        content_parts.append(f"Title: {title.get_text(strip=True)}")
+
+    # Meta description
+    meta_desc = soup.find("meta", attrs={"name": "description"})
+    if meta_desc and meta_desc.get("content"):
+        content_parts.append(f"Description: {meta_desc.get('content').strip()}")
+
+    _remove_noise_elements(soup)
+
     content_selectors = [
-        # Semantic HTML5 elements (highest priority)
         "main",
         "article",
-        '[role="main"]',
-        # Common content containers
+        ".main",
         ".content",
-        ".main-content",
+        "#content",
+        ".post",
+        ".article",
         ".page-content",
-        ".post-content",
         ".entry-content",
+        ".entry",
+        "body",
+        '[role="main"]',
+        ".main-content",
+        ".post-content",
+        ".readme",
+        ".documentation",
+        ".container .content",
+        "#main-content",
         ".article-content",
         ".story-content",
-        # Blog and CMS patterns
         ".post",
         ".entry",
         ".article",
         ".story",
-        # Documentation and markdown
         ".markdown-body",
-        ".readme",
-        ".documentation",
-        # Generic containers
-        ".container .content",
-        "#content",
-        "#main-content",
     ]
 
-    main_content = None
-    for selector in content_selectors:
-        main_content = soup.select_one(selector)
-        if main_content:
-            text = main_content.get_text(strip=True, separator=" ")
-            if text and len(text) > 100:  # Only use if substantial content
-                content_parts.append(f"Main content: {text}")
-                break
+    main_content = _try_selectors(soup, content_selectors)
+    if main_content:
+        text = main_content.get_text(strip=True, separator=" ")
+        if text and len(text) > MIN_TEXT_LENGTH:
+            content_parts.append(f"Main content: {text}")
 
     # If no main content found, try extracting key sections
-    if not main_content or len(content_parts) < 2:
-        # Extract headings for structure (h1-h3 only for relevance)
-        headings = []
-        for heading in soup.find_all(["h1", "h2", "h3"]):
-            heading_text = heading.get_text(strip=True)
-            if heading_text and len(heading_text) < 200:  # Reasonable heading length
-                headings.append(heading_text)
+    if not main_content or len(content_parts) < MIN_PARTS_FOR_KEY_SECTIONS:
+        _extract_key_sections(soup, content_parts)
 
-        if headings:
-            content_parts.append(f"Key sections: {' | '.join(headings[:10])}")
-
-        # Extract paragraphs if we still don't have enough content
-        if len(content_parts) < 2:
-            paragraphs = []
-            for p in soup.find_all("p"):
-                p_text = p.get_text(strip=True)
-                if p_text and len(p_text) > 50:  # Substantial paragraphs only
-                    paragraphs.append(p_text)
-                    if len(paragraphs) >= 5:  # Limit to first 5 paragraphs
-                        break
-
-            if paragraphs:
-                content_parts.append(f"Key content: {' '.join(paragraphs)}")
-
-    # Final fallback: use body content if we still have minimal content
-    if not content_parts or sum(len(part) for part in content_parts) < 200:
-        body = soup.find("body")
-        if body:
-            text = body.get_text(strip=True, separator=" ")
-            if text:
-                # Limit body content to prevent overwhelming output
-                if len(text) > 8000:
-                    text = text[:8000] + "... [content truncated]"
-                content_parts.append(f"Page content: {text}")
+    # Final fallback: use body content
+    if not content_parts or sum(len(part) for part in content_parts) < MIN_TOTAL_LENGTH_FOR_BODY:
+        _extract_body_fallback(soup, content_parts)
 
     return "\n\n".join(content_parts)
+
+
+def _try_selectors(soup: BeautifulSoup, selectors: list[str]) -> Any:
+    """Try various selectors to find main content."""
+    for selector in selectors:
+        element = soup.select_one(selector)
+        if element:
+            return element
+    return None
+
+
+def _extract_key_sections(soup: BeautifulSoup, content_parts: list[str]) -> None:
+    """Extract headings and paragraphs as fallback."""
+    headings = [
+        h.get_text(strip=True)
+        for h in soup.find_all(["h1", "h2", "h3"])
+        if h.get_text(strip=True) and len(h.get_text(strip=True)) < MAX_HEADING_LENGTH
+    ]
+    if headings:
+        content_parts.append(f"Key sections: {' | '.join(headings[:10])}")
+
+    if len(content_parts) < MIN_PARTS_FOR_KEY_SECTIONS:
+        paragraphs = [
+            p.get_text(strip=True)
+            for p in soup.find_all("p")
+            if p.get_text(strip=True) and len(p.get_text(strip=True)) > MIN_PARA_LENGTH
+        ]
+        if paragraphs:
+            content_parts.append(f"Key content: {' '.join(paragraphs[:5])}")
+
+
+def _extract_body_fallback(soup: BeautifulSoup, content_parts: list[str]) -> None:
+    """Extract limited body content as last resort."""
+    body = soup.find("body")
+    if body:
+        text = body.get_text(strip=True, separator=" ")
+        if text:
+            if len(text) > TRUNCATION_LIMIT:
+                text = text[:TRUNCATION_LIMIT] + "... [content truncated]"
+            content_parts.append(f"Page content: {text}")
 
 
 async def scrape_url_content(
@@ -258,169 +268,151 @@ async def scrape_url_content(
     logger.info("Starting web scraping for URL: %s", url)
 
     try:
-        # Validate URL format
-        parsed_url = urlparse(url)
-        if not parsed_url.scheme or not parsed_url.netloc:
-            logger.error("Invalid URL format: %s", url)
+        if not _validate_url(url, logger):
             return None
 
-        # Add respectful delay before making request
         _add_respectful_delay()
 
-        # Perform HTTP request with retries and proper error handling
-        def _fetch_content():
-            session = requests.Session()
-            session.headers.update(DEFAULT_HEADERS)
-
-            for attempt in range(REQUEST_RETRIES + 1):
-                try:
-                    logger.debug(
-                        "HTTP request attempt %d/%d for: %s", attempt + 1, REQUEST_RETRIES + 1, url,
-                    )
-
-                    response = session.get(url, timeout=timeout, allow_redirects=True, stream=True)
-                    response.raise_for_status()
-
-                    # Check content type - only process HTML content
-                    content_type = response.headers.get("content-type", "").lower()
-                    if "text/html" not in content_type:
-                        logger.warning("Non-HTML content type: %s for URL: %s", content_type, url)
-                        return None
-
-                    # Check content length before downloading
-                    content_length = response.headers.get("content-length")
-                    if content_length and int(content_length) > MAX_DOWNLOAD_SIZE:
-                        logger.warning(
-                            "Content too large (%s bytes), skipping: %s",
-                            content_length,
-                            url,
-                        )
-                        return None
-
-                    # Download content with size limit
-                    content = b""
-                    for chunk in response.iter_content(chunk_size=8192):
-                        content += chunk
-                        if len(content) > MAX_DOWNLOAD_SIZE:
-                            logger.warning("Content exceeded download limit during fetch: %s", url)
-                            break
-
-                    logger.debug("Successfully downloaded %d bytes from %s", len(content), url)
-                    return content.decode("utf-8", errors="ignore")
-
-                except requests.exceptions.Timeout:
-                    logger.warning("Request timeout (attempt %d) for URL: %s", attempt + 1, url)
-                    if attempt == REQUEST_RETRIES:
-                        logger.exception(
-                            "Final timeout after %d attempts: %s", REQUEST_RETRIES + 1, url,
-                        )
-                        return None
-
-                except requests.exceptions.ConnectionError:
-                    logger.warning("Connection error (attempt %d) for URL: %s", attempt + 1, url)
-                    if attempt == REQUEST_RETRIES:
-                        logger.exception(
-                            "Final connection failure after %d attempts: %s",
-                            REQUEST_RETRIES + 1,
-                            url,
-                        )
-                        return None
-
-                except requests.exceptions.HTTPError as e:
-                    status_code = e.response.status_code if e.response else "unknown"
-                    logger.exception("HTTP %s error for URL: %s", status_code, url)
-                    return None  # Don't retry HTTP errors
-
-                except requests.exceptions.RequestException:
-                    logger.warning("Request error (attempt %d) for URL: %s", attempt + 1, url)
-                    if attempt == REQUEST_RETRIES:
-                        logger.exception(
-                            "Final request failure after %d attempts: %s",
-                            REQUEST_RETRIES + 1,
-                            url,
-                        )
-                        return None
-
-                # Wait before retry (exponential backoff)
-                if attempt < REQUEST_RETRIES:
-                    wait_time = 2**attempt  # 1s, 2s, 4s...
-                    logger.debug("Waiting %ds before retry", wait_time)
-                    time.sleep(wait_time)
-
-            return None
-
         # Execute request asynchronously
-        html_content = await asyncio.to_thread(_fetch_content)
-
+        html_content = await asyncio.to_thread(_fetch_content_with_retries, url, timeout, logger)
         if not html_content:
-            logger.warning("Failed to fetch content from URL: %s", url)
             return None
 
-        logger.debug("Successfully fetched %d characters from %s", len(html_content), url)
-
-        # Parse HTML content
-        try:
-            soup = BeautifulSoup(html_content, "html.parser")
-        except Exception:
-            logger.exception("Failed to parse HTML content from %s", url)
+        soup = BeautifulSoup(html_content, "html.parser")
+        content = _extract_content(soup)
+        if not content:
             return None
 
-        # Extract content using generic selectors
-        extracted_content = _extract_content(soup)
-        logger.debug("Extracted content (%d chars)", len(extracted_content))
-
-        if not extracted_content:
-            logger.warning("No content could be extracted from URL: %s", url)
-            return None
-
-        # Clean and limit content for token management
-        cleaned_content = _clean_text(extracted_content)
-
-        if len(cleaned_content) > max_content_length:
-            cleaned_content = (
-                cleaned_content[:max_content_length] + "\n\n[Content truncated due to length]"
-            )
-            logger.info("Content truncated to %d characters", max_content_length)
-
-        logger.info(
-            "Successfully scraped and processed content from %s: %d characters",
-            url,
-            len(cleaned_content),
-        )
-        logger.debug("Scraped content preview: %s...", cleaned_content[:200])
-
-        # Log the scraped content for debugging (as requested)
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("Full scraped content from %s:\n%s", url, cleaned_content)
+        return _process_final_content(content, max_content_length, url, logger)
 
     except Exception:
-        logger.exception("Unexpected error during web scraping for %s", url)
+        logger.exception("Unexpected error during scraping: %s", url)
         return None
+
+
+def _validate_url(url: str, logger: logging.Logger) -> bool:
+    """Validate URL format."""
+    parsed_url = urlparse(url)
+    if not parsed_url.scheme or not parsed_url.netloc:
+        logger.error("Invalid URL format: %s", url)
+        return False
+    return True
+
+
+def _fetch_content_with_retries(url: str, timeout: int, logger: logging.Logger) -> str | None:
+    """Perform HTTP request with retries."""
+    session = requests.Session()
+    session.headers.update(DEFAULT_HEADERS)
+    for attempt in range(REQUEST_RETRIES + 1):
+        result = _fetch_attempt_with_retry_logic(session, url, attempt, timeout, logger)
+        if result is not None:
+            return result
+        if attempt < REQUEST_RETRIES:
+            time.sleep(2**attempt)
+    return None
+
+
+def _fetch_attempt_with_retry_logic(
+    session: requests.Session, url: str, attempt: int, timeout: int, logger: logging.Logger
+) -> str | None:
+    """Perform a single fetch attempt with error handling for the retry loop."""
+    try:
+        return _fetch_attempt(session, url, attempt, timeout, logger)
+    except requests.exceptions.RequestException as e:
+        if attempt == REQUEST_RETRIES or isinstance(e, requests.exceptions.HTTPError):
+            _log_fetch_error(e, url, attempt, logger)
+            return None
+        # Let the loop handle the sleep for non-fatal errors
+        return None
+
+
+def _fetch_attempt(
+    session: requests.Session, url: str, attempt: int, timeout: int, logger: logging.Logger
+) -> str | None:
+    """Perform a single fetch attempt."""
+    logger.debug("HTTP attempt %d for: %s", attempt + 1, url)
+    response = session.get(url, timeout=timeout, allow_redirects=True, stream=True)
+    response.raise_for_status()
+
+    if "text/html" not in response.headers.get("content-type", "").lower():
+        return None
+
+    if int(response.headers.get("content-length", 0)) > MAX_DOWNLOAD_SIZE:
+        return None
+
+    content = b""
+    for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+        content += chunk
+        if len(content) > MAX_DOWNLOAD_SIZE:
+            break
+    return content.decode("utf-8", errors="ignore")
+
+
+def _log_fetch_error(e: Exception, url: str, attempt: int, logger: logging.Logger) -> None:
+    """Log fetch errors with appropriate detail."""
+    if isinstance(e, requests.exceptions.HTTPError):
+        status = e.response.status_code if e.response else "unknown"
+        logger.error("HTTP %s for %s", status, url)
     else:
-        return cleaned_content
+        logger.warning("Attempt %d failed for %s: %s", attempt + 1, url, str(e))
 
 
-def is_scrapable_url(url: str) -> bool:
-    """Check if a URL is suitable for web scraping.
+def _process_final_content(content: str, max_length: int, url: str, logger: logging.Logger) -> str:
+    """Clean and truncate extracted content."""
+    clean = re.sub(r"\s+", " ", content).strip()
+    if len(clean) > max_length:
+        clean = clean[:max_length] + "\n\n[Content truncated due to length]"
+    logger.info("Scraped %d chars from %s", len(clean), url)
+    return clean
+
+
+def is_safe_url(url: str) -> bool:
+    """Check if a URL is safe to scrape (prevents SSRF).
 
     Args:
         url: URL to check
 
     Returns:
-        True if URL appears to be scrapable
+        True if URL is external and safe
     """
     try:
         parsed = urlparse(url)
-
-        # Check for valid scheme and netloc
         if not parsed.scheme or not parsed.netloc:
             return False
 
-        # Only HTTP/HTTPS
         if parsed.scheme not in ["http", "https"]:
             return False
 
-        # Skip file types that aren't useful for content extraction
+        # Resolve hostname to IP
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+
+        ip_addr = socket.gethostbyname(hostname)
+        ip = ipaddress.ip_address(ip_addr)
+
+        # Check if IP is private or local
+        is_safe = not (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast)
+    except (ValueError, socket.gaierror, TypeError):
+        return False
+    else:
+        return is_safe
+
+
+def is_scrapable_url(url: str) -> bool:
+    """Check if a URL is suitable for web scraping based on extension and safety.
+
+    Args:
+        url: URL to check
+
+    Returns:
+        True if URL appears to be scrapable and safe
+    """
+    if not is_safe_url(url):
+        return False
+
+    try:
+        parsed = urlparse(url)
         path = parsed.path.lower()
         skip_extensions = [
             ".pdf",
@@ -451,6 +443,5 @@ def is_scrapable_url(url: str) -> bool:
             ".rpm",
         ]
         return not any(path.endswith(ext) for ext in skip_extensions)
-
     except (ValueError, TypeError):
         return False

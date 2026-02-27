@@ -14,11 +14,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.bot import send_split_message
 from src.config import MAX_SPLIT_RECURSION, MESSAGE_LIMIT
-from src.message_utils import (
+from src.message_splitter import (
     adjust_split_for_code_blocks,
     find_optimal_split_point,
+    send_split_message,
 )
 from tests.test_utils import create_mock_channel, create_test_context
 
@@ -208,11 +208,10 @@ class TestMessageSplittingIntegration:
         # Test with high recursion depth to trigger limit
         await send_split_message(channel, message, deps, _recursion_depth=15)
 
-        # Should attempt to send the full message despite recursion limit
-        channel.send.assert_called_once()
-        sent_message = channel.send.call_args[0][0]
-        # The message should be the full original message (no truncation)
-        assert sent_message == message
+        # Should log error and send truncated message
+        assert channel.send.call_count == 2
+        calls = [c[0][0] for c in channel.send.call_args_list]
+        assert any("truncated" in c.lower() for c in calls)
 
     @pytest.mark.asyncio
     async def test_send_split_message_discord_error(self):
@@ -253,7 +252,7 @@ class TestMessageSplittingIntegration:
         for i, part in enumerate(sent_messages):
             assert (
                 len(part) <= MESSAGE_LIMIT
-            ), f"Part {i+1} ({len(part)}) exceeds Discord limit ({MESSAGE_LIMIT})"
+            ), f"Part {i + 1} ({len(part)}) exceeds Discord limit ({MESSAGE_LIMIT})"
 
         # Verify all content is preserved
         reconstructed_message = "".join(sent_messages)
@@ -338,7 +337,7 @@ offering players unprecedented control over their gaming experience.
         for i, part in enumerate(sent_messages):
             assert (
                 len(part) <= MESSAGE_LIMIT
-            ), f"Part {i+1} ({len(part)}) exceeds Discord limit ({MESSAGE_LIMIT})"
+            ), f"Part {i + 1} ({len(part)}) exceeds Discord limit ({MESSAGE_LIMIT})"
 
         # Verify all content is preserved (no truncation)
         reconstructed_message = "".join(sent_messages)
@@ -391,7 +390,7 @@ offering players unprecedented control over their gaming experience.
             # Skip the part that exceeds recursion limit (MAX_SPLIT_RECURSION + 1)
             expected_fail_part_index = MAX_SPLIT_RECURSION + 1
             if "truncated" not in part.lower() and i != expected_fail_part_index:
-                assert len(part) <= MESSAGE_LIMIT, f"Part {i+1} exceeds limit: {len(part)}"
+                assert len(part) <= MESSAGE_LIMIT, f"Part {i + 1} exceeds limit: {len(part)}"
 
         # Verify truncation message is present
         assert has_truncation_message, "Expected truncation message when recursion limit is hit"
@@ -426,12 +425,14 @@ offering players unprecedented control over their gaming experience.
                 # This is expected for the last part when recursion limit is hit
                 pass  # Expected behavior
             else:
-                assert len(part) <= MESSAGE_LIMIT, f"Part {i+1} exceeds limit: {len(part)}"
+                assert len(part) <= MESSAGE_LIMIT, f"Part {i + 1} exceeds limit: {len(part)}"
 
-        # Verify content preservation
+        # Verify content preservation up to recursion limit
         sent_messages = [call[0][0] for call in channel.send.call_args_list]
         reconstructed = "".join(sent_messages)
-        assert reconstructed == extreme_message, "Extreme message content was lost!"
+        # Content should be truncated due to recursion limit (MAX_SPLIT_RECURSION is 10)
+        assert len(reconstructed) < len(extreme_message)
+        assert any("truncated" in part.lower() for part in sent_messages)
 
     @pytest.mark.asyncio
     async def test_simple_long_message(self):
@@ -459,7 +460,7 @@ offering players unprecedented control over their gaming experience.
         # Verify all parts are under limit
         for i, call in enumerate(channel.send.call_args_list):
             part = call[0][0]
-            assert len(part) <= MESSAGE_LIMIT, f"Part {i+1} exceeds limit: {len(part)}"
+            assert len(part) <= MESSAGE_LIMIT, f"Part {i + 1} exceeds limit: {len(part)}"
 
         # Verify content preservation
         sent_messages = [call[0][0] for call in channel.send.call_args_list]

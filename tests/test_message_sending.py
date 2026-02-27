@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from src.bot import send_formatted_message, send_split_message_with_embed
 from src.config import EMBED_SAFE_LIMIT
+from src.message_splitter import send_formatted_message, send_split_message_with_embed
 
 
 class TestSendFormattedMessage:
@@ -112,12 +112,16 @@ class TestSendFormattedMessage:
         message = "Test message"
         deps = {"logger": MagicMock()}
 
-        with patch("src.bot.send_split_message_with_embed") as mock_split:
+        with patch("src.message_splitter.send_split_message_with_embed") as mock_split:
             await send_formatted_message(channel, message, deps, embed_data=embed_data)
 
             # Should call split function with citations
             mock_split.assert_called_once_with(
-                channel, long_content, deps, embed, embed_data["citations"]
+                channel,
+                long_content,
+                deps,
+                embed,
+                embed_data["citations"],
             )
 
     @pytest.mark.asyncio
@@ -169,7 +173,7 @@ class TestSendFormattedMessage:
         long_message = "A" * 2500
         deps = {"logger": MagicMock()}
 
-        with patch("src.bot.send_split_message") as mock_split:
+        with patch("src.message_splitter.send_split_message") as mock_split:
             await send_formatted_message(channel, long_message, deps)
 
             # Should call split function
@@ -187,7 +191,10 @@ class TestSendFormattedMessage:
         embed_data = {"embed": embed, "clean_text": "Test"}
 
         await send_formatted_message(
-            channel, "Test", {"logger": MagicMock()}, embed_data=embed_data
+            channel,
+            "Test",
+            {"logger": MagicMock()},
+            embed_data=embed_data,
         )
 
         # Should only send once
@@ -275,7 +282,7 @@ class TestEmbedCharacterLimits:
         long_message = "A" * 2001
         deps = {"logger": MagicMock()}
 
-        with patch("src.bot.send_split_message") as mock_split:
+        with patch("src.message_splitter.send_split_message") as mock_split:
             await send_formatted_message(channel, long_message, deps)
 
             # Should trigger splitting for > 2000 chars

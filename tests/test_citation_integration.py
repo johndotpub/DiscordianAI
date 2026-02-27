@@ -39,15 +39,23 @@ class TestCitationIntegration:
         )
 
         # Process the message
+        from src.models import AIRequest, PerplexityConfig
+
+        request = AIRequest(
+            message="What are the latest AI developments?",
+            user=user,
+            conversation_manager=conversation_manager,
+            logger=logger,
+        )
+        config = PerplexityConfig(
+            model="sonar-pro",
+            system_message="You are a helpful assistant with web search.",
+            output_tokens=8000,
+        )
         result = await process_perplexity_message(
-            "What are the latest AI developments?",
-            user,
-            conversation_manager,
-            logger,
+            request,
             fake_client,
-            "You are a helpful assistant with web search.",
-            8000,
-            "sonar-pro",
+            config,
         )
 
         # Validate results
@@ -63,8 +71,10 @@ class TestCitationIntegration:
         # When embed_data exists, response_text should contain the actual content
         # for conversation history, while the embed displays the formatted content
         expected_text = (
-            "The latest AI developments include breakthrough research [1] "
-            "and new model architectures [2]. Recent studies show progress."
+            "The latest AI developments include breakthrough research "
+            "[1](https://ai-research.example.com/breakthrough) "
+            "and new model architectures [2](https://ml-models.example.com/architectures). "
+            "Recent studies show progress."
         )
         assert (
             response_text == expected_text
@@ -84,14 +94,16 @@ class TestCitationIntegration:
         assert "[[1]](https://ai-research.example.com/breakthrough)" in embed.description
         assert "[[2]](https://ml-models.example.com/architectures)" in embed.description
 
-        # Verify footer (should be the custom Perplexity footer)
-        assert "🌐 Web search results" in embed.footer.text
+        # Verify footer (should be the default source count footer)
+        assert "📚 2 sources" in embed.footer.text
 
         # When embed_data exists, response_text should contain the actual content
         # for conversation history, while the embed displays the formatted content
         expected_text = (
-            "The latest AI developments include breakthrough research [1] "
-            "and new model architectures [2]. Recent studies show progress."
+            "The latest AI developments include breakthrough research "
+            "[1](https://ai-research.example.com/breakthrough) "
+            "and new model architectures [2](https://ml-models.example.com/architectures). "
+            "Recent studies show progress."
         )
         assert (
             response_text == expected_text
@@ -136,15 +148,22 @@ class TestCitationIntegration:
         logger = MagicMock()
 
         fake_client = FakePerplexityClient(
-            response_text="This is a simple response without citations."
+            response_text="This is a simple response without citations.",
         )
 
+        from src.models import AIRequest, PerplexityConfig
+
+        request = AIRequest(
+            message="Tell me about AI",
+            user=user,
+            conversation_manager=conversation_manager,
+            logger=logger,
+        )
+        config = PerplexityConfig()
         result = await process_perplexity_message(
-            "Tell me about AI",
-            user,
-            conversation_manager,
-            logger,
+            request,
             fake_client,
+            config,
         )
 
         assert result is not None

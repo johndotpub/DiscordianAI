@@ -1,0 +1,1281 @@
+PLR2004 Magic value used in comparison, consider replacing `50000` with a constant variable
+   --> src/api_validation.py:142:24
+    |
+140 |     # Validate token limits
+141 |     output_tokens = config.get("OUTPUT_TOKENS", 0)
+142 |     if output_tokens > 50000:
+    |                        ^^^^^
+143 |         issues.append(
+144 |             f"OUTPUT_TOKENS very high ({output_tokens}). Consider lower limit for cost control.",
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `200000` with a constant variable
+   --> src/api_validation.py:148:23
+    |
+147 |     input_tokens = config.get("INPUT_TOKENS", 0)
+148 |     if input_tokens > 200000:
+    |                       ^^^^^^
+149 |         issues.append(f"INPUT_TOKENS very high ({input_tokens}). May exceed model limits.")
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `100` with a constant variable
+   --> src/api_validation.py:244:23
+    |
+242 |     if rate_limit <= 0:
+243 |         issues.append("RATE_LIMIT must be positive")
+244 |     elif rate_limit > 100:
+    |                       ^^^
+245 |         issues.append(
+246 |             f"RATE_LIMIT very high ({rate_limit}). Consider lower value to prevent abuse.",
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `60` with a constant variable
+   --> src/api_validation.py:255:26
+    |
+253 |     if rate_limit > 0 and rate_limit_per > 0:
+254 |         req_per_min = (rate_limit * 60) / rate_limit_per
+255 |         if req_per_min > 60:
+    |                          ^^
+256 |             issues.append(
+257 |                 f"Rate limit allows {req_per_min:.1f} requests/minute. May be too permissive.",
+    |
+
+TRY003 Avoid specifying long messages outside the exception class
+  --> src/bot.py:92:19
+   |
+90 |         except Exception as e:
+91 |             logger.exception("Failed to initialize OpenAI client")
+92 |             raise RuntimeError("OpenAI client initialization failed") from e
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+93 |     else:
+94 |         logger.info("No OpenAI API key provided - GPT models disabled")
+   |
+
+EM101 Exception must not use a string literal, assign to variable first
+  --> src/bot.py:92:32
+   |
+90 |         except Exception as e:
+91 |             logger.exception("Failed to initialize OpenAI client")
+92 |             raise RuntimeError("OpenAI client initialization failed") from e
+   |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+93 |     else:
+94 |         logger.info("No OpenAI API key provided - GPT models disabled")
+   |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> src/bot.py:110:19
+    |
+108 |         except Exception as e:
+109 |             logger.exception("Failed to initialize Perplexity client")
+110 |             raise RuntimeError("Perplexity client initialization failed") from e
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+111 |     else:
+112 |         logger.info("No Perplexity API key provided - web search disabled")
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> src/bot.py:110:32
+    |
+108 |         except Exception as e:
+109 |             logger.exception("Failed to initialize Perplexity client")
+110 |             raise RuntimeError("Perplexity client initialization failed") from e
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+111 |     else:
+112 |         logger.info("No Perplexity API key provided - web search disabled")
+    |
+help: Assign to variable; remove string literal
+
+PLR0912 Too many branches (14 > 12)
+   --> src/bot.py:504:11
+    |
+504 | async def send_split_message(
+    |           ^^^^^^^^^^^^^^^^^^
+505 |     channel: discord.TextChannel,
+506 |     message: str,
+    |
+
+PLR0915 Too many statements (62 > 50)
+   --> src/bot.py:504:11
+    |
+504 | async def send_split_message(
+    |           ^^^^^^^^^^^^^^^^^^
+505 |     channel: discord.TextChannel,
+506 |     message: str,
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `10` with a constant variable
+   --> src/caching.py:167:52
+    |
+165 |             return False  # Don't cache errors
+166 |
+167 |         if not response or len(response.strip()) < 10:
+    |                                                    ^^
+168 |             return False  # Don't cache very short responses
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `1000` with a constant variable
+   --> src/caching.py:240:48
+    |
+238 |             if ttl is None:
+239 |                 # Default TTL based on response characteristics
+240 |                 ttl = 600.0 if len(response) > 1000 else 300.0
+    |                                                ^^^^
+241 |
+242 |             self.cache.put(cache_key, response, ttl)
+    |
+
+PLR0912 Too many branches (20 > 12)
+   --> src/config.py:236:5
+    |
+236 | def load_config(config_file: str | None = None, base_folder: str | None = None) -> dict[str, Any]:
+    |     ^^^^^^^^^^^
+237 |     """Load configuration from a file (if provided), then environment variables.
+    |
+
+PLR0915 Too many statements (79 > 50)
+   --> src/config.py:236:5
+    |
+236 | def load_config(config_file: str | None = None, base_folder: str | None = None) -> dict[str, Any]:
+    |     ^^^^^^^^^^^
+237 |     """Load configuration from a file (if provided), then environment variables.
+    |
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> src/conversation_manager.py:110:19
+    |
+108 |         """
+109 |         if role not in ["user", "assistant", "system"]:
+110 |             raise ValueError(f"Invalid role '{role}'. Must be 'user', 'assistant', or 'system'")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+111 |
+112 |         # Allow empty content only if we have meaningful metadata (e.g., embed data)
+    |
+
+EM102 Exception must not use an f-string literal, assign to variable first
+   --> src/conversation_manager.py:110:30
+    |
+108 |         """
+109 |         if role not in ["user", "assistant", "system"]:
+110 |             raise ValueError(f"Invalid role '{role}'. Must be 'user', 'assistant', or 'system'")
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+111 |
+112 |         # Allow empty content only if we have meaningful metadata (e.g., embed data)
+    |
+help: Assign to variable; remove f-string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> src/conversation_manager.py:170:23
+    |
+168 |         for i, msg in enumerate(conversation):
+169 |             if not isinstance(msg, dict) or "role" not in msg or "content" not in msg:
+170 |                 raise ValueError(f"Invalid message at index {i}: missing 'role' or 'content'")
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+171 |             if msg["role"] not in ["user", "assistant", "system"]:
+172 |                 raise ValueError(f"Invalid role at index {i}: '{msg['role']}'")
+    |
+
+EM102 Exception must not use an f-string literal, assign to variable first
+   --> src/conversation_manager.py:170:34
+    |
+168 |         for i, msg in enumerate(conversation):
+169 |             if not isinstance(msg, dict) or "role" not in msg or "content" not in msg:
+170 |                 raise ValueError(f"Invalid message at index {i}: missing 'role' or 'content'")
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+171 |             if msg["role"] not in ["user", "assistant", "system"]:
+172 |                 raise ValueError(f"Invalid role at index {i}: '{msg['role']}'")
+    |
+help: Assign to variable; remove f-string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> src/conversation_manager.py:172:23
+    |
+170 |                 raise ValueError(f"Invalid message at index {i}: missing 'role' or 'content'")
+171 |             if msg["role"] not in ["user", "assistant", "system"]:
+172 |                 raise ValueError(f"Invalid role at index {i}: '{msg['role']}'")
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+173 |
+174 |         user_lock = self._get_user_lock(user_id)
+    |
+
+EM102 Exception must not use an f-string literal, assign to variable first
+   --> src/conversation_manager.py:172:34
+    |
+170 |                 raise ValueError(f"Invalid message at index {i}: missing 'role' or 'content'")
+171 |             if msg["role"] not in ["user", "assistant", "system"]:
+172 |                 raise ValueError(f"Invalid role at index {i}: '{msg['role']}'")
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+173 |
+174 |         user_lock = self._get_user_lock(user_id)
+    |
+help: Assign to variable; remove f-string literal
+
+D102 Missing docstring in public method
+  --> src/error_handling.py:80:9
+   |
+78 |         self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
+79 |
+80 |     def __call__(self, func):
+   |         ^^^^^^^^
+81 |         @functools.wraps(func)
+82 |         async def wrapper(*args, **kwargs):
+   |
+
+TRY003 Avoid specifying long messages outside the exception class
+  --> src/error_handling.py:87:27
+   |
+85 |                     self.state = "HALF_OPEN"
+86 |                 else:
+87 |                     raise RuntimeError(f"Circuit breaker OPEN for {func.__name__}")
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+88 |
+89 |             try:
+   |
+
+EM102 Exception must not use an f-string literal, assign to variable first
+  --> src/error_handling.py:87:40
+   |
+85 |                     self.state = "HALF_OPEN"
+86 |                 else:
+87 |                     raise RuntimeError(f"Circuit breaker OPEN for {func.__name__}")
+   |                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+88 |
+89 |             try:
+   |
+help: Assign to variable; remove f-string literal
+
+PLR2004 Magic value used in comparison, consider replacing `5000` with a constant variable
+   --> src/health_checks.py:130:35
+    |
+128 |             # Check response time thresholds
+129 |             status = "healthy"
+130 |             if response_time_ms > 5000:  # 5 seconds
+    |                                   ^^^^
+131 |                 status = "degraded"
+132 |             elif response_time_ms > 10000:  # 10 seconds
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `10000` with a constant variable
+   --> src/health_checks.py:132:37
+    |
+130 |             if response_time_ms > 5000:  # 5 seconds
+131 |                 status = "degraded"
+132 |             elif response_time_ms > 10000:  # 10 seconds
+    |                                     ^^^^^
+133 |                 status = "unhealthy"
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `8000` with a constant variable
+   --> src/health_checks.py:227:35
+    |
+226 |             status = "healthy"
+227 |             if response_time_ms > 8000:  # 8 seconds (web search takes longer)
+    |                                   ^^^^
+228 |                 status = "degraded"
+229 |             elif response_time_ms > 15000:  # 15 seconds
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `15000` with a constant variable
+   --> src/health_checks.py:229:37
+    |
+227 |             if response_time_ms > 8000:  # 8 seconds (web search takes longer)
+228 |                 status = "degraded"
+229 |             elif response_time_ms > 15000:  # 15 seconds
+    |                                     ^^^^^
+230 |                 status = "unhealthy"
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `500` with a constant variable
+   --> src/health_checks.py:341:44
+    |
+340 |             status = "healthy"
+341 |             if latency_ms and latency_ms > 500:  # 500ms latency
+    |                                            ^^^
+342 |                 status = "degraded"
+343 |             elif latency_ms and latency_ms > 1000:  # 1 second latency
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `1000` with a constant variable
+   --> src/health_checks.py:343:46
+    |
+341 |             if latency_ms and latency_ms > 500:  # 500ms latency
+342 |                 status = "degraded"
+343 |             elif latency_ms and latency_ms > 1000:  # 1 second latency
+    |                                              ^^^^
+344 |                 status = "unhealthy"
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `3` with a constant variable
+   --> src/health_checks.py:514:44
+    |
+512 |     def _determine_service_status(self, metrics: APIHealthMetrics) -> str:
+513 |         """Determine service status based on metrics."""
+514 |         if metrics.consecutive_failures >= 3:
+    |                                            ^
+515 |             return "unhealthy"
+516 |         if metrics.consecutive_failures > 0 or metrics.uptime_percentage < 90:
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `90` with a constant variable
+   --> src/health_checks.py:516:76
+    |
+514 |         if metrics.consecutive_failures >= 3:
+515 |             return "unhealthy"
+516 |         if metrics.consecutive_failures > 0 or metrics.uptime_percentage < 90:
+    |                                                                            ^^
+517 |             return "degraded"
+518 |         return "healthy"
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `50000` with a constant variable
+   --> src/main.py:139:28
+    |
+137 |         if output_tokens <= 0:
+138 |             errors.append("OUTPUT_TOKENS must be positive")
+139 |         if output_tokens > 50000:
+    |                            ^^^^^
+140 |             warnings.append(
+141 |                 "OUTPUT_TOKENS is very high (%d) - may cause API costs/limits",
+    |
+
+PLR0913 Too many arguments in function definition (9 > 5)
+  --> src/openai_processing.py:17:11
+   |
+15 | @cached_response(ttl=DEFAULT_CACHE_TTL)
+16 | @deduplicated_request()  # Prevent duplicate simultaneous requests
+17 | async def process_openai_message(
+   |           ^^^^^^^^^^^^^^^^^^^^^^
+18 |     message: str,
+19 |     user,
+   |
+
+PLR0912 Too many branches (16 > 12)
+  --> src/perplexity_processing.py:26:5
+   |
+26 | def extract_citations_from_response(
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+27 |     response_text: str,
+28 |     response_citations: list[str] | None = None,
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `2` with a constant variable
+   --> src/perplexity_processing.py:224:27
+    |
+223 |     # Suppress embeds if there are 2 or more links to prevent clutter
+224 |     return total_links >= 2
+    |                           ^
+    |
+
+PLR0913 Too many arguments in function definition (8 > 5)
+   --> src/perplexity_processing.py:229:11
+    |
+227 | @cached_response(ttl=DEFAULT_CACHE_TTL)
+228 | @deduplicated_request()
+229 | async def process_perplexity_message(
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+230 |     message: str,
+231 |     user,
+    |
+
+PLR0912 Too many branches (35 > 12)
+   --> src/perplexity_processing.py:229:11
+    |
+227 | @cached_response(ttl=DEFAULT_CACHE_TTL)
+228 | @deduplicated_request()
+229 | async def process_perplexity_message(
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+230 |     message: str,
+231 |     user,
+    |
+
+PLR0915 Too many statements (108 > 50)
+   --> src/perplexity_processing.py:229:11
+    |
+227 | @cached_response(ttl=DEFAULT_CACHE_TTL)
+228 | @deduplicated_request()
+229 | async def process_perplexity_message(
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+230 |     message: str,
+231 |     user,
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `1000` with a constant variable
+   --> src/perplexity_processing.py:380:40
+    |
+379 |             # Log the full enhanced message for debugging (but truncated for readability)
+380 |             if len(enhanced_message) > 1000:
+    |                                        ^^^^
+381 |                 logger.debug(
+382 |                     "Full enhanced message (%d chars): %s...[TRUNCATED]...%s",
+    |
+
+PLR0911 Too many return statements (7 > 6)
+  --> src/smart_orchestrator.py:97:5
+   |
+97 | def should_use_web_search(
+   |     ^^^^^^^^^^^^^^^^^^^^^
+98 |     message: str,
+99 |     conversation_manager: ThreadSafeConversationManager | None = None,
+   |
+
+PLR0913 Too many arguments in function definition (8 > 5)
+   --> src/smart_orchestrator.py:202:11
+    |
+202 | async def _process_perplexity_only_mode(
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+203 |     message: str,
+204 |     user,
+    |
+
+PLR0913 Too many arguments in function definition (9 > 5)
+   --> src/smart_orchestrator.py:240:11
+    |
+240 | async def _process_openai_only_mode(
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^
+241 |     message: str,
+242 |     user,
+    |
+
+PLR0913 Too many arguments in function definition (8 > 5)
+   --> src/smart_orchestrator.py:277:11
+    |
+277 | async def _try_perplexity_with_fallback(
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+278 |     message: str,
+279 |     user,
+    |
+
+PLR0913 Too many arguments in function definition (11 > 5)
+   --> src/smart_orchestrator.py:314:11
+    |
+314 | async def _process_hybrid_mode(
+    |           ^^^^^^^^^^^^^^^^^^^^
+315 |     message: str,
+316 |     user,
+    |
+
+PLR0913 Too many arguments in function definition (11 > 5)
+   --> src/smart_orchestrator.py:407:11
+    |
+407 | async def get_smart_response(
+    |           ^^^^^^^^^^^^^^^^^^
+408 |     message: str,
+409 |     user,
+    |
+
+PLR0912 Too many branches (22 > 12)
+   --> src/web_scraper.py:99:5
+    |
+ 99 | def _extract_content(soup: BeautifulSoup) -> str:
+    |     ^^^^^^^^^^^^^^^^
+100 |     """Extract content from any web page using production-ready generic selectors.
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `100` with a constant variable
+   --> src/web_scraper.py:188:37
+    |
+186 |         if main_content:
+187 |             text = main_content.get_text(strip=True, separator=" ")
+188 |             if text and len(text) > 100:  # Only use if substantial content
+    |                                     ^^^
+189 |                 content_parts.append(f"Main content: {text}")
+190 |                 break
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `2` with a constant variable
+   --> src/web_scraper.py:193:49
+    |
+192 |     # If no main content found, try extracting key sections
+193 |     if not main_content or len(content_parts) < 2:
+    |                                                 ^
+194 |         # Extract headings for structure (h1-h3 only for relevance)
+195 |         headings = []
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `200` with a constant variable
+   --> src/web_scraper.py:198:53
+    |
+196 |         for heading in soup.find_all(["h1", "h2", "h3"]):
+197 |             heading_text = heading.get_text(strip=True)
+198 |             if heading_text and len(heading_text) < 200:  # Reasonable heading length
+    |                                                     ^^^
+199 |                 headings.append(heading_text)
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `2` with a constant variable
+   --> src/web_scraper.py:205:33
+    |
+204 |         # Extract paragraphs if we still don't have enough content
+205 |         if len(content_parts) < 2:
+    |                                 ^
+206 |             paragraphs = []
+207 |             for p in soup.find_all("p"):
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `50` with a constant variable
+   --> src/web_scraper.py:209:45
+    |
+207 |             for p in soup.find_all("p"):
+208 |                 p_text = p.get_text(strip=True)
+209 |                 if p_text and len(p_text) > 50:  # Substantial paragraphs only
+    |                                             ^^
+210 |                     paragraphs.append(p_text)
+211 |                     if len(paragraphs) >= 5:  # Limit to first 5 paragraphs
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `5` with a constant variable
+   --> src/web_scraper.py:211:43
+    |
+209 |                 if p_text and len(p_text) > 50:  # Substantial paragraphs only
+210 |                     paragraphs.append(p_text)
+211 |                     if len(paragraphs) >= 5:  # Limit to first 5 paragraphs
+    |                                           ^
+212 |                         break
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `200` with a constant variable
+   --> src/web_scraper.py:218:72
+    |
+217 |     # Final fallback: use body content if we still have minimal content
+218 |     if not content_parts or sum(len(part) for part in content_parts) < 200:
+    |                                                                        ^^^
+219 |         body = soup.find("body")
+220 |         if body:
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `8000` with a constant variable
+   --> src/web_scraper.py:224:32
+    |
+222 |             if text:
+223 |                 # Limit body content to prevent overwhelming output
+224 |                 if len(text) > 8000:
+    |                                ^^^^
+225 |                     text = text[:8000] + "... [content truncated]"
+226 |                 content_parts.append(f"Page content: {text}")
+    |
+
+PLR0915 Too many statements (71 > 50)
+   --> src/web_scraper.py:231:11
+    |
+231 | async def scrape_url_content(
+    |           ^^^^^^^^^^^^^^^^^^
+232 |     url: str,
+233 |     logger: logging.Logger | None = None,
+    |
+
+PLR0912 Too many branches (13 > 12)
+   --> src/web_scraper.py:271:13
+    |
+270 |         # Perform HTTP request with retries and proper error handling
+271 |         def _fetch_content():
+    |             ^^^^^^^^^^^^^^
+272 |             session = requests.Session()
+273 |             session.headers.update(DEFAULT_HEADERS)
+    |
+
+PLR0911 Too many return statements (8 > 6)
+   --> src/web_scraper.py:271:13
+    |
+270 |         # Perform HTTP request with retries and proper error handling
+271 |         def _fetch_content():
+    |             ^^^^^^^^^^^^^^
+272 |             session = requests.Session()
+273 |             session.headers.update(DEFAULT_HEADERS)
+    |
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_caching.py:314:19
+    |
+312 |             nonlocal call_count
+313 |             call_count += 1
+314 |             raise ValueError("API error")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^
+315 |
+316 |         # Start multiple identical requests that will fail
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_caching.py:314:30
+    |
+312 |             nonlocal call_count
+313 |             call_count += 1
+314 |             raise ValueError("API error")
+    |                              ^^^^^^^^^^^
+315 |
+316 |         # Start multiple identical requests that will fail
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+  --> tests/test_dependency_check.py:26:27
+   |
+24 |             def side_effect(name, *args, **kwargs):
+25 |                 if name == "discord":
+26 |                     raise ImportError("No module named 'discord'")
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+27 |                 return MagicMock()
+   |
+
+EM101 Exception must not use a string literal, assign to variable first
+  --> tests/test_dependency_check.py:26:39
+   |
+24 |             def side_effect(name, *args, **kwargs):
+25 |                 if name == "discord":
+26 |                     raise ImportError("No module named 'discord'")
+   |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+27 |                 return MagicMock()
+   |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:140:19
+    |
+138 |         @breaker
+139 |         async def test_func():
+140 |             raise ValueError("Test error")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^
+141 |
+142 |         # Should still be closed after first few failures
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:140:30
+    |
+138 |         @breaker
+139 |         async def test_func():
+140 |             raise ValueError("Test error")
+    |                              ^^^^^^^^^^^^
+141 |
+142 |         # Should still be closed after first few failures
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:162:19
+    |
+160 |         @breaker
+161 |         async def test_func():
+162 |             raise ValueError("Test error")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^
+163 |
+164 |         # Trigger failures to open circuit
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:162:30
+    |
+160 |         @breaker
+161 |         async def test_func():
+162 |             raise ValueError("Test error")
+    |                              ^^^^^^^^^^^^
+163 |
+164 |         # Trigger failures to open circuit
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:184:19
+    |
+182 |             if should_succeed:
+183 |                 return "success"
+184 |             raise ValueError("Test error")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^
+185 |
+186 |         # Open the circuit
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:184:30
+    |
+182 |             if should_succeed:
+183 |                 return "success"
+184 |             raise ValueError("Test error")
+    |                              ^^^^^^^^^^^^
+185 |
+186 |         # Open the circuit
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:208:19
+    |
+206 |         @breaker
+207 |         async def test_func():
+208 |             raise ValueError("Test error")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^
+209 |
+210 |         # Open the circuit
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:208:30
+    |
+206 |         @breaker
+207 |         async def test_func():
+208 |             raise ValueError("Test error")
+    |                              ^^^^^^^^^^^^
+209 |
+210 |         # Open the circuit
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:231:23
+    |
+229 |         async def test_func(error_type="value"):
+230 |             if error_type == "value":
+231 |                 raise ValueError("Expected error")
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+232 |             if error_type == "type":
+233 |                 raise TypeError("Unexpected error")
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:231:34
+    |
+229 |         async def test_func(error_type="value"):
+230 |             if error_type == "value":
+231 |                 raise ValueError("Expected error")
+    |                                  ^^^^^^^^^^^^^^^^
+232 |             if error_type == "type":
+233 |                 raise TypeError("Unexpected error")
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:233:23
+    |
+231 |                 raise ValueError("Expected error")
+232 |             if error_type == "type":
+233 |                 raise TypeError("Unexpected error")
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+234 |             return "success"
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:233:33
+    |
+231 |                 raise ValueError("Expected error")
+232 |             if error_type == "type":
+233 |                 raise TypeError("Unexpected error")
+    |                                 ^^^^^^^^^^^^^^^^^^
+234 |             return "success"
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:310:23
+    |
+308 |             call_count += 1
+309 |             if call_count < 3:
+310 |                 raise ValueError("Temporary failure")
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+311 |             return "success"
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:310:34
+    |
+308 |             call_count += 1
+309 |             if call_count < 3:
+310 |                 raise ValueError("Temporary failure")
+    |                                  ^^^^^^^^^^^^^^^^^^^
+311 |             return "success"
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:327:19
+    |
+325 |             nonlocal call_count
+326 |             call_count += 1
+327 |             raise ValueError(f"Failure {call_count}")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+328 |
+329 |         mock_logger = Mock()
+    |
+
+EM102 Exception must not use an f-string literal, assign to variable first
+   --> tests/test_error_handling.py:327:30
+    |
+325 |             nonlocal call_count
+326 |             call_count += 1
+327 |             raise ValueError(f"Failure {call_count}")
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^
+328 |
+329 |         mock_logger = Mock()
+    |
+help: Assign to variable; remove f-string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:344:23
+    |
+342 |             call_count += 1
+343 |             if call_count < 3:
+344 |                 raise ValueError("Temporary failure")
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+345 |             return "success"
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:344:34
+    |
+342 |             call_count += 1
+343 |             if call_count < 3:
+344 |                 raise ValueError("Temporary failure")
+    |                                  ^^^^^^^^^^^^^^^^^^^
+345 |             return "success"
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:363:19
+    |
+361 |             nonlocal call_count
+362 |             call_count += 1
+363 |             raise Exception("401 Unauthorized: Invalid API key")  # Auth error
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+364 |
+365 |         mock_logger = Mock()
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:363:29
+    |
+361 |             nonlocal call_count
+362 |             call_count += 1
+363 |             raise Exception("401 Unauthorized: Invalid API key")  # Auth error
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+364 |
+365 |         mock_logger = Mock()
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:526:23
+    |
+524 |             call_count += 1
+525 |             if call_count == 1:
+526 |                 raise Exception("Temporary failure")
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+527 |             return "success"
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:526:33
+    |
+524 |             call_count += 1
+525 |             if call_count == 1:
+526 |                 raise Exception("Temporary failure")
+    |                                 ^^^^^^^^^^^^^^^^^^^
+527 |             return "success"
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:541:19
+    |
+539 |             nonlocal call_count
+540 |             call_count += 1
+541 |             raise Exception("Persistent failure")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+542 |
+543 |         with pytest.raises(Exception, match="Persistent failure"):
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:541:29
+    |
+539 |             nonlocal call_count
+540 |             call_count += 1
+541 |             raise Exception("Persistent failure")
+    |                             ^^^^^^^^^^^^^^^^^^^^
+542 |
+543 |         with pytest.raises(Exception, match="Persistent failure"):
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:635:19
+    |
+633 |         @create_graceful_fallback(fallback_func)
+634 |         async def main_func():
+635 |             raise Exception("Main failed")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^
+636 |
+637 |         result = await main_func()
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:635:29
+    |
+633 |         @create_graceful_fallback(fallback_func)
+634 |         async def main_func():
+635 |             raise Exception("Main failed")
+    |                             ^^^^^^^^^^^^^
+636 |
+637 |         result = await main_func()
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:645:19
+    |
+644 |         async def fallback_func():
+645 |             raise Exception("Fallback failed")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+646 |
+647 |         @create_graceful_fallback(fallback_func, "Default message")
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:645:29
+    |
+644 |         async def fallback_func():
+645 |             raise Exception("Fallback failed")
+    |                             ^^^^^^^^^^^^^^^^^
+646 |
+647 |         @create_graceful_fallback(fallback_func, "Default message")
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:649:19
+    |
+647 |         @create_graceful_fallback(fallback_func, "Default message")
+648 |         async def main_func():
+649 |             raise Exception("Main failed")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^
+650 |
+651 |         result = await main_func()
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:649:29
+    |
+647 |         @create_graceful_fallback(fallback_func, "Default message")
+648 |         async def main_func():
+649 |             raise Exception("Main failed")
+    |                             ^^^^^^^^^^^^^
+650 |
+651 |         result = await main_func()
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:738:19
+    |
+736 |         @breaker
+737 |         async def failing_function():
+738 |             raise ValueError("Test error")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^
+739 |
+740 |         # First failure should not open circuit
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:738:30
+    |
+736 |         @breaker
+737 |         async def failing_function():
+738 |             raise ValueError("Test error")
+    |                              ^^^^^^^^^^^^
+739 |
+740 |         # First failure should not open circuit
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:815:19
+    |
+813 |         @breaker
+814 |         async def failing_function():
+815 |             raise ValueError("Test error")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^
+816 |
+817 |         # Failure in HALF_OPEN should open circuit again
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:815:30
+    |
+813 |         @breaker
+814 |         async def failing_function():
+815 |             raise ValueError("Test error")
+    |                              ^^^^^^^^^^^^
+816 |
+817 |         # Failure in HALF_OPEN should open circuit again
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:831:23
+    |
+829 |         async def sometimes_failing_function(should_fail: bool):
+830 |             if should_fail:
+831 |                 raise ValueError("Test error")
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^
+832 |             return "success"
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:831:34
+    |
+829 |         async def sometimes_failing_function(should_fail: bool):
+830 |             if should_fail:
+831 |                 raise ValueError("Test error")
+    |                                  ^^^^^^^^^^^^
+832 |             return "success"
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:859:23
+    |
+857 |             attempt_count += 1
+858 |             if attempt_count < 2:
+859 |                 raise ConnectionError("Temporary failure")
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+860 |             return "success"
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:859:39
+    |
+857 |             attempt_count += 1
+858 |             if attempt_count < 2:
+859 |                 raise ConnectionError("Temporary failure")
+    |                                       ^^^^^^^^^^^^^^^^^^^
+860 |             return "success"
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:879:19
+    |
+877 |             nonlocal attempt_count
+878 |             attempt_count += 1
+879 |             raise ConnectionError(f"Failure {attempt_count}")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+880 |
+881 |         retry_config = RetryConfig(max_attempts=3, base_delay=0.1)
+    |
+
+EM102 Exception must not use an f-string literal, assign to variable first
+   --> tests/test_error_handling.py:879:35
+    |
+877 |             nonlocal attempt_count
+878 |             attempt_count += 1
+879 |             raise ConnectionError(f"Failure {attempt_count}")
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+880 |
+881 |         retry_config = RetryConfig(max_attempts=3, base_delay=0.1)
+    |
+help: Assign to variable; remove f-string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:898:19
+    |
+896 |             nonlocal attempt_count
+897 |             attempt_count += 1
+898 |             raise ValueError("401 Unauthorized")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+899 |
+900 |         retry_config = RetryConfig(max_attempts=3, base_delay=0.1)
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:898:30
+    |
+896 |             nonlocal attempt_count
+897 |             attempt_count += 1
+898 |             raise ValueError("401 Unauthorized")
+    |                              ^^^^^^^^^^^^^^^^^^
+899 |
+900 |         retry_config = RetryConfig(max_attempts=3, base_delay=0.1)
+    |
+help: Assign to variable; remove string literal
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:925:35
+    |
+923 |         async def failing_function():
+924 |             attempt_times.append(time.time())
+925 |             raise ConnectionError("Failure")
+    |                                   ^^^^^^^^^
+926 |
+927 |         retry_config = RetryConfig(
+    |
+help: Assign to variable; remove string literal
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:954:35
+    |
+952 |         async def failing_function():
+953 |             attempt_times.append(time.time())
+954 |             raise ConnectionError("Failure")
+    |                                   ^^^^^^^^^
+955 |
+956 |         retry_config = RetryConfig(
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_error_handling.py:990:23
+    |
+988 |             call_count += 1
+989 |             if call_count < 3:
+990 |                 raise ConnectionError("Temporary failure")
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+991 |             return "success"
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_error_handling.py:990:39
+    |
+988 |             call_count += 1
+989 |             if call_count < 3:
+990 |                 raise ConnectionError("Temporary failure")
+    |                                       ^^^^^^^^^^^^^^^^^^^
+991 |             return "success"
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+    --> tests/test_error_handling.py:1009:19
+     |
+1007 |             nonlocal failure_count
+1008 |             failure_count += 1
+1009 |             raise ValueError("Test error")
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^
+1010 |
+1011 |         # Simulate concurrent failures
+     |
+
+EM101 Exception must not use a string literal, assign to variable first
+    --> tests/test_error_handling.py:1009:30
+     |
+1007 |             nonlocal failure_count
+1008 |             failure_count += 1
+1009 |             raise ValueError("Test error")
+     |                              ^^^^^^^^^^^^
+1010 |
+1011 |         # Simulate concurrent failures
+     |
+help: Assign to variable; remove string literal
+
+EM101 Exception must not use a string literal, assign to variable first
+  --> tests/test_main.py:47:25
+   |
+46 |     def _raise_fail(_config):
+47 |         raise Exception("fail")
+   |                         ^^^^^^
+48 |
+49 |     monkeypatch.setattr(main, "run_bot", _raise_fail)
+   |
+help: Assign to variable; remove string literal
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_openai_processing.py:144:32
+    |
+142 |         # Mock the async client call to raise TimeoutError
+143 |         async def mock_create(*args, **kwargs):
+144 |             raise TimeoutError("Timeout")
+    |                                ^^^^^^^^^
+145 |
+146 |         openai_client.chat.completions.create = mock_create
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_openai_processing.py:178:19
+    |
+176 |         # Mock the async client call to raise Exception
+177 |         async def mock_create(*args, **kwargs):
+178 |             raise Exception("Generic error")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+179 |
+180 |         openai_client.chat.completions.create = mock_create
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_openai_processing.py:178:29
+    |
+176 |         # Mock the async client call to raise Exception
+177 |         async def mock_create(*args, **kwargs):
+178 |             raise Exception("Generic error")
+    |                             ^^^^^^^^^^^^^^^
+179 |
+180 |         openai_client.chat.completions.create = mock_create
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_performance_integration.py:265:23
+    |
+263 |             call_count += 1
+264 |             if call_count <= 2:  # First two calls fail
+265 |                 raise Exception("Rate limited by Discord")
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+266 |             # Third call succeeds
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_performance_integration.py:265:33
+    |
+263 |             call_count += 1
+264 |             if call_count <= 2:  # First two calls fail
+265 |                 raise Exception("Rate limited by Discord")
+    |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+266 |             # Third call succeeds
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/test_perplexity_processing.py:140:27
+    |
+138 |                 @staticmethod
+139 |                 async def create(*args, **kwargs):
+140 |                     raise Exception("API failure!")
+    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^
+141 |
+142 |     result = await process_perplexity_message(
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/test_perplexity_processing.py:140:37
+    |
+138 |                 @staticmethod
+139 |                 async def create(*args, **kwargs):
+140 |                     raise Exception("API failure!")
+    |                                     ^^^^^^^^^^^^^^
+141 |
+142 |     result = await process_perplexity_message(
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+  --> tests/test_utils.py:54:27
+   |
+52 |             async def create(self, *_args, **_kwargs):
+53 |                 if self.client.should_raise:
+54 |                     raise Exception("Test exception")
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+55 |                 if self.client.return_none:
+56 |                     return FakeResponse("")
+   |
+
+EM101 Exception must not use a string literal, assign to variable first
+  --> tests/test_utils.py:54:37
+   |
+52 |             async def create(self, *_args, **_kwargs):
+53 |                 if self.client.should_raise:
+54 |                     raise Exception("Test exception")
+   |                                     ^^^^^^^^^^^^^^^^
+55 |                 if self.client.return_none:
+56 |                     return FakeResponse("")
+   |
+help: Assign to variable; remove string literal
+
+Found 119 errors.
+No fixes available (39 hidden fixes can be enabled with the `--unsafe-fixes` option).

@@ -44,7 +44,8 @@ def test_main_handles_exception(monkeypatch):
     sys.argv = ["prog"]
 
     def _raise_fail(_config):
-        raise Exception("fail")
+        msg = "fail"
+        raise Exception(msg)
 
     monkeypatch.setattr(main, "run_bot", _raise_fail)
     # Mock the load_config to return valid config

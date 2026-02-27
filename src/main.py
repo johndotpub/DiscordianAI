@@ -14,6 +14,12 @@ from .api_validation import log_validation_results
 from .bot import run_bot
 from .config import load_config, parse_arguments
 
+# Constants for validation
+MAX_OUTPUT_TOKENS_THRESHOLD = 50000
+DEFAULT_RATE_LIMIT_VAL = 10
+DEFAULT_RATE_LIMIT_PER_VAL = 60
+DEFAULT_OUTPUT_TOKENS_VAL = 8000
+
 
 def setup_early_logging() -> logging.Logger:
     """Set up basic logging before configuration is loaded.
@@ -56,7 +62,7 @@ def setup_production_logging(config: dict, logger: logging.Logger) -> None:
         # Validate log level
         numeric_level = getattr(logging, log_level, None)
         if numeric_level is None:
-            logger.warning(f"Invalid log level '{log_level}', defaulting to INFO")
+            logger.warning("Invalid log level '%s', defaulting to INFO", log_level)
             numeric_level = logging.INFO
             log_level = "INFO"
 
@@ -64,7 +70,7 @@ def setup_production_logging(config: dict, logger: logging.Logger) -> None:
         log_dir = Path(log_file).parent
         if log_dir and not log_dir.exists():
             log_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Created log directory: {log_dir}")
+            logger.info("Created log directory: %s", log_dir)
 
         # Reconfigure logging with production settings
         logging.basicConfig(
@@ -78,13 +84,13 @@ def setup_production_logging(config: dict, logger: logging.Logger) -> None:
         console_handler = logging.StreamHandler(sys.stderr)
         console_handler.setLevel(logging.WARNING)  # Only warnings and errors to console
         console_handler.setFormatter(
-            logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+            logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"),
         )
 
         root_logger = logging.getLogger()
         root_logger.addHandler(console_handler)
 
-        logger.info(f"Production logging configured: file={log_file}, level={log_level}")
+        logger.info("Production logging configured: file=%s, level=%s", log_file, log_level)
 
     except Exception:
         logger.exception("Failed to configure production logging")
@@ -119,32 +125,24 @@ def validate_critical_config(config: dict, logger: logging.Logger) -> None:
     if not has_openai and not has_perplexity:
         errors.append(
             "At least one API key is required: provide either OPENAI_API_KEY (OpenAI) "
-            "or PERPLEXITY_API_KEY (Perplexity) or both"
+            "or PERPLEXITY_API_KEY (Perplexity) or both",
         )
 
     # Validate rate limiting settings
     try:
-        rate_limit = int(config.get("RATE_LIMIT", 10))
-        rate_limit_per = int(config.get("RATE_LIMIT_PER", 60))
-
-        if rate_limit <= 0:
-            errors.append("RATE_LIMIT must be positive")
-        if rate_limit_per <= 0:
-            errors.append("RATE_LIMIT_PER must be positive")
-        if rate_limit > 100:
-            warnings.append(
-                f"RATE_LIMIT is very high ({rate_limit}) - consider lowering to prevent API abuse"
-            )
-
+        rate_limit = int(config.get("RATE_LIMIT", DEFAULT_RATE_LIMIT_VAL))
+        rate_limit_per = int(config.get("RATE_LIMIT_PER", DEFAULT_RATE_LIMIT_PER_VAL))
+        if rate_limit <= 0 or rate_limit_per <= 0:
+            errors.append("RATE_LIMIT and RATE_LIMIT_PER must be positive")
     except (ValueError, TypeError):
         errors.append("RATE_LIMIT and RATE_LIMIT_PER must be valid integers")
 
     # Validate token limits
     try:
-        output_tokens = int(config.get("OUTPUT_TOKENS", 8000))
+        output_tokens = int(config.get("OUTPUT_TOKENS", DEFAULT_OUTPUT_TOKENS_VAL))
         if output_tokens <= 0:
             errors.append("OUTPUT_TOKENS must be positive")
-        if output_tokens > 50000:
+        if output_tokens > MAX_OUTPUT_TOKENS_THRESHOLD:
             warnings.append(
                 f"OUTPUT_TOKENS is very high ({output_tokens}) - may cause API costs/limits"
             )
@@ -158,7 +156,7 @@ def validate_critical_config(config: dict, logger: logging.Logger) -> None:
 
     # Log warnings
     for warning in warnings:
-        logger.warning(f"Configuration warning: {warning}")
+        logger.warning("Configuration warning: %s", warning)
 
     # Raise error if critical issues found
     if errors:
@@ -197,7 +195,9 @@ def handle_unhandled_exception(exc_type, exc_value, exc_traceback, logger: loggi
 
     # Also print to stderr as fallback
     # Use logging instead of print to avoid potential information leakage
-    logging.getLogger(__name__).critical(f"Unhandled exception {exc_type.__name__}: {exc_value}")
+    logging.getLogger(__name__).critical(
+        "Unhandled exception %s: %s", exc_type.__name__, exc_value
+    )
 
 
 def main() -> NoReturn:
@@ -228,7 +228,9 @@ def main() -> NoReturn:
         early_logger.info("Parsing command-line arguments")
         args = parse_arguments()
         early_logger.debug(
-            f"Arguments parsed: conf={args.conf}, folder={getattr(args, 'folder', None)}"
+            "Arguments parsed: conf=%s, folder=%s",
+            args.conf,
+            getattr(args, "folder", None),
         )
 
         # Step 3: Load configuration (with early logging available for errors)
@@ -254,13 +256,8 @@ def main() -> NoReturn:
         if not api_validation_passed:
             logger.warning("API validation found issues, but continuing with startup")
 
-        # Step 5.2: Run startup health checks (optional)
-        logger.info("Running startup health checks...")
-        try:
-            # Health checks will run after bot initialization since we need the clients
-            logger.info("Health checks will run after bot initialization")
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"Startup health checks failed: {e}, but continuing with startup")
+        # Health checks will run after bot initialization since we need the clients
+        logger.info("Health checks will run after bot initialization")
 
         # Step 6: Set up global exception handler (now with proper logging)
         def exception_handler(exc_type, exc_value, exc_traceback):
@@ -285,12 +282,12 @@ def main() -> NoReturn:
     except Exception as e:  # noqa: BLE001
         # Use appropriate logger based on where we are in startup
         try:
-            logger.critical(f"Fatal error during bot startup: {e}", exc_info=True)
+            logger.critical("Fatal error during bot startup: %s", e, exc_info=True)
         except NameError:
-            early_logger.critical(f"Fatal error during bot startup: {e}", exc_info=True)
+            early_logger.critical("Fatal error during bot startup: %s", e, exc_info=True)
 
         # Use logging for security instead of print statements
-        logging.getLogger(__name__).critical(f"Bot startup failed: {e}")
+        logging.getLogger(__name__).critical("Bot startup failed: %s", e)
         logging.getLogger(__name__).critical("Check the logs for detailed error information.")
         sys.exit(1)
 

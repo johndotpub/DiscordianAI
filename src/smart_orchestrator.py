@@ -5,7 +5,7 @@ and orchestrates the response generation with comprehensive error handling,
 logging, and thread-safe conversation management.
 """
 
-import logging
+from typing import Any
 
 from .config import (
     COMPILED_CONVERSATIONAL_PATTERNS,
@@ -17,80 +17,30 @@ from .config import (
     get_error_messages,
 )
 from .conversation_manager import ThreadSafeConversationManager
+from .models import AIClients, AIConfig, AIRequest
 from .openai_processing import process_openai_message
 from .perplexity_processing import process_perplexity_message
 
 # Get centralized error messages
 ERROR_MESSAGES = get_error_messages()
 
+# Constants for magic values
+DEFAULT_LOOKBACK = 6
+MAX_ORCHESTRATOR_RETURNS = 6
+
 
 def has_time_sensitivity(message: str) -> bool:
-    """Check if message implies current/recent information is needed.
-
-    Analyzes message content for time-sensitive keywords and phrases that
-    indicate the user is asking for current or recent information that
-    would benefit from web search capabilities.
-
-    Args:
-        message (str): The user's message to analyze
-
-    Returns:
-        bool: True if the message appears to be time-sensitive
-
-    Examples:
-        >>> has_time_sensitivity("What happened today in the news?")
-        True
-        >>> has_time_sensitivity("What is Python programming?")
-        False
-    """
-    # Use pre-compiled patterns for better performance
+    """Check if message implies current/recent information is needed."""
     return any(pattern.search(message) for pattern in COMPILED_TIME_SENSITIVITY_PATTERNS)
 
 
 def is_factual_query(message: str) -> bool:
-    """Check if message is asking for factual information that might change over time.
-
-    Identifies queries that request specific factual information, especially
-    data that changes frequently and would benefit from current web search.
-
-    Args:
-        message (str): The user's message to analyze
-
-    Returns:
-        bool: True if the message appears to be a factual query
-
-    Examples:
-        >>> is_factual_query("What is the current price of Bitcoin?")
-        True
-        >>> is_factual_query("How do I write a Python function?")
-        False
-    """
-    # Use pre-compiled patterns for better performance
+    """Check if message is asking for factual information."""
     return any(pattern.search(message) for pattern in COMPILED_FACTUAL_PATTERNS)
 
 
 def is_conversational_or_creative(message: str) -> bool:
-    """Check if message is conversational, creative, or personal in nature.
-
-    Identifies messages that are more suited to conversational AI responses
-    rather than web search, including greetings, creative requests, and
-    personal interactions.
-
-    Args:
-        message (str): The user's message to analyze
-
-    Returns:
-        bool: True if the message appears conversational or creative
-
-    Examples:
-        >>> is_conversational_or_creative("Hello! How are you?")
-        True
-        >>> is_conversational_or_creative("Write me a story about robots")
-        True
-        >>> is_conversational_or_creative("What's the current weather?")
-        False
-    """
-    # Use pre-compiled patterns for better performance
+    """Check if message is conversational, creative, or personal."""
     return any(pattern.search(message) for pattern in COMPILED_CONVERSATIONAL_PATTERNS)
 
 
@@ -98,414 +48,147 @@ def should_use_web_search(
     message: str,
     conversation_manager: ThreadSafeConversationManager | None = None,
     user_id: int | None = None,
-    lookback_messages: int = 6,
+    lookback_messages: int = DEFAULT_LOOKBACK,
 ) -> bool:
-    """Intelligently determine if a message needs web search based on semantic analysis.
-
-    This is the core decision-making function that determines whether to route
-    a query to web search (Perplexity) or conversational AI (OpenAI) based on
-    the content and context of the message.
-
-    Args:
-        message (str): The user's message to analyze
-        conversation_manager (Optional[ThreadSafeConversationManager]):
-            Conversation manager for context
-        user_id (Optional[int]): User ID for retrieving recent AI service usage
-        lookback_messages (int): How many recent messages to check for consistency (default: 6)
-
-    Returns:
-        bool: True if web search would likely provide better/more current information
-
-    Decision Logic:
-        1. Check conversation context for ongoing topics (for consistency)
-        2. Conversational/creative messages -> False (use ChatGPT)
-        3. Time-sensitive messages -> True (use web search)
-        4. Factual queries -> True (use web search)
-        5. Messages with URLs -> True (use web search) - PRIORITY CHECK
-        6. Long specific queries with entities -> True (use web search)
-        7. Default -> False (use ChatGPT)
-    """
-    logger = logging.getLogger("discordianai.smart_orchestrator")
-    logger.debug("Analyzing message for web search routing: %s...", message[:100])
-
+    """Intelligently determine if a message needs web search."""
     # PRIORITY CHECK: If message contains URLs, always use web search
-    # Use centralized URL patterns from config
-    has_urls = any(pattern.search(message) for pattern in COMPILED_URL_DETECTION_PATTERNS)
-    logger.debug("URL detection: %s", has_urls)
-    if has_urls:
-        logger.debug("Message contains URLs - routing to Perplexity for web search")
+    if any(pattern.search(message) for pattern in COMPILED_URL_DETECTION_PATTERNS):
         return True
 
-    # Check conversation context for ongoing topics to maintain consistency
+    # Check conversation context
     if conversation_manager and user_id:
-        # Check for follow-up indicators using pre-compiled patterns
-        follow_up_matches = []
-        for i, pattern in enumerate(COMPILED_FOLLOW_UP_PATTERNS):
-            match = pattern.search(message)
-            if match:
-                follow_up_matches.append(f"Pattern {i}: '{pattern.pattern}' -> '{match.group()}'")
-
-        has_follow_up = len(follow_up_matches) > 0
-        logger.debug("Follow-up detection: %s", has_follow_up)
-        if follow_up_matches:
-            for match in follow_up_matches:
-                logger.debug("  %s", match)
-
+        has_follow_up = any(pattern.search(message) for pattern in COMPILED_FOLLOW_UP_PATTERNS)
         if has_follow_up:
-            # Use metadata-based service detection instead of fragile heuristics
             recent_ai_service = conversation_manager.get_recent_ai_service(
-                user_id, lookback_messages=lookback_messages,
+                user_id,
+                lookback_messages=lookback_messages,
             )
-            logger.debug("Recent AI service: %s", recent_ai_service)
-
             if recent_ai_service:
-                # Maintain consistency with previous AI choice for follow-ups
-                result = recent_ai_service == "perplexity"
-                logger.debug("Maintaining consistency with %s: %s", recent_ai_service, result)
-                return result
+                return recent_ai_service == "perplexity"
 
     # If it's clearly conversational or creative, don't use web search
-    is_conv = is_conversational_or_creative(message)
-    logger.debug("Conversational/creative detection: %s", is_conv)
-    if is_conv:
-        logger.debug("Message classified as conversational - routing to OpenAI")
+    if is_conversational_or_creative(message):
         return False
 
-    # If it has time sensitivity, definitely use web search
-    is_time_sensitive = has_time_sensitivity(message)
-    logger.debug("Time sensitivity detection: %s", is_time_sensitive)
-    if is_time_sensitive:
-        logger.debug("Message classified as time-sensitive - routing to Perplexity")
-        return True
-
-    # If it's a factual query, lean towards web search
-    is_factual = is_factual_query(message)
-    logger.debug("Factual query detection: %s", is_factual)
-    if is_factual:
-        logger.debug("Message classified as factual - routing to Perplexity")
-        return True
-
-    # Check for entities in the message (proper names, acronyms, etc.)
-    # This helps identify specific queries that benefit from web search
-    has_entities = any(pattern.search(message) for pattern in COMPILED_ENTITY_PATTERNS)
-    logger.debug("Entity detection: %s", has_entities)
-    if has_entities:
-        logger.debug("Message has entities - routing to Perplexity")
-        return True
-
-    # Default: use conversational AI
-    logger.debug("No specific indicators found - defaulting to OpenAI")
-    return False
+    # Positive indicators for web search
+    return (
+        has_time_sensitivity(message)
+        or is_factual_query(message)
+        or any(p.search(message) for p in COMPILED_ENTITY_PATTERNS)
+    )
 
 
 async def _process_perplexity_only_mode(
-    message: str,
-    user,
-    conversation_manager,
-    logger,
-    perplexity_client,
-    system_message: str,
-    output_tokens: int,
-    model: str = "sonar-pro",
+    request: AIRequest,
+    perplexity_client: Any,
+    config: AIConfig,
 ) -> tuple[str, bool, dict | None]:
     """Process message using Perplexity-only mode."""
-    logger.info("Running in Perplexity-only mode")
+    request.logger.info("Running in Perplexity-only mode")
     try:
-        result = await process_perplexity_message(
-            message,
-            user,
-            conversation_manager,
-            logger,
-            perplexity_client,
-            system_message,
-            output_tokens,
-            model,
-        )
+        result = await process_perplexity_message(request, perplexity_client, config.perplexity)
         if result:
-            response_content, suppress_embeds, embed_data = result
-            logger.info(
-                "Perplexity response generated successfully (%d chars)",
-                len(response_content),
-            )
-            return response_content, suppress_embeds, embed_data
-        logger.error("Perplexity API returned no response")
-        return ERROR_MESSAGES["no_response_generated"], False, None
+            res_content, suppress, embed = result
+            request.logger.info("Perplexity success (%d chars)", len(res_content))
+            return res_content, suppress, embed
 
+        request.logger.error("Perplexity returned no response")
+        return ERROR_MESSAGES["no_response_generated"], False, None
     except Exception:
-        logger.exception("Perplexity processing failed")
+        request.logger.exception("Perplexity processing failed")
         return ERROR_MESSAGES["web_search_unavailable"], False, None
 
 
 async def _process_openai_only_mode(
-    message: str,
-    user,
-    conversation_summary,
-    conversation_manager,
-    logger,
-    openai_client,
-    gpt_model: str,
-    system_message: str,
-    output_tokens: int,
+    request: AIRequest,
+    conversation_summary: list[dict],
+    openai_client: Any,
+    config: AIConfig,
 ) -> tuple[str, bool, dict | None]:
     """Process message using OpenAI-only mode."""
-    logger.info("Running in OpenAI-only mode")
+    request.logger.info("Running in OpenAI-only mode")
     try:
         response_content = await process_openai_message(
-            message,
-            user,
-            conversation_summary,
-            conversation_manager,
-            logger,
-            openai_client,
-            gpt_model,
-            system_message,
-            output_tokens,
+            request, conversation_summary, openai_client, config.openai
         )
         if response_content:
-            logger.info("OpenAI response generated successfully (%d chars)", len(response_content))
-            # OpenAI responses don't have citations, so no embed data needed
+            request.logger.info("OpenAI success (%d chars)", len(response_content))
             return response_content, False, None
-        logger.error("OpenAI API returned no response")
-        return ERROR_MESSAGES["no_response_generated"], False, None
 
+        request.logger.error("OpenAI returned no response")
+        return ERROR_MESSAGES["no_response_generated"], False, None
     except Exception:
-        logger.exception("OpenAI processing failed")
+        request.logger.exception("OpenAI processing failed")
         return ERROR_MESSAGES["ai_service_unavailable"], False, None
 
 
-async def _try_perplexity_with_fallback(
-    message: str,
-    user,
-    conversation_manager,
-    logger,
-    perplexity_client,
-    system_message: str,
-    output_tokens: int,
-    model: str = "sonar-pro",
-) -> tuple[str | None, bool, dict | None]:
-    """Try Perplexity API with fallback handling."""
-    logger.info(
-        "Message analysis suggests web search would be beneficial - trying Perplexity first",
-    )
-    try:
-        result = await process_perplexity_message(
-            message,
-            user,
-            conversation_manager,
-            logger,
-            perplexity_client,
-            system_message,
-            output_tokens,
-            model,
-        )
-    except Exception as e:
-        logger.warning("Perplexity failed in hybrid mode, falling back to OpenAI: %s", e)
-        return None, False, None
-    else:
-        if result:
-            response_content, suppress_embeds, embed_data = result
-            logger.info(
-                "Perplexity response successful in hybrid mode (%d chars)",
-                len(response_content),
-            )
-            return response_content, suppress_embeds, embed_data
-        logger.warning("Perplexity returned no response, falling back to OpenAI")
-        return None, False, None
-
-
-async def _process_hybrid_mode(
-    message: str,
-    user,
-    conversation_summary,
-    conversation_manager,
-    logger,
-    openai_client,
-    perplexity_client,
-    gpt_model: str,
-    system_message: str,
-    output_tokens: int,
-    config: dict | None = None,
-) -> tuple[str, bool, dict | None]:
-    """Process message using hybrid mode with intelligent service selection.
-
-    Args:
-        message: The user's message to process
-        user: Discord user object
-        conversation_summary: Summary of the conversation context
-        conversation_manager: Thread-safe conversation manager instance
-        logger: Logger instance for debugging and monitoring
-        openai_client: OpenAI API client instance
-        perplexity_client: Perplexity API client instance
-        gpt_model: GPT model identifier to use
-        system_message: System prompt for the AI
-        output_tokens: Maximum tokens for the response
-        config: Optional configuration dictionary
-
-    Returns:
-        Tuple of (response_text, success_flag, metadata_dict)
-    """
-    logger.info("Running in hybrid mode - analyzing message for optimal routing")
-
-    # Get configuration values with fallback defaults
-    lookback_messages = config.get("LOOKBACK_MESSAGES_FOR_CONSISTENCY", 6) if config else 6
-
-    needs_web = should_use_web_search(
-        message,
-        conversation_manager,
-        user.id,
-        lookback_messages=lookback_messages,
-    )
-
-    logger.info("Smart routing decision: needs_web_search = %s", needs_web)
-
-    # Try Perplexity first if web search is beneficial
-    if needs_web:
-        logger.info("Routing to Perplexity for web search")
-        perplexity_model = config.get("PERPLEXITY_MODEL", "sonar-pro") if config else "sonar-pro"
-        response_content, suppress_embeds, embed_data = await _try_perplexity_with_fallback(
-            message,
-            user,
-            conversation_manager,
-            logger,
-            perplexity_client,
-            system_message,
-            output_tokens,
-            perplexity_model,
-        )
-        if response_content:
-            return response_content, suppress_embeds, embed_data
-    else:
-        logger.info("Message analysis suggests conversational AI is optimal - using OpenAI")
-
-    # Use OpenAI (either as first choice or fallback)
-    logger.info("Routing to OpenAI")
-    try:
-        response_content = await process_openai_message(
-            message,
-            user,
-            conversation_summary,
-            conversation_manager,
-            logger,
-            openai_client,
-            gpt_model,
-            system_message,
-            output_tokens,
-        )
-
-        if response_content:
-            logger.info(
-                "OpenAI response successful in hybrid mode (%d chars)",
-                len(response_content),
-            )
-            return response_content, False, None  # OpenAI doesn't use embeds
-        logger.error("OpenAI returned no response in hybrid mode")
-        return ERROR_MESSAGES["no_response_generated"], False, None
-
-    except Exception:
-        logger.exception("OpenAI failed in hybrid mode")
-        return ERROR_MESSAGES["both_services_unavailable"], False, None
-
-
 async def get_smart_response(
-    message: str,
-    user,
-    conversation_summary,
-    conversation_manager,  # Now using thread-safe manager instead of dict
-    logger,
-    openai_client,
-    perplexity_client,
-    gpt_model: str,
-    system_message: str,
-    output_tokens: int,
-    config: dict | None = None,  # Configuration dictionary with orchestrator settings
+    request: AIRequest,
+    conversation_summary: list[dict],
+    clients: AIClients,
+    config: AIConfig,
+    orchestrator_config: dict | None = None,
 ) -> tuple[str, bool, dict | None]:
-    """Choose the best AI service and generate a response with robust error handling.
-
-    This is the main orchestration function that analyzes the user's message,
-    selects the most appropriate AI service, handles the conversation state
-    in a thread-safe manner, and returns the response with embed suppression info.
-
-    Supports three operation modes:
-    1. GPT only (if perplexity_client is None)
-    2. Perplexity only (if openai_client is None)
-    3. Hybrid mode (both available) - automatically chooses best option
-
-    Args:
-        message (str): User's input message
-        user: Discord user object
-        conversation_summary: Summary of conversation history
-        conversation_manager: Thread-safe conversation manager
-        logger: Logger for orchestration events
-        openai_client: OpenAI client instance (may be None)
-        perplexity_client: Perplexity client instance (may be None)
-        gpt_model (str): GPT model identifier
-        system_message (str): System prompt for AI
-        output_tokens (int): Maximum output tokens
-        config (dict, optional): Configuration dictionary with orchestrator settings
-
-    Returns:
-        Tuple[str, bool, dict | None]: (response_text, should_suppress_embeds, embed_data)
-
-    Raises:
-        Exception: Critical errors that prevent any response generation
-    """
+    """Choose the best AI service and generate a response."""
     try:
-        logger.info(
-            "Smart orchestrator processing message from user %s: %s...",
-            user.id,
-            message[:100],
-        )
+        request.logger.info("Orchestrating response for user %s", request.user.id)
 
         # Mode 1: Perplexity only
-        if perplexity_client and not openai_client:
-            perplexity_model = (
-                config.get("PERPLEXITY_MODEL", "sonar-pro") if config else "sonar-pro"
-            )
-            return await _process_perplexity_only_mode(
-                message,
-                user,
-                conversation_manager,
-                logger,
-                perplexity_client,
-                system_message,
-                output_tokens,
-                perplexity_model,
-            )
+        if clients.perplexity and not clients.openai:
+            return await _process_perplexity_only_mode(request, clients.perplexity, config)
 
         # Mode 2: OpenAI only
-        if openai_client and not perplexity_client:
+        if clients.openai and not clients.perplexity:
             return await _process_openai_only_mode(
-                message,
-                user,
-                conversation_summary,
-                conversation_manager,
-                logger,
-                openai_client,
-                gpt_model,
-                system_message,
-                output_tokens,
+                request, conversation_summary, clients.openai, config
             )
 
         # Mode 3: Hybrid mode
-        if openai_client and perplexity_client:
+        if clients.openai and clients.perplexity:
             return await _process_hybrid_mode(
-                message,
-                user,
-                conversation_summary,
-                conversation_manager,
-                logger,
-                openai_client,
-                perplexity_client,
-                gpt_model,
-                system_message,
-                output_tokens,
-                config,
+                request, conversation_summary, clients, config, orchestrator_config
             )
 
-        # Fallback if no clients available (shouldn't happen due to config validation)
-        logger.critical("No AI service clients available - this indicates a configuration error")
+        request.logger.critical("No AI clients available")
         return ERROR_MESSAGES["configuration_error"], False, None
 
-    except Exception as e:
-        logger.critical("Unexpected error in smart orchestrator: %s", e, exc_info=True)
+    except Exception:
+        request.logger.exception("Unexpected error in smart orchestrator")
         return ERROR_MESSAGES["unexpected_error"], False, None
+
+
+async def _process_hybrid_mode(
+    request: AIRequest,
+    conversation_summary: list[dict],
+    clients: AIClients,
+    config: AIConfig,
+    orchestrator_config: dict | None = None,
+) -> tuple[str, bool, dict | None]:
+    """Handle hybrid routing between OpenAI and Perplexity."""
+    lookback = DEFAULT_LOOKBACK
+    if orchestrator_config:
+        lookback = orchestrator_config.get("LOOKBACK_MESSAGES_FOR_CONSISTENCY", DEFAULT_LOOKBACK)
+
+    needs_web = should_use_web_search(
+        request.message,
+        request.conversation_manager,
+        request.user.id,
+        lookback_messages=lookback,
+    )
+
+    if needs_web:
+        request.logger.info("Routing to Perplexity")
+        res = await process_perplexity_message(request, clients.perplexity, config.perplexity)
+        if res:
+            return res
+        request.logger.warning("Perplexity failed, falling back to OpenAI")
+
+    request.logger.info("Routing to OpenAI")
+    res_content = await process_openai_message(
+        request, conversation_summary, clients.openai, config.openai
+    )
+    if res_content:
+        return res_content, False, None
+
+    request.logger.error("Both services failed or returned no response")
+    return ERROR_MESSAGES["both_services_unavailable"], False, None

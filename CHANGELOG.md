@@ -5,18 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.8.2] - 2026-02-26
+## [0.2.9] - 2026-02-26
+
+### Added
+- **Major Python Architecture Restructure**: Consolidated legacy fixes into a unified release. De-coupled the monolithic `bot.py` into distinct single-responsibility components (`message_router.py`, `message_processor.py`, `message_splitter.py`, `bot_manager.py`).
+- **Enhanced Test Coverage**: Improved reliability for AI processing modules. Achieved 100% clean test suite with zero warnings resulting in 536 passed tests. Added robust coverage for the full inline citation architecture.
+- **Lazy Logging Framework**: Standardized application to use lazy evaluation strings (`%s`/`%d`) for all logging calls to massively improve latency and adhere to production best practices.
 
 ### Changed
-- **Dependencies**: Upgraded various Python packages to their latest versions across `requirements.txt`, `pyproject.toml`, and `.pre-commit-config.yaml`:
+- **Dependencies**: Upgraded various Python packages to their latest stable environments across `requirements.txt`, `pyproject.toml`, and `.pre-commit-config.yaml`:
   - `openai` (>=2.24.0)
   - `websockets` (>=16.0)
   - `black` (>=26.1.0)
-  - `ruff` (>=0.15.2)
+  - `ruff` (>=0.15.4)
   - `pytest` (>=9.0.2)
   - `coverage[toml]` (>=7.13.4)
   - `tox` (>=4.46.3)
   - `pre-commit` (>=4.5.1)
+- **Formatting**: Systematic cleanup of all code style inconsistencies, suppressing magic values, resolving long-line overlaps cleanly, and enforcing strict "zero-warn" no-ignore strategies.
+- **Architectural Cleanup**: Removed circular dependencies passing around the global `bot` context and gracefully transitioned to explicit Dependency Injection (`deps`) flow.
+- **Perplexity Inline Citations**: Refactored the core embedding logic making Perplexity links neatly formatted inline clickable hyperlink citations `[[1]](url)` directly within the Discord Embed.
+- **Warnings Mitigation**: Cleanly silenced upstream layer warnings within the `[tool.pytest.ini_options]` (e.g., the `audioop` DeprecationWarning from `discord.py`) to keep CI/CD pipelines crisp.
+- **Documentation Overhaul**: Modernized all references inside `Architecture.md` and filled missing docstring constraints (`D10x` compliant) across every Python module.
 
 ## [v0.2.8.1] - 2026-01-06
 

@@ -22,8 +22,14 @@ __author__ = "johndotpub"
 __email__ = "github@john.pub"
 
 # Public API exports
-from .bot import run_bot
-from .config import load_config, parse_arguments
+try:
+    from .bot import run_bot
+    from .config import load_config, parse_arguments
+except ImportError:  # pragma: no cover
+    # Fallback for environments without discord or heavy dependencies
+    run_bot = None
+    load_config = None
+    parse_arguments = None
 
 __all__ = [
     "__author__",

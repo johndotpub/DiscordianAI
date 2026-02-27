@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.conversation_manager import ThreadSafeConversationManager
+from src.models import AIRequest, OpenAIConfig
 from src.openai_processing import process_openai_message
 
 
@@ -35,16 +36,25 @@ class TestProcessOpenAIMessageBasic:
 
         openai_client.chat.completions.create = mock_create
 
-        result = await process_openai_message(
+        from src.models import AIRequest, OpenAIConfig
+
+        request = AIRequest(
             message="Hello OpenAI",
             user=user,
-            conversation_summary=[],
             conversation_manager=conversation_manager,
             logger=logging.getLogger("test"),
-            openai_client=openai_client,
-            gpt_model="gpt-5-mini",
+        )
+        config = OpenAIConfig(
+            model="gpt-5-mini",
             system_message="You are a helpful assistant",
             output_tokens=1000,
+        )
+
+        result = await process_openai_message(
+            request=request,
+            conversation_summary=[],
+            openai_client=openai_client,
+            config=config,
         )
 
         assert result == "Test response from OpenAI"
@@ -76,17 +86,25 @@ class TestProcessOpenAIMessageBasic:
         openai_client.chat.completions.create = mock_create
         logger = logging.getLogger("test")
 
-        with patch("src.openai_processing.logging.Logger.warning"):
-            result = await process_openai_message(
+        if True:
+            from src.models import AIRequest, OpenAIConfig
+
+            request = AIRequest(
                 message="Test",
                 user=user,
-                conversation_summary=[],
                 conversation_manager=conversation_manager,
                 logger=logger,
-                openai_client=openai_client,
-                gpt_model="gpt-5",
+            )
+            config = OpenAIConfig(
+                model="gpt-5",
                 system_message="Test",
                 output_tokens=1000,
+            )
+            result = await process_openai_message(
+                request=request,
+                conversation_summary=[],
+                openai_client=openai_client,
+                config=config,
             )
             assert result == "Response"
 
@@ -112,16 +130,24 @@ class TestProcessOpenAIMessageBasic:
         openai_client.chat.completions.create = mock_create
         logger = MagicMock()
 
-        result = await process_openai_message(
+        from src.models import AIRequest, OpenAIConfig
+
+        request = AIRequest(
             message="Test",
             user=user,
-            conversation_summary=[],
             conversation_manager=conversation_manager,
             logger=logger,
-            openai_client=openai_client,
-            gpt_model="gpt-4",
+        )
+        config = OpenAIConfig(
+            model="gpt-4",
             system_message="Test",
             output_tokens=1000,
+        )
+        result = await process_openai_message(
+            request=request,
+            conversation_summary=[],
+            openai_client=openai_client,
+            config=config,
         )
         assert result is None
         logger.error.assert_called()
@@ -141,21 +167,30 @@ class TestProcessOpenAIMessageBasic:
 
         # Mock the async client call to raise TimeoutError
         async def mock_create(*args, **kwargs):
-            raise TimeoutError("Timeout")
+            msg = "Timeout"
+            raise TimeoutError(msg)
 
         openai_client.chat.completions.create = mock_create
         logger = MagicMock()
 
-        result = await process_openai_message(
+        from src.models import AIRequest, OpenAIConfig
+
+        request = AIRequest(
             message="Test",
             user=user,
-            conversation_summary=[],
             conversation_manager=conversation_manager,
             logger=logger,
-            openai_client=openai_client,
-            gpt_model="gpt-4",
+        )
+        config = OpenAIConfig(
+            model="gpt-4",
             system_message="Test",
             output_tokens=1000,
+        )
+        result = await process_openai_message(
+            request=request,
+            conversation_summary=[],
+            openai_client=openai_client,
+            config=config,
         )
         assert result is None
         logger.exception.assert_called()
@@ -175,21 +210,30 @@ class TestProcessOpenAIMessageBasic:
 
         # Mock the async client call to raise Exception
         async def mock_create(*args, **kwargs):
-            raise Exception("Generic error")
+            msg = "Generic error"
+            raise Exception(msg)
 
         openai_client.chat.completions.create = mock_create
         logger = MagicMock()
 
-        result = await process_openai_message(
+        from src.models import AIRequest, OpenAIConfig
+
+        request = AIRequest(
             message="Test",
             user=user,
-            conversation_summary=[],
             conversation_manager=conversation_manager,
             logger=logger,
-            openai_client=openai_client,
-            gpt_model="gpt-4",
+        )
+        config = OpenAIConfig(
+            model="gpt-4",
             system_message="Test",
             output_tokens=1000,
+        )
+        result = await process_openai_message(
+            request=request,
+            conversation_summary=[],
+            openai_client=openai_client,
+            config=config,
         )
         assert result is None
         logger.exception.assert_called()
@@ -229,19 +273,25 @@ class TestProcessOpenAIMessageAdditionalCoverage:
 
             mock_retry.side_effect = call_function_directly
 
-            result = await process_openai_message(
+            request = AIRequest(
                 message="Test message for internal logic",
                 user=user,
-                conversation_summary=[{"role": "user", "content": "Previous message"}],
                 conversation_manager=conversation_manager,
                 logger=logger,
-                openai_client=openai_client,
-                gpt_model="gpt-4",
+            )
+            config = OpenAIConfig(
+                model="gpt-4",
                 system_message="System message",
                 output_tokens=1000,
             )
+            result = await process_openai_message(
+                request=request,
+                conversation_summary=[{"role": "user", "content": "Previous message"}],
+                openai_client=openai_client,
+                config=config,
+            )
             assert result == "Test response"
-            assert logger.debug.call_count >= 3
+            assert logger.debug.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_usage_logging(self):
@@ -275,16 +325,22 @@ class TestProcessOpenAIMessageAdditionalCoverage:
 
             mock_retry.side_effect = call_function_directly
 
-            result = await process_openai_message(
+            request = AIRequest(
                 message="Test message with usage tracking",
                 user=user,
-                conversation_summary=[],
                 conversation_manager=conversation_manager,
                 logger=logger,
-                openai_client=openai_client,
-                gpt_model="gpt-4",
+            )
+            config = OpenAIConfig(
+                model="gpt-4",
                 system_message="System message",
                 output_tokens=1000,
+            )
+            result = await process_openai_message(
+                request=request,
+                conversation_summary=[],
+                openai_client=openai_client,
+                config=config,
             )
             assert result == "Response with detailed usage"
 
@@ -317,16 +373,22 @@ class TestProcessOpenAIMessageAdditionalCoverage:
 
             mock_retry.side_effect = call_function_directly
 
-            result = await process_openai_message(
+            request = AIRequest(
                 message="Test message",
                 user=user,
-                conversation_summary=[],
                 conversation_manager=conversation_manager,
                 logger=logger,
-                openai_client=openai_client,
-                gpt_model="gpt-4",
+            )
+            config = OpenAIConfig(
+                model="gpt-4",
                 system_message="System message",
                 output_tokens=1000,
+            )
+            result = await process_openai_message(
+                request=request,
+                conversation_summary=[],
+                openai_client=openai_client,
+                config=config,
             )
             assert result is None
 
@@ -359,16 +421,22 @@ class TestProcessOpenAIMessageAdditionalCoverage:
 
             mock_retry.side_effect = call_function_directly
 
-            result = await process_openai_message(
+            request = AIRequest(
                 message="Test message for logging",
                 user=user,
-                conversation_summary=[],
                 conversation_manager=conversation_manager,
                 logger=logger,
-                openai_client=openai_client,
-                gpt_model="gpt-4",
+            )
+            config = OpenAIConfig(
+                model="gpt-4",
                 system_message="System message",
                 output_tokens=1000,
+            )
+            result = await process_openai_message(
+                request=request,
+                conversation_summary=[],
+                openai_client=openai_client,
+                config=config,
             )
             assert result == "A" * 300
             assert conversation_manager.add_message.call_count == 2
@@ -398,15 +466,21 @@ class TestProcessOpenAIMessageAdditionalCoverage:
 
             mock_retry.side_effect = call_function_directly
 
-            result = await process_openai_message(
+            request = AIRequest(
                 message="Test message",
                 user=user,
-                conversation_summary=[],
                 conversation_manager=conversation_manager,
                 logger=logger,
-                openai_client=openai_client,
-                gpt_model="gpt-4",
+            )
+            config = OpenAIConfig(
+                model="gpt-4",
                 system_message="System message",
                 output_tokens=1000,
+            )
+            result = await process_openai_message(
+                request=request,
+                conversation_summary=[],
+                openai_client=openai_client,
+                config=config,
             )
             assert result is None

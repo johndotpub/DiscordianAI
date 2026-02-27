@@ -270,7 +270,7 @@ class TestWebScraping:
         }
         mock_response.raise_for_status.return_value = None
         mock_response.iter_content.return_value = [
-            b"<html><head><title>Test</title></head><body>Content</body></html>"
+            b"<html><head><title>Test</title></head><body>Content</body></html>",
         ]
 
         # Mock the session.get method since the function uses requests.Session()

@@ -70,9 +70,9 @@ class TestRateLimiterCheckRateLimit:
 
         # Verify info logging for rate limit reset
         logger.info.assert_called_once()
-        log_msg = logger.info.call_args[0][0]
-        assert "Rate limit reset" in log_msg
-        assert str(user_id) in log_msg
+        args, _ = logger.info.call_args
+        assert "Rate limit reset" in args[0]
+        assert str(user_id) in str(args)
 
     def test_check_rate_limit_within_limit(self):
         """Test requests within rate limit (should pass)."""
@@ -92,9 +92,10 @@ class TestRateLimiterCheckRateLimit:
 
         # Verify info logging for successful rate limit check
         logger.info.assert_called_once()
-        log_msg = logger.info.call_args[0][0]
-        assert "Rate limit check passed" in log_msg
-        assert "2/3" in log_msg
+        args, _ = logger.info.call_args
+        assert "Rate limit check passed" in args[0]
+        assert 2 in args
+        assert 3 in args
 
     def test_check_rate_limit_at_limit(self):
         """Test request exactly at the rate limit (should pass)."""
@@ -128,10 +129,10 @@ class TestRateLimiterCheckRateLimit:
 
         # Verify warning logging for rate limit exceeded
         logger.warning.assert_called_once()
-        log_msg = logger.warning.call_args[0][0]
-        assert "Rate limit EXCEEDED" in log_msg
-        assert "3/3" in log_msg
-        assert str(user_id) in log_msg
+        args, _ = logger.warning.call_args
+        assert "Rate limit EXCEEDED" in args[0]
+        assert 3 in args
+        assert str(user_id) in str(args)
 
     def test_check_rate_limit_window_expiry(self):
         """Test rate limit reset after window expiry."""
@@ -344,9 +345,9 @@ class TestAsyncCheckRateLimit:
 
         # Verify debug logging for successful check
         logger.debug.assert_called_once()
-        debug_msg = logger.debug.call_args[0][0]
-        assert "Rate limit check successful" in debug_msg
-        assert "TestUser" in debug_msg
+        args, _ = logger.debug.call_args
+        assert "Rate limit check successful" in args[0]
+        assert "TestUser" in str(args)
 
     async def test_async_check_rate_limit_failure(self):
         """Test failed async rate limit check."""
@@ -370,7 +371,7 @@ class TestAsyncCheckRateLimit:
         assert logger.warning.call_count == 2  # Both RateLimiter and async wrapper log warnings
         # Each call in call_args_list is a unittest.mock._Call object;
         # call.args contains the positional arguments.
-        warning_calls = [call.args[0] for call in logger.warning.call_args_list]
+        warning_calls = [str(call.args) for call in logger.warning.call_args_list]
         assert any("Rate limit exceeded" in msg for msg in warning_calls)
         assert any("TestUser" in msg for msg in warning_calls)
 
@@ -403,9 +404,9 @@ class TestAsyncCheckRateLimit:
 
         # Verify critical logging occurred and message content
         logger.critical.assert_called_once()
-        critical_msg = logger.critical.call_args[0][0]
-        assert "RATE_LIMITER_ERROR" in critical_msg
-        assert "Failing open" in critical_msg
+        args, _ = logger.critical.call_args
+        assert "RATE_LIMITER_ERROR" in args[0]
+        assert "Failing open" in args[0]
 
     async def test_async_check_rate_limit_none_logger(self):
         """Test async rate limit check with None logger creates default."""

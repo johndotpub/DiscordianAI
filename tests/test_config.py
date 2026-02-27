@@ -109,7 +109,6 @@ LOG_LEVEL=DEBUG
         try:
             config = load_config(temp_config_path)
 
-            # Verify values from file
             assert config["DISCORD_TOKEN"] == "test_token"  # noqa: S105
             assert config["ALLOWED_CHANNELS"] == ["general", "test"]
             assert config["BOT_PRESENCE"] == "dnd"
@@ -247,8 +246,8 @@ RATE_LIMIT=25
             with patch.dict(
                 os.environ,
                 {
-                    "OPENAI_API_KEY": "env_api_key",  # Should override file value
-                    "PERPLEXITY_API_KEY": "env_perplexity_key",  # Not in file
+                    "OPENAI_API_KEY": "env_api_key",
+                    "PERPLEXITY_API_KEY": "env_perplexity_key",
                 },
             ):
                 config = load_config(temp_config_path)
@@ -358,7 +357,6 @@ DISCORD_TOKEN=test_token
 
         try:
             config = load_config(temp_config_path)
-            # Should use defaults for missing sections
             assert config["DISCORD_TOKEN"] == "test_token"  # noqa: S105
             assert config["GPT_MODEL"] == "gpt-5-mini"  # Default value
             assert config["OPENAI_API_KEY"] is None  # Default value
@@ -499,13 +497,15 @@ DISCORD_TOKEN=test_token
 TEST_VALUE=test
 """
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".ini", delete=False, encoding="utf-8"
+            mode="w",
+            suffix=".ini",
+            delete=False,
+            encoding="utf-8",
         ) as f:
             f.write(config_content)
             temp_config_path = f.name
 
         try:
-            # Should not crash, may or may not load unicode section
             config = load_config(temp_config_path)
             assert config["DISCORD_TOKEN"] == "test_token"  # noqa: S105
         finally:
@@ -552,7 +552,6 @@ TEST_VALUE=test
             with open(config_path, "w") as f:
                 f.write("[Discord]\nDISCORD_TOKEN=test_token\n")
 
-            # Test with relative path from base_folder
             config = load_config("nested/config/config.ini", temp_dir)
             assert config["DISCORD_TOKEN"] == "test_token"  # noqa: S105
 

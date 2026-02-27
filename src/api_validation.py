@@ -10,8 +10,13 @@ import re
 # Import constants from config.py (single source of truth)
 from .config import (
     DISCORD_ACTIVITY_TYPES,
+    MAX_INPUT_TOKENS_THRESHOLD,
+    MAX_OUTPUT_TOKENS_THRESHOLD,
+    MAX_RATE_LIMIT_THRESHOLD,
+    MAX_RECOMMENDED_REQ_PER_MIN,
     OPENAI_VALID_MODELS,
     PERPLEXITY_MODELS,
+    SECONDS_PER_MINUTE,
     VALID_OPENAI_URL_PATTERN,
     VALID_PERPLEXITY_URL_PATTERN,
 )
@@ -125,27 +130,27 @@ def validate_openai_config(config: dict) -> list[str]:
     api_url = config.get("OPENAI_API_URL", "")
     if api_url and not VALID_OPENAI_URL_PATTERN.match(api_url):
         issues.append(
-            f"Invalid OpenAI API URL: {api_url}. Expected pattern: https://api.openai.com/v1/"
+            f"Invalid OpenAI API URL: {api_url}. Expected pattern: https://api.openai.com/v1/",
         )
 
     # Validate GPT model
     gpt_model = config.get("GPT_MODEL", "")
     if gpt_model and gpt_model not in OPENAI_VALID_MODELS:
         issues.append(
-            f"Unknown GPT model: {gpt_model}. Known models: {', '.join(OPENAI_VALID_MODELS)}"
+            f"Unknown GPT model: {gpt_model}. Known models: {', '.join(OPENAI_VALID_MODELS)}",
         )
 
     # Removed unsupported GPT-5 parameter validation
 
     # Validate token limits
     output_tokens = config.get("OUTPUT_TOKENS", 0)
-    if output_tokens > 50000:
+    if output_tokens > MAX_OUTPUT_TOKENS_THRESHOLD:
         issues.append(
-            f"OUTPUT_TOKENS very high ({output_tokens}). Consider lower limit for cost control."
+            f"OUTPUT_TOKENS very high ({output_tokens}). Consider lower limit for cost control.",
         )
 
     input_tokens = config.get("INPUT_TOKENS", 0)
-    if input_tokens > 200000:
+    if input_tokens > MAX_INPUT_TOKENS_THRESHOLD:
         issues.append(f"INPUT_TOKENS very high ({input_tokens}). May exceed model limits.")
 
     return issues
@@ -177,7 +182,7 @@ def validate_perplexity_config(config: dict) -> list[str]:
     api_url = config.get("PERPLEXITY_API_URL", "")
     if api_url and not VALID_PERPLEXITY_URL_PATTERN.match(api_url):
         issues.append(
-            f"Invalid Perplexity API URL: {api_url}. Expected: https://api.perplexity.ai"
+            f"Invalid Perplexity API URL: {api_url}. Expected: https://api.perplexity.ai",
         )
 
     # Note: Model validation would need current API documentation
@@ -204,7 +209,7 @@ def validate_discord_config(config: dict) -> list[str]:
     if activity_type and activity_type not in DISCORD_ACTIVITY_TYPES:
         issues.append(
             f"Invalid activity type: {activity_type}. "
-            f"Valid types: {', '.join(DISCORD_ACTIVITY_TYPES)}"
+            f"Valid types: {', '.join(DISCORD_ACTIVITY_TYPES)}",
         )
 
     # Validate bot presence
@@ -212,14 +217,14 @@ def validate_discord_config(config: dict) -> list[str]:
     valid_presence = ["online", "idle", "dnd", "invisible"]
     if bot_presence and bot_presence not in valid_presence:
         issues.append(
-            f"Invalid bot presence: {bot_presence}. Valid values: {', '.join(valid_presence)}"
+            f"Invalid bot presence: {bot_presence}. Valid values: {', '.join(valid_presence)}",
         )
 
     # Validate channels configuration
     allowed_channels = config.get("ALLOWED_CHANNELS", [])
     if not allowed_channels:
         issues.append(
-            "WARNING: No ALLOWED_CHANNELS configured. Bot will not respond in any channels."
+            "WARNING: No ALLOWED_CHANNELS configured. Bot will not respond in any channels.",
         )
 
     return issues
@@ -241,9 +246,9 @@ def validate_rate_limiting_config(config: dict) -> list[str]:
 
     if rate_limit <= 0:
         issues.append("RATE_LIMIT must be positive")
-    elif rate_limit > 100:
+    elif rate_limit > MAX_RATE_LIMIT_THRESHOLD:
         issues.append(
-            f"RATE_LIMIT very high ({rate_limit}). Consider lower value to prevent abuse."
+            f"RATE_LIMIT very high ({rate_limit}). Consider lower value to prevent abuse.",
         )
 
     if rate_limit_per <= 0:
@@ -251,10 +256,10 @@ def validate_rate_limiting_config(config: dict) -> list[str]:
 
     # Calculate requests per minute for context
     if rate_limit > 0 and rate_limit_per > 0:
-        req_per_min = (rate_limit * 60) / rate_limit_per
-        if req_per_min > 60:
+        req_per_min = (rate_limit * SECONDS_PER_MINUTE) / rate_limit_per
+        if req_per_min > MAX_RECOMMENDED_REQ_PER_MIN:
             issues.append(
-                f"Rate limit allows {req_per_min:.1f} requests/minute. May be too permissive."
+                f"Rate limit allows {req_per_min:.1f} requests/minute. May be too permissive.",
             )
 
     return issues
@@ -293,7 +298,7 @@ def validate_full_config(config: dict) -> tuple[list[str], list[str]]:
 
     if not config.get("OPENAI_API_KEY") and not config.get("PERPLEXITY_API_KEY"):
         errors.append(
-            "ERROR: At least one API key (OPENAI_API_KEY or PERPLEXITY_API_KEY) is required"
+            "ERROR: At least one API key (OPENAI_API_KEY or PERPLEXITY_API_KEY) is required",
         )
 
     return warnings, errors
@@ -331,7 +336,9 @@ def _sanitize_log_message(message: str) -> str:
 
 
 def _log_validation_messages(
-    logger: logging.Logger, warnings: list[str], errors: list[str]
+    logger: logging.Logger,
+    warnings: list[str],
+    errors: list[str],
 ) -> None:
     """Log validation messages with sensitive data redacted.
 
@@ -375,11 +382,13 @@ def log_validation_results(config: dict, logger: logging.Logger | None = None) -
     # Summary
     if errors:
         logger.error(
-            f"Configuration validation failed: {len(errors)} errors, {len(warnings)} warnings"
+            "Configuration validation failed: %d errors, %d warnings",
+            len(errors),
+            len(warnings),
         )
         return False
     if warnings:
-        logger.info(f"Configuration validation passed with {len(warnings)} warnings")
+        logger.info("Configuration validation passed with %d warnings", len(warnings))
         return True
     logger.info("Configuration validation passed successfully")
     return True

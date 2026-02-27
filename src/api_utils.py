@@ -20,7 +20,10 @@ class OpenAIParams:
         self.messages = []
 
     def add_messages(
-        self, system_message: str, conversation_summary: list[dict], user_message: str
+        self,
+        system_message: str,
+        conversation_summary: list[dict],
+        user_message: str,
     ):
         """Add messages to the API call."""
         self.messages = [
@@ -90,7 +93,9 @@ def validate_gpt_model(model: str, logger: logging.Logger | None = None) -> bool
 
     if not is_valid and logger:
         logger.warning(
-            f"Unrecognized GPT model: {model}. Known models: {', '.join(sorted(valid_models))}"
+            "Unrecognized GPT model: %s. Known models: %s",
+            model,
+            ", ".join(sorted(valid_models)),
         )
 
     return is_valid
@@ -133,7 +138,11 @@ def extract_api_error_info(exception: Exception) -> dict[str, Any]:
 
 
 def log_api_call(
-    logger: logging.Logger, service: str, model: str, message_length: int, conversation_length: int
+    logger: logging.Logger,
+    service: str,
+    model: str,
+    message_length: int,
+    conversation_length: int,
 ):
     """Log API call information consistently.
 
@@ -144,9 +153,11 @@ def log_api_call(
         message_length: Length of user message
         conversation_length: Length of conversation history
     """
-    logger.info(f"{service} API call - Model: {model}")
+    logger.info("%s API call - Model: %s", service, model)
     logger.debug(
-        f"Message length: {message_length} chars, History: {conversation_length} messages"
+        "Message length: %d chars, History: %d messages",
+        message_length,
+        conversation_length,
     )
 
 
@@ -164,7 +175,7 @@ def log_api_response(
         response_length: Length of response
         metadata: Additional response metadata
     """
-    logger.info(f"{service} response: {response_length} characters")
+    logger.info("%s response: %d characters", service, response_length)
 
     if metadata:
         debug_parts = []

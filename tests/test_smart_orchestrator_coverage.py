@@ -1,15 +1,15 @@
 # Tests for smart_orchestrator.py functionality
 import logging
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.conversation_manager import ThreadSafeConversationManager
+from src.models import AIClients, AIConfig, AIRequest, OpenAIConfig, PerplexityConfig
 from src.smart_orchestrator import (
     _process_hybrid_mode,
     _process_openai_only_mode,
     _process_perplexity_only_mode,
-    _try_perplexity_with_fallback,
     get_smart_response,
     has_time_sensitivity,
     is_conversational_or_creative,
@@ -109,13 +109,16 @@ class TestRoutingFunctions:
         message = "tell me more"
 
         result = should_use_web_search(
-            message, conversation_manager=conversation_manager, user_id=12345, lookback_messages=5
+            message,
+            conversation_manager=conversation_manager,
+            user_id=12345,
+            lookback_messages=5,
         )
 
         # Force fail with details if not called, to debug
         if not conversation_manager.get_recent_ai_service.called:
             pytest.fail(
-                "conversation_manager.get_recent_ai_service was NOT called. Regex match failed?"
+                "conversation_manager.get_recent_ai_service was NOT called. Regex match failed?",
             )
 
         # Should be True because of consistency
@@ -138,17 +141,24 @@ class TestProcessingModes:
         # Mock successful Perplexity response
         perplexity_client = MagicMock()
 
+        # Create models
+        request = AIRequest(
+            message="Test query",
+            user=user,
+            conversation_manager=conversation_manager,
+            logger=logger,
+        )
+        ai_config = AIConfig(
+            perplexity=PerplexityConfig(system_message="Test system", output_tokens=1000)
+        )
+
         with patch("src.smart_orchestrator.process_perplexity_message") as mock_perplexity:
             mock_perplexity.return_value = ("Perplexity response", True, None)
 
             response, _suppress_embeds, _embed_data = await _process_perplexity_only_mode(
-                message="Test query",
-                user=user,
-                conversation_manager=conversation_manager,
-                logger=logger,
+                request=request,
                 perplexity_client=perplexity_client,
-                system_message="Test system",
-                output_tokens=1000,
+                config=ai_config,
             )
 
             assert response == "Perplexity response"
@@ -165,17 +175,24 @@ class TestProcessingModes:
         logger = logging.getLogger("test")
         perplexity_client = MagicMock()
 
+        # Create models
+        request = AIRequest(
+            message="Test query",
+            user=user,
+            conversation_manager=conversation_manager,
+            logger=logger,
+        )
+        ai_config = AIConfig(
+            perplexity=PerplexityConfig(system_message="Test system", output_tokens=1000)
+        )
+
         with patch("src.smart_orchestrator.process_perplexity_message") as mock_perplexity:
             mock_perplexity.return_value = None  # Simulate failure
 
             response, _suppress_embeds, _embed_data = await _process_perplexity_only_mode(
-                message="Test query",
-                user=user,
-                conversation_manager=conversation_manager,
-                logger=logger,
+                request=request,
                 perplexity_client=perplexity_client,
-                system_message="Test system",
-                output_tokens=1000,
+                config=ai_config,
             )
 
             # Should return error message from ERROR_MESSAGES
@@ -193,19 +210,23 @@ class TestProcessingModes:
         logger = logging.getLogger("test")
         openai_client = MagicMock()
 
+        # Create models
+        request = AIRequest(
+            message="Test query",
+            user=user,
+            conversation_manager=conversation_manager,
+            logger=logger,
+        )
+        ai_config = AIConfig(openai=OpenAIConfig(system_message="Test system", output_tokens=1000))
+
         with patch("src.smart_orchestrator.process_openai_message") as mock_openai:
             mock_openai.return_value = "OpenAI response"
 
             response, _suppress_embeds, _embed_data = await _process_openai_only_mode(
-                message="Test query",
-                user=user,
+                request=request,
                 conversation_summary=conversation_summary,
-                conversation_manager=conversation_manager,
-                logger=logger,
                 openai_client=openai_client,
-                gpt_model="gpt-5-mini",
-                system_message="Test system",
-                output_tokens=1000,
+                config=ai_config,
             )
 
             assert response == "OpenAI response"
@@ -221,19 +242,23 @@ class TestProcessingModes:
         logger = logging.getLogger("test")
         openai_client = MagicMock()
 
+        # Create models
+        request = AIRequest(
+            message="Test query",
+            user=user,
+            conversation_manager=conversation_manager,
+            logger=logger,
+        )
+        ai_config = AIConfig(openai=OpenAIConfig(system_message="Test system", output_tokens=1000))
+
         with patch("src.smart_orchestrator.process_openai_message") as mock_openai:
             mock_openai.return_value = None  # Simulate failure
 
             response, _suppress_embeds, _embed_data = await _process_openai_only_mode(
-                message="Test query",
-                user=user,
+                request=request,
                 conversation_summary=conversation_summary,
-                conversation_manager=conversation_manager,
-                logger=logger,
                 openai_client=openai_client,
-                gpt_model="gpt-5-mini",
-                system_message="Test system",
-                output_tokens=1000,
+                config=ai_config,
             )
 
             # Should return error message from ERROR_MESSAGES
@@ -241,166 +266,103 @@ class TestProcessingModes:
             assert _suppress_embeds is False
 
     @pytest.mark.asyncio
-    async def test_try_perplexity_with_fallback_success(self):
-        """Test successful Perplexity call with fallback available."""
-        user = MagicMock()
-        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
-        logger = logging.getLogger("test")
-        perplexity_client = MagicMock()
-
-        with patch("src.smart_orchestrator.process_perplexity_message") as mock_perplexity:
-            mock_perplexity.return_value = ("Perplexity response", True, None)
-
-            response, _suppress_embeds, _embed_data = await _try_perplexity_with_fallback(
-                message="Test query",
-                user=user,
-                conversation_manager=conversation_manager,
-                logger=logger,
-                perplexity_client=perplexity_client,
-                system_message="Test system",
-                output_tokens=1000,
-            )
-
-            assert response == "Perplexity response"
-            assert _suppress_embeds is True
-
-    @pytest.mark.asyncio
-    async def test_try_perplexity_with_fallback_failure(self):
-        """Test Perplexity failure in fallback scenario."""
-        user = MagicMock()
-        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
-        logger = logging.getLogger("test")
-        perplexity_client = MagicMock()
-
-        with patch("src.smart_orchestrator.process_perplexity_message") as mock_perplexity:
-            mock_perplexity.return_value = None  # Simulate failure
-
-            response, _suppress_embeds, _embed_data = await _try_perplexity_with_fallback(
-                message="Test query",
-                user=user,
-                conversation_manager=conversation_manager,
-                logger=logger,
-                perplexity_client=perplexity_client,
-                system_message="Test system",
-                output_tokens=1000,
-            )
-
-            assert response is None
-            assert _suppress_embeds is False
-
-    @pytest.mark.asyncio
     async def test_process_hybrid_mode_web_search_preferred(self):
         """Test hybrid mode choosing web search."""
         user = MagicMock()
+        user.id = 12345
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
         logger = logging.getLogger("test")
         openai_client = MagicMock()
         perplexity_client = MagicMock()
 
-        config = {"LOOKBACK_MESSAGES_FOR_CONSISTENCY": 6, "ENTITY_DETECTION_MIN_WORDS": 10}
+        request = AIRequest(
+            message="What's the latest news?",
+            user=user,
+            conversation_manager=conversation_manager,
+            logger=logger,
+        )
+        clients = AIClients(openai=openai_client, perplexity=perplexity_client)
+        ai_config = AIConfig()
 
         with (
             patch("src.smart_orchestrator.should_use_web_search", return_value=True),
-            patch("src.smart_orchestrator._try_perplexity_with_fallback") as mock_perplexity,
-            patch("src.smart_orchestrator._process_openai_only_mode") as mock_openai,
+            patch("src.smart_orchestrator.process_perplexity_message") as mock_perplexity,
+            patch("src.smart_orchestrator.process_openai_message") as mock_openai,
         ):
-
             mock_perplexity.return_value = ("Web search result", True, None)
 
             response, _suppress_embeds, _embed_data = await _process_hybrid_mode(
-                message="What's the latest news?",
-                user=user,
+                request=request,
                 conversation_summary=[],
-                conversation_manager=conversation_manager,
-                logger=logger,
-                openai_client=openai_client,
-                perplexity_client=perplexity_client,
-                gpt_model="gpt-5-mini",
-                system_message="Test system",
-                output_tokens=1000,
-                config=config,
+                clients=clients,
+                config=ai_config,
             )
 
             assert response == "Web search result"
             assert _suppress_embeds is True
             mock_perplexity.assert_called_once()
-            mock_openai.assert_not_called()  # Should not fallback to OpenAI
+            mock_openai.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_process_hybrid_mode_basic(self):
         """Test hybrid mode basic functionality."""
         user = MagicMock()
+        user.id = 12345
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
         logger = logging.getLogger("test")
         openai_client = MagicMock()
         perplexity_client = MagicMock()
 
-        config = {"LOOKBACK_MESSAGES_FOR_CONSISTENCY": 6, "ENTITY_DETECTION_MIN_WORDS": 10}
+        request = AIRequest(
+            message="Test message",
+            user=user,
+            conversation_manager=conversation_manager,
+            logger=logger,
+        )
+        clients = AIClients(openai=openai_client, perplexity=perplexity_client)
+        ai_config = AIConfig()
 
-        # Just test that the function can be called and returns something
-        try:
-            response, _suppress_embeds, _embed_data = await _process_hybrid_mode(
-                message="Test message",
-                user=user,
-                conversation_summary=[],
-                conversation_manager=conversation_manager,
-                logger=logger,
-                openai_client=openai_client,
-                perplexity_client=perplexity_client,
-                gpt_model="gpt-5-mini",
-                system_message="Test system",
-                output_tokens=1000,
-                config=config,
-            )
+        response, _suppress_embeds, _embed_data = await _process_hybrid_mode(
+            request=request,
+            conversation_summary=[],
+            clients=clients,
+            config=ai_config,
+        )
 
-            # Function should complete and return values
-            assert response is not None
-            assert isinstance(_suppress_embeds, bool)
-        except Exception:
-            # Even if it fails, we've exercised the code path
-            logger.exception("Exception occurred in test_process_hybrid_mode_basic")
-            raise
+        assert response is not None
+        assert isinstance(_suppress_embeds, bool)
 
     @pytest.mark.asyncio
     async def test_process_hybrid_mode_fallback_chain(self):
         """Test full fallback chain: Perplexity fails -> OpenAI handles it."""
         user = MagicMock()
+        user.id = 12345
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
         logger = logging.getLogger("test")
         openai_client = MagicMock()
         perplexity_client = MagicMock()
 
-        config = {"LOOKBACK_MESSAGES_FOR_CONSISTENCY": 6, "ENTITY_DETECTION_MIN_WORDS": 10}
+        request = AIRequest(
+            message="Complex query",
+            user=user,
+            conversation_manager=conversation_manager,
+            logger=logger,
+        )
+        clients = AIClients(openai=openai_client, perplexity=perplexity_client)
+        ai_config = AIConfig()
 
-        # Setup:
-        # 1. should_use_web_search returns True (try Perplexity)
-        # 2. _try_perplexity_with_fallback returns None (Perplexity failed)
-        # 3. process_openai_message should be called (NOT _process_openai_only_mode)
-        # IMPORTANT: process_openai_message is async
         with (
             patch("src.smart_orchestrator.should_use_web_search", return_value=True),
-            patch(
-                "src.smart_orchestrator._try_perplexity_with_fallback", new_callable=AsyncMock
-            ) as mock_perplexity,
-            patch(
-                "src.smart_orchestrator.process_openai_message", new_callable=AsyncMock
-            ) as mock_openai,
+            patch("src.smart_orchestrator.process_perplexity_message", return_value=None),
+            patch("src.smart_orchestrator.process_openai_message") as mock_openai,
         ):
-            mock_perplexity.return_value = (None, False, None)
-            mock_openai.return_value = "OpenAI fallback response"  # Returns string directly
+            mock_openai.return_value = "OpenAI fallback response"
 
             response, _suppress_embeds, _embed_data = await _process_hybrid_mode(
-                message="Complex query",
-                user=user,
+                request=request,
                 conversation_summary=[],
-                conversation_manager=conversation_manager,
-                logger=logger,
-                openai_client=openai_client,
-                perplexity_client=perplexity_client,
-                gpt_model="gpt-5-mini",
-                system_message="System",
-                output_tokens=1000,
-                config=config,
+                clients=clients,
+                config=ai_config,
             )
 
             assert response == "OpenAI fallback response"
@@ -412,29 +374,29 @@ class TestMainOrchestrator:
     async def test_get_smart_response_hybrid_mode(self):
         """Test main orchestrator function in hybrid mode."""
         user = MagicMock()
-        conversation_summary = []
+        user.id = 12345
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
         logger = logging.getLogger("test")
         openai_client = MagicMock()
         perplexity_client = MagicMock()
 
-        config = {"test": "config"}
+        request = AIRequest(
+            message="Test message",
+            user=user,
+            conversation_manager=conversation_manager,
+            logger=logger,
+        )
+        clients = AIClients(openai=openai_client, perplexity=perplexity_client)
+        ai_config = AIConfig()
 
         with patch("src.smart_orchestrator._process_hybrid_mode") as mock_hybrid:
             mock_hybrid.return_value = ("Hybrid response", True, None)
 
             response, _suppress_embeds, _embed_data = await get_smart_response(
-                message="Test message",
-                user=user,
-                conversation_summary=conversation_summary,
-                conversation_manager=conversation_manager,
-                logger=logger,
-                openai_client=openai_client,
-                perplexity_client=perplexity_client,
-                gpt_model="gpt-5-mini",
-                system_message="Test system",
-                output_tokens=1000,
-                config=config,
+                request=request,
+                conversation_summary=[],
+                clients=clients,
+                config=ai_config,
             )
 
             assert response == "Hybrid response"
@@ -445,26 +407,29 @@ class TestMainOrchestrator:
     async def test_get_smart_response_openai_only(self):
         """Test main orchestrator with only OpenAI available."""
         user = MagicMock()
-        conversation_summary = []
+        user.id = 12345
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
         logger = logging.getLogger("test")
         openai_client = MagicMock()
-        perplexity_client = None  # No Perplexity
+        perplexity_client = None
+
+        request = AIRequest(
+            message="Test message",
+            user=user,
+            conversation_manager=conversation_manager,
+            logger=logger,
+        )
+        clients = AIClients(openai=openai_client, perplexity=perplexity_client)
+        ai_config = AIConfig()
 
         with patch("src.smart_orchestrator._process_openai_only_mode") as mock_openai:
             mock_openai.return_value = ("OpenAI only response", False, None)
 
             response, _suppress_embeds, _embed_data = await get_smart_response(
-                message="Test message",
-                user=user,
-                conversation_summary=conversation_summary,
-                conversation_manager=conversation_manager,
-                logger=logger,
-                openai_client=openai_client,
-                perplexity_client=perplexity_client,
-                gpt_model="gpt-5-mini",
-                system_message="Test system",
-                output_tokens=1000,
+                request=request,
+                conversation_summary=[],
+                clients=clients,
+                config=ai_config,
             )
 
             assert response == "OpenAI only response"
@@ -475,25 +440,29 @@ class TestMainOrchestrator:
     async def test_get_smart_response_perplexity_only(self):
         """Test main orchestrator with only Perplexity available."""
         user = MagicMock()
+        user.id = 12345
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
         logger = logging.getLogger("test")
-        openai_client = None  # No OpenAI
+        openai_client = None
         perplexity_client = MagicMock()
+
+        request = AIRequest(
+            message="Test message",
+            user=user,
+            conversation_manager=conversation_manager,
+            logger=logger,
+        )
+        clients = AIClients(openai=openai_client, perplexity=perplexity_client)
+        ai_config = AIConfig()
 
         with patch("src.smart_orchestrator._process_perplexity_only_mode") as mock_perplexity:
             mock_perplexity.return_value = ("Perplexity only response", True, None)
 
             response, _suppress_embeds, _embed_data = await get_smart_response(
-                message="Test message",
-                user=user,
+                request=request,
                 conversation_summary=[],
-                conversation_manager=conversation_manager,
-                logger=logger,
-                openai_client=openai_client,
-                perplexity_client=perplexity_client,
-                gpt_model="gpt-5-mini",
-                system_message="Test system",
-                output_tokens=1000,
+                clients=clients,
+                config=ai_config,
             )
 
             assert response == "Perplexity only response"
@@ -504,20 +473,24 @@ class TestMainOrchestrator:
     async def test_get_smart_response_no_clients(self):
         """Test orchestrator with no API clients available."""
         user = MagicMock()
+        user.id = 12345
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
         logger = logging.getLogger("test")
 
-        response, _suppress_embeds, _embed_data = await get_smart_response(
+        request = AIRequest(
             message="Test message",
             user=user,
-            conversation_summary=[],
             conversation_manager=conversation_manager,
             logger=logger,
-            openai_client=None,
-            perplexity_client=None,
-            gpt_model="gpt-5-mini",
-            system_message="Test system",
-            output_tokens=1000,
+        )
+        clients = AIClients(openai=None, perplexity=None)
+        ai_config = AIConfig()
+
+        response, _suppress_embeds, _embed_data = await get_smart_response(
+            request=request,
+            conversation_summary=[],
+            clients=clients,
+            config=ai_config,
         )
 
         # Should return configuration error

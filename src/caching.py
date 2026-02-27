@@ -19,6 +19,12 @@ import threading
 import time
 from typing import Any
 
+# Constants for caching
+MIN_CACHABLE_RESPONSE_LENGTH = 10
+RESPONSE_LENGTH_TTL_THRESHOLD = 1000
+LONG_RESPONSE_TTL = 600.0
+SHORT_RESPONSE_TTL = 300.0
+
 
 @dataclass
 class CacheEntry:
@@ -164,7 +170,7 @@ class ResponseCache:
         if error:
             return False  # Don't cache errors
 
-        if not response or len(response.strip()) < 10:
+        if not response or len(response.strip()) < MIN_CACHABLE_RESPONSE_LENGTH:
             return False  # Don't cache very short responses
 
         # Don't cache time-sensitive responses
@@ -196,7 +202,7 @@ class ResponseCache:
         context_key = {
             "model": context.get("model", "unknown"),
             "system_message_hash": hashlib.sha256(
-                context.get("system_message", "").encode()
+                context.get("system_message", "").encode(),
             ).hexdigest()[:8],
             # Don't include conversation history in key for broader cache hits
         }
@@ -211,17 +217,21 @@ class ResponseCache:
             cached_response = self.cache.get(cache_key)
 
             if cached_response:
-                self.logger.debug(f"Cache hit for message: {message[:50]}...")
+                self.logger.debug("Cache hit for message: %s...", message[:50])
                 return cached_response
 
-        except Exception as e:  # noqa: BLE001 - cache lookup should never crash callers
-            self.logger.warning(f"Cache lookup failed: {e}")
+        except Exception as e:  # noqa: BLE001
+            self.logger.warning("Cache lookup failed: %s", e)
             return None
         else:
             return None
 
     def cache_response(
-        self, message: str, context: dict[str, Any], response: str, ttl: float | None = None
+        self,
+        message: str,
+        context: dict[str, Any],
+        response: str,
+        ttl: float | None = None,
     ) -> None:
         """Cache response if appropriate."""
         try:
@@ -233,13 +243,16 @@ class ResponseCache:
             # Use shorter TTL for potentially time-sensitive content
             if ttl is None:
                 # Default TTL based on response characteristics
-                ttl = 600.0 if len(response) > 1000 else 300.0
+                if len(response) > RESPONSE_LENGTH_TTL_THRESHOLD:
+                    ttl = LONG_RESPONSE_TTL
+                else:
+                    ttl = SHORT_RESPONSE_TTL
 
             self.cache.put(cache_key, response, ttl)
-            self.logger.debug(f"Cached response for message: {message[:50]}...")
+            self.logger.debug("Cached response for message: %s...", message[:50])
 
-        except Exception as e:  # noqa: BLE001 - cache failures should not raise
-            self.logger.warning(f"Cache storage failed: {e}")
+        except Exception as e:  # noqa: BLE001
+            self.logger.warning("Cache storage failed: %s", e)
 
     def get_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
@@ -276,7 +289,7 @@ class RequestDeduplicator:
         async with self._lock:
             # Check if request is already pending
             if request_key in self._pending_requests:
-                self.logger.debug(f"Deduplicating request: {request_key[:20]}...")
+                self.logger.debug("Deduplicating request: %s...", request_key[:20])
                 future = self._pending_requests[request_key]
                 # Wait for the existing request to complete
                 return await future
@@ -323,12 +336,39 @@ def cached_response(ttl: float = 300.0, cache_instance: ResponseCache | None = N
         async def wrapper(*args, **kwargs) -> Any:
             # Generate cache key from function name and arguments
             func_name = func.__name__
-            message = kwargs.get("message") or (args[0] if args else "")
+
+            # Try to extract request and config from new models
+            request = None
+            if args and hasattr(args[0], "message"):
+                request = args[0]
+            elif "request" in kwargs:
+                request = kwargs["request"]
+
+            # Try to extract config
+            config = None
+            if len(args) > 3 and hasattr(args[3], "system_message"):  # noqa: PLR2004
+                config = args[3]
+            elif "config" in kwargs:
+                config = kwargs["config"]
+
+            if request and hasattr(request, "message"):
+                message = request.message
+            else:
+                message = kwargs.get("message") or (
+                    args[0] if args and isinstance(args[0], str) else ""
+                )
+
+            if config and hasattr(config, "system_message"):
+                model = getattr(config, "model", "unknown")
+                system_message = config.system_message
+            else:
+                model = kwargs.get("gpt_model") or kwargs.get("model", "unknown")
+                system_message = kwargs.get("system_message", "")
 
             context = {
                 "function": func_name,
-                "model": kwargs.get("gpt_model") or kwargs.get("model", "unknown"),
-                "system_message": kwargs.get("system_message", ""),
+                "model": model,
+                "system_message": system_message,
             }
 
             # Try to get cached response
@@ -366,8 +406,30 @@ def deduplicated_request(key_func: Callable | None = None):
                 request_key = key_func(*args, **kwargs)
             else:
                 # Default key generation
-                message = kwargs.get("message") or (args[0] if args else "")
-                model = kwargs.get("gpt_model") or kwargs.get("model", "unknown")
+                request = None
+                if args and hasattr(args[0], "message"):
+                    request = args[0]
+                elif "request" in kwargs:
+                    request = kwargs["request"]
+
+                config = None
+                if len(args) > 3 and hasattr(args[3], "system_message"):  # noqa: PLR2004
+                    config = args[3]
+                elif "config" in kwargs:
+                    config = kwargs["config"]
+
+                if request and hasattr(request, "message"):
+                    message = request.message
+                else:
+                    message = kwargs.get("message") or (
+                        args[0] if args and isinstance(args[0], str) else ""
+                    )
+
+                if config and hasattr(config, "system_message"):
+                    model = getattr(config, "model", "unknown")
+                else:
+                    model = kwargs.get("gpt_model") or kwargs.get("model", "unknown")
+
                 request_key = f"{func.__name__}:{model}:{hash(str(message))}"
 
             # Execute with deduplication
@@ -459,8 +521,8 @@ async def cleanup_caches():
 
         if response_expired > 0 or conversation_expired > 0:
             logger = logging.getLogger(__name__)
-            logger.info(f"Cleaned up {response_expired} expired response cache entries")
-            logger.info(f"Cleaned up {conversation_expired} expired conversation cache entries")
+            logger.info("Cleaned up %d expired response cache entries", response_expired)
+            logger.info("Cleaned up %d expired conversation cache entries", conversation_expired)
 
         return response_expired + conversation_expired
 

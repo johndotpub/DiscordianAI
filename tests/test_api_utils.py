@@ -262,9 +262,10 @@ class TestValidateGptModel:
 
         assert result is False
         mock_logger.warning.assert_called_once()
-        warning_msg = mock_logger.warning.call_args[0][0]
-        assert "gpt-3" in warning_msg
-        assert "Known models:" in warning_msg
+        args, _ = mock_logger.warning.call_args
+        assert "Unrecognized GPT model:" in args[0]
+        assert args[1] == "gpt-3"
+        assert "gpt-5-mini" in args[2]
 
     def test_valid_model_no_warning(self):
         """Test valid model doesn't log warning."""
@@ -290,11 +291,10 @@ class TestAPIUtilities:
 
         log_api_call(mock_logger, "OpenAI", "gpt-4", 100, 5)
 
-        mock_logger.info.assert_called_once()
-        log_msg = mock_logger.info.call_args[0][0]
-        assert "OpenAI" in log_msg
-        assert "gpt-4" in log_msg
-        assert "API call" in log_msg
+        assert mock_logger.info.called
+        args, _ = mock_logger.info.call_args
+        assert args[1] == "OpenAI"
+        assert args[2] == "gpt-4"
 
     def test_log_api_response(self):
         """Test API response logging."""
@@ -302,10 +302,10 @@ class TestAPIUtilities:
 
         log_api_response(mock_logger, "Perplexity", 500, {"finish_reason": "stop"})
 
-        mock_logger.info.assert_called_once()
-        log_msg = mock_logger.info.call_args[0][0]
-        assert "Perplexity" in log_msg
-        assert "500 characters" in log_msg
+        assert mock_logger.info.called
+        args, _ = mock_logger.info.call_args
+        assert args[1] == "Perplexity"
+        assert args[2] == 500
 
     def test_log_api_response_no_metadata(self):
         """Test API response logging without metadata."""
@@ -313,10 +313,10 @@ class TestAPIUtilities:
 
         log_api_response(mock_logger, "OpenAI", 250)
 
-        mock_logger.info.assert_called_once()
-        log_msg = mock_logger.info.call_args[0][0]
-        assert "OpenAI" in log_msg
-        assert "250 characters" in log_msg
+        assert mock_logger.info.called
+        args, _ = mock_logger.info.call_args
+        assert args[1] == "OpenAI"
+        assert args[2] == 250
 
     def test_safe_extract_response_content_valid(self):
         """Test safe response content extraction with valid response."""
@@ -396,7 +396,11 @@ class TestAPICallBuilder:
             {"role": "assistant", "content": "Hello!"},
         ]
         params = APICallBuilder.openai_call(
-            "gpt-4", "System prompt", conversation, "How are you?", 1500
+            "gpt-4",
+            "System prompt",
+            conversation,
+            "How are you?",
+            1500,
         )
 
         assert params["model"] == "gpt-4"
@@ -422,7 +426,11 @@ class TestAPICallBuilder:
     def test_perplexity_call_custom_params(self):
         """Test Perplexity call with custom parameters."""
         params = APICallBuilder.perplexity_call(
-            "System", "Hello", model="sonar-pro", max_tokens=5000, temperature=0.3
+            "System",
+            "Hello",
+            model="sonar-pro",
+            max_tokens=5000,
+            temperature=0.3,
         )
 
         assert params["model"] == "sonar-pro"

@@ -78,13 +78,16 @@ class CircuitBreaker:
         self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
 
     def __call__(self, func):
+        """Decorator to wrap a function with circuit breaker logic."""
+
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
             if self.state == "OPEN":
                 if time.time() - self.last_failure_time > self.timeout:
                     self.state = "HALF_OPEN"
                 else:
-                    raise RuntimeError(f"Circuit breaker OPEN for {func.__name__}")
+                    open_msg = f"Circuit breaker OPEN for {func.__name__}"
+                    raise RuntimeError(open_msg)
 
             try:
                 result = await func(*args, **kwargs)
@@ -128,7 +131,11 @@ class RetryConfig:
 
 
 async def retry_with_backoff(
-    func: Callable, retry_config: RetryConfig, logger: logging.Logger, *args, **kwargs
+    func: Callable,
+    retry_config: RetryConfig,
+    logger: logging.Logger,
+    *args,
+    **kwargs,
 ) -> Any:
     """Execute function with exponential backoff retry logic.
 
@@ -156,20 +163,25 @@ async def retry_with_backoff(
 
             # Don't retry certain error types
             if error_details.error_type in [ErrorType.API_AUTH_ERROR, ErrorType.CONFIG_ERROR]:
-                logger.exception(f"Non-retryable error in {func.__name__}")
+                logger.exception("Non-retryable error in %s", func.__name__)
                 raise
 
             if attempt >= retry_config.max_attempts - 1:
                 logger.exception(
-                    "All %s attempts failed for %s", retry_config.max_attempts, func.__name__
+                    "All %s attempts failed for %s",
+                    retry_config.max_attempts,
+                    func.__name__,
                 )
                 break
 
             delay = calculate_backoff_delay(attempt, retry_config)
             logger.warning(
-                f"Attempt {attempt + 1}/{retry_config.max_attempts} failed for "
-                f"{func.__name__}: {e}. "
-                f"Retrying in {delay:.1f}s"
+                "Attempt %d/%d failed for %s: %s. Retrying in %.1fs",
+                attempt + 1,
+                retry_config.max_attempts,
+                func.__name__,
+                e,
+                delay,
             )
             await asyncio.sleep(delay)
 
@@ -331,7 +343,8 @@ def handle_api_error(func):
     async def wrapper(*args, **kwargs):
         func_logger = logging.getLogger(func.__module__)
         retry_config = RetryConfig(
-            max_attempts=3, base_delay=0.1
+            max_attempts=3,
+            base_delay=0.1,
         )  # 3 attempts with short delay for tests
 
         # Extract the original logger if it exists in kwargs to avoid conflicts
@@ -354,9 +367,11 @@ def handle_api_error(func):
 
             original_logger.log(
                 log_level,
-                f"API error in {func.__name__}: {error_details.message} "
-                f"(Type: {error_details.error_type.value}, "
-                f"Severity: {error_details.severity.value})",
+                "API error in %s: %s (Type: %s, Severity: %s)",
+                func.__name__,
+                error_details.message,
+                error_details.error_type.value,
+                error_details.severity.value,
                 exc_info=error_details.severity in [ErrorSeverity.HIGH, ErrorSeverity.CRITICAL],
             )
 
@@ -366,7 +381,8 @@ def handle_api_error(func):
 
 
 def create_graceful_fallback(
-    fallback_func: Callable, fallback_message: str = "Service temporarily unavailable"
+    fallback_func: Callable,
+    fallback_message: str = "Service temporarily unavailable",
 ):
     """Create a decorator that provides graceful fallback when main function fails.
 
@@ -382,8 +398,12 @@ def create_graceful_fallback(
 
             try:
                 return await main_func(*args, **kwargs)
-            except Exception as e:  # noqa: BLE001 - log and try fallback
-                logger.warning(f"Main function {main_func.__name__} failed: {e}, trying fallback")
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    "Main function %s failed: %s, trying fallback",
+                    main_func.__name__,
+                    e,
+                )
 
                 try:
                     return await fallback_func(*args, **kwargs)
@@ -397,7 +417,10 @@ def create_graceful_fallback(
 
 
 async def safe_discord_send(
-    channel, content: str, logger: logging.Logger, max_retries: int = 3
+    channel,
+    content: str,
+    logger: logging.Logger,
+    max_retries: int = 3,
 ) -> bool:
     """Safely send message to Discord with retry logic and error handling.
 
@@ -423,8 +446,11 @@ async def safe_discord_send(
 
             delay = 2**attempt  # Simple exponential backoff
             logger.warning(
-                f"Discord send failed (attempt {attempt + 1}/{max_retries}): {e}. "
-                f"Retrying in {delay}s"
+                "Discord send failed (attempt %d/%d): %s. Retrying in %ds",
+                attempt + 1,
+                max_retries,
+                e,
+                delay,
             )
             await asyncio.sleep(delay)
         else:
