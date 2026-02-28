@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Notes ⚠️
 - No user-facing API changes to bot commands. Breaking change for contributors/CI: development and CI now target Python 3.12; update local environments accordingly.
 
+### Breaking Change ❗️🐍
+- **Dropped support for Python 3.10 and 3.11**: This release requires **Python 3.12 or newer**. CI, Docker, linters, and packaging have been updated to target `py312` as the minimum supported interpreter. If you're running this project locally on 3.10/3.11, please upgrade your interpreter or use a compatible environment. Update any deployment runners and CI configurations accordingly.
+
 ## [0.2.9] - 2026-02-26
 
 ### Fixed
