@@ -9,7 +9,7 @@ This test suite covers:
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -32,7 +32,7 @@ class TestHealthCheckResult:
             service="openai",
             status="healthy",
             response_time_ms=150.5,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             details={"model": "gpt-5-mini"},
         )
 
@@ -48,7 +48,7 @@ class TestHealthCheckResult:
             service="perplexity",
             status="unhealthy",
             response_time_ms=0,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             error="Connection timeout",
         )
 
@@ -216,7 +216,7 @@ class TestAPIHealthMonitor:
             service="openai",
             status="healthy",
             response_time_ms=200,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
 
         self.monitor.record_health_check(result)
@@ -235,7 +235,7 @@ class TestAPIHealthMonitor:
             service="perplexity",
             status="unhealthy",
             response_time_ms=0,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             error="Connection failed",
         )
 
@@ -256,7 +256,7 @@ class TestAPIHealthMonitor:
                 service="discord",
                 status="healthy",
                 response_time_ms=100 + i * 10,  # Varying response times
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
             )
             self.monitor.record_health_check(result)
 
@@ -265,7 +265,7 @@ class TestAPIHealthMonitor:
             service="discord",
             status="unhealthy",
             response_time_ms=0,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             error="Timeout",
         )
         self.monitor.record_health_check(failed_result)
@@ -334,8 +334,8 @@ class TestAPIHealthMonitor:
             average_response_time_ms=250.5,
             consecutive_failures=0,
             uptime_percentage=90.0,
-            last_check_time=datetime.now(timezone.utc),
-            last_success_time=datetime.now(timezone.utc),
+            last_check_time=datetime.now(UTC),
+            last_success_time=datetime.now(UTC),
         )
 
         self.monitor.metrics["discord"] = APIHealthMetrics(
@@ -346,7 +346,7 @@ class TestAPIHealthMonitor:
             average_response_time_ms=50.0,
             consecutive_failures=0,
             uptime_percentage=100.0,
-            last_check_time=datetime.now(timezone.utc),
+            last_check_time=datetime.now(UTC),
         )
 
         summary = self.monitor.get_health_summary()
@@ -488,13 +488,13 @@ class TestStartupHealthChecks:
                 service="openai",
                 status="healthy",
                 response_time_ms=100,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
             ),
             "perplexity": HealthCheckResult(
                 service="perplexity",
                 status="healthy",
                 response_time_ms=200,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
             ),
         }
         mock_monitor.run_all_health_checks = AsyncMock(return_value=mock_results)
@@ -515,7 +515,7 @@ class TestStartupHealthChecks:
                 service="openai",
                 status="unhealthy",
                 response_time_ms=0,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 error="API unavailable",
             ),
         }

@@ -1040,7 +1040,7 @@ class TestErrorRecoveryIntegration:
         for task in tasks:
             try:
                 await task
-            except (ValueError, RuntimeError) as e:  # noqa: PERF203
+            except (ValueError, RuntimeError) as e:
                 results.append(type(e).__name__)
 
         # Should have some failures and potentially circuit open

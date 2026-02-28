@@ -241,7 +241,7 @@ def _extract_body_fallback(soup: BeautifulSoup, content_parts: list[str]) -> Non
 async def scrape_url_content(
     url: str,
     logger: logging.Logger | None = None,
-    timeout: int = DEFAULT_TIMEOUT,
+    request_timeout: int = DEFAULT_TIMEOUT,
     max_content_length: int = MAX_CONTENT_LENGTH,
 ) -> str | None:
     """Scrape content from a URL using production-ready requests + BeautifulSoup.
@@ -256,7 +256,7 @@ async def scrape_url_content(
     Args:
         url: URL to scrape content from
         logger: Optional logger instance for detailed logging
-        timeout: Request timeout in seconds
+        request_timeout: Request timeout in seconds
         max_content_length: Maximum content length to return
 
     Returns:
@@ -273,8 +273,16 @@ async def scrape_url_content(
 
         _add_respectful_delay()
 
-        # Execute request asynchronously
-        html_content = await asyncio.to_thread(_fetch_content_with_retries, url, timeout, logger)
+        # Execute request asynchronously, enforcing an overall asyncio timeout
+        try:
+            async with asyncio.timeout(request_timeout):
+                html_content = await asyncio.to_thread(
+                    _fetch_content_with_retries, url, request_timeout, logger
+                )
+        except TimeoutError:
+            logger.warning("Scrape timed out for URL: %s", url)
+            return None
+
         if not html_content:
             return None
 

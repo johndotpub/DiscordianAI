@@ -43,37 +43,41 @@ The bot intelligently chooses between OpenAI and Perplexity based on message con
 ```mermaid
 flowchart TD
     A[User Message] --> B{Follow-up to previous?}
+    A[User Message] --> S[Sanitize for routing]
+    S --> B{Follow-up to previous?}
     B -->|Yes| C[Use same AI service]
     B -->|No| D[Check conversation context]
-    
-    D --> E{URLs detected?}
+
+    D --> SI{Search intent detected?}
+    SI -->|Yes| F[Use Perplexity]
+    SI -->|No| E{URLs detected?}
+
     E -->|Yes| F[Use Perplexity]
     E -->|No| G{Time-sensitive keywords?}
-    
+
     G -->|Yes| F
     G -->|No| H{Entities detected?}
-    
+
     H -->|Yes| F
     H -->|No| I{Conversational/Creative?}
-    
+
     I -->|Yes| J[Use OpenAI]
     I -->|No| K{Factual query?}
-    
+
     K -->|Yes| F
     K -->|No| J
-    
+
+    %% OpenAI path includes a web-inability check that can reroute to Perplexity
+    J --> O[OpenAI Response]
+    O --> WI{OpenAI indicates web-inability?}
+    WI -->|Yes| F
+    WI -->|No| M[Conversational AI]
+
     F --> L[Web search + Citations]
-    J --> M[Conversational AI]
+    M --> X[Conversational AI Output]
     C --> N{Previous service}
     N -->|OpenAI| J
     N -->|Perplexity| F
-```
-
----
-
-## 🎯 Quick Navigation
-
-| If you want to... | Read this |
 |-------------------|-----------|
 | Set up the bot from scratch | [Setup Guide](Setup.md) |
 | Configure bot settings | [Configuration](Configuration.md) |

@@ -192,6 +192,24 @@ class TestWebScraping:
         assert result is None
 
     @pytest.mark.asyncio
+    async def test_scrape_url_content_asyncio_timeout_context(self):
+        """Test handling of asyncio timeout using the new async timeout context."""
+
+        # Patch asyncio.timeout to raise TimeoutError when entered
+        class DummyTimeout:
+            async def __aenter__(self):
+                msg = "async timeout"
+                raise TimeoutError(msg)
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        with patch("src.web_scraper.asyncio.timeout", return_value=DummyTimeout()):
+            result = await scrape_url_content("https://example.com")
+
+        assert result is None
+
+    @pytest.mark.asyncio
     async def test_scrape_url_content_connection_error(self):
         """Test handling of connection errors."""
 

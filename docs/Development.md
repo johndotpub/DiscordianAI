@@ -4,7 +4,7 @@ This guide explains the modern development workflow for DiscordianAI using strea
 
 ## Prerequisites
 
-DiscordianAI prioritizes **Python 3.12** (with minimal legacy support for 3.10/3.11). The codebase uses modern Python features including:
+DiscordianAI targets **Python 3.12 and newer** (legacy support for 3.10/3.11 has been removed). The codebase uses modern Python features including:
 
 - **Generic Type Annotations** (Python 3.9+): `list[dict[str, str]]`, `dict[str, Any]`
 - **Union Types with |** (Python 3.10+): `str | None`, `dict[str, Any] | None`
@@ -13,15 +13,11 @@ DiscordianAI prioritizes **Python 3.12** (with minimal legacy support for 3.10/3
 
 ## Multi-Version Testing with Tox
 
-We use `tox` to ensure compatibility across supported Python versions. Run Python 3.12 first; older interpreters are optional when available locally:
+We use `tox` to run the canonical CI/test suite. Run Python 3.12 locally (the canonical and supported interpreter):
 
 ```bash
-# Primary suite (preferred)
+# Primary suite (required)
 tox -e py312
-
-# Optional additional interpreters when available
-tox -e py311
-tox -e py310
 ```
 
 ## Modern Development Workflow

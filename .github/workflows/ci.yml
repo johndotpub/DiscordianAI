@@ -28,18 +28,18 @@ permissions:
   contents: read
 
 jobs:
-  # Primary test suite - Python 3.10 (required to pass)
+  # Primary test suite - Python 3.12 (required to pass)
   test:
-    name: Tests (Python 3.10)
+    name: Tests (Python 3.12)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
     - uses: actions/checkout@v6
 
-    - name: Set up Python 3.10
+    - name: Set up Python 3.12
       uses: actions/setup-python@v6
       with:
-        python-version: "3.10"
+        python-version: "3.12"
         cache: pip
         cache-dependency-path: |
           requirements.txt
@@ -49,9 +49,9 @@ jobs:
       uses: actions/cache@v5
       with:
         path: .tox
-        key: ${{ runner.os }}-tox-v3-3.10-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
+        key: ${{ runner.os }}-tox-v3-3.12-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
         restore-keys: |
-          ${{ runner.os }}-tox-v3-3.10-
+          ${{ runner.os }}-tox-v3-3.12-
 
     - name: Install tox
       run: |
@@ -59,55 +59,17 @@ jobs:
         pip install tox
 
     - name: Run tests
-      run: tox -e py310
+      run: tox -e py312
 
     - name: Upload coverage to Codecov
+      if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
       uses: codecov/codecov-action@v5
       with:
         file: coverage.xml
         token: ${{ secrets.CODECOV_TOKEN }}
         fail_ci_if_error: false
 
-  # Python 3.11/3.12 compatibility tests (informational, allowed to fail)
-  test-compat:
-    name: Tests (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    continue-on-error: true  # Don't fail the workflow if these fail
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.11", "3.12"]
-
-    steps:
-    - uses: actions/checkout@v6
-
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v6
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: pip
-        cache-dependency-path: |
-          requirements.txt
-          pyproject.toml
-
-    - name: Cache tox environments
-      uses: actions/cache@v5
-      with:
-        path: .tox
-        key: ${{ runner.os }}-tox-v3-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
-        restore-keys: |
-          ${{ runner.os }}-tox-v3-${{ matrix.python-version }}-
-
-    - name: Install tox
-      run: |
-        python -m pip install --upgrade pip
-        pip install tox
-
-    - name: Run tests
-      run: |
-        PY_VERSION="${{ matrix.python-version }}"
-        tox -e py${PY_VERSION//.}
+  # Compatibility tests removed: project now targets Python 3.12+
 
   # Lint and format check
   lint:
@@ -120,7 +82,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v6
       with:
-        python-version: "3.10"
+        python-version: "3.12"
         cache: pip
         cache-dependency-path: pyproject.toml
 
@@ -144,7 +106,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v6
       with:
-        python-version: "3.10"
+        python-version: "3.12"
         cache: pip
         cache-dependency-path: |
           requirements.txt

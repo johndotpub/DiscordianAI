@@ -122,10 +122,15 @@ DEFAULT_CONTEXT_WINDOW = 128000
 
 # Time-sensitive query patterns for web search routing
 TIME_SENSITIVITY_PATTERNS = [
-    r"\b(today|yesterday|this week|this month|this year|recently|latest|current|now)\b",
+    # Removed standalone 'now' to avoid false positives; prefer contextual matches
+    r"\b(today|yesterday|this week|this month|this year|recently|latest|current)\b",
     r"\b(2024|2025|2026)\b",  # Recent/current years
     r"\b(what.*happening|what.*happened)\b",
     r"\b(current|recent|new|latest).*\b(news|update|information|data|report)\b",
+    r"\bright now\b",
+    r"\b(this morning|tonight|last night|earlier today|just now)\b",
+    r"\b(as of|at the moment|at this point)\b",
+    r"\b(breaking|live|ongoing|developing)\b",
 ]
 
 # Factual query patterns for web search routing
@@ -144,13 +149,19 @@ CONVERSATIONAL_PATTERNS = [
     r"\b(write|create|make|generate|tell me).*\b(story|poem|joke|song|script)\b",
     r"\b(how to|help me|explain|teach|show me).*\b(code|program|function|algorithm)\b",
     r"\b(meaning|purpose|philosophy|theory|concept|idea)\b",
+    # Expanded conversational intents
+    r"\b(tell me more|elaborate|give me details|what do you mean)\b",
+    r"\b(give me a list|list the|list of|examples of)\b",
+    r"\b(what's your take|what are your thoughts|opinions on)\b",
 ]
 
 # Entity detection patterns for web search routing
+# Tightened to avoid false positives from short/all-caps tokens (e.g., emoji names)
+# - Proper names: Require two capitalized words with at least 3 letters each
+# - Stock symbols: $TICKER (1-5 uppercase letters)
 ENTITY_PATTERNS = [
-    r"\b[A-Z][a-z]+\s+[A-Z][a-z]+\b",  # Proper names
-    r"\b[A-Z]{2,}\b",  # Acronyms/companies
-    r"\$[A-Z]+\b",  # Stock symbols
+    r"\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}\b",  # Proper names (e.g., John Doe)
+    r"\$[A-Z]{1,5}\b",  # Stock symbols (e.g., $AAPL)
 ]
 
 # Follow-up detection patterns for conversation consistency
@@ -160,6 +171,60 @@ FOLLOW_UP_PATTERNS = [
     r"^(yes|no|ok|okay),",  # Responses that continue conversation
     # More specific: "and what about...", "but how..."
     r"\b(and|but|however|though|although)\b\s+\w+\s*\?",
+    r"\b(and|but|however|though|although)\b\s+\w+\s*\?",
+    # Short follow-up fragments and ellipses
+    r"\b(and\?|so\?|and then\?|then what\?)\b",
+    r"\b(also\?|what now\?|and then)\b",
+    r"\.{2,}$",
+]
+
+# Explicit search intent phrases (users asking to "look up" or "search for" something)
+SEARCH_INTENT_PATTERNS = [
+    r"\b(search for|look up|find out|find me|find the)\b",
+    r"\b(can you find|please find|please look up|please search)\b",
+    r"\b(look up|search)\b\s+for\b",
+    # Explicit web/internet search phrases
+    r"\b(search the (web|internet|online))\b",
+    r"\b(search online|search the web|search the internet)\b",
+    r"\b(look up (online|on the web|on the internet))\b",
+    r"\b(find (it )?(on|in|via) the (web|internet|online))\b",
+    r"\b(check (online|the web|the internet))\b",
+    r"\b(browse (the )?(web|internet|online))\b",
+    r"\b(look (online|it up online))\b",
+]
+
+# OpenAI web-inability signal phrases (persona-agnostic). Used to detect
+# cases where an LLM answers with its inability to access the web, e.g.
+# "I can't browse the web", "I don't have access to the internet", or
+# mentions of training cutoff / knowledge cutoff. These are intentionally
+# broad and verb-phrase anchored so they work regardless of assistant name
+# or persona.
+OPENAI_WEB_INABILITY_PATTERNS = [
+    (
+        r"\b(can't|cannot|unable to|not able to)\s+"
+        r"(browse|search|access|look up|check)\s+"
+        r"(the\s+)?(web|internet|online|real.?time|current|live)\b"
+    ),
+    (
+        r"\b(don't|do not|doesn't|does not)\s+have\s+"
+        r"(access to|the ability to access)\s+"
+        r"(?:the\s+)?(real.?time|current|live|external|web|internet)\b"
+    ),
+    (
+        r"\b(no|without)\s+(access to|ability to access)\s+"
+        r"(the\s+)?(internet|web|real.?time|external|current)\b"
+    ),
+    r"\b(knowledge|training)\s+(cutoff|cut.?off)\b",
+    r"\bas of my (last|latest)\s+(update|training)\b",
+    r"\b(not equipped|not designed)\s+to\s+(browse|search|access)\b",
+    (
+        r"\b(can't|cannot|unable to)\s+(verify|confirm|check|provide)\s+"
+        r"(current|real.?time|up.?to.?date|live)\b"
+    ),
+    (
+        r"\b(don't|do not)\s+have\s+(real.?time|current|live|up.?to.?date)\s+"
+        r"(information|data|access)\b"
+    ),
 ]
 
 # ============================================================================
@@ -188,10 +253,26 @@ COMPILED_ENTITY_PATTERNS = [re.compile(pattern) for pattern in ENTITY_PATTERNS]
 COMPILED_FOLLOW_UP_PATTERNS = [
     re.compile(pattern, re.IGNORECASE) for pattern in FOLLOW_UP_PATTERNS
 ]
+COMPILED_SEARCH_INTENT_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE) for pattern in SEARCH_INTENT_PATTERNS
+]
+COMPILED_OPENAI_WEB_INABILITY_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE) for pattern in OPENAI_WEB_INABILITY_PATTERNS
+]
 
 # ============================================================================
 # MESSAGE PROCESSING PATTERNS
 # ============================================================================
+
+# Discord markup pattern for routing sanitization (routing-only; never applied to
+# cache keys, API payloads, conversation history, or log output).
+DISCORD_MARKUP_PATTERN = re.compile(
+    r"<a?:\w+:\d+>"  # Custom / animated emojis
+    r"|<@!?\d+>"  # User mentions
+    r"|<@&\d+>"  # Role mentions
+    r"|<#\d+>"  # Channel mentions
+    r"|<t:\d+(?::[tTdDfFR])?>"  # Timestamps
+)
 
 # Citation and mention patterns
 CITATION_PATTERN = re.compile(r"\[(\d+)\]")
