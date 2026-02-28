@@ -4,9 +4,7 @@
 [![Security: pip-audit](https://img.shields.io/badge/security-pip--audit-blueviolet)](https://pypi.org/project/pip-audit/)
 
 [![Tests: py312 required](https://img.shields.io/github/actions/workflow/status/johndotpub/DiscordianAI/ci.yml?branch=main&label=tests%20py312%20required&logo=githubactions)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml)
-[![Tests: py311 opt](https://img.shields.io/github/actions/workflow/status/johndotpub/DiscordianAI/ci.yml?branch=main&label=tests%20py311%20opt&logo=githubactions&color=94C973)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml)
-[![Tests: py310 opt](https://img.shields.io/github/actions/workflow/status/johndotpub/DiscordianAI/ci.yml?branch=main&label=tests%20py310%20opt&logo=githubactions&color=94C973)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml)
-[![Python 3.12 focus | 3.10+ support](https://img.shields.io/badge/python-3.12%20focus%20%7C%203.10%2B%20support-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Python 3.12+ required](https://img.shields.io/badge/python-3.12%2B-required-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/downloads/)
 
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
@@ -44,7 +42,7 @@ DiscordianAI is a production-ready Discord bot that blends OpenAI GPT-5 frontier
 
 ## Quick Start
 
-1. **Install Python 3.12 (preferred; 3.10/3.11 optional)** and create a virtual environment.
+1. **Install Python 3.12 or newer** and create a virtual environment.
 2. **Clone & install**: `pip install -e .[dev]`
 3. **Copy config**: `cp config.ini.example config.ini`
 4. **Set tokens** in `config.ini` (Discord, OpenAI, Perplexity as needed).
@@ -144,7 +142,7 @@ pytest -q
 pytest tests/test_smart_orchestrator_coverage.py
 ```
 
-Use `tox` for the CI matrix (`tox`, `tox -e py310`, `tox --parallel auto`, `tox -e audit`). CI runs Ruff, Black, pytest with coverage, and pip-audit; locally run `tox -e audit` to scan runtime + dev deps.
+Use `tox` for the CI matrix (`tox`, `tox -e py312`, `tox --parallel auto`, `tox -e audit`). CI runs Ruff, Black, pytest with coverage, and pip-audit; locally run `tox -e audit` to scan runtime + dev deps.
 
 ## Security Checklist
 
