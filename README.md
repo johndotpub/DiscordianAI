@@ -3,7 +3,11 @@
 [![codecov](https://codecov.io/github/johndotpub/DiscordianAI/graph/badge.svg?token=4WOMJ952A2)](https://codecov.io/github/johndotpub/DiscordianAI)
 [![Security: pip-audit](https://img.shields.io/badge/security-pip--audit-blueviolet)](https://pypi.org/project/pip-audit/)
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Tests: py312 (required)](https://img.shields.io/github/actions/workflow/status/johndotpub/DiscordianAI/ci.yml?branch=main&label=tests%20py312%20(required)&logo=githubactions)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml)
+[![Tests: py311 (optional)](https://img.shields.io/github/actions/workflow/status/johndotpub/DiscordianAI/ci.yml?branch=main&label=tests%20py311%20(optional)&logo=githubactions&color=94C973)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml)
+[![Tests: py310 (optional)](https://img.shields.io/github/actions/workflow/status/johndotpub/DiscordianAI/ci.yml?branch=main&label=tests%20py310%20(optional)&logo=githubactions&color=94C973)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml)
+[![Python 3.12 focus | 3.10+ support](https://img.shields.io/badge/python-3.12%20focus%20%7C%203.10%2B%20support-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/downloads/)
+
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com/)
@@ -40,7 +44,7 @@ DiscordianAI is a production-ready Discord bot that blends OpenAI GPT-5 frontier
 
 ## Quick Start
 
-1. **Install Python 3.10+** and create a virtual environment.
+1. **Install Python 3.12 (preferred; 3.10/3.11 optional)** and create a virtual environment.
 2. **Clone & install**: `pip install -e .[dev]`
 3. **Copy config**: `cp config.ini.example config.ini`
 4. **Set tokens** in `config.ini` (Discord, OpenAI, Perplexity as needed).

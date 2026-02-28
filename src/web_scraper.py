@@ -343,13 +343,13 @@ def _fetch_attempt(
     response.raise_for_status()
 
     if "text/html" not in response.headers.get("content-type", "").lower():
-        return None
+        return _STOP_RETRY
 
     try:
         if int(response.headers.get("content-length", 0)) > MAX_DOWNLOAD_SIZE:
-            return None
+            return _STOP_RETRY
     except (TypeError, ValueError):
-        return None
+        return _STOP_RETRY
 
     content = bytearray()
     for chunk in response.iter_content(chunk_size=CHUNK_SIZE):

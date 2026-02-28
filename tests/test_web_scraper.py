@@ -310,6 +310,28 @@ class TestWebScraping:
         assert len(result) <= 1050  # Allow for truncation message
         assert "[Content truncated due to length]" in result
 
+    @pytest.mark.asyncio
+    async def test_scrape_url_content_non_html_does_not_retry(self):
+        """Ensure non-HTML responses stop the retry loop."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {
+            "content-length": "1000",
+            "content-type": "application/json",
+        }
+        mock_response.raise_for_status.return_value = None
+        mock_response.iter_content.return_value = [b"{}"]
+
+        with patch("src.web_scraper.requests.Session") as mock_session_class:
+            mock_session = Mock()
+            mock_session.get.return_value = mock_response
+            mock_session_class.return_value = mock_session
+
+            result = await scrape_url_content("https://example.com/data")
+
+        assert result is None
+        mock_session.get.assert_called_once()
+
 
 class TestWebScrapingIntegration:
     """Test integration of web scraping with existing systems."""

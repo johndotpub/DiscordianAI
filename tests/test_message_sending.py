@@ -360,7 +360,7 @@ class TestSendSplitMessageWithEmbed:
         assert second_call_kwargs["embed"] is continuation_embed
         assert second_call_kwargs["mention_author"] is False
         assert isinstance(second_call_kwargs["allowed_mentions"], discord.AllowedMentions)
-        mock_create.assert_called_once()
+        assert mock_create.call_count == 2
 
     @pytest.mark.asyncio
     async def test_split_embed_truncated_with_remaining_text(self):

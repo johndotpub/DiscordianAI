@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.9] - 2026-02-26
 
+### Fixed
+- **Embed Continuations**: Align long embed splits with code-block-safe boundaries to prevent duplicated or dropped content in follow-up messages.
+- **Web Scraper Retries**: Stop retry loops on non-HTML or oversized responses by treating them as terminal conditions.
+- **Channel Mentions**: Strip Discord mentions before constructing channel `AIRequest` payloads to keep prompts and logs clean.
+- **Regression Coverage**: Added tests for embed continuation alignment, scraper non-HTML sentinel handling, and channel mention cleaning.
+
+### Added
+- **Copilot/Codex Instructions**: New `.github/copilot-instructions.md` outlining the full terminal suite (`tox -e`, `black --check .`, `ruff check .`), Python 3.12 focus, and assistant guardrails.
+- **Developer Note**: `docs/Development.md` now points AI assistants to the canonical test commands and Python 3.12 target.
+
 ### Added
 - **Major Python Architecture Restructure**: Consolidated legacy fixes into a unified release. De-coupled the monolithic `bot.py` into distinct single-responsibility components (`message_router.py`, `message_processor.py`, `message_splitter.py`, `bot_manager.py`).
 - **Enhanced Test Coverage**: Added regression tests for message routing (DM vs channel handling, self-ignore, error notify) and bot manager lifecycle (presence, signal handlers, graceful shutdown). Suite now runs 553 tests at ~86.8% coverage with zero warnings.
@@ -16,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Conversational UX Polish**: Added Discord typing indicators during AI processing, enforced reply-to threading for all responses, and prefixed responses with the requesting user's mention for more conversational replies.
 
 ### Changed
+- **README Badges**: Added per-Python test badges with `py312` marked required (py311/py310 optional) and reorganized badge layout for better desktop/mobile wrapping.
 - **Dependencies**: Upgraded various Python packages to their latest stable environments across `requirements.txt`, `pyproject.toml`, and `.pre-commit-config.yaml`:
   - `openai` (>=2.24.0)
   - `websockets` (>=16.0)

@@ -22,6 +22,7 @@ async def _process_message_core(
     logger = get_logger_with_context(deps["logger"], message)
     rate_limiter = deps["rate_limiter"]
     conversation_manager = deps["conversation_manager"]
+    clean_content = message.content
 
     # Prepare context-specific strings for logging and error messages
     if is_dm:
@@ -90,8 +91,9 @@ async def _process_message_core(
         ai_config = AIConfig(openai=openai_config, perplexity=perplexity_config)
 
         # Create the unified AIRequest object
+        request_message = message.content if is_dm else clean_content
         ai_request = AIRequest(
-            message=message.content,
+            message=request_message,
             user=message.author,
             conversation_manager=conversation_manager,
             logger=logger,

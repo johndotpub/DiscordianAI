@@ -10,15 +10,18 @@ This module tests all aspects of message splitting including:
 - Edge cases and error handling
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import discord
 import pytest
 
-from src.config import MAX_SPLIT_RECURSION, MESSAGE_LIMIT
+from src.config import EMBED_SAFE_LIMIT, MAX_SPLIT_RECURSION, MESSAGE_LIMIT
+from src.discord_embeds import citation_embed_formatter
 from src.message_splitter import (
     adjust_split_for_code_blocks,
     find_optimal_split_point,
     send_split_message,
+    send_split_message_with_embed,
 )
 from tests.test_utils import create_mock_channel, create_test_context
 
@@ -257,6 +260,57 @@ class TestMessageSplittingIntegration:
         # Verify all content is preserved
         reconstructed_message = "".join(sent_messages)
         assert reconstructed_message == long_message, "Content was lost during splitting!"
+
+    @pytest.mark.asyncio
+    async def test_send_split_message_with_embed_respects_adjusted_split(self):
+        """Ensure embed head and continuation align after code block adjustment."""
+        channel = create_mock_channel()
+        channel.send = AsyncMock()
+
+        code_block = "```python\nprint('hello')\nprint('world')\n```\n"
+        prefix = "Intro text before code block.\n"
+        tail = "Trailing context after code block with citation [1]."
+        padding = "x" * (EMBED_SAFE_LIMIT + 50)
+        message = prefix + padding + code_block + tail
+
+        # Build initial embed; it will be replaced for the head chunk when split occurs
+        base_embed, _ = citation_embed_formatter.create_citation_embed(message, {})
+        deps = create_test_context()
+
+        mock_cont_embed = MagicMock(spec=discord.Embed)
+
+        def _fake_embed(desc: str, *_args, **_kwargs):
+            mock_cont_embed.description = desc
+            return mock_cont_embed, None
+
+        with patch(
+            "src.message_splitter.citation_embed_formatter.create_citation_embed",
+            side_effect=_fake_embed,
+        ) as mock_create:
+            await send_split_message_with_embed(
+                channel,
+                message,
+                deps,
+                base_embed,
+                {"1": "https://example.com"},
+                original_message=None,
+                mention_prefix=None,
+            )
+
+            # First send uses rebuilt head embed aligned to the adjusted head chunk
+            split_index = find_optimal_split_point(message, EMBED_SAFE_LIMIT)
+            expected_head, expected_tail = adjust_split_for_code_blocks(message, split_index)
+
+            first_call = channel.send.call_args_list[0]
+            head_embed = first_call.kwargs.get("embed")
+            assert head_embed is not None
+            assert head_embed.description == expected_head
+
+        # Continuation embed should be built from the adjusted tail text
+        mock_create.assert_called()
+        last_call = channel.send.call_args_list[-1]
+        assert last_call.kwargs.get("embed") is mock_cont_embed
+        assert mock_cont_embed.description == expected_tail.strip()
 
     @pytest.mark.asyncio
     async def test_content_preservation_no_truncation(self):

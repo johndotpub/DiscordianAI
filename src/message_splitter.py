@@ -70,6 +70,8 @@ async def send_split_message(  # noqa: PLR0913
 
     # Logical split: aim near the Discord limit to minimize message count
     safe_split_point = min(MESSAGE_LIMIT - 100, len(message) - 1)
+    # Keep this optimal finder so we don't chop inside code fences; it feeds the
+    # code-block-aware adjustment below.
     split_index = find_optimal_split_point(message, safe_split_point)
 
     if split_index >= MESSAGE_LIMIT:
@@ -114,23 +116,37 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
     mention_prefix: str | None = None,
 ) -> None:
     """Send a long message with citation embeds, maintaining citations across parts."""
+    head_text = message
+    after_split = ""
     if len(message) > EMBED_SAFE_LIMIT:
         split_index = find_optimal_split_point(message, EMBED_SAFE_LIMIT)
-        _, after_split = adjust_split_for_code_blocks(message, split_index)
-    else:
-        after_split = ""
+        head_text, after_split = adjust_split_for_code_blocks(message, split_index)
+
+    # Rebuild the head embed so the description matches the adjusted head chunk.
+    head_citations = {c: u for c, u in (citations or {}).items() if f"[{c}]" in head_text}
+    head_footer = embed.footer.text if embed.footer else None
+    rebuilt_head, _ = citation_embed_formatter.create_citation_embed(
+        head_text,
+        head_citations,
+        footer_text=head_footer,
+    )
+    embed.description = rebuilt_head.description
+    # Preserve existing footer unless empty; otherwise copy rebuilt footer
+    if (not embed.footer or not embed.footer.text) and rebuilt_head.footer:
+        embed.set_footer(text=rebuilt_head.footer.text)
+    head_embed = embed
 
     if original_message:
         await original_message.reply(
             mention_prefix or "",
-            embed=embed,
+            embed=head_embed,
             mention_author=False,
             allowed_mentions=discord.AllowedMentions(
                 users=[original_message.author], replied_user=False
             ),
         )
     else:
-        await channel.send("", embed=embed)
+        await channel.send("", embed=head_embed)
 
     if after_split.strip():
         message_part2 = after_split.strip()

@@ -332,6 +332,50 @@ class TestMessageProcessing:
             await process_channel_message(message, deps)
             mock_core.assert_called_once_with(message, deps, is_dm=False)
 
+    @pytest.mark.asyncio
+    async def test_process_message_core_strips_channel_mentions(self):
+        """Channel requests should use cleaned content without mentions."""
+        author = MagicMock()
+        author.mention = "@tester"
+        author.id = 123
+        author.name = "tester"
+
+        message = MagicMock(spec=discord.Message)
+        message.content = "Hello <@999> world"
+        message.author = author
+        message.channel = MagicMock(spec=discord.TextChannel)
+        message.channel.send = AsyncMock()
+        message.reply = AsyncMock()
+        message.id = 42
+
+        convo_manager = MagicMock()
+        convo_manager.get_conversation_summary_formatted.return_value = ""
+
+        deps = {
+            "logger": logging.getLogger("test"),
+            "rate_limiter": MagicMock(),
+            "conversation_manager": convo_manager,
+            "RATE_LIMIT": 10,
+            "RATE_LIMIT_PER": 60,
+            "GPT_MODEL": "gpt-5-mini",
+            "SYSTEM_MESSAGE": "You are a test bot",
+            "OUTPUT_TOKENS": 100,
+            "client": MagicMock(),
+            "perplexity_client": MagicMock(),
+            "config": {"PERPLEXITY_MODEL": "sonar-pro"},
+        }
+
+        with (
+            patch("src.message_processor.check_rate_limit", return_value=True),
+            patch("src.message_processor.get_smart_response") as mock_get_response,
+        ):
+            mock_get_response.return_value = ("ok", False, None)
+            await _process_message_core(message, deps, is_dm=False)
+
+        ai_request = mock_get_response.call_args[0][0]
+        assert "<@" not in ai_request.message
+        assert ai_request.message.startswith("Hello")
+
 
 # Test message splitting functionality
 class TestMessageSplitting:
