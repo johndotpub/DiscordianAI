@@ -199,6 +199,60 @@ class TestMessageSplittingIntegration:
             assert len(part) <= MESSAGE_LIMIT
 
     @pytest.mark.asyncio
+    async def test_mention_prefix_allows_full_length_message(self):
+        """Ensure mention prefixes are counted against the Discord limit."""
+        channel = create_mock_channel()
+        channel.send = AsyncMock()
+
+        original_message = MagicMock(spec=discord.Message)
+        original_message.reply = AsyncMock()
+        original_message.author = MagicMock()
+
+        prefix = "<@123456789012345678> "
+        body = "x" * (MESSAGE_LIMIT - len(prefix))
+        deps = create_test_context()
+
+        await send_split_message(
+            channel,
+            body,
+            deps,
+            original_message=original_message,
+            mention_prefix=prefix,
+        )
+
+        original_message.reply.assert_called_once()
+        sent = original_message.reply.call_args[0][0]
+        assert sent.startswith(prefix)
+        assert len(sent) <= MESSAGE_LIMIT
+
+    @pytest.mark.asyncio
+    async def test_mention_prefix_triggers_split_without_overflow(self):
+        """Messages that fit only without the prefix should be split safely."""
+        channel = create_mock_channel()
+        channel.send = AsyncMock()
+
+        original_message = MagicMock(spec=discord.Message)
+        original_message.reply = AsyncMock()
+        original_message.author = MagicMock()
+
+        prefix = "<@123456789012345678> "
+        body = "x" * (MESSAGE_LIMIT - len(prefix) + 5)
+        deps = create_test_context()
+
+        await send_split_message(
+            channel,
+            body,
+            deps,
+            original_message=original_message,
+            mention_prefix=prefix,
+        )
+
+        replies = [call.args[0] for call in original_message.reply.call_args_list]
+        assert len(replies) >= 2
+        assert replies[0].startswith(prefix)
+        assert all(len(content) <= MESSAGE_LIMIT for content in replies)
+
+    @pytest.mark.asyncio
     async def test_send_split_message_recursion_limit(self):
         """Test recursion limit protection in message splitting."""
         channel = create_mock_channel()

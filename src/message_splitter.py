@@ -18,6 +18,7 @@ from .config import (
     EMBED_SAFE_LIMIT,
     MAX_SPLIT_RECURSION,
     MENTION_PATTERN,
+    MESSAGE_BUFFER,
     MESSAGE_LIMIT,
 )
 from .discord_embeds import citation_embed_formatter
@@ -38,6 +39,19 @@ async def send_split_message(  # noqa: PLR0913
 ) -> None:
     """Send messages with automatic splitting for Discord's message character limit."""
     logger = deps["logger"]
+    prefix_text = mention_prefix or ""
+    prefix_length = len(prefix_text)
+
+    if prefix_length >= MESSAGE_LIMIT:
+        logger.warning(
+            "Mention prefix length %d exceeds Discord limit; omitting prefix",
+            prefix_length,
+        )
+        prefix_text = ""
+        prefix_length = 0
+        mention_prefix = None
+
+    max_first_chunk = max(1, MESSAGE_LIMIT - prefix_length)
 
     # Recursion safety
     if _recursion_depth > MAX_SPLIT_RECURSION:
@@ -49,7 +63,7 @@ async def send_split_message(  # noqa: PLR0913
         trunc_notice = "[Message truncated due to recursion limit]"
 
         async def _reply_or_send(content: str, use_prefix: bool = False) -> None:
-            payload = f"{mention_prefix}{content}" if use_prefix and mention_prefix else content
+            payload = f"{prefix_text}{content}" if use_prefix and prefix_text else content
             if original_message:
                 await original_message.reply(
                     payload,
@@ -62,13 +76,14 @@ async def send_split_message(  # noqa: PLR0913
             else:
                 await channel.send(payload, suppress_embeds=suppress_embeds)
 
-        await _reply_or_send(message[: MESSAGE_LIMIT - 50], use_prefix=True)
+        safe_recursion_length = max(1, max_first_chunk - 50)
+        await _reply_or_send(message[:safe_recursion_length], use_prefix=True)
         await _reply_or_send(trunc_notice)
         return
 
     # Fits in one message
-    if len(message) <= MESSAGE_LIMIT:
-        content = f"{mention_prefix}{message}" if mention_prefix else message
+    if len(message) <= max_first_chunk:
+        content = f"{prefix_text}{message}" if prefix_text else message
         if original_message:
             await original_message.reply(
                 content,
@@ -83,18 +98,24 @@ async def send_split_message(  # noqa: PLR0913
         return
 
     # Logical split: aim near the Discord limit to minimize message count
-    safe_split_point = min(MESSAGE_LIMIT - 100, len(message) - 1)
+    safe_target = max(1, max_first_chunk - MESSAGE_BUFFER)
+    safe_split_point = min(safe_target, len(message) - 1)
     # Keep this optimal finder so we don't chop inside code fences; it feeds the
     # code-block-aware adjustment below.
     split_index = find_optimal_split_point(message, safe_split_point)
 
-    if split_index >= MESSAGE_LIMIT:
-        split_index = MESSAGE_LIMIT - 1
+    if split_index >= max_first_chunk:
+        split_index = max(1, max_first_chunk - 1)
 
     before_split, after_split = adjust_split_for_code_blocks(message, split_index)
 
+    if len(before_split) > max_first_chunk:
+        overflow = before_split[max_first_chunk:]
+        before_split = before_split[:max_first_chunk]
+        after_split = overflow + after_split
+
     # Send parts
-    content_first = f"{mention_prefix}{before_split}" if mention_prefix else before_split
+    content_first = f"{prefix_text}{before_split}" if prefix_text else before_split
 
     if original_message:
         await original_message.reply(

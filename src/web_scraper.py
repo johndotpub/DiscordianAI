@@ -340,23 +340,26 @@ def _fetch_attempt(
     """Perform a single fetch attempt."""
     logger.debug("HTTP attempt %d for: %s", attempt + 1, url)
     response = session.get(url, timeout=timeout, allow_redirects=True, stream=True)
-    response.raise_for_status()
-
-    if "text/html" not in response.headers.get("content-type", "").lower():
-        return _STOP_RETRY
-
     try:
-        if int(response.headers.get("content-length", 0)) > MAX_DOWNLOAD_SIZE:
-            return _STOP_RETRY
-    except (TypeError, ValueError):
-        return _STOP_RETRY
+        response.raise_for_status()
 
-    content = bytearray()
-    for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
-        content.extend(chunk)
-        if len(content) > MAX_DOWNLOAD_SIZE:
-            break
-    return bytes(content).decode("utf-8", errors="ignore")
+        if "text/html" not in response.headers.get("content-type", "").lower():
+            return _STOP_RETRY
+
+        try:
+            if int(response.headers.get("content-length", 0)) > MAX_DOWNLOAD_SIZE:
+                return _STOP_RETRY
+        except (TypeError, ValueError):
+            return _STOP_RETRY
+
+        content = bytearray()
+        for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+            content.extend(chunk)
+            if len(content) > MAX_DOWNLOAD_SIZE:
+                break
+        return bytes(content).decode("utf-8", errors="ignore")
+    finally:
+        response.close()
 
 
 def _log_fetch_error(e: Exception, url: str, attempt: int, logger: logging.Logger) -> None:

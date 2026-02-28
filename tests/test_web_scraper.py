@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from src.web_scraper import (
+    MAX_DOWNLOAD_SIZE,
     ContentExtractionError,
     WebScrapingError,
     _clean_text,
@@ -325,6 +326,7 @@ class TestWebScraping:
         }
         mock_response.raise_for_status.return_value = None
         mock_response.iter_content.return_value = [b"{}"]
+        mock_response.close = Mock()
 
         with patch("src.web_scraper.requests.Session") as mock_session_class:
             mock_session = Mock()
@@ -335,6 +337,29 @@ class TestWebScraping:
 
         assert result is None
         mock_session.get.assert_called_once()
+        assert mock_response.close.called
+
+    @pytest.mark.asyncio
+    async def test_scrape_url_content_large_payload_closes_response(self):
+        """Large payload checks should still close the HTTP response."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {
+            "content-length": str(MAX_DOWNLOAD_SIZE + 1),
+            "content-type": "text/html",
+        }
+        mock_response.raise_for_status.return_value = None
+        mock_response.close = Mock()
+
+        with patch("src.web_scraper.requests.Session") as mock_session_class:
+            mock_session = Mock()
+            mock_session.get.return_value = mock_response
+            mock_session_class.return_value = mock_session
+
+            result = await scrape_url_content("https://example.com/large")
+
+        assert result is None
+        assert mock_response.close.called
 
 
 class TestWebScrapingIntegration:
