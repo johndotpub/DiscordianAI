@@ -144,7 +144,7 @@ pytest -q
 pytest tests/test_smart_orchestrator_coverage.py
 ```
 
-Use `tox` for the CI matrix (`tox`, `tox -e py310`, `tox --parallel auto`). CI runs Ruff, Black, pytest with coverage, and pip-audit.
+Use `tox` for the CI matrix (`tox`, `tox -e py310`, `tox --parallel auto`, `tox -e audit`). CI runs Ruff, Black, pytest with coverage, and pip-audit; locally run `tox -e audit` to scan runtime + dev deps.
 
 ## Security Checklist
 
