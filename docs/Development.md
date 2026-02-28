@@ -26,7 +26,8 @@ tox -e py310
 
 ## Modern Development Workflow
 
-- Canonical test/lint/audit suite (run in a terminal): `tox -e py312`, `black --check .`, `ruff check .`, `pip-audit`.
+- Canonical test/lint/audit suite (run in a terminal): `tox -e py312`, `black --check .`, `ruff check .`, `tox -e audit`.
+- `tox -e audit` runs `pip-audit` against runtime and dev dependencies.
 - Use Python 3.12 locally; do not downgrade targets or `target-version` settings.
 - Maintain coverage at or above 84% (Codecov and tox gate); call out any drops and add tests when needed.
 - Keep user-visible changes reflected in the changelog and preserve PR comment layout (including emojis/headings) with commands and results listed.

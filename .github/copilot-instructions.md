@@ -6,7 +6,7 @@ This repository targets **Python 3.12**. Legacy 3.10/3.11 support is minimal; do
 - `tox -e py312`
 - `black --check .`
 - `ruff check .`
-- `pip-audit`
+- `tox -e audit`
 
 Always run the above in a terminal before finishing work or updating PRs. Do not skip or substitute other runners.
 
@@ -34,6 +34,7 @@ Always run the above in a terminal before finishing work or updating PRs. Do not
 - Preserve the PR comment layout (including emojis/headings) and list commands + results.
 - Commit frequently with small, reviewable chunks; avoid large unreviewable drops.
 - Re-scan Copilot findings before finalizing to ensure nothing was missed.
+- `gh` CLI is available locally and auth-ready for updating PR bodies.
 
 ## Commit Messages
 - Use conventional prefixes (feat/fix/docs/chore/test/etc.) with a useful emoji.
