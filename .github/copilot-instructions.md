@@ -28,7 +28,7 @@ Always run the above in a terminal before finishing work or updating PRs. Do not
 - Use Python 3.12 for local runs; do not adjust `target-version` settings downward.
 
 ## Quality Gates
-- Keep coverage at or above 82% (Codecov gate); call out any drops and add tests.
+- Keep coverage at or above 84% (Codecov and tox gate); call out any drops and add tests.
 - Update the changelog for user-visible changes; do not skip release notes.
 - Preserve the PR comment layout (including emojis/headings) and list commands + results.
 - Commit frequently with small, reviewable chunks; avoid large unreviewable drops.

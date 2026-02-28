@@ -29,7 +29,7 @@ tox -e py310
 ### For AI assistants
 - Canonical test/lint suite (run in a terminal): `tox -e py312`, `black --check .`, `ruff check .`.
 - Use Python 3.12 locally; do not downgrade targets or `target-version` settings.
-- Maintain coverage at or above 82% (Codecov gate); call out any drops and add tests when needed.
+- Maintain coverage at or above 84% (Codecov and tox gate); call out any drops and add tests when needed.
 - Keep user-visible changes reflected in the changelog and preserve PR comment layout (including emojis/headings) with commands and results listed.
 - See `.github/copilot-instructions.md` for the assistant workflow loop and guardrails.
 

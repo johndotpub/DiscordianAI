@@ -49,7 +49,7 @@ DiscordianAI is a production-ready Discord bot that blends OpenAI GPT-5 frontier
 3. **Copy config**: `cp config.ini.example config.ini`
 4. **Set tokens** in `config.ini` (Discord, OpenAI, Perplexity as needed).
 5. **Run the bot**: `python -m src.main --conf config.ini`
-6. **Run tests** before shipping: `pytest`
+6. **Run tests** before shipping: `pytest` (coverage gate: 84% via tox/Codecov)
 
 Need the full Discord bot creation walkthrough and environment prep? See [docs/Setup.md](docs/Setup.md).
 

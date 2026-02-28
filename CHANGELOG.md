@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Conversational UX Polish**: Added Discord typing indicators during AI processing, enforced reply-to threading for all responses, and prefixed responses with the requesting user's mention for more conversational replies.
 
 ### Changed
+- **Coverage Gates**: Raised coverage enforcement to 84% across tox and Codecov (matching README/testing guidance).
 - **README Badges**: Added per-Python test badges with `py312` marked required (py311/py310 optional) and reorganized badge layout for better desktop/mobile wrapping.
 - **Dependencies**: Upgraded various Python packages to their latest stable environments across `requirements.txt`, `pyproject.toml`, and `.pre-commit-config.yaml`:
   - `openai` (>=2.24.0)
