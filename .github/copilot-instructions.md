@@ -6,6 +6,7 @@ This repository targets **Python 3.12**. Legacy 3.10/3.11 support is minimal; do
 - `tox -e py312`
 - `black --check .`
 - `ruff check .`
+- `pip-audit`
 
 Always run the above in a terminal before finishing work or updating PRs. Do not skip or substitute other runners.
 

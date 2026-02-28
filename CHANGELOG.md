@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Coverage Gates**: Raised coverage enforcement to 84% across tox and Codecov (matching README/testing guidance).
+- **Security Audits**: Added `pip-audit` to the standard toolchain to keep dependency issues visible during local runs.
 - **README Badges**: Added per-Python test badges with `py312` marked required (py311/py310 optional) and reorganized badge layout for better desktop/mobile wrapping.
 - **Dependencies**: Upgraded various Python packages to their latest stable environments across `requirements.txt`, `pyproject.toml`, and `.pre-commit-config.yaml`:
   - `openai` (>=2.24.0)

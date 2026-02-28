@@ -3,9 +3,9 @@
 [![codecov](https://codecov.io/github/johndotpub/DiscordianAI/graph/badge.svg?token=4WOMJ952A2)](https://codecov.io/github/johndotpub/DiscordianAI)
 [![Security: pip-audit](https://img.shields.io/badge/security-pip--audit-blueviolet)](https://pypi.org/project/pip-audit/)
 
-[![Tests: py312 (required)](https://img.shields.io/github/actions/workflow/status/johndotpub/DiscordianAI/ci.yml?branch=main&label=tests%20py312%20(required)&logo=githubactions)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml)
-[![Tests: py311 (optional)](https://img.shields.io/github/actions/workflow/status/johndotpub/DiscordianAI/ci.yml?branch=main&label=tests%20py311%20(optional)&logo=githubactions&color=94C973)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml)
-[![Tests: py310 (optional)](https://img.shields.io/github/actions/workflow/status/johndotpub/DiscordianAI/ci.yml?branch=main&label=tests%20py310%20(optional)&logo=githubactions&color=94C973)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml)
+[![Tests: py312 required](https://img.shields.io/github/actions/workflow/status/johndotpub/DiscordianAI/ci.yml?branch=main&label=tests%20py312%20required&logo=githubactions)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml)
+[![Tests: py311 opt](https://img.shields.io/github/actions/workflow/status/johndotpub/DiscordianAI/ci.yml?branch=main&label=tests%20py311%20opt&logo=githubactions&color=94C973)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml)
+[![Tests: py310 opt](https://img.shields.io/github/actions/workflow/status/johndotpub/DiscordianAI/ci.yml?branch=main&label=tests%20py310%20opt&logo=githubactions&color=94C973)](https://github.com/johndotpub/DiscordianAI/actions/workflows/ci.yml)
 [![Python 3.12 focus | 3.10+ support](https://img.shields.io/badge/python-3.12%20focus%20%7C%203.10%2B%20support-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/downloads/)
 
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
