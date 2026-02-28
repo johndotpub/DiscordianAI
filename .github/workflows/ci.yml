@@ -28,18 +28,18 @@ permissions:
   contents: read
 
 jobs:
-  # Primary test suite - Python 3.10 (required to pass)
+  # Primary test suite - Python 3.12 (required to pass)
   test:
-    name: Tests (Python 3.10)
+    name: Tests (Python 3.12)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
     - uses: actions/checkout@v6
 
-    - name: Set up Python 3.10
+    - name: Set up Python 3.12
       uses: actions/setup-python@v6
       with:
-        python-version: "3.10"
+        python-version: "3.12"
         cache: pip
         cache-dependency-path: |
           requirements.txt
@@ -49,9 +49,9 @@ jobs:
       uses: actions/cache@v5
       with:
         path: .tox
-        key: ${{ runner.os }}-tox-v3-3.10-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
+        key: ${{ runner.os }}-tox-v3-3.12-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
         restore-keys: |
-          ${{ runner.os }}-tox-v3-3.10-
+          ${{ runner.os }}-tox-v3-3.12-
 
     - name: Install tox
       run: |
@@ -59,7 +59,7 @@ jobs:
         pip install tox
 
     - name: Run tests
-      run: tox -e py310
+      run: tox -e py312
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
@@ -68,7 +68,7 @@ jobs:
         token: ${{ secrets.CODECOV_TOKEN }}
         fail_ci_if_error: false
 
-  # Python 3.11/3.12 compatibility tests (informational, allowed to fail)
+  # Python 3.10/3.11 compatibility tests (informational, allowed to fail)
   test-compat:
     name: Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -77,7 +77,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.10", "3.11"]
 
     steps:
     - uses: actions/checkout@v6
@@ -120,7 +120,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v6
       with:
-        python-version: "3.10"
+        python-version: "3.12"
         cache: pip
         cache-dependency-path: pyproject.toml
 
@@ -144,7 +144,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v6
       with:
-        python-version: "3.10"
+        python-version: "3.12"
         cache: pip
         cache-dependency-path: |
           requirements.txt

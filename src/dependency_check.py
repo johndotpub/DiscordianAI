@@ -30,7 +30,7 @@ def check_dependencies() -> tuple[bool, list[str]]:
     for import_name, package_name in dependencies:
         try:
             __import__(import_name)
-        except ImportError:  # noqa: PERF203
+        except ImportError:
             missing_packages.append(package_name)
 
     return len(missing_packages) == 0, missing_packages

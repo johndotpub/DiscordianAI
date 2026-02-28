@@ -46,7 +46,25 @@ def extract_citations_from_response(
     response_citations: list[Any] | None = None,
     search_results: list[dict] | None = None,
 ) -> tuple[str, dict[str, str]]:
-    """Extract citations from response using metadata or fallback extraction."""
+    """Extract numbered citations from a Perplexity response.
+
+    Attempts to resolve numbered citation markers (e.g., "[1]") to URLs
+    using metadata returned by the API (`response_citations`) or via a
+    provided `search_results` mapping. If neither mapping is available, the
+    function falls back to extracting URLs from the surrounding text.
+
+    Args:
+        response_text: Raw assistant response text containing citation markers.
+        response_citations: Optional list of metadata items returned by the API
+            which may map indices to source URLs or titles.
+        search_results: Optional list of search result dicts (with `url` keys)
+            that can be used to map citation indices to URLs.
+
+    Returns:
+        A tuple `(cleaned_text, citations)` where `cleaned_text` has visible
+        URL occurrences normalized/removed and `citations` is a mapping from
+        citation index strings (e.g., "1") to resolved URLs.
+    """
     citations = {}
 
     citation_matches = CITATION_PATTERN.findall(response_text)
@@ -149,7 +167,21 @@ def _clean_bare_urls_safely(text: str, urls: list) -> str:
 def format_citations_for_discord(
     text: str, citations: dict[str, str], *, linkify: bool = True
 ) -> str:
-    """Convert numbered citations to Discord-friendly markers or links."""
+    """Format numbered citations for Discord output.
+
+    Replaces numbered citation markers in `text` with either plain
+    bracketed markers (e.g., "[1]") or markdown links depending on
+    the `linkify` flag.
+
+    Args:
+        text: The response text potentially containing citation markers.
+        citations: Mapping from citation numbers (strings) to URLs.
+        linkify: If True, replace markers with markdown links pointing to
+            the resolved URLs; otherwise leave bracketed markers.
+
+    Returns:
+        The transformed text ready for posting to Discord.
+    """
     if not citations:
         return text
 
@@ -166,7 +198,18 @@ def format_citations_for_discord(
 
 
 def should_suppress_embeds(text: str) -> bool:
-    """Determine if a message should suppress embeds."""
+    """Decide whether to suppress embed rendering for a message.
+
+    The function counts distinct links/markdown links present in `text`
+    and returns True when the total exceeds a configured threshold, which
+    helps avoid large embed-heavy messages in Discord.
+
+    Args:
+        text: The message text to analyze for links.
+
+    Returns:
+        True when embeds should be suppressed, False otherwise.
+    """
     links = LINK_PATTERN.findall(text)
     urls = BARE_URL_PATTERN.findall(text)
     total_links = len(links) + len(urls)
@@ -179,7 +222,23 @@ async def process_perplexity_message(
     perplexity_client: Any,
     config: PerplexityConfig,
 ) -> tuple[str, bool, dict | None] | None:
-    """Get response from Perplexity with web-enabled model and error handling."""
+    """Get a web-enabled response from Perplexity and format it for Discord.
+
+    This function builds the Perplexity API parameters, optionally enhances the
+    prompt with scraped URL content, calls the Perplexity API, extracts
+    and formats citations, and persists the conversation history on success.
+    It returns `None` when the API call fails or times out.
+
+    Args:
+        request: An `AIRequest` containing message, user, logger and
+            conversation manager.
+        perplexity_client: The Perplexity client object used to make API calls.
+        config: `PerplexityConfig` containing model and system message.
+
+    Returns:
+        A tuple `(response_text, suppress_embeds, embed_metadata)` when a
+        successful response is obtained, or `None` on failure/timeouts.
+    """
     try:
         request.logger.info("Processing Perplexity request for user %s", request.user.id)
 
@@ -187,6 +246,11 @@ async def process_perplexity_message(
         api_params = _build_api_params(
             config.model, config.system_message, request.message, config.output_tokens
         )
+
+        # Note: user message persistence occurs after a successful API response
+        # in `_handle_api_response` to match OpenAI processing behavior (only
+        # record turns when a response was actually generated). This avoids
+        # storing user turns when Perplexity times out or fails.
 
         if urls_in_message:
             api_params["messages"][1]["content"] = await _enhance_message_with_urls(
@@ -261,6 +325,8 @@ def _handle_api_response(
         embed_data = {"embed": embed, "citations": cit_map, "clean_text": final_text, "meta": meta}
 
     # Persist
+    # Persist both user and assistant messages (only after a successful response)
+    request.conversation_manager.add_message(request.user.id, "user", request.message)
     request.conversation_manager.add_message(
         request.user.id,
         "assistant",

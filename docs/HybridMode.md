@@ -60,7 +60,10 @@ flowchart TD
     J -->|Yes| K[Reuse Previous AI Service]
     J -->|No| M[Analyze Message Content]
 
-    M --> N{URLs Detected?}
+    M --> S[Sanitize for routing]
+    S --> SI{Search Intent?}
+    SI -->|Yes| H
+    SI -->|No| N{URLs Detected?}
     N -->|Yes| H
     N -->|No| O{Time-sensitive or Entities?}
     O -->|Yes| H
@@ -77,7 +80,12 @@ flowchart TD
     G --> R[GPT-5 Response Payload]
     H --> S[Sonar-Pro Response + Citations]
 
-    R --> U[Message Processor Formatting]
+    %% OpenAI response path includes in-line web-inability detection and fallback
+    R --> OW[OpenAI Response]
+    OW --> WI{Indicates web-inability?}
+    WI -->|Yes| H
+    WI -->|No| U[Message Processor Formatting]
+
     S --> V[Citation Embed Formatter]
 
     U --> W[send_formatted_message]

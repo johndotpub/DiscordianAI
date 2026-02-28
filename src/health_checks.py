@@ -10,7 +10,7 @@ This module provides:
 import asyncio
 import contextlib
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import logging
 import time
 from typing import Any
@@ -104,7 +104,7 @@ class APIHealthMonitor:
                     service="openai",
                     status="degraded",
                     response_time_ms=0,
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                     error=f"Model {model} may be deprecated or unsupported",
                     details={"available_models": OPENAI_VALID_MODELS[:5]},  # Show first 5
                 )
@@ -130,7 +130,7 @@ class APIHealthMonitor:
                     service="openai",
                     status="unhealthy",
                     response_time_ms=response_time_ms,
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                     error="Invalid response structure from OpenAI API",
                 )
 
@@ -147,7 +147,7 @@ class APIHealthMonitor:
                 service="openai",
                 status=status,
                 response_time_ms=response_time_ms,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 details={
                     "model": model,
                     "response_id": getattr(response, "id", "unknown"),
@@ -167,7 +167,7 @@ class APIHealthMonitor:
                 service="openai",
                 status="unhealthy",
                 response_time_ms=response_time_ms,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 error=str(e),
                 details={
                     "error_type": error_details.error_type.value,
@@ -195,7 +195,7 @@ class APIHealthMonitor:
                     service="perplexity",
                     status="degraded",
                     response_time_ms=0,
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                     error=f"Model {model} may be deprecated or unsupported",
                     details={"available_models": PERPLEXITY_MODELS},
                 )
@@ -217,7 +217,7 @@ class APIHealthMonitor:
                     service="perplexity",
                     status="unhealthy",
                     response_time_ms=response_time_ms,
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                     error="Invalid response structure from Perplexity API",
                 )
 
@@ -241,7 +241,7 @@ class APIHealthMonitor:
                 service="perplexity",
                 status=status,
                 response_time_ms=response_time_ms,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 details={
                     "model": model,
                     "response_length": len(response_content),
@@ -262,7 +262,7 @@ class APIHealthMonitor:
                 service="perplexity",
                 status="unhealthy",
                 response_time_ms=response_time_ms,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 error=str(e),
                 details={
                     "error_type": error_details.error_type.value,
@@ -297,7 +297,7 @@ class APIHealthMonitor:
                     service="openai_connection_pool",
                     status=pool_health.get("status", "unknown"),
                     response_time_ms=0.0,
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                     details=pool_health,
                 )
 
@@ -311,7 +311,7 @@ class APIHealthMonitor:
                     service="perplexity_connection_pool",
                     status=pool_health.get("status", "unknown"),
                     response_time_ms=0.0,
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                     details=pool_health,
                 )
 
@@ -331,7 +331,7 @@ class APIHealthMonitor:
                     service="discord",
                     status="unhealthy",
                     response_time_ms=0,
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                     error="Discord bot is not ready/connected",
                 )
 
@@ -362,7 +362,7 @@ class APIHealthMonitor:
                 service="discord",
                 status=status,
                 response_time_ms=response_time_ms,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 details={
                     "latency_ms": latency_ms,
                     "guild_count": guild_count,
@@ -383,7 +383,7 @@ class APIHealthMonitor:
                 service="discord",
                 status="unhealthy",
                 response_time_ms=response_time_ms,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 error=str(e),
                 details={
                     "error_type": error_details.error_type.value,
@@ -479,7 +479,7 @@ class APIHealthMonitor:
     def get_health_summary(self) -> dict[str, Any]:
         """Get comprehensive health summary for all services."""
         summary = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "services": {},
             "overall_status": "healthy",
         }
@@ -554,7 +554,7 @@ class APIHealthMonitor:
             while self._monitoring_active:
                 try:
                     await _monitor_tick()
-                except Exception:  # noqa: PERF203
+                except Exception:
                     self.logger.exception("Error in health monitoring loop")
                     await asyncio.sleep(60)
                 else:

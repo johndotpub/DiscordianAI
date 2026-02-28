@@ -128,6 +128,8 @@ sequenceDiagram
     MP->>CM: Fetch conversation history
     MP->>O: Route message
     O->>O: Analyze message patterns
+    O->>O: Sanitize for routing (routing-only)
+    O->>O: Search-intent check
     O->>O: Select AI service
     O->>C: Check cache
     alt Cache hit
@@ -135,7 +137,14 @@ sequenceDiagram
     else Cache miss
         O->>AI: API call with retry
         AI-->>O: Response
-        O->>C: Store in cache
+        %% If OpenAI responded but indicates web-inability, orchestrator reroutes
+        alt OpenAI indicates web-inability
+            O->>AI: Request Perplexity (fallback)
+            AI-->>O: Perplexity response
+            O->>C: Store Perplexity result in cache
+        else
+            O->>C: Store in cache
+        end
     end
     O-->>MP: Response payload
     MP->>CM: Update conversation history

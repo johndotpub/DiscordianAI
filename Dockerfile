@@ -1,5 +1,5 @@
 # Use Python 3.10 slim image (project supports only Python 3.10)
-FROM python:3.10-slim-bookworm
+FROM python:3.12-slim-bookworm
 
 # Set the working directory to /app for better organization
 WORKDIR /app

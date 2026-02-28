@@ -157,7 +157,7 @@ async def retry_with_backoff(
     for attempt in range(retry_config.max_attempts):
         try:
             return await func(*args, **kwargs)
-        except Exception as e:  # noqa: PERF203
+        except Exception as e:
             last_exception = e
             error_details = classify_error(e)
 
@@ -440,7 +440,7 @@ async def safe_discord_send(
     for attempt in range(max_retries):
         try:
             await channel.send(content)
-        except Exception as e:  # noqa: PERF203
+        except Exception as e:
             error_details = classify_error(e)
 
             if attempt >= max_retries - 1:
