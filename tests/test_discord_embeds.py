@@ -76,7 +76,9 @@ class TestCitationEmbedFormatter:
         footer_text = "Custom footer text"
 
         embed, metadata = formatter.create_citation_embed(
-            content, citations, footer_text=footer_text
+            content,
+            citations,
+            footer_text=footer_text,
         )
 
         assert embed.footer.text == footer_text
@@ -166,12 +168,14 @@ class TestCitationEmbedFormatter:
 
         # Single citation
         embed_single, _metadata_single = formatter.create_citation_embed(
-            "Content [1]", {"1": "https://example.com"}
+            "Content [1]",
+            {"1": "https://example.com"},
         )
         assert "1 source" in embed_single.footer.text
 
         # Multiple citations
         embed_multiple, _metadata_multiple = formatter.create_citation_embed(
-            "Content [1] and [2]", {"1": "https://example.com", "2": "https://test.com"}
+            "Content [1] and [2]",
+            {"1": "https://example.com", "2": "https://test.com"},
         )
         assert "2 sources" in embed_multiple.footer.text

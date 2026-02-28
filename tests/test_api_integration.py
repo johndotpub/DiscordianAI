@@ -52,16 +52,25 @@ class TestOpenAIAPIIntegration:
         logger = logging.getLogger("test")
 
         # Test the integration
-        result = await process_openai_message(
+        from src.models import AIRequest, OpenAIConfig
+
+        request = AIRequest(
             message="Test message",
             user=user,
-            conversation_summary=[],
             conversation_manager=conversation_manager,
             logger=logger,
-            openai_client=openai_client,
-            gpt_model="gpt-5-mini",
+        )
+        config = OpenAIConfig(
+            model="gpt-5-mini",
             system_message="You are a test assistant",
             output_tokens=1000,
+        )
+
+        result = await process_openai_message(
+            request=request,
+            conversation_summary=[],
+            openai_client=openai_client,
+            config=config,
         )
 
         # Verify results
@@ -98,16 +107,25 @@ class TestOpenAIAPIIntegration:
         logger = logging.getLogger("test")
 
         # Test error handling
-        result = await process_openai_message(
+        from src.models import AIRequest, OpenAIConfig
+
+        request = AIRequest(
             message="Test message",
             user=user,
-            conversation_summary=[],
             conversation_manager=conversation_manager,
             logger=logger,
-            openai_client=openai_client,
-            gpt_model="gpt-5-mini",
+        )
+        config = OpenAIConfig(
+            model="gpt-5-mini",
             system_message="You are a test assistant",
             output_tokens=1000,
+        )
+
+        result = await process_openai_message(
+            request=request,
+            conversation_summary=[],
+            openai_client=openai_client,
+            config=config,
         )
 
         # Should return None on failure
@@ -143,16 +161,25 @@ class TestOpenAIAPIIntegration:
         logger = logging.getLogger("test")
 
         # Test GPT-5 model without special parameters
-        result = await process_openai_message(
+        from src.models import AIRequest, OpenAIConfig
+
+        request = AIRequest(
             message="Complex reasoning task",
             user=user,
-            conversation_summary=[],
             conversation_manager=conversation_manager,
             logger=logger,
-            openai_client=openai_client,
-            gpt_model="gpt-5",
+        )
+        config = OpenAIConfig(
+            model="gpt-5",
             system_message="You are a reasoning assistant",
             output_tokens=2000,
+        )
+
+        result = await process_openai_message(
+            request=request,
+            conversation_summary=[],
+            openai_client=openai_client,
+            config=config,
         )
 
         assert result == "GPT-5 response with reasoning"
@@ -201,15 +228,23 @@ class TestPerplexityAPIIntegration:
         logger = logging.getLogger("test")
 
         # Test the integration
-        result = await process_perplexity_message(
+        from src.models import AIRequest, PerplexityConfig
+
+        request = AIRequest(
             message="What are the latest AI developments?",
             user=user,
             conversation_manager=conversation_manager,
             logger=logger,
-            perplexity_client=perplexity_client,
+        )
+        config = PerplexityConfig(
+            model="sonar-pro",
             system_message="You are a web search assistant",
             output_tokens=1500,
-            model="sonar-pro",
+        )
+        result = await process_perplexity_message(
+            request,
+            perplexity_client,
+            config,
         )
 
         # Verify results
@@ -219,17 +254,22 @@ class TestPerplexityAPIIntegration:
         # When embed_data exists, response_text should contain the actual content
         # for conversation history, while the embed displays the formatted content
         expected_text = (
-            "Based on recent research [1], AI development continues to advance. "
+            "Based on recent research [1], "
+            "AI development continues to advance. "
             "The latest findings [2] show promising results."
         )
         assert (
             response_text == expected_text
-        ), f"Expected actual content in response_text, got: '{response_text}'"
+        ), "Expected marker-only text for history, got: " + repr(response_text)
+        assert "https://example.com/research1" not in response_text
+        assert "https://example.com/research2" not in response_text
 
         # Should have embed data since citations are present
         assert embed_data is not None
         assert "embed" in embed_data
         assert "citations" in embed_data
+        assert embed_data["citations"]["1"] == "https://example.com/research1"
+        assert embed_data["citations"]["2"] == "https://example.com/research2"
 
         # The content should be in the embed, not in response_text
         embed = embed_data["embed"]
@@ -239,7 +279,6 @@ class TestPerplexityAPIIntegration:
         call_args = perplexity_client.chat.completions.create.call_args[1]
         assert call_args["model"] == "sonar-pro"
         assert call_args["max_tokens"] == 1500
-        assert call_args["temperature"] == 0.7
         # Citations are now included by default, no special parameters needed
 
     @pytest.mark.asyncio
@@ -257,12 +296,19 @@ class TestPerplexityAPIIntegration:
         logger = logging.getLogger("test")
 
         # Test error handling
-        result = await process_perplexity_message(
+        from src.models import AIRequest, PerplexityConfig
+
+        request = AIRequest(
             message="Test query",
             user=user,
             conversation_manager=conversation_manager,
             logger=logger,
-            perplexity_client=perplexity_client,
+        )
+        config = PerplexityConfig()
+        result = await process_perplexity_message(
+            request,
+            perplexity_client,
+            config,
         )
 
         # Should return None on timeout
@@ -284,7 +330,10 @@ class TestDiscordAPIIntegration:
 
         # Test successful send
         result = await safe_discord_send(
-            channel=channel, content="Test message", logger=logger, max_retries=3
+            channel=channel,
+            content="Test message",
+            logger=logger,
+            max_retries=3,
         )
 
         assert result is True
@@ -304,7 +353,10 @@ class TestDiscordAPIIntegration:
 
         with patch("asyncio.sleep") as mock_sleep:
             result = await safe_discord_send(
-                channel=channel, content="Retry test message", logger=logger, max_retries=3
+                channel=channel,
+                content="Retry test message",
+                logger=logger,
+                max_retries=3,
             )
 
         assert result is True
@@ -322,7 +374,10 @@ class TestDiscordAPIIntegration:
 
         with patch("asyncio.sleep"):
             result = await safe_discord_send(
-                channel=channel, content="Failed message", logger=logger, max_retries=2
+                channel=channel,
+                content="Failed message",
+                logger=logger,
+                max_retries=2,
             )
 
         assert result is False
@@ -393,12 +448,10 @@ class TestAPIUtilities:
             user_message="Search query",
             model="sonar-pro",
             max_tokens=1500,
-            temperature=0.8,
         )
 
         assert params["model"] == "sonar-pro"
         assert params["max_tokens"] == 1500
-        assert params["temperature"] == 0.8
         assert len(params["messages"]) == 2  # system + user
 
     def test_log_api_call(self):
@@ -418,14 +471,14 @@ class TestAPIUtilities:
         logger.debug.assert_called_once()
 
         # Check info call for service and model
-        info_call_args = logger.info.call_args[0][0]
-        assert "OpenAI" in info_call_args
-        assert "gpt-5-mini" in info_call_args
+        args, _ = logger.info.call_args
+        assert args[1] == "OpenAI"
+        assert args[2] == "gpt-5-mini"
 
         # Check debug call for message stats
-        debug_call_args = logger.debug.call_args[0][0]
-        assert "150 chars" in debug_call_args
-        assert "5 messages" in debug_call_args
+        args, _ = logger.debug.call_args
+        assert args[1] == 150
+        assert args[2] == 5
 
     def test_log_api_response(self):
         """Test API response logging utility."""
@@ -439,10 +492,10 @@ class TestAPIUtilities:
         )
 
         # Verify logger was called
-        logger.info.assert_called_once()
-        call_args = logger.info.call_args[0][0]
-        assert "Perplexity" in call_args
-        assert "800" in call_args
+        assert logger.info.called
+        args, _ = logger.info.call_args
+        assert args[1] == "Perplexity"
+        assert args[2] == 800
 
 
 @pytest.mark.asyncio
@@ -487,26 +540,39 @@ class TestIntegrationScenarios:
         # but for this test we verify the individual components work
 
         # Verify Perplexity fails gracefully
-        perplexity_result = await process_perplexity_message(
+        from src.models import AIRequest, OpenAIConfig, PerplexityConfig
+
+        request_p = AIRequest(
             message="Test web search",
             user=user,
             conversation_manager=conversation_manager,
             logger=logger,
-            perplexity_client=perplexity_client,
+        )
+        config_p = PerplexityConfig()
+        perplexity_result = await process_perplexity_message(
+            request_p,
+            perplexity_client,
+            config_p,
         )
         assert perplexity_result is None
 
         # Verify OpenAI works as fallback
-        openai_result = await process_openai_message(
+        request_o = AIRequest(
             message="Test fallback",
             user=user,
-            conversation_summary=[],
             conversation_manager=conversation_manager,
             logger=logger,
-            openai_client=openai_client,
-            gpt_model="gpt-5-mini",
+        )
+        config_o = OpenAIConfig(
+            model="gpt-5-mini",
             system_message="Fallback assistant",
             output_tokens=1000,
+        )
+        openai_result = await process_openai_message(
+            request=request_o,
+            conversation_summary=[],
+            openai_client=openai_client,
+            config=config_o,
         )
         assert openai_result == "Fallback response from OpenAI"
 

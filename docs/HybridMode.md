@@ -45,65 +45,51 @@ The following diagram shows how messages flow through the DiscordianAI system:
 flowchart TD
     A[Discord Message Received] --> B{Bot Mentioned?}
     B -->|No| Z[Ignore Message]
-    B -->|Yes| C[Rate Limit Check]
+    B -->|Yes| C[Rate Limit + Guardrails]
     C -->|Failed| D[Send Rate Limit Message]
     C -->|Passed| E[Smart Orchestrator Analysis]
-    
-    E --> F{Hybrid Mode?}
-    F -->|No - OpenAI Only| G[OpenAI Processing]
-    F -->|No - Perplexity Only| H[Perplexity Processing]
-    F -->|Yes| I[Check Conversation Context]
-    
+
+    E --> L[Model Guard\n(GPT-5 + Sonar-Pro)]
+    L --> F{Mode Selector}
+
+    F -->|OpenAI Only| G[OpenAI Processing\n(GPT-5 family)]
+    F -->|Perplexity Only| H[Perplexity Processing\n(Sonar models)]
+    F -->|Hybrid| I[Check Conversation Context]
+
     I --> J{Follow-up Detected?}
-    J -->|Yes| K[Use Same AI Service as Previous]
-    J -->|No| L[Analyze Message Content]
-    
-    L --> M{URLs Detected?}
-    M -->|Yes| H[Perplexity Processing]
-    M -->|No| N{Time-sensitive Keywords?}
-    
-    N -->|Yes| H[Perplexity Processing]
-    N -->|No| O{Entities Detected?}
-    
-    O -->|Yes| H[Perplexity Processing]
+    J -->|Yes| K[Reuse Previous AI Service]
+    J -->|No| M[Analyze Message Content]
+
+    M --> N{URLs Detected?}
+    N -->|Yes| H
+    N -->|No| O{Time-sensitive or Entities?}
+    O -->|Yes| H
     O -->|No| P{Conversational/Creative?}
-    
-    P -->|Yes| G[OpenAI Processing]
+    P -->|Yes| G
     P -->|No| Q{Factual Query?}
-    
-    Q -->|Yes| H[Perplexity Processing]
-    Q -->|No| G[OpenAI Processing]
-    
-    G --> R[OpenAI Response]
-    H --> S[Perplexity Response + Citations]
+    Q -->|Yes| H
+    Q -->|No| G
+
     K --> T{Previous Service}
     T -->|OpenAI| G
     T -->|Perplexity| H
-    
-    R --> U[Format as Regular Message]
-    S --> V[Format as Citation Embed]
-    
+
+    G --> R[GPT-5 Response Payload]
+    H --> S[Sonar-Pro Response + Citations]
+
+    R --> U[Message Processor Formatting]
+    S --> V[Citation Embed Formatter]
+
     U --> W[send_formatted_message]
     V --> W
-    
-    W --> X{Has Embed Data?}
-    X -->|Yes| Y{Content > EMBED_LIMIT?}
-    X -->|No| Z2{Message > 2000 chars?}
-    
-    U -->|Yes| W[Split Embed with Citations]
-    U -->|No| X[Send Single Embed]
-    
-    V -->|Yes| Y[Split Regular Message]
-    V -->|No| Z1[Send Single Message]
-    
-    X --> AA{Embed Send Success?}
-    AA -->|Yes| BB[✅ Response Complete - EXIT]
-    AA -->|No| V
-    
-    W --> CC[Send Multiple Citation Embeds]
-    Y --> DD[Send Multiple Messages]
-    Z1 --> BB
-    CC --> BB
+
+    W --> X{Contains Embeds?}
+    X -->|Yes| Y{Embed > Limits?}
+    X -->|No| Z1{Message > 2000 chars?}
+
+    Y --> CC[Split Embed + Citations]
+    Z1 --> DD[Split Plain Message]
+    CC --> BB[✅ Response Complete]
     DD --> BB
 ```
 
@@ -117,6 +103,12 @@ The diagram above shows the **critical control flow fix** that prevents duplicat
 4. **No Fallthrough**: Fixed the bug where embed success still continued to regular message logic
 
 This ensures **exactly one message** is sent per user query, eliminating the duplicate message issue.
+
+### Model Guardrails
+
+- `api_utils.validate_gpt_model()` rejects anything outside the GPT-5 family and logs actionable warnings.
+- Perplexity calls only expose `model` and `max_tokens`; Sonar-Pro is the default and sampling is handled by the API.
+- Temperature toggles were removed because GPT-5 and Sonar-Pro ignore external sampling overrides.
 
 ## Smart Detection (No Manual Triggers Required!)
 
@@ -170,7 +162,7 @@ Uses both APIs and automatically chooses the best one:
 
 ```ini
 # Both APIs configured
-OPENAI_OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
 ```
 
@@ -179,7 +171,7 @@ Uses only GPT-5 for all responses:
 
 ```ini
 # Only OpenAI configured
-OPENAI_OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
 PERPLEXITY_API_KEY=
 ```
 
@@ -239,12 +231,12 @@ USER_LOCK_CLEANUP_INTERVAL=3600
 
 ### 2. Choose Your Configuration
 
-Pick the example config that matches your preferred mode:
-- `config.ini.hybrid.example` - Smart hybrid mode (both APIs)
-- `config.openai-only.example` - GPT-5 only mode
-- `config.perplexity-only.example` - Perplexity only mode
+Copy `config.ini.example` to `config.ini` and toggle the keys for your desired mode:
+- **Hybrid**: Provide both `OPENAI_API_KEY` and `PERPLEXITY_API_KEY`.
+- **OpenAI Only**: Set `PERPLEXITY_API_KEY` blank.
+- **Perplexity Only**: Set `OPENAI_API_KEY` blank.
 
-Copy your chosen example to `config.ini` and fill in your API keys.
+Environment variables with the same names override `config.ini`, so production deployments can keep secrets out of the file system.
 
 ### 3. Test It
 

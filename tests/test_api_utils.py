@@ -26,10 +26,10 @@ class TestOpenAIParams:
 
     def test_init_basic(self):
         """Test basic initialization."""
-        builder = OpenAIParams("gpt-4", 1000)
+        builder = OpenAIParams("gpt-5", 1000)
         params = builder.build()
 
-        assert params["model"] == "gpt-4"
+        assert params["model"] == "gpt-5"
         assert params["max_completion_tokens"] == 1000
         assert len(params) == 3  # model, messages, max_completion_tokens
 
@@ -44,7 +44,7 @@ class TestOpenAIParams:
 
     def test_add_messages(self):
         """Test adding messages to OpenAI parameters."""
-        builder = OpenAIParams("gpt-4", 1000)
+        builder = OpenAIParams("gpt-5", 1000)
         conversation = [
             {"role": "user", "content": "Hello"},
             {"role": "assistant", "content": "Hi there!"},
@@ -62,7 +62,7 @@ class TestOpenAIParams:
 
     def test_add_messages_empty_conversation(self):
         """Test adding messages with empty conversation history."""
-        builder = OpenAIParams("gpt-4", 1000)
+        builder = OpenAIParams("gpt-5", 1000)
         result = builder.add_messages("System prompt", [], "User message")
         params = result.build()
 
@@ -78,7 +78,7 @@ class TestOpenAIParams:
         assert "verbosity" not in params
 
     def test_non_gpt5_model_no_extra_params(self):
-        builder = OpenAIParams("gpt-4", 1000)
+        builder = OpenAIParams("gpt-5", 1000)
         params = builder.build()
         assert "reasoning_effort" not in params
         assert "verbosity" not in params
@@ -99,7 +99,7 @@ class TestOpenAIParams:
 
     def test_build_returns_copy(self):
         """Test that build() returns a copy of parameters."""
-        builder = OpenAIParams("gpt-4", 1000)
+        builder = OpenAIParams("gpt-5", 1000)
         params1 = builder.build()
         params2 = builder.build()
         params1["test"] = "modified"
@@ -108,13 +108,13 @@ class TestOpenAIParams:
 
     def test_openai_params_init_and_messages(self):
         """Test OpenAI parameters initialization and message building."""
-        builder = OpenAIParams("gpt-4", 1500)
+        builder = OpenAIParams("gpt-5", 1500)
         conversation = [{"role": "user", "content": "Previous"}]
 
         result = builder.add_messages("System", conversation, "Current")
         params = result.build()
 
-        assert params["model"] == "gpt-4"
+        assert params["model"] == "gpt-5"
         assert params["max_completion_tokens"] == 1500
         assert len(params["messages"]) == 3
         assert params["messages"][0]["role"] == "system"
@@ -147,7 +147,6 @@ class TestPerplexityParams:
 
         assert params["model"] == "sonar-pro"
         assert params["max_tokens"] == 4000
-        assert params["temperature"] == 0.7
 
     def test_init_default_model(self):
         """Test initialization with default model."""
@@ -156,7 +155,6 @@ class TestPerplexityParams:
 
         assert params["model"] == "sonar-pro"
         assert params["max_tokens"] == 8000
-        assert params["temperature"] == 0.7
 
     def test_init_none_model(self):
         """Test initialization with None model uses default."""
@@ -179,52 +177,12 @@ class TestPerplexityParams:
         assert params["messages"][1]["role"] == "user"
         assert params["messages"][1]["content"] == "User query"
 
-    def test_set_temperature_valid_range(self):
-        """Test setting temperature within valid range."""
-        builder = PerplexityParams()
-        result = builder.set_temperature(0.5)
-        params = result.build()
-
-        assert params["temperature"] == 0.5
-
-    def test_set_temperature_clamp_low(self):
-        """Test temperature is clamped to minimum 0.0."""
-        builder = PerplexityParams()
-        result = builder.set_temperature(-0.5)
-        params = result.build()
-
-        assert params["temperature"] == 0.0
-
-    def test_set_temperature_clamp_high(self):
-        """Test temperature is clamped to maximum 1.0."""
-        builder = PerplexityParams()
-        result = builder.set_temperature(1.5)
-        params = result.build()
-
-        assert params["temperature"] == 1.0
-
-    def test_set_temperature_edge_cases(self):
-        """Test temperature edge cases (0.0 and 1.0)."""
-        builder = PerplexityParams()
-
-        params1 = builder.set_temperature(0.0).build()
-        assert params1["temperature"] == 0.0
-
-        params2 = builder.set_temperature(1.0).build()
-        assert params2["temperature"] == 1.0
-
     def test_builder_chain(self):
         """Test method chaining works correctly."""
-        params = (
-            PerplexityParams("sonar", 6000)
-            .add_messages("System", "Query")
-            .set_temperature(0.3)
-            .build()
-        )
+        params = PerplexityParams("sonar", 6000).add_messages("System", "Query").build()
 
         assert params["model"] == "sonar"
         assert params["max_tokens"] == 6000
-        assert params["temperature"] == 0.3
         assert len(params["messages"]) == 2
 
     def test_build_returns_copy(self):
@@ -262,9 +220,10 @@ class TestValidateGptModel:
 
         assert result is False
         mock_logger.warning.assert_called_once()
-        warning_msg = mock_logger.warning.call_args[0][0]
-        assert "gpt-3" in warning_msg
-        assert "Known models:" in warning_msg
+        args, _ = mock_logger.warning.call_args
+        assert "Unrecognized GPT model:" in args[0]
+        assert args[1] == "gpt-3"
+        assert "gpt-5-mini" in args[2]
 
     def test_valid_model_no_warning(self):
         """Test valid model doesn't log warning."""
@@ -288,13 +247,12 @@ class TestAPIUtilities:
         """Test API call logging."""
         mock_logger = Mock()
 
-        log_api_call(mock_logger, "OpenAI", "gpt-4", 100, 5)
+        log_api_call(mock_logger, "OpenAI", "gpt-5", 100, 5)
 
-        mock_logger.info.assert_called_once()
-        log_msg = mock_logger.info.call_args[0][0]
-        assert "OpenAI" in log_msg
-        assert "gpt-4" in log_msg
-        assert "API call" in log_msg
+        assert mock_logger.info.called
+        args, _ = mock_logger.info.call_args
+        assert args[1] == "OpenAI"
+        assert args[2] == "gpt-5"
 
     def test_log_api_response(self):
         """Test API response logging."""
@@ -302,10 +260,10 @@ class TestAPIUtilities:
 
         log_api_response(mock_logger, "Perplexity", 500, {"finish_reason": "stop"})
 
-        mock_logger.info.assert_called_once()
-        log_msg = mock_logger.info.call_args[0][0]
-        assert "Perplexity" in log_msg
-        assert "500 characters" in log_msg
+        assert mock_logger.info.called
+        args, _ = mock_logger.info.call_args
+        assert args[1] == "Perplexity"
+        assert args[2] == 500
 
     def test_log_api_response_no_metadata(self):
         """Test API response logging without metadata."""
@@ -313,10 +271,10 @@ class TestAPIUtilities:
 
         log_api_response(mock_logger, "OpenAI", 250)
 
-        mock_logger.info.assert_called_once()
-        log_msg = mock_logger.info.call_args[0][0]
-        assert "OpenAI" in log_msg
-        assert "250 characters" in log_msg
+        assert mock_logger.info.called
+        args, _ = mock_logger.info.call_args
+        assert args[1] == "OpenAI"
+        assert args[2] == 250
 
     def test_safe_extract_response_content_valid(self):
         """Test safe response content extraction with valid response."""
@@ -382,9 +340,9 @@ class TestAPICallBuilder:
 
     def test_openai_call_basic(self):
         """Test basic OpenAI call building."""
-        params = APICallBuilder.openai_call("gpt-4", "You are helpful", [], "Hello", 1000)
+        params = APICallBuilder.openai_call("gpt-5", "You are helpful", [], "Hello", 1000)
 
-        assert params["model"] == "gpt-4"
+        assert params["model"] == "gpt-5"
         assert params["max_completion_tokens"] == 1000
         assert "messages" in params
         assert len(params["messages"]) == 2  # system + user
@@ -396,10 +354,14 @@ class TestAPICallBuilder:
             {"role": "assistant", "content": "Hello!"},
         ]
         params = APICallBuilder.openai_call(
-            "gpt-4", "System prompt", conversation, "How are you?", 1500
+            "gpt-5",
+            "System prompt",
+            conversation,
+            "How are you?",
+            1500,
         )
 
-        assert params["model"] == "gpt-4"
+        assert params["model"] == "gpt-5"
         assert params["max_completion_tokens"] == 1500
         assert len(params["messages"]) == 4  # system + conversation + user
 
@@ -422,12 +384,14 @@ class TestAPICallBuilder:
     def test_perplexity_call_custom_params(self):
         """Test Perplexity call with custom parameters."""
         params = APICallBuilder.perplexity_call(
-            "System", "Hello", model="sonar-pro", max_tokens=5000, temperature=0.3
+            "System",
+            "Hello",
+            model="sonar-pro",
+            max_tokens=5000,
         )
 
         assert params["model"] == "sonar-pro"
         assert params["max_tokens"] == 5000
-        assert params["temperature"] == 0.3
 
     def test_perplexity_call_default_model(self):
         """Test Perplexity call with default model."""
@@ -435,15 +399,14 @@ class TestAPICallBuilder:
 
         assert params["model"] == "sonar-pro"  # Default fallback
         assert params["max_tokens"] == 8000
-        assert params["temperature"] == 0.7
 
     def test_static_methods_independent(self):
         """Test that static methods work independently."""
-        openai_params = APICallBuilder.openai_call("gpt-4", "System", [], "Query", 1000)
+        openai_params = APICallBuilder.openai_call("gpt-5", "System", [], "Query", 1000)
         perplexity_params = APICallBuilder.perplexity_call("System", "Query", model="sonar")
 
         # Both should work independently
-        assert openai_params["model"] == "gpt-4"
+        assert openai_params["model"] == "gpt-5"
         assert perplexity_params["model"] == "sonar"
         assert openai_params != perplexity_params
 

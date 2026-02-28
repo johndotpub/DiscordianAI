@@ -17,13 +17,34 @@ Example:
     >>> run_bot(config)
 """
 
-__version__ = "0.2.8.0"
+from __future__ import annotations
+
+import warnings
+
+__version__ = "0.2.9"
 __author__ = "johndotpub"
 __email__ = "github@john.pub"
 
+# Discord.py still imports the legacy stdlib audioop module on initialization,
+# which emits a DeprecationWarning under Python 3.12+. Ensure we filter that
+# specific upstream warning before importing heavyweight modules so our global
+# "-W error" test runs stay clean.
+warnings.filterwarnings(
+    "ignore",
+    message="'audioop' is deprecated and slated for removal in Python 3.13",
+    category=DeprecationWarning,
+    module=r"discord\.player",
+)
+
 # Public API exports
-from .bot import run_bot
-from .config import load_config, parse_arguments
+try:
+    from .bot import run_bot
+    from .config import load_config, parse_arguments
+except ImportError:  # pragma: no cover
+    # Fallback for environments without discord or heavy dependencies
+    run_bot = None
+    load_config = None
+    parse_arguments = None
 
 __all__ = [
     "__author__",

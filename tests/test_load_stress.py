@@ -110,7 +110,7 @@ class TestConcurrentUserLoad:
         # First 10 requests should pass
         for i in range(10):
             result = rate_limiter.check_rate_limit(user_id, rate_limit, rate_limit_per, logger)
-            assert result, f"Request {i+1} should pass"
+            assert result, f"Request {i + 1} should pass"
 
         # 11th request should be rate limited
         result = rate_limiter.check_rate_limit(user_id, rate_limit, rate_limit_per, logger)

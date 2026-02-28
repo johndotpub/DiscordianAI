@@ -45,12 +45,12 @@ def main():
     success, missing = check_dependencies()
 
     if not success:
-        logger.error(f"Missing required packages: {', '.join(missing)}")
+        logger.error("Missing required packages: %s", ", ".join(missing))
         logger.error("Please install dependencies with:")
         logger.error("  pip install -r requirements.txt")
         logger.error("\nOr install individual packages:")
         for package in missing:
-            logger.error(f"  pip install {package}")
+            logger.error("  pip install %s", package)
         sys.exit(1)
 
     logger.info("✓ All dependencies are available.")

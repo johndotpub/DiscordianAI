@@ -124,7 +124,7 @@ class TestOpenAIConfigValidation:
     def test_validate_openai_config_invalid_model(self):
         """Test validation with invalid GPT model."""
         config = {
-            "GPT_MODEL": "gpt-4-invalid",
+            "GPT_MODEL": "gpt-5-invalid",
         }
 
         issues = validate_openai_config(config)

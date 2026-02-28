@@ -137,7 +137,8 @@ class TestCircuitBreaker:
 
         @breaker
         async def test_func():
-            raise ValueError("Test error")
+            msg = "Test error"
+            raise ValueError(msg)
 
         # Should still be closed after first few failures
         for i in range(2):
@@ -159,7 +160,8 @@ class TestCircuitBreaker:
 
         @breaker
         async def test_func():
-            raise ValueError("Test error")
+            msg = "Test error"
+            raise ValueError(msg)
 
         # Trigger failures to open circuit
         for _ in range(2):
@@ -181,7 +183,8 @@ class TestCircuitBreaker:
         async def test_func(should_succeed=False):
             if should_succeed:
                 return "success"
-            raise ValueError("Test error")
+            msg = "Test error"
+            raise ValueError(msg)
 
         # Open the circuit
         for _ in range(2):
@@ -205,7 +208,8 @@ class TestCircuitBreaker:
 
         @breaker
         async def test_func():
-            raise ValueError("Test error")
+            msg = "Test error"
+            raise ValueError(msg)
 
         # Open the circuit
         for _ in range(2):
@@ -228,9 +232,11 @@ class TestCircuitBreaker:
         @breaker
         async def test_func(error_type="value"):
             if error_type == "value":
-                raise ValueError("Expected error")
+                msg_val = "Expected error"
+                raise ValueError(msg_val)
             if error_type == "type":
-                raise TypeError("Unexpected error")
+                msg_type = "Unexpected error"
+                raise TypeError(msg_type)
             return "success"
 
         # ValueError should count toward failure threshold
@@ -255,7 +261,11 @@ class TestRetryConfig:
     def test_retry_config_creation(self):
         """Test creating RetryConfig instance."""
         config = RetryConfig(
-            max_attempts=5, base_delay=2.0, max_delay=120.0, exponential_base=3.0, jitter=False
+            max_attempts=5,
+            base_delay=2.0,
+            max_delay=120.0,
+            exponential_base=3.0,
+            jitter=False,
         )
 
         assert config.max_attempts == 5
@@ -303,7 +313,8 @@ class TestRetryWithBackoff:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
-                raise ValueError("Temporary failure")
+                msg = "Temporary failure"
+                raise ValueError(msg)
             return "success"
 
         mock_logger = Mock()
@@ -320,7 +331,8 @@ class TestRetryWithBackoff:
         async def test_func():
             nonlocal call_count
             call_count += 1
-            raise ValueError(f"Failure {call_count}")
+            msg = f"Failure {call_count}"
+            raise ValueError(msg)
 
         mock_logger = Mock()
         config = RetryConfig(max_attempts=2, base_delay=0.1, jitter=False)
@@ -337,7 +349,8 @@ class TestRetryWithBackoff:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
-                raise ValueError("Temporary failure")
+                msg = "Temporary failure"
+                raise ValueError(msg)
             return "success"
 
         mock_logger = Mock()
@@ -356,7 +369,8 @@ class TestRetryWithBackoff:
         async def test_func():
             nonlocal call_count
             call_count += 1
-            raise Exception("401 Unauthorized: Invalid API key")  # Auth error
+            msg = "401 Unauthorized: Invalid API key"
+            raise Exception(msg)  # Auth error
 
         mock_logger = Mock()
         config = RetryConfig(max_attempts=3, base_delay=0.1)
@@ -519,7 +533,8 @@ class TestHandleAPIError:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                raise Exception("Temporary failure")
+                msg = "Temporary failure"
+                raise Exception(msg)
             return "success"
 
         result = await test_func()
@@ -534,7 +549,8 @@ class TestHandleAPIError:
         async def test_func():
             nonlocal call_count
             call_count += 1
-            raise Exception("Persistent failure")
+            msg = "Persistent failure"
+            raise Exception(msg)
 
         with pytest.raises(Exception, match="Persistent failure"):
             await test_func()
@@ -628,7 +644,8 @@ class TestCreateGracefulFallback:
 
         @create_graceful_fallback(fallback_func)
         async def main_func():
-            raise Exception("Main failed")
+            msg = "Main failed"
+            raise Exception(msg)
 
         result = await main_func()
         assert result == "fallback"
@@ -638,11 +655,13 @@ class TestCreateGracefulFallback:
         """Test fallback when both functions fail."""
 
         async def fallback_func():
-            raise Exception("Fallback failed")
+            msg = "Fallback failed"
+            raise Exception(msg)
 
         @create_graceful_fallback(fallback_func, "Default message")
         async def main_func():
-            raise Exception("Main failed")
+            msg = "Main failed"
+            raise Exception(msg)
 
         result = await main_func()
         assert result == "Default message"
@@ -731,7 +750,8 @@ class TestCircuitBreakerStateTransitions:
 
         @breaker
         async def failing_function():
-            raise ValueError("Test error")
+            msg = "Test error"
+            raise ValueError(msg)
 
         # First failure should not open circuit
         with pytest.raises(ValueError):
@@ -808,7 +828,8 @@ class TestCircuitBreakerStateTransitions:
 
         @breaker
         async def failing_function():
-            raise ValueError("Test error")
+            msg = "Test error"
+            raise ValueError(msg)
 
         # Failure in HALF_OPEN should open circuit again
         with pytest.raises(ValueError):
@@ -824,7 +845,8 @@ class TestCircuitBreakerStateTransitions:
         @breaker
         async def sometimes_failing_function(should_fail: bool):
             if should_fail:
-                raise ValueError("Test error")
+                msg = "Test error"
+                raise ValueError(msg)
             return "success"
 
         # Fail twice
@@ -852,7 +874,8 @@ class TestRetryLogicScenarios:
             nonlocal attempt_count
             attempt_count += 1
             if attempt_count < 2:
-                raise ConnectionError("Temporary failure")
+                msg = "Temporary failure"
+                raise ConnectionError(msg)
             return "success"
 
         retry_config = RetryConfig(max_attempts=3, base_delay=0.1)
@@ -872,7 +895,8 @@ class TestRetryLogicScenarios:
         async def always_failing_function():
             nonlocal attempt_count
             attempt_count += 1
-            raise ConnectionError(f"Failure {attempt_count}")
+            msg = f"Failure {attempt_count}"
+            raise ConnectionError(msg)
 
         retry_config = RetryConfig(max_attempts=3, base_delay=0.1)
         logger = Mock()
@@ -891,7 +915,8 @@ class TestRetryLogicScenarios:
         async def auth_error_function():
             nonlocal attempt_count
             attempt_count += 1
-            raise ValueError("401 Unauthorized")
+            msg = "401 Unauthorized"
+            raise ValueError(msg)
 
         retry_config = RetryConfig(max_attempts=3, base_delay=0.1)
         logger = Mock()
@@ -918,10 +943,14 @@ class TestRetryLogicScenarios:
 
         async def failing_function():
             attempt_times.append(time.time())
-            raise ConnectionError("Failure")
+            msg = "Failure"
+            raise ConnectionError(msg)
 
         retry_config = RetryConfig(
-            max_attempts=3, base_delay=0.2, exponential_base=2.0, jitter=False
+            max_attempts=3,
+            base_delay=0.2,
+            exponential_base=2.0,
+            jitter=False,
         )
         logger = Mock()
 
@@ -944,10 +973,15 @@ class TestRetryLogicScenarios:
 
         async def failing_function():
             attempt_times.append(time.time())
-            raise ConnectionError("Failure")
+            msg = "Failure"
+            raise ConnectionError(msg)
 
         retry_config = RetryConfig(
-            max_attempts=5, base_delay=10.0, max_delay=0.5, exponential_base=2.0, jitter=False
+            max_attempts=5,
+            base_delay=10.0,
+            max_delay=0.5,
+            exponential_base=2.0,
+            jitter=False,
         )
         logger = Mock()
 
@@ -976,7 +1010,8 @@ class TestErrorRecoveryIntegration:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
-                raise ConnectionError("Temporary failure")
+                msg = "Temporary failure"
+                raise ConnectionError(msg)
             return "success"
 
         logger = Mock()
@@ -995,7 +1030,8 @@ class TestErrorRecoveryIntegration:
         async def failing_function():
             nonlocal failure_count
             failure_count += 1
-            raise ValueError("Test error")
+            msg = "Test error"
+            raise ValueError(msg)
 
         # Simulate concurrent failures
         tasks = [failing_function() for _ in range(5)]

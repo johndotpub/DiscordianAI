@@ -72,20 +72,26 @@ class ThreadSafeConversationManager:
         # Periodic cleanup of inactive locks (non-blocking)
         try:
             self.cleanup_inactive_user_locks(force=False)
-        except Exception as e:  # noqa: BLE001 - non-critical background cleanup
-            self._logger.warning(f"Background cleanup failed: {e}")
+        except Exception as e:  # noqa: BLE001
+            self._logger.warning("Background cleanup failed: %s", e)
 
         user_lock = self._get_user_lock(user_id)
         with user_lock:
             conversation = self._conversations.get(user_id, [])
             result = copy.deepcopy(conversation)
             self._logger.debug(
-                f"Retrieved conversation for user {user_id}: {len(result)} messages"
+                "Retrieved conversation for user %s: %d messages",
+                user_id,
+                len(result),
             )
             return result
 
     def add_message(
-        self, user_id: int, role: str, content: str, metadata: dict[str, Any] | None = None
+        self,
+        user_id: int,
+        role: str,
+        content: str,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Add a message to the user's conversation history in a thread-safe manner.
 
@@ -101,12 +107,14 @@ class ThreadSafeConversationManager:
             ValueError: If role is not one of the expected values.
         """
         if role not in ["user", "assistant", "system"]:
-            raise ValueError(f"Invalid role '{role}'. Must be 'user', 'assistant', or 'system'")
+            msg = f"Invalid role '{role}'. Must be 'user', 'assistant', or 'system'"
+            raise ValueError(msg)
 
         # Allow empty content only if we have meaningful metadata (e.g., embed data)
         if not content.strip() and not metadata:
             self._logger.warning(
-                f"Attempted to add empty message without metadata for user {user_id}"
+                "Attempted to add empty message without metadata for user %s",
+                user_id,
             )
             return
 
@@ -129,14 +137,19 @@ class ThreadSafeConversationManager:
                 removed_count = len(self._conversations[user_id]) - self._max_history
                 self._conversations[user_id] = self._conversations[user_id][-self._max_history :]
                 self._logger.info(
-                    f"Pruned {removed_count} old messages for user {user_id} "
-                    f"(keeping latest {self._max_history})"
+                    "Pruned %d old messages for user %s (keeping latest %d)",
+                    removed_count,
+                    user_id,
+                    self._max_history,
                 )
 
             message_count = len(self._conversations[user_id])
             self._logger.debug(
-                f"Added {role} message for user {user_id}: {len(content)} chars, "
-                f"total history: {message_count} messages"
+                "Added %s message for user %s: %d chars, total history: %d messages",
+                role,
+                user_id,
+                len(content),
+                message_count,
             )
 
     def update_conversation(self, user_id: int, conversation: list[dict[str, str]]) -> None:
@@ -155,9 +168,11 @@ class ThreadSafeConversationManager:
         # Validate conversation format before acquiring lock
         for i, msg in enumerate(conversation):
             if not isinstance(msg, dict) or "role" not in msg or "content" not in msg:
-                raise ValueError(f"Invalid message at index {i}: missing 'role' or 'content'")
+                err_msg = f"Invalid message at index {i}: missing 'role' or 'content'"
+                raise ValueError(err_msg)
             if msg["role"] not in ["user", "assistant", "system"]:
-                raise ValueError(f"Invalid role at index {i}: '{msg['role']}'")
+                role_err = f"Invalid role at index {i}: '{msg['role']}'"
+                raise ValueError(role_err)
 
         user_lock = self._get_user_lock(user_id)
         with user_lock:
@@ -169,13 +184,15 @@ class ThreadSafeConversationManager:
                 removed_count = len(self._conversations[user_id]) - self._max_history
                 self._conversations[user_id] = self._conversations[user_id][-self._max_history :]
                 self._logger.info(
-                    f"Truncated conversation for user {user_id}: "
-                    f"removed {removed_count} old messages"
+                    "Truncated conversation for user %s: removed %d old messages",
+                    user_id,
+                    removed_count,
                 )
 
             self._logger.debug(
-                f"Updated full conversation for user {user_id}: "
-                f"{len(self._conversations[user_id])} messages"
+                "Updated full conversation for user %s: %d messages",
+                user_id,
+                len(self._conversations[user_id]),
             )
 
     def clear_conversation(self, user_id: int) -> int:
@@ -193,7 +210,9 @@ class ThreadSafeConversationManager:
             self._conversations.pop(user_id, None)
 
             self._logger.info(
-                f"Cleared conversation for user {user_id}: {cleared_count} messages removed"
+                "Cleared conversation for user %s: %d messages removed",
+                user_id,
+                cleared_count,
             )
             return cleared_count
 
@@ -310,7 +329,9 @@ class ThreadSafeConversationManager:
                 summary.extend(user_messages[len(assistant_responses) :])
 
             self._logger.debug(
-                f"Generated conversation summary for user {user_id}: {len(summary)} messages"
+                "Generated conversation summary for user %s: %d messages",
+                user_id,
+                len(summary),
             )
             return summary
 
@@ -390,8 +411,8 @@ class ThreadSafeConversationManager:
 
             if inactive_user_ids:
                 self._logger.info(
-                    f"Cleaned up {len(inactive_user_ids)} inactive user locks "
-                    f"for memory optimization"
+                    "Cleaned up %d inactive user locks for memory optimization",
+                    len(inactive_user_ids),
                 )
 
             return len(inactive_user_ids)

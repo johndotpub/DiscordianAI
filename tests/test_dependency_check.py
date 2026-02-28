@@ -23,7 +23,8 @@ class TestDependencyCheck:
 
             def side_effect(name, *args, **kwargs):
                 if name == "discord":
-                    raise ImportError("No module named 'discord'")
+                    msg = "No module named 'discord'"
+                    raise ImportError(msg)
                 return MagicMock()
 
             mock_import.side_effect = side_effect

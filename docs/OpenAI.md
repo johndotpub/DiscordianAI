@@ -30,7 +30,7 @@ SYSTEM_MESSAGE=You are a helpful AI assistant with access to current information
 ```
 
 ### GPT-5 Notes
-OpenAI models use the standard Chat Completions API parameters. Only officially supported parameters are used (e.g., `model`, `messages`, `max_tokens`, optional `temperature`).
+OpenAI models use the standard Chat Completions API parameters. Only officially supported parameters are used (e.g., `model`, `messages`, `max_completion_tokens`). GPT-5 frontier models enforce their own sampling so temperature overrides are ignored.
 
 ## Operation Modes
 

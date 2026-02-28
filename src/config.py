@@ -30,15 +30,35 @@ from typing import Any
 # ============================================================================
 
 # OpenAI Models
+OPENAI_MODEL_PREFIX = "gpt-5"
+
+# Canonical GPT-5 model identifiers that we document. Snapshot variants are allowed via regex.
 OPENAI_VALID_MODELS = [
-    "gpt-5",  # Latest generation - standard
+    OPENAI_MODEL_PREFIX,  # Latest generation - standard
     "gpt-5-mini",  # Latest generation - cost-effective
     "gpt-5-nano",  # Latest generation - high-speed
     "gpt-5-chat",  # Latest generation - conversational
 ]
 
+
 # Perplexity Models
 PERPLEXITY_MODELS = ["sonar-pro", "sonar"]  # Latest Perplexity model
+
+
+SNAPSHOT_MODEL_PREFIX = f"{OPENAI_MODEL_PREFIX}."
+
+
+def is_supported_openai_model(model: str | None) -> bool:
+    """Return True if the provided GPT model matches supported GPT-5 identifiers."""
+    if not model:
+        return False
+
+    if model in OPENAI_VALID_MODELS:
+        return True
+
+    # Snapshot builds arrive as dotted identifiers (e.g., gpt-5.2025-02-18, gpt-5.1).
+    return bool(model.startswith(SNAPSHOT_MODEL_PREFIX))
+
 
 # API URL Patterns for validation (stricter patterns with end anchor)
 VALID_OPENAI_URL_PATTERN = re.compile(r"https://api\.openai\.com/v\d+/?$")
@@ -57,6 +77,7 @@ DISCORD_ACTIVITY_TYPES = ["playing", "streaming", "listening", "watching", "cust
 
 # Discord Message Constants
 MESSAGE_LIMIT = 2000  # Discord's hard limit for regular messages
+MESSAGE_BUFFER = 100
 EMBED_LIMIT = 4096  # Discord's hard limit for embed descriptions
 EMBED_SAFE_LIMIT = 3840  # Safe margin for citation expansion and formatting
 MAX_SPLIT_RECURSION = 10  # Safety limit for message splitting recursion
@@ -142,6 +163,16 @@ FOLLOW_UP_PATTERNS = [
 ]
 
 # ============================================================================
+# VALIDATION THRESHOLDS
+# ============================================================================
+
+MAX_OUTPUT_TOKENS_THRESHOLD = 50000
+MAX_INPUT_TOKENS_THRESHOLD = 200000
+MAX_RATE_LIMIT_THRESHOLD = 100
+MAX_RECOMMENDED_REQ_PER_MIN = 60
+SECONDS_PER_MINUTE = 60
+
+# ============================================================================
 # COMPILED PATTERNS (for performance)
 # ============================================================================
 
@@ -167,12 +198,16 @@ CITATION_PATTERN = re.compile(r"\[(\d+)\]")
 MENTION_PATTERN = re.compile(r"<@!?(\d+)>")
 
 # URL detection patterns for smart routing
+BARE_URL_PATTERN = (
+    r"(?:https?://)?[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
+    r"(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}"
+    r"(?:/[^\s]*)?"
+)
+
 URL_DETECTION_PATTERNS = [
     r"https?://[^\s\[\]()]+[^\s\[\]().,;!?]",  # Standard URLs with common punctuation
     r"\[([^\]]+)\]\(([^)]+)\)",  # Markdown links [text](url)
-    r"(?:https?://)?[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
-    r"(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}"
-    r"(?:/[^\s]*)?",  # Bare URLs (domain.tld/path)
+    BARE_URL_PATTERN,  # Bare URLs (domain.tld/path)
 ]
 
 # Compile URL detection patterns for performance
@@ -255,160 +290,95 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
     if base_folder and config_file and not Path(config_file).is_absolute():
         config_file = str(Path(base_folder) / config_file)
 
-    # 1. Load from file if provided and exists
     if config_file and Path(config_file).exists():
         try:
             config.read(config_file)
+            _parse_discord_config(config, config_data)
+            _parse_default_config(config, config_data, logger)
+            _parse_limits_config(config, config_data, logger)
+            _parse_orchestrator_config(config, config_data, logger)
+            _parse_logging_config(config, config_data, base_folder)
         except (configparser.Error, OSError):
-            # If config file is malformed or unreadable, log warning and continue with defaults
-            logger.warning(f"Failed to parse config file {config_file}, using defaults")
+            logger.warning("Failed to parse config file %s, using defaults", config_file)
 
-        # Discord section
-        config_data["DISCORD_TOKEN"] = config.get("Discord", "DISCORD_TOKEN", fallback=None)
-        channels_str = config.get("Discord", "ALLOWED_CHANNELS", fallback="")
-        config_data["ALLOWED_CHANNELS"] = [c.strip() for c in channels_str.split(",") if c.strip()]
-        config_data["BOT_PRESENCE"] = config.get("Discord", "BOT_PRESENCE", fallback="online")
-        config_data["ACTIVITY_TYPE"] = config.get("Discord", "ACTIVITY_TYPE", fallback="listening")
-        config_data["ACTIVITY_STATUS"] = config.get(
-            "Discord", "ACTIVITY_STATUS", fallback="Humans"
-        )
+    # 2. Override with environment variables
+    _apply_env_overrides(config_data, logger)
 
-        # Default section
-        config_data["OPENAI_API_KEY"] = config.get("Default", "OPENAI_API_KEY", fallback=None)
-        config_data["OPENAI_API_URL"] = config.get(
-            "Default", "OPENAI_API_URL", fallback="https://api.openai.com/v1/"
-        )
+    # 3. Set defaults for missing values
+    _apply_config_defaults(config_data)
 
-        # Perplexity API for web search
-        config_data["PERPLEXITY_API_KEY"] = config.get(
-            "Default", "PERPLEXITY_API_KEY", fallback=None
-        )
-        config_data["PERPLEXITY_API_URL"] = config.get(
-            "Default", "PERPLEXITY_API_URL", fallback="https://api.perplexity.ai"
-        )
-        config_data["PERPLEXITY_MODEL"] = config.get(
-            "Default", "PERPLEXITY_MODEL", fallback="sonar-pro"
-        )
-        config_data["GPT_MODEL"] = config.get("Default", "GPT_MODEL", fallback="gpt-5-mini")
-        try:
-            config_data["INPUT_TOKENS"] = config.getint("Default", "INPUT_TOKENS", fallback=120000)
-        except ValueError:
-            logger.warning("Invalid INPUT_TOKENS value, using default 120000")
-            config_data["INPUT_TOKENS"] = 120000
-        try:
-            config_data["OUTPUT_TOKENS"] = config.getint("Default", "OUTPUT_TOKENS", fallback=8000)
-        except ValueError:
-            logger.warning("Invalid OUTPUT_TOKENS value, using default 8000")
-            config_data["OUTPUT_TOKENS"] = 8000
-        try:
-            config_data["CONTEXT_WINDOW"] = config.getint(
-                "Default", "CONTEXT_WINDOW", fallback=128000
-            )
-        except ValueError:
-            logger.warning("Invalid CONTEXT_WINDOW value, using default 128000")
-            config_data["CONTEXT_WINDOW"] = 128000
-        config_data["SYSTEM_MESSAGE"] = config.get(
-            "Default", "SYSTEM_MESSAGE", fallback="You are a helpful assistant."
-        )
+    return config_data
 
-        # Limits section
-        try:
-            config_data["RATE_LIMIT"] = config.getint("Limits", "RATE_LIMIT", fallback=10)
-        except ValueError:
-            logger.warning("Invalid RATE_LIMIT value, using default 10")
-            config_data["RATE_LIMIT"] = 10
-        try:
-            config_data["RATE_LIMIT_PER"] = config.getint("Limits", "RATE_LIMIT_PER", fallback=60)
-        except ValueError:
-            logger.warning("Invalid RATE_LIMIT_PER value, using default 60")
-            config_data["RATE_LIMIT_PER"] = 60
 
-        # Orchestrator section
-        config_data["LOOKBACK_MESSAGES_FOR_CONSISTENCY"] = config.getint(
-            "Orchestrator", "LOOKBACK_MESSAGES_FOR_CONSISTENCY", fallback=6
-        )
-        config_data["MAX_HISTORY_PER_USER"] = config.getint(
-            "Orchestrator", "MAX_HISTORY_PER_USER", fallback=50
-        )
-        try:
-            config_data["USER_LOCK_CLEANUP_INTERVAL"] = config.getint(
-                "Orchestrator", "USER_LOCK_CLEANUP_INTERVAL", fallback=3600
-            )
-        except ValueError:
-            logger.warning("Invalid USER_LOCK_CLEANUP_INTERVAL value, using default 3600")
-            config_data["USER_LOCK_CLEANUP_INTERVAL"] = 3600
+def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) -> None:
+    """Apply environment variables to configuration."""
+    env_keys = [
+        "DISCORD_TOKEN",
+        "ALLOWED_CHANNELS",
+        "BOT_PRESENCE",
+        "ACTIVITY_TYPE",
+        "ACTIVITY_STATUS",
+        "OPENAI_API_KEY",
+        "OPENAI_API_URL",
+        "PERPLEXITY_API_KEY",
+        "PERPLEXITY_API_URL",
+        "PERPLEXITY_MODEL",
+        "GPT_MODEL",
+        "INPUT_TOKENS",
+        "OUTPUT_TOKENS",
+        "CONTEXT_WINDOW",
+        "SYSTEM_MESSAGE",
+        "RATE_LIMIT",
+        "RATE_LIMIT_PER",
+        "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
+        "MAX_HISTORY_PER_USER",
+        "USER_LOCK_CLEANUP_INTERVAL",
+        "LOG_FILE",
+        "LOG_LEVEL",
+    ]
 
-        # Logging section
-        config_data["LOG_FILE"] = config.get("Logging", "LOG_FILE", fallback="bot.log")
-        if base_folder and not Path(config_data["LOG_FILE"]).is_absolute():
-            config_data["LOG_FILE"] = str(Path(base_folder) / config_data["LOG_FILE"])
-        config_data["LOG_LEVEL"] = config.get("Logging", "LOG_LEVEL", fallback="INFO")
+    for key in env_keys:
+        value = os.environ.get(key)
+        if value is not None:
+            _apply_single_env_override(config_data, key, value, logger)
 
-    # 2. Override with environment variables if set
-    env_overrides = {
-        "DISCORD_TOKEN": os.environ.get("DISCORD_TOKEN"),
-        "ALLOWED_CHANNELS": os.environ.get("ALLOWED_CHANNELS"),
-        "BOT_PRESENCE": os.environ.get("BOT_PRESENCE"),
-        "ACTIVITY_TYPE": os.environ.get("ACTIVITY_TYPE"),
-        "ACTIVITY_STATUS": os.environ.get("ACTIVITY_STATUS"),
-        "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
-        "OPENAI_API_URL": os.environ.get("OPENAI_API_URL"),
-        "PERPLEXITY_API_KEY": os.environ.get("PERPLEXITY_API_KEY"),
-        "PERPLEXITY_API_URL": os.environ.get("PERPLEXITY_API_URL"),
-        "PERPLEXITY_MODEL": os.environ.get("PERPLEXITY_MODEL"),
-        "GPT_MODEL": os.environ.get("GPT_MODEL"),
-        "INPUT_TOKENS": os.environ.get("INPUT_TOKENS"),
-        "OUTPUT_TOKENS": os.environ.get("OUTPUT_TOKENS"),
-        "CONTEXT_WINDOW": os.environ.get("CONTEXT_WINDOW"),
-        "SYSTEM_MESSAGE": os.environ.get("SYSTEM_MESSAGE"),
-        "RATE_LIMIT": os.environ.get("RATE_LIMIT"),
-        "RATE_LIMIT_PER": os.environ.get("RATE_LIMIT_PER"),
-        "LOOKBACK_MESSAGES_FOR_CONSISTENCY": os.environ.get("LOOKBACK_MESSAGES_FOR_CONSISTENCY"),
-        "MAX_HISTORY_PER_USER": os.environ.get("MAX_HISTORY_PER_USER"),
-        "USER_LOCK_CLEANUP_INTERVAL": os.environ.get("USER_LOCK_CLEANUP_INTERVAL"),
-        "LOG_FILE": os.environ.get("LOG_FILE"),
-        "LOG_LEVEL": os.environ.get("LOG_LEVEL"),
+
+def _apply_single_env_override(
+    config_data: dict[str, Any], key: str, value: str, logger: logging.Logger
+) -> None:
+    """Apply a single environment variable override."""
+    int_keys = {
+        "INPUT_TOKENS",
+        "OUTPUT_TOKENS",
+        "CONTEXT_WINDOW",
+        "RATE_LIMIT",
+        "RATE_LIMIT_PER",
+        "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
+        "MAX_HISTORY_PER_USER",
+        "USER_LOCK_CLEANUP_INTERVAL",
     }
 
-    for key, value in env_overrides.items():
-        if value is not None:
-            if key == "ALLOWED_CHANNELS":
-                # Handle empty string - split will return [''], filter it out
-                if value == "":
-                    config_data[key] = []
-                else:
-                    channels = [c.strip() for c in value.split(",") if c.strip()]
-                    config_data[key] = channels
-            elif key in {
-                "INPUT_TOKENS",
-                "OUTPUT_TOKENS",
-                "CONTEXT_WINDOW",
-                "RATE_LIMIT",
-                "RATE_LIMIT_PER",
-                "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
-                "MAX_HISTORY_PER_USER",
-                "USER_LOCK_CLEANUP_INTERVAL",
-            }:
-                try:
-                    config_data[key] = int(value)
-                except ValueError:
-                    # Log warning for invalid integer values but continue with defaults
-                    logger = logging.getLogger(__name__)
-                    logger.warning(
-                        "Invalid integer value for a configuration key, using default instead"
-                    )
-            else:
-                config_data[key] = value
+    if key == "ALLOWED_CHANNELS":
+        config_data[key] = (
+            [c.strip() for c in value.split(",") if c.strip()] if value.strip() else []
+        )
+    elif key in int_keys:
+        try:
+            config_data[key] = int(value)
+        except (ValueError, TypeError):
+            logger.warning("Invalid integer for %s: %s", key, value)
+    else:
+        config_data[key] = value
 
-    # 3. Set defaults if still missing
+
+def _apply_config_defaults(config_data: dict[str, Any]) -> None:
+    """Apply default values for missing configuration keys."""
     defaults = {
-        # Discord Configuration
         "DISCORD_TOKEN": None,
         "ALLOWED_CHANNELS": [],
         "BOT_PRESENCE": "online",
         "ACTIVITY_TYPE": "listening",
         "ACTIVITY_STATUS": "Humans",
-        # AI Service Configuration
         "OPENAI_API_KEY": None,
         "OPENAI_API_URL": "https://api.openai.com/v1/",
         "PERPLEXITY_API_KEY": None,
@@ -419,28 +389,127 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
         "OUTPUT_TOKENS": 8000,
         "CONTEXT_WINDOW": 128000,
         "SYSTEM_MESSAGE": "You are a helpful assistant.",
-        # Rate Limiting Configuration
         "RATE_LIMIT": 10,
         "RATE_LIMIT_PER": 60,
-        # Connection Pooling Configuration
         "OPENAI_MAX_CONNECTIONS": 50,
         "OPENAI_MAX_KEEPALIVE": 10,
         "PERPLEXITY_MAX_CONNECTIONS": 30,
         "PERPLEXITY_MAX_KEEPALIVE": 5,
-        # AI Orchestrator Configuration
         "LOOKBACK_MESSAGES_FOR_CONSISTENCY": 6,
-        "MAX_HISTORY_PER_USER": 50,  # Maximum conversation entries per user before pruning
-        "USER_LOCK_CLEANUP_INTERVAL": 3600,  # How often to clean up inactive user locks (seconds)
-        # Logging Configuration
+        "MAX_HISTORY_PER_USER": 50,
+        "USER_LOCK_CLEANUP_INTERVAL": 3600,
         "LOG_FILE": "bot.log",
         "LOG_LEVEL": "INFO",
     }
-
     for key, value in defaults.items():
         if key not in config_data or config_data[key] is None:
             config_data[key] = value
 
-    return config_data
+
+def _parse_limits_config(
+    config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger
+) -> None:
+    """Parse Limits section of configuration."""
+    try:
+        config_data["RATE_LIMIT"] = config.getint("Limits", "RATE_LIMIT", fallback=10)
+    except ValueError:
+        logger.warning("Invalid RATE_LIMIT value, using default 10")
+        config_data["RATE_LIMIT"] = 10
+    try:
+        config_data["RATE_LIMIT_PER"] = config.getint("Limits", "RATE_LIMIT_PER", fallback=60)
+    except ValueError:
+        logger.warning("Invalid RATE_LIMIT_PER value, using default 60")
+        config_data["RATE_LIMIT_PER"] = 60
+
+
+def _parse_orchestrator_config(
+    config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger
+) -> None:
+    """Parse Orchestrator section of configuration."""
+    try:
+        config_data["LOOKBACK_MESSAGES_FOR_CONSISTENCY"] = config.getint(
+            "Orchestrator",
+            "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
+            fallback=6,
+        )
+        config_data["MAX_HISTORY_PER_USER"] = config.getint(
+            "Orchestrator",
+            "MAX_HISTORY_PER_USER",
+            fallback=50,
+        )
+        config_data["USER_LOCK_CLEANUP_INTERVAL"] = config.getint(
+            "Orchestrator",
+            "USER_LOCK_CLEANUP_INTERVAL",
+            fallback=3600,
+        )
+    except ValueError:
+        logger.warning("Invalid Orchestrator config value, using defaults")
+        config_data.setdefault("LOOKBACK_MESSAGES_FOR_CONSISTENCY", 6)
+        config_data.setdefault("MAX_HISTORY_PER_USER", 50)
+        config_data.setdefault("USER_LOCK_CLEANUP_INTERVAL", 3600)
+
+
+def _parse_logging_config(
+    config: configparser.ConfigParser, config_data: dict[str, Any], base_folder: str | None
+) -> None:
+    """Parse Logging section of configuration."""
+    config_data["LOG_FILE"] = config.get("Logging", "LOG_FILE", fallback="bot.log")
+    if base_folder and not Path(config_data["LOG_FILE"]).is_absolute():
+        config_data["LOG_FILE"] = str(Path(base_folder) / config_data["LOG_FILE"])
+    config_data["LOG_LEVEL"] = config.get("Logging", "LOG_LEVEL", fallback="INFO")
+
+
+def _parse_discord_config(config: configparser.ConfigParser, config_data: dict[str, Any]) -> None:
+    """Parse Discord section of configuration."""
+    config_data["DISCORD_TOKEN"] = config.get("Discord", "DISCORD_TOKEN", fallback=None)
+    channels_str = config.get("Discord", "ALLOWED_CHANNELS", fallback="")
+    config_data["ALLOWED_CHANNELS"] = [c.strip() for c in channels_str.split(",") if c.strip()]
+    config_data["BOT_PRESENCE"] = config.get("Discord", "BOT_PRESENCE", fallback="online")
+    config_data["ACTIVITY_TYPE"] = config.get("Discord", "ACTIVITY_TYPE", fallback="listening")
+    config_data["ACTIVITY_STATUS"] = config.get("Discord", "ACTIVITY_STATUS", fallback="Humans")
+
+
+def _parse_default_config(
+    config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger
+) -> None:
+    """Parse Default section of configuration."""
+    config_data["OPENAI_API_KEY"] = config.get("Default", "OPENAI_API_KEY", fallback=None)
+    config_data["OPENAI_API_URL"] = config.get(
+        "Default", "OPENAI_API_URL", fallback="https://api.openai.com/v1/"
+    )
+    config_data["GPT_MODEL"] = config.get("Default", "GPT_MODEL", fallback="gpt-5-mini")
+
+    # Perplexity API
+    config_data["PERPLEXITY_API_KEY"] = config.get("Default", "PERPLEXITY_API_KEY", fallback=None)
+    config_data["PERPLEXITY_API_URL"] = config.get(
+        "Default", "PERPLEXITY_API_URL", fallback="https://api.perplexity.ai"
+    )
+    config_data["PERPLEXITY_MODEL"] = config.get(
+        "Default", "PERPLEXITY_MODEL", fallback="sonar-pro"
+    )
+
+    settings = [
+        ("INPUT_TOKENS", 120000),
+        ("OUTPUT_TOKENS", 8000),
+        ("CONTEXT_WINDOW", 128000),
+    ]
+    for key, default in settings:
+        config_data[key] = _get_int_safe(config, key, default, logger)
+
+    config_data["SYSTEM_MESSAGE"] = config.get(
+        "Default", "SYSTEM_MESSAGE", fallback="You are a helpful assistant."
+    )
+
+
+def _get_int_safe(
+    config: configparser.ConfigParser, key: str, default: int, logger: logging.Logger
+) -> int:
+    """Safely get an integer from configuration with fallback."""
+    try:
+        return config.getint("Default", key, fallback=default)
+    except ValueError:
+        logger.warning("Invalid %s value, using default %d", key, default)
+        return default
 
 
 def get_error_messages() -> dict[str, str]:

@@ -242,10 +242,16 @@ class TestThreadSafeConversationManager:
 
         # Add messages with different AI services
         manager.add_message(
-            12345, "assistant", "OpenAI response", metadata={"ai_service": "openai"}
+            12345,
+            "assistant",
+            "OpenAI response",
+            metadata={"ai_service": "openai"},
         )
         manager.add_message(
-            12345, "assistant", "Perplexity response", metadata={"ai_service": "perplexity"}
+            12345,
+            "assistant",
+            "Perplexity response",
+            metadata={"ai_service": "perplexity"},
         )
 
         # Should return most recent service
@@ -271,7 +277,10 @@ class TestThreadSafeConversationManager:
 
         # Add one assistant message in range
         manager.add_message(
-            12345, "assistant", "Recent response", metadata={"ai_service": "openai"}
+            12345,
+            "assistant",
+            "Recent response",
+            metadata={"ai_service": "openai"},
         )
 
         # Should find the service within lookback range
@@ -413,7 +422,9 @@ class TestThreadSafeConversationManager:
         manager = ThreadSafeConversationManager()
 
         with patch.object(
-            manager, "cleanup_inactive_user_locks", side_effect=Exception("Cleanup error")
+            manager,
+            "cleanup_inactive_user_locks",
+            side_effect=Exception("Cleanup error"),
         ):
             # Should handle cleanup failure gracefully
             result = manager.get_conversation(12345)

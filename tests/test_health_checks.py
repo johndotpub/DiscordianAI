@@ -533,7 +533,7 @@ class TestStartupHealthChecks:
         """Test startup health checks when an exception occurs."""
         mock_monitor = Mock()
         mock_monitor.run_all_health_checks = AsyncMock(
-            side_effect=Exception("Health check failed")
+            side_effect=Exception("Health check failed"),
         )
 
         clients = {"openai": Mock()}

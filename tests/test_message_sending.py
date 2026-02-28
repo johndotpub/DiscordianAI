@@ -13,8 +13,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from src.bot import send_formatted_message, send_split_message_with_embed
-from src.config import EMBED_SAFE_LIMIT
+from src.config import EMBED_SAFE_LIMIT, MAX_SPLIT_RECURSION
+from src.message_splitter import (
+    send_formatted_message,
+    send_split_message,
+    send_split_message_with_embed,
+)
 
 
 class TestSendFormattedMessage:
@@ -112,12 +116,18 @@ class TestSendFormattedMessage:
         message = "Test message"
         deps = {"logger": MagicMock()}
 
-        with patch("src.bot.send_split_message_with_embed") as mock_split:
+        with patch("src.message_splitter.send_split_message_with_embed") as mock_split:
             await send_formatted_message(channel, message, deps, embed_data=embed_data)
 
             # Should call split function with citations
             mock_split.assert_called_once_with(
-                channel, long_content, deps, embed, embed_data["citations"]
+                channel,
+                long_content,
+                deps,
+                embed,
+                embed_data["citations"],
+                None,
+                None,
             )
 
     @pytest.mark.asyncio
@@ -160,6 +170,32 @@ class TestSendFormattedMessage:
         channel.send.assert_called_once_with(message, suppress_embeds=False)
 
     @pytest.mark.asyncio
+    async def test_send_formatted_message_reply_with_mention(self):
+        """Send uses reply with mention prefix when original_message is provided."""
+        channel = MagicMock(spec=discord.TextChannel)
+        author = MagicMock()
+        author.mention = "<@user>"
+        original_message = MagicMock(spec=discord.Message)
+        original_message.author = author
+        original_message.reply = AsyncMock()
+
+        message = "Hello there"
+        deps = {"logger": MagicMock()}
+
+        await send_formatted_message(
+            channel,
+            message,
+            deps,
+            original_message=original_message,
+            mention_prefix=f"{author.mention} ",
+        )
+
+        original_message.reply.assert_called_once()
+        call_args, call_kwargs = original_message.reply.call_args
+        assert call_args[0].startswith(f"{author.mention} ")
+        assert call_kwargs["mention_author"] is False
+
+    @pytest.mark.asyncio
     async def test_send_formatted_message_regular_long(self):
         """Test sending regular message > 2000 chars (needs splitting)."""
         channel = MagicMock(spec=discord.TextChannel)
@@ -169,11 +205,43 @@ class TestSendFormattedMessage:
         long_message = "A" * 2500
         deps = {"logger": MagicMock()}
 
-        with patch("src.bot.send_split_message") as mock_split:
+        with patch("src.message_splitter.send_split_message") as mock_split:
             await send_formatted_message(channel, long_message, deps)
 
             # Should call split function
-            mock_split.assert_called_once_with(channel, long_message, deps, False)
+            mock_split.assert_called_once()
+            args, _kwargs = mock_split.call_args
+            assert args[0] is channel
+            assert args[1] == long_message
+            assert args[2] == deps
+            assert args[3] is False
+
+    @pytest.mark.asyncio
+    async def test_send_split_message_mentions_once_when_split(self):
+        """First reply includes mention prefix; subsequent parts do not repeat it."""
+        author = MagicMock()
+        author.mention = "<@user>"
+        original_message = MagicMock(spec=discord.Message)
+        original_message.author = author
+        original_message.reply = AsyncMock()
+
+        long_message = "A" * 2500
+        deps = {"logger": MagicMock()}
+
+        await send_split_message(
+            MagicMock(spec=discord.TextChannel),
+            long_message,
+            deps,
+            original_message=original_message,
+            mention_prefix=f"{author.mention} ",
+        )
+
+        # Should have multiple replies (due to split)
+        assert original_message.reply.call_count >= 2
+        first_content = original_message.reply.call_args_list[0][0][0]
+        second_content = original_message.reply.call_args_list[1][0][0]
+        assert first_content.startswith(f"{author.mention} ")
+        assert not second_content.startswith(f"{author.mention} ")
 
     @pytest.mark.asyncio
     async def test_no_duplicate_messages_sent(self):
@@ -187,7 +255,10 @@ class TestSendFormattedMessage:
         embed_data = {"embed": embed, "clean_text": "Test"}
 
         await send_formatted_message(
-            channel, "Test", {"logger": MagicMock()}, embed_data=embed_data
+            channel,
+            "Test",
+            {"logger": MagicMock()},
+            embed_data=embed_data,
         )
 
         # Should only send once
@@ -242,6 +313,91 @@ class TestSendSplitMessageWithEmbed:
         # First call should be with the original embed
         assert channel.send.call_args_list[0] == (("",), {"embed": embed})
 
+    @pytest.mark.asyncio
+    async def test_split_embed_continuation_reply_with_mentions(self):
+        """Continuation embed replies with allowed mentions and mention prefix only once."""
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+
+        author = MagicMock()
+        author.mention = "<@user>"
+        original_message = MagicMock(spec=discord.Message)
+        original_message.author = author
+        original_message.reply = AsyncMock()
+
+        # Craft content that exceeds the safe limit so a continuation is needed
+        long_content = "A" * (EMBED_SAFE_LIMIT + 50) + " [1] " + ("B" * 50) + " [2]"
+        citations = {"1": "https://example.com/one", "2": "https://example.com/two"}
+
+        first_embed = MagicMock(spec=discord.Embed)
+        continuation_embed = MagicMock(spec=discord.Embed)
+        deps = {"logger": MagicMock()}
+
+        with patch(
+            "src.message_splitter.citation_embed_formatter.create_citation_embed",
+            return_value=(continuation_embed, None),
+        ) as mock_create:
+            await send_split_message_with_embed(
+                channel,
+                long_content,
+                deps,
+                first_embed,
+                citations,
+                original_message=original_message,
+                mention_prefix=f"{author.mention} ",
+            )
+
+        # First reply should include the mention prefix
+        first_call_args, first_call_kwargs = original_message.reply.call_args_list[0]
+        assert first_call_args[0].startswith(f"{author.mention} ")
+        assert first_call_kwargs["embed"] is first_embed
+        assert first_call_kwargs["mention_author"] is False
+        assert isinstance(first_call_kwargs["allowed_mentions"], discord.AllowedMentions)
+
+        # Continuation reply should omit the mention prefix and use the continuation embed
+        second_call_args, second_call_kwargs = original_message.reply.call_args_list[1]
+        assert second_call_args[0] == ""
+        assert second_call_kwargs["embed"] is continuation_embed
+        assert second_call_kwargs["mention_author"] is False
+        assert isinstance(second_call_kwargs["allowed_mentions"], discord.AllowedMentions)
+        assert mock_create.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_split_embed_truncated_with_remaining_text(self):
+        """When truncated embed leaves no after_split, remaining text still sends as reply."""
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+
+        author = MagicMock()
+        author.mention = "<@user>"
+        original_message = MagicMock(spec=discord.Message)
+        original_message.author = author
+        original_message.reply = AsyncMock()
+
+        citations = {"1": "https://example.com/one"}
+        first_embed = MagicMock(spec=discord.Embed)
+        deps = {"logger": MagicMock()}
+
+        with patch("src.message_splitter.send_split_message") as mock_split:
+            await send_split_message_with_embed(
+                channel,
+                "Short content [1]",
+                deps,
+                first_embed,
+                citations,
+                original_message=original_message,
+                mention_prefix=f"{author.mention} ",
+            )
+
+        # continuation path should send remaining text once via split helper
+        mock_split.assert_called_once()
+        args, kwargs = mock_split.call_args
+        assert args[0] is channel
+        assert args[1] == "Short content [1]"
+        assert kwargs["original_message"] is original_message
+        assert kwargs["mention_prefix"] is None
+        assert kwargs["suppress_embeds"] is False
+
 
 class TestEmbedCharacterLimits:
     """Test proper handling of Discord character limits."""
@@ -275,11 +431,35 @@ class TestEmbedCharacterLimits:
         long_message = "A" * 2001
         deps = {"logger": MagicMock()}
 
-        with patch("src.bot.send_split_message") as mock_split:
+        with patch("src.message_splitter.send_split_message") as mock_split:
             await send_formatted_message(channel, long_message, deps)
 
             # Should trigger splitting for > 2000 chars
-            mock_split.assert_called_once_with(channel, long_message, deps, False)
+            mock_split.assert_called_once()
+            args, _kwargs = mock_split.call_args
+            assert args[0] is channel
+            assert args[1] == long_message
+            assert args[2] == deps
+            assert args[3] is False
+
+
+@pytest.mark.asyncio
+async def test_send_split_message_recursion_guard():
+    """Recursion guard truncates and exits when depth exceeds limit."""
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock()
+
+    deps = {"logger": MagicMock()}
+
+    await send_split_message(
+        channel,
+        "X" * 50,
+        deps,
+        _recursion_depth=MAX_SPLIT_RECURSION + 1,
+    )
+
+    # Should send a truncated message and a follow-up notice
+    assert channel.send.call_count == 2
 
 
 if __name__ == "__main__":

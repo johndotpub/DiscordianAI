@@ -41,7 +41,9 @@ class TestCacheEntry:
         # Create expired entry
         old_timestamp = time.time() - 400  # 400 seconds ago
         entry = CacheEntry(
-            value="expired response", timestamp=old_timestamp, ttl=300.0  # 300 second TTL
+            value="expired response",
+            timestamp=old_timestamp,
+            ttl=300.0,  # 300 second TTL
         )
 
         assert entry.is_expired()
@@ -268,7 +270,7 @@ class TestRequestDeduplicator:
         tasks = []
         for _ in range(5):
             task = asyncio.create_task(
-                self.deduplicator.deduplicate_request("test_key", mock_request)
+                self.deduplicator.deduplicate_request("test_key", mock_request),
             )
             tasks.append(task)
 
@@ -309,14 +311,15 @@ class TestRequestDeduplicator:
         async def failing_request():
             nonlocal call_count
             call_count += 1
-            raise ValueError("API error")
+            msg = "API error"
+            raise ValueError(msg)
 
         # Start multiple identical requests that will fail
         with pytest.raises(ValueError, match="API error"):
             tasks = []
             for _ in range(3):
                 task = asyncio.create_task(
-                    self.deduplicator.deduplicate_request("fail_key", failing_request)
+                    self.deduplicator.deduplicate_request("fail_key", failing_request),
                 )
                 tasks.append(task)
 

@@ -13,10 +13,14 @@ This document provides a comprehensive overview of the DiscordianAI system archi
                                           ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                           Discord Bot Layer                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐ │
-│  │   bot.py     │  │ discord_bot  │  │ discord_     │  │  message_   │ │
-│  │ (Event Loop) │  │   .py        │  │ embeds.py    │  │  utils.py   │ │
-│  └──────┬───────┘  └──────────────┘  └──────────────┘  └─────────────┘ │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │
+│  │   bot.py     │  │ discord_bot  │  │ discord_     │  │ message_     │ │
+│  │ (Event Loop) │  │   .py        │  │ embeds.py    │  │ processor.py │ │
+│  └──────┬───────┘  └──────────────┘  └──────────────┘  └──────┬───────┘ │
+│                                                       ┌───────▼───────┐ │
+│                                                       │ message_      │ │
+│                                                       │ splitter.py   │ │
+│                                                       └───────────────┘ │
 └─────────┼───────────────────────────────────────────────────────────────┘
           │
           ▼
@@ -89,8 +93,20 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 |-----------|------|---------|
 | **Discord Bot** | `discord_bot.py` | Activity status, presence management |
 | **Discord Embeds** | `discord_embeds.py` | Citation formatting, embed creation |
-| **Message Utils** | `message_utils.py` | Message splitting, formatting, sanitization |
+| **Message Processor** | `message_processor.py` | Normalizes Discord events, delegates to orchestrator, records metadata |
+| **Message Splitter** | `message_splitter.py` | Message splitting, formatting, sanitization |
 | **API Validation** | `api_validation.py` | Configuration validation, API key format checks |
+
+## ⚙️ Operational Features
+
+- **Rate Limiting** (`rate_limits.py`): Per-user buckets enforce `[Limits]` from config.ini so spam never overwhelms upstream APIs.
+- **Conversation History** (`conversation_manager.py`): Thread-safe per-user transcripts preserve context while pruning automatically.
+- **Activity & Presence** (`discord_bot.py` + config): Status text, presence state, and activity type are configurable at runtime.
+- **Direct Messages** (`bot.py`): DM sessions bypass mention requirements but still honor rate limits and consistency checks.
+- **Channel Targeting** (`message_router.py`): `ALLOWED_CHANNELS` gating ensures the bot only replies where it is expected.
+- **Smart Message Splitting** (`message_splitter.py`): Discord-safe splitting protects code blocks, embeds, and citations from truncation.
+- **Global Exception Handling** (`error_handling.py` + `bot.py`): Centralized logging and graceful fallbacks keep the process alive after faults.
+- **Shard Support** (`discord_bot.py`): When large guild counts demand it, the client can run in sharded mode for scalability.
 
 ## 🔄 Request Flow
 
@@ -99,6 +115,7 @@ sequenceDiagram
     participant U as User
     participant D as Discord
     participant B as Bot (bot.py)
+    participant MP as Message Processor
     participant O as Orchestrator
     participant AI as AI Service
     participant C as Cache
@@ -106,9 +123,10 @@ sequenceDiagram
 
     U->>D: Send message
     D->>B: on_message event
-    B->>B: Rate limit check
-    B->>CM: Get conversation history
-    B->>O: Route message
+    B->>MP: Normalize message + log context
+    MP->>MP: Rate limit & guardrail checks
+    MP->>CM: Fetch conversation history
+    MP->>O: Route message
     O->>O: Analyze message patterns
     O->>O: Select AI service
     O->>C: Check cache
@@ -119,9 +137,10 @@ sequenceDiagram
         AI-->>O: Response
         O->>C: Store in cache
     end
-    O->>CM: Update conversation
-    O-->>B: Response
-    B->>B: Split if needed
+    O-->>MP: Response payload
+    MP->>CM: Update conversation history
+    MP->>MP: Split/format output
+    MP-->>B: Final payload
     B->>D: Send response
     D-->>U: Display message
 ```

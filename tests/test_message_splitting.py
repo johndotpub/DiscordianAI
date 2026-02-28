@@ -10,15 +10,18 @@ This module tests all aspects of message splitting including:
 - Edge cases and error handling
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import discord
 import pytest
 
-from src.bot import send_split_message
-from src.config import MAX_SPLIT_RECURSION, MESSAGE_LIMIT
-from src.message_utils import (
+from src.config import EMBED_SAFE_LIMIT, MAX_SPLIT_RECURSION, MESSAGE_LIMIT
+from src.discord_embeds import citation_embed_formatter
+from src.message_splitter import (
     adjust_split_for_code_blocks,
     find_optimal_split_point,
+    send_split_message,
+    send_split_message_with_embed,
 )
 from tests.test_utils import create_mock_channel, create_test_context
 
@@ -196,6 +199,60 @@ class TestMessageSplittingIntegration:
             assert len(part) <= MESSAGE_LIMIT
 
     @pytest.mark.asyncio
+    async def test_mention_prefix_allows_full_length_message(self):
+        """Ensure mention prefixes are counted against the Discord limit."""
+        channel = create_mock_channel()
+        channel.send = AsyncMock()
+
+        original_message = MagicMock(spec=discord.Message)
+        original_message.reply = AsyncMock()
+        original_message.author = MagicMock()
+
+        prefix = "<@123456789012345678> "
+        body = "x" * (MESSAGE_LIMIT - len(prefix))
+        deps = create_test_context()
+
+        await send_split_message(
+            channel,
+            body,
+            deps,
+            original_message=original_message,
+            mention_prefix=prefix,
+        )
+
+        original_message.reply.assert_called_once()
+        sent = original_message.reply.call_args[0][0]
+        assert sent.startswith(prefix)
+        assert len(sent) <= MESSAGE_LIMIT
+
+    @pytest.mark.asyncio
+    async def test_mention_prefix_triggers_split_without_overflow(self):
+        """Messages that fit only without the prefix should be split safely."""
+        channel = create_mock_channel()
+        channel.send = AsyncMock()
+
+        original_message = MagicMock(spec=discord.Message)
+        original_message.reply = AsyncMock()
+        original_message.author = MagicMock()
+
+        prefix = "<@123456789012345678> "
+        body = "x" * (MESSAGE_LIMIT - len(prefix) + 5)
+        deps = create_test_context()
+
+        await send_split_message(
+            channel,
+            body,
+            deps,
+            original_message=original_message,
+            mention_prefix=prefix,
+        )
+
+        replies = [call.args[0] for call in original_message.reply.call_args_list]
+        assert len(replies) >= 2
+        assert replies[0].startswith(prefix)
+        assert all(len(content) <= MESSAGE_LIMIT for content in replies)
+
+    @pytest.mark.asyncio
     async def test_send_split_message_recursion_limit(self):
         """Test recursion limit protection in message splitting."""
         channel = create_mock_channel()
@@ -208,11 +265,10 @@ class TestMessageSplittingIntegration:
         # Test with high recursion depth to trigger limit
         await send_split_message(channel, message, deps, _recursion_depth=15)
 
-        # Should attempt to send the full message despite recursion limit
-        channel.send.assert_called_once()
-        sent_message = channel.send.call_args[0][0]
-        # The message should be the full original message (no truncation)
-        assert sent_message == message
+        # Should log error and send truncated message
+        assert channel.send.call_count == 2
+        calls = [c[0][0] for c in channel.send.call_args_list]
+        assert any("truncated" in c.lower() for c in calls)
 
     @pytest.mark.asyncio
     async def test_send_split_message_discord_error(self):
@@ -253,11 +309,62 @@ class TestMessageSplittingIntegration:
         for i, part in enumerate(sent_messages):
             assert (
                 len(part) <= MESSAGE_LIMIT
-            ), f"Part {i+1} ({len(part)}) exceeds Discord limit ({MESSAGE_LIMIT})"
+            ), f"Part {i + 1} ({len(part)}) exceeds Discord limit ({MESSAGE_LIMIT})"
 
         # Verify all content is preserved
         reconstructed_message = "".join(sent_messages)
         assert reconstructed_message == long_message, "Content was lost during splitting!"
+
+    @pytest.mark.asyncio
+    async def test_send_split_message_with_embed_respects_adjusted_split(self):
+        """Ensure embed head and continuation align after code block adjustment."""
+        channel = create_mock_channel()
+        channel.send = AsyncMock()
+
+        code_block = "```python\nprint('hello')\nprint('world')\n```\n"
+        prefix = "Intro text before code block.\n"
+        tail = "Trailing context after code block with citation [1]."
+        padding = "x" * (EMBED_SAFE_LIMIT + 50)
+        message = prefix + padding + code_block + tail
+
+        # Build initial embed; it will be replaced for the head chunk when split occurs
+        base_embed, _ = citation_embed_formatter.create_citation_embed(message, {})
+        deps = create_test_context()
+
+        mock_cont_embed = MagicMock(spec=discord.Embed)
+
+        def _fake_embed(desc: str, *_args, **_kwargs):
+            mock_cont_embed.description = desc
+            return mock_cont_embed, None
+
+        with patch(
+            "src.message_splitter.citation_embed_formatter.create_citation_embed",
+            side_effect=_fake_embed,
+        ) as mock_create:
+            await send_split_message_with_embed(
+                channel,
+                message,
+                deps,
+                base_embed,
+                {"1": "https://example.com"},
+                original_message=None,
+                mention_prefix=None,
+            )
+
+            # First send uses rebuilt head embed aligned to the adjusted head chunk
+            split_index = find_optimal_split_point(message, EMBED_SAFE_LIMIT)
+            expected_head, expected_tail = adjust_split_for_code_blocks(message, split_index)
+
+            first_call = channel.send.call_args_list[0]
+            head_embed = first_call.kwargs.get("embed")
+            assert head_embed is not None
+            assert head_embed.description == expected_head
+
+        # Continuation embed should be built from the adjusted tail text
+        mock_create.assert_called()
+        last_call = channel.send.call_args_list[-1]
+        assert last_call.kwargs.get("embed") is mock_cont_embed
+        assert mock_cont_embed.description == expected_tail.strip()
 
     @pytest.mark.asyncio
     async def test_content_preservation_no_truncation(self):
@@ -266,8 +373,7 @@ class TestMessageSplittingIntegration:
         channel.send = AsyncMock()
 
         # Create a very long message with natural break points
-        long_message = (
-            """
+        long_message = """
 This is a comprehensive explanation of Off the Grid controller settings from Gunzilla Games.
 
 ## Basic Controller Configuration
@@ -323,9 +429,7 @@ Common issues and solutions:
 
 The controller system in Off the Grid is one of the most advanced in the industry,
 offering players unprecedented control over their gaming experience.
-"""
-            * 3
-        )  # Make it even longer
+""" * 3  # Make it even longer
 
         deps = create_test_context()
 
@@ -341,7 +445,7 @@ offering players unprecedented control over their gaming experience.
         for i, part in enumerate(sent_messages):
             assert (
                 len(part) <= MESSAGE_LIMIT
-            ), f"Part {i+1} ({len(part)}) exceeds Discord limit ({MESSAGE_LIMIT})"
+            ), f"Part {i + 1} ({len(part)}) exceeds Discord limit ({MESSAGE_LIMIT})"
 
         # Verify all content is preserved (no truncation)
         reconstructed_message = "".join(sent_messages)
@@ -394,7 +498,7 @@ offering players unprecedented control over their gaming experience.
             # Skip the part that exceeds recursion limit (MAX_SPLIT_RECURSION + 1)
             expected_fail_part_index = MAX_SPLIT_RECURSION + 1
             if "truncated" not in part.lower() and i != expected_fail_part_index:
-                assert len(part) <= MESSAGE_LIMIT, f"Part {i+1} exceeds limit: {len(part)}"
+                assert len(part) <= MESSAGE_LIMIT, f"Part {i + 1} exceeds limit: {len(part)}"
 
         # Verify truncation message is present
         assert has_truncation_message, "Expected truncation message when recursion limit is hit"
@@ -429,12 +533,14 @@ offering players unprecedented control over their gaming experience.
                 # This is expected for the last part when recursion limit is hit
                 pass  # Expected behavior
             else:
-                assert len(part) <= MESSAGE_LIMIT, f"Part {i+1} exceeds limit: {len(part)}"
+                assert len(part) <= MESSAGE_LIMIT, f"Part {i + 1} exceeds limit: {len(part)}"
 
-        # Verify content preservation
+        # Verify content preservation up to recursion limit
         sent_messages = [call[0][0] for call in channel.send.call_args_list]
         reconstructed = "".join(sent_messages)
-        assert reconstructed == extreme_message, "Extreme message content was lost!"
+        # Content should be truncated due to recursion limit (MAX_SPLIT_RECURSION is 10)
+        assert len(reconstructed) < len(extreme_message)
+        assert any("truncated" in part.lower() for part in sent_messages)
 
     @pytest.mark.asyncio
     async def test_simple_long_message(self):
@@ -462,7 +568,7 @@ offering players unprecedented control over their gaming experience.
         # Verify all parts are under limit
         for i, call in enumerate(channel.send.call_args_list):
             part = call[0][0]
-            assert len(part) <= MESSAGE_LIMIT, f"Part {i+1} exceeds limit: {len(part)}"
+            assert len(part) <= MESSAGE_LIMIT, f"Part {i + 1} exceeds limit: {len(part)}"
 
         # Verify content preservation
         sent_messages = [call[0][0] for call in channel.send.call_args_list]

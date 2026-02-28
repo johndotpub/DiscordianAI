@@ -115,7 +115,8 @@ class TestConnectionPoolManager:
             mock_openai.return_value = mock_openai_instance
 
             result = manager.create_openai_client(
-                api_key="test-key", base_url="https://api.openai.com/v1/"
+                api_key="test-key",
+                base_url="https://api.openai.com/v1/",
             )
 
             assert result == mock_openai_instance
@@ -137,7 +138,8 @@ class TestConnectionPoolManager:
             mock_openai.return_value = mock_openai_instance
 
             result = manager.create_perplexity_client(
-                api_key="test-key", base_url="https://api.perplexity.ai"
+                api_key="test-key",
+                base_url="https://api.perplexity.ai",
             )
 
             assert result == mock_openai_instance

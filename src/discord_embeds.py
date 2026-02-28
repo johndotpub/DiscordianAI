@@ -65,8 +65,9 @@ class CitationEmbedFormatter:
             # Truncate and add notice
             formatted_content = formatted_content[:EMBED_SAFE_LIMIT] + "..."
             self.logger.warning(
-                f"Embed description truncated from {len(formatted_content)} to "
-                f"{EMBED_SAFE_LIMIT} chars"
+                "Embed description truncated from %d to %d chars",
+                len(formatted_content),
+                EMBED_SAFE_LIMIT,
             )
 
         embed.description = formatted_content
@@ -78,7 +79,7 @@ class CitationEmbedFormatter:
             # Default footer showing citation count
             citation_count = len(citations)
             embed.set_footer(
-                text=f"📚 {citation_count} source{'s' if citation_count != 1 else ''}"
+                text=f"📚 {citation_count} source{'s' if citation_count != 1 else ''}",
             )
 
         # Create metadata about the embed
@@ -88,7 +89,7 @@ class CitationEmbedFormatter:
             "formatted_length": len(formatted_content),
         }
 
-        self.logger.debug(f"Created citation embed with {len(citations)} citations")
+        self.logger.debug("Created citation embed with %d citations", len(citations))
         return embed, metadata
 
     def _format_citations_for_embed_description(self, text: str, citations: dict[str, str]) -> str:
@@ -115,7 +116,7 @@ class CitationEmbedFormatter:
         # Replace [1], [2], etc. with clickable hyperlinks
         formatted_text = CITATION_PATTERN.sub(replace_citation, text)
 
-        self.logger.debug(f"Formatted {len(citations)} citations for embed description")
+        self.logger.debug("Formatted %d citations for embed description", len(citations))
         return formatted_text
 
     def should_use_embed_for_response(
@@ -149,7 +150,9 @@ class CitationEmbedFormatter:
             discord.Embed: Formatted error embed
         """
         return discord.Embed(
-            title=f"🔧 {title}", description=error_message, color=0xED4245  # Discord red
+            title=f"🔧 {title}",
+            description=error_message,
+            color=0xED4245,  # Discord red
         )
 
 

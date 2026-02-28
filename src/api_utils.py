@@ -9,6 +9,8 @@ import logging
 import re
 from typing import Any
 
+from .config import OPENAI_VALID_MODELS, is_supported_openai_model
+
 
 class OpenAIParams:
     """Builder class for OpenAI API parameters."""
@@ -20,7 +22,10 @@ class OpenAIParams:
         self.messages = []
 
     def add_messages(
-        self, system_message: str, conversation_summary: list[dict], user_message: str
+        self,
+        system_message: str,
+        conversation_summary: list[dict],
+        user_message: str,
     ):
         """Add messages to the API call."""
         self.messages = [
@@ -53,7 +58,6 @@ class PerplexityParams:
         self.params = {
             "model": model or "sonar-pro",  # Default fallback if not provided
             "max_tokens": max_tokens,
-            "temperature": 0.7,  # Good for web search synthesis
         }
 
     def add_messages(self, system_message: str, user_message: str):
@@ -62,11 +66,6 @@ class PerplexityParams:
             {"role": "system", "content": system_message},
             {"role": "user", "content": user_message},
         ]
-        return self
-
-    def set_temperature(self, temperature: float):
-        """Set temperature for response creativity."""
-        self.params["temperature"] = max(0.0, min(1.0, temperature))
         return self
 
     def build(self) -> dict[str, Any]:
@@ -84,13 +83,13 @@ def validate_gpt_model(model: str, logger: logging.Logger | None = None) -> bool
     Returns:
         True if model is recognized
     """
-    valid_models = {"gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-chat"}
-
-    is_valid = model in valid_models
+    is_valid = is_supported_openai_model(model)
 
     if not is_valid and logger:
         logger.warning(
-            f"Unrecognized GPT model: {model}. Known models: {', '.join(sorted(valid_models))}"
+            "Unrecognized GPT model: %s. Allowed identifiers start with 'gpt-5' (e.g., %s)",
+            model,
+            ", ".join(sorted(OPENAI_VALID_MODELS)),
         )
 
     return is_valid
@@ -133,7 +132,11 @@ def extract_api_error_info(exception: Exception) -> dict[str, Any]:
 
 
 def log_api_call(
-    logger: logging.Logger, service: str, model: str, message_length: int, conversation_length: int
+    logger: logging.Logger,
+    service: str,
+    model: str,
+    message_length: int,
+    conversation_length: int,
 ):
     """Log API call information consistently.
 
@@ -144,9 +147,11 @@ def log_api_call(
         message_length: Length of user message
         conversation_length: Length of conversation history
     """
-    logger.info(f"{service} API call - Model: {model}")
+    logger.info("%s API call - Model: %s", service, model)
     logger.debug(
-        f"Message length: {message_length} chars, History: {conversation_length} messages"
+        "Message length: %d chars, History: %d messages",
+        message_length,
+        conversation_length,
     )
 
 
@@ -164,7 +169,7 @@ def log_api_response(
         response_length: Length of response
         metadata: Additional response metadata
     """
-    logger.info(f"{service} response: {response_length} characters")
+    logger.info("%s response: %d characters", service, response_length)
 
     if metadata:
         debug_parts = []
@@ -291,14 +296,10 @@ class APICallBuilder:
         user_message: str,
         model: str | None = None,
         max_tokens: int = 8000,
-        temperature: float = 0.7,
     ) -> dict[str, Any]:
         """Build Perplexity API call parameters."""
         return (
-            PerplexityParams(model, max_tokens)
-            .add_messages(system_message, user_message)
-            .set_temperature(temperature)
-            .build()
+            PerplexityParams(model, max_tokens).add_messages(system_message, user_message).build()
         )
 
 

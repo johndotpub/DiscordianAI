@@ -16,11 +16,20 @@ import time
 from typing import Any
 
 from .api_validation import (
-    OPENAI_VALID_MODELS,
-    PERPLEXITY_MODELS,
     validate_full_config,
 )
+from .config import OPENAI_VALID_MODELS, PERPLEXITY_MODELS, is_supported_openai_model
 from .error_handling import ErrorTracker, classify_error
+
+# Health check thresholds
+CONSECUTIVE_FAILURE_THRESHOLD = 3
+UPTIME_DEGRADED_THRESHOLD = 90
+OPENAI_RESPONSE_DEGRADED_THRESHOLD_MS = 5000
+OPENAI_RESPONSE_UNHEALTHY_THRESHOLD_MS = 10000
+PERPLEXITY_RESPONSE_DEGRADED_THRESHOLD_MS = 8000
+PERPLEXITY_RESPONSE_UNHEALTHY_THRESHOLD_MS = 15000
+DISCORD_LATENCY_DEGRADED_THRESHOLD_MS = 500
+DISCORD_LATENCY_UNHEALTHY_THRESHOLD_MS = 1000
 
 
 @dataclass
@@ -70,7 +79,9 @@ class APIHealthMonitor:
         self._monitor_task: asyncio.Task | None = None
 
     async def check_openai_health(
-        self, openai_client, config: dict[str, Any]
+        self,
+        openai_client,
+        config: dict[str, Any],
     ) -> HealthCheckResult:
         """Perform comprehensive health check of OpenAI API.
 
@@ -88,7 +99,7 @@ class APIHealthMonitor:
             model = config.get("GPT_MODEL", "gpt-5-mini")
 
             # Validate model is still supported
-            if model not in OPENAI_VALID_MODELS:
+            if not is_supported_openai_model(model):
                 return HealthCheckResult(
                     service="openai",
                     status="degraded",
@@ -125,10 +136,10 @@ class APIHealthMonitor:
 
             # Check response time thresholds
             status = "healthy"
-            if response_time_ms > 5000:  # 5 seconds
-                status = "degraded"
-            elif response_time_ms > 10000:  # 10 seconds
+            if response_time_ms > OPENAI_RESPONSE_UNHEALTHY_THRESHOLD_MS:
                 status = "unhealthy"
+            elif response_time_ms > OPENAI_RESPONSE_DEGRADED_THRESHOLD_MS:
+                status = "degraded"
 
             # Removed unsupported GPT-5 parameter checks
 
@@ -148,7 +159,7 @@ class APIHealthMonitor:
                 },
             )
 
-        except Exception as e:  # noqa: BLE001 - health check should never crash callers
+        except Exception as e:  # noqa: BLE001
             response_time_ms = (time.time() - start_time) * 1000
             error_details = classify_error(e)
 
@@ -165,7 +176,9 @@ class APIHealthMonitor:
             )
 
     async def check_perplexity_health(
-        self, perplexity_client, config: dict[str, Any]
+        self,
+        perplexity_client,
+        config: dict[str, Any],
     ) -> HealthCheckResult:
         """Perform health check of Perplexity API.
 
@@ -195,7 +208,6 @@ class APIHealthMonitor:
                     {"role": "user", "content": "What is the current date?"},
                 ],
                 max_tokens=50,  # Minimal response
-                temperature=0.1,  # Low temperature for consistent results
             )
 
             response_time_ms = (time.time() - start_time) * 1000
@@ -216,14 +228,14 @@ class APIHealthMonitor:
                     "http" in response_content.lower(),
                     "[" in response_content and "]" in response_content,
                     "source" in response_content.lower(),
-                ]
+                ],
             )
 
             status = "healthy"
-            if response_time_ms > 8000:  # 8 seconds (web search takes longer)
-                status = "degraded"
-            elif response_time_ms > 15000:  # 15 seconds
+            if response_time_ms > PERPLEXITY_RESPONSE_UNHEALTHY_THRESHOLD_MS:
                 status = "unhealthy"
+            elif response_time_ms > PERPLEXITY_RESPONSE_DEGRADED_THRESHOLD_MS:
+                status = "degraded"
 
             return HealthCheckResult(
                 service="perplexity",
@@ -259,7 +271,10 @@ class APIHealthMonitor:
             )
 
     async def check_connection_pool_health(
-        self, pool_manager, openai_client, perplexity_client
+        self,
+        pool_manager,
+        openai_client,
+        perplexity_client,
     ) -> dict[str, HealthCheckResult]:
         """Check health of connection pools.
 
@@ -331,10 +346,10 @@ class APIHealthMonitor:
             )
 
             status = "healthy"
-            if latency_ms and latency_ms > 500:  # 500ms latency
-                status = "degraded"
-            elif latency_ms and latency_ms > 1000:  # 1 second latency
+            if latency_ms and latency_ms > DISCORD_LATENCY_UNHEALTHY_THRESHOLD_MS:
                 status = "unhealthy"
+            elif latency_ms and latency_ms > DISCORD_LATENCY_DEGRADED_THRESHOLD_MS:
+                status = "degraded"
 
             guild_count = len(bot_client.guilds) if hasattr(bot_client, "guilds") else 0
             user_count = (
@@ -414,7 +429,9 @@ class APIHealthMonitor:
             metrics.uptime_percentage = (metrics.successful_checks / metrics.total_checks) * 100
 
     async def run_all_health_checks(
-        self, clients: dict[str, Any], config: dict[str, Any]
+        self,
+        clients: dict[str, Any],
+        config: dict[str, Any],
     ) -> dict[str, HealthCheckResult]:
         """Run health checks for all configured API services.
 
@@ -440,7 +457,8 @@ class APIHealthMonitor:
         if clients.get("perplexity"):
             try:
                 perplexity_result = await self.check_perplexity_health(
-                    clients["perplexity"], config
+                    clients["perplexity"],
+                    config,
                 )
                 results["perplexity"] = perplexity_result
                 self.record_health_check(perplexity_result)
@@ -501,9 +519,12 @@ class APIHealthMonitor:
 
     def _determine_service_status(self, metrics: APIHealthMetrics) -> str:
         """Determine service status based on metrics."""
-        if metrics.consecutive_failures >= 3:
+        if metrics.consecutive_failures >= CONSECUTIVE_FAILURE_THRESHOLD:
             return "unhealthy"
-        if metrics.consecutive_failures > 0 or metrics.uptime_percentage < 90:
+        if (
+            metrics.consecutive_failures > 0
+            or metrics.uptime_percentage < UPTIME_DEGRADED_THRESHOLD
+        ):
             return "degraded"
         return "healthy"
 
@@ -521,11 +542,12 @@ class APIHealthMonitor:
             # Log critical issues
             for service, result in results.items():
                 if result.status == "unhealthy":
-                    self.logger.error(f"Service {service} is unhealthy: {result.error}")
+                    self.logger.error("Service %s is unhealthy: %s", service, result.error)
                 elif result.status == "degraded":
                     self.logger.warning(
-                        f"Service {service} is degraded: response time "
-                        f"{result.response_time_ms:.1f}ms"
+                        "Service %s is degraded: response time %.1fms",
+                        service,
+                        result.response_time_ms,
                     )
 
         async def monitor_loop():
@@ -583,17 +605,19 @@ async def run_startup_health_checks(clients: dict[str, Any], config: dict[str, A
 
         for service, result in results.items():
             if result.status == "unhealthy":
-                logger.error(f"STARTUP: {service} service is unhealthy: {result.error}")
+                logger.error("STARTUP: %s service is unhealthy: %s", service, result.error)
                 critical_services_healthy = False
             elif result.status == "degraded":
                 logger.warning(
-                    f"STARTUP: {service} service is degraded "
-                    f"(response time: {result.response_time_ms:.1f}ms)"
+                    "STARTUP: %s service is degraded (response time: %.1fms)",
+                    service,
+                    result.response_time_ms,
                 )
             else:
                 logger.info(
-                    f"STARTUP: {service} service is healthy "
-                    f"(response time: {result.response_time_ms:.1f}ms)"
+                    "STARTUP: %s service is healthy (response time: %.1fms)",
+                    service,
+                    result.response_time_ms,
                 )
 
     except Exception:

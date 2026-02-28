@@ -22,10 +22,10 @@ repos:
 
   # Code formatting with black
   - repo: https://github.com/psf/black
-    rev: 25.11.0
+    rev: 26.1.0
     hooks:
       - id: black
-        language_version: python3.10
+        language_version: python3.12
         exclude: |
           (?x)^(
             \.git|
@@ -41,7 +41,7 @@ repos:
 
   # Linting with ruff
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.7
+    rev: v0.15.2
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]

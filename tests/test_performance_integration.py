@@ -165,13 +165,19 @@ class TestRateLimitingUnderLoad:
         # Make requests up to the limit
         for _i in range(3):
             allowed = rate_limiter.check_rate_limit(
-                user_id=user_id, rate_limit=3, rate_limit_window_seconds=1, logger=Mock()
+                user_id=user_id,
+                rate_limit=3,
+                rate_limit_window_seconds=1,
+                logger=Mock(),
             )
             assert allowed is True
 
         # Next request should be blocked
         blocked = rate_limiter.check_rate_limit(
-            user_id=user_id, rate_limit=3, rate_limit_window_seconds=1, logger=Mock()
+            user_id=user_id,
+            rate_limit=3,
+            rate_limit_window_seconds=1,
+            logger=Mock(),
         )
         assert blocked is False
 
@@ -180,7 +186,10 @@ class TestRateLimitingUnderLoad:
 
         # Should be allowed again
         allowed_after_reset = rate_limiter.check_rate_limit(
-            user_id=user_id, rate_limit=3, rate_limit_window_seconds=1, logger=Mock()
+            user_id=user_id,
+            rate_limit=3,
+            rate_limit_window_seconds=1,
+            logger=Mock(),
         )
         assert allowed_after_reset is True
 
@@ -191,7 +200,10 @@ class TestRateLimitingUnderLoad:
         # Simulate many users making requests
         for user_id in range(5000, 6000):  # 1000 users
             rate_limiter.check_rate_limit(
-                user_id=user_id, rate_limit=10, rate_limit_window_seconds=60, logger=Mock()
+                user_id=user_id,
+                rate_limit=10,
+                rate_limit_window_seconds=60,
+                logger=Mock(),
             )
 
         # Verify internal data structures don't grow unbounded
@@ -250,7 +262,8 @@ class TestDiscordAPIPerformance:
             nonlocal call_count
             call_count += 1
             if call_count <= 2:  # First two calls fail
-                raise Exception("Rate limited by Discord")
+                msg = "Rate limited by Discord"
+                raise Exception(msg)
             # Third call succeeds
 
         channel.send = mock_send
@@ -286,7 +299,9 @@ class TestMemoryAndResourceManagement:
         for user_id in range(num_users):
             for msg_num in range(messages_per_user):
                 manager.add_message(
-                    user_id, "user", f"This is message number {msg_num} from user {user_id}"
+                    user_id,
+                    "user",
+                    f"This is message number {msg_num} from user {user_id}",
                 )
 
         # Verify memory usage is reasonable
@@ -359,18 +374,25 @@ class TestSystemIntegrationBenchmarks:
             start_time = time.time()
 
             # Process a message (this would be the main processing pipeline)
+            from src.models import AIRequest, OpenAIConfig
             from src.openai_processing import process_openai_message
 
-            result = await process_openai_message(
+            request = AIRequest(
                 message=f"Benchmark message {i}",
                 user=user,
-                conversation_summary=[],
                 conversation_manager=conversation_manager,
                 logger=logger,
-                openai_client=openai_client,
-                gpt_model="gpt-5-mini",
+            )
+            config = OpenAIConfig(
+                model="gpt-5-mini",
                 system_message="Benchmark assistant",
                 output_tokens=1000,
+            )
+            result = await process_openai_message(
+                request=request,
+                conversation_summary=[],
+                openai_client=openai_client,
+                config=config,
             )
 
             end_time = time.time()
@@ -388,8 +410,9 @@ class TestSystemIntegrationBenchmarks:
         assert max_response_time < 0.2  # Max under 200ms
 
         logger.info(
-            f"Performance results: avg_response_time={avg_response_time:.4f}s, "
-            f"max_response_time={max_response_time:.4f}s"
+            "Performance results: avg_response_time=%.4fs, max_response_time=%.4fs",
+            avg_response_time,
+            max_response_time,
         )
 
 

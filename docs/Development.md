@@ -4,7 +4,7 @@ This guide explains the modern development workflow for DiscordianAI using strea
 
 ## Prerequisites
 
-DiscordianAI officially supports **Python 3.10 only**. The codebase uses modern Python features including:
+DiscordianAI prioritizes **Python 3.12** (with minimal legacy support for 3.10/3.11). The codebase uses modern Python features including:
 
 - **Generic Type Annotations** (Python 3.9+): `list[dict[str, str]]`, `dict[str, Any]`
 - **Union Types with |** (Python 3.10+): `str | None`, `dict[str, Any] | None`
@@ -13,20 +13,25 @@ DiscordianAI officially supports **Python 3.10 only**. The codebase uses modern 
 
 ## Multi-Version Testing with Tox
 
-We use `tox` to ensure compatibility across supported Python versions:
+We use `tox` to ensure compatibility across supported Python versions. Run Python 3.12 first; older interpreters are optional when available locally:
 
 ```bash
-# Test with Python 3.10
+# Primary suite (preferred)
+tox -e py312
+
+# Optional additional interpreters when available
+tox -e py311
 tox -e py310
-
-# Run linting
-tox -e lint
-
-# Run formatting
-tox -e format
 ```
 
 ## Modern Development Workflow
+
+- Canonical test/lint/audit suite (run in a terminal): `tox -e py312`, `black --check .`, `ruff check .`, `tox -e audit`.
+- `tox -e audit` runs `pip-audit` against runtime and dev dependencies.
+- Use Python 3.12 locally; do not downgrade targets or `target-version` settings.
+- Maintain coverage at or above 84% (Codecov and tox gate); call out any drops and add tests when needed.
+- Keep user-visible changes reflected in the changelog and preserve PR comment layout (including emojis/headings) with commands and results listed.
+- See `.github/copilot-instructions.md` for the assistant workflow loop and guardrails.
 
 ### Recommended Approach: Black + Ruff
 
@@ -97,7 +102,7 @@ All ruff settings are in `pyproject.toml`:
 
 ```toml
 [tool.ruff]
-target-version = "py310"
+target-version = "py312"
 line-length = 99
 
 [tool.ruff.lint]

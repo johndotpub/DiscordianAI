@@ -31,7 +31,11 @@ class RateLimiter:
         self._logger = logging.getLogger(f"{__name__}.RateLimiter")
 
     def check_rate_limit(
-        self, user_id: int, rate_limit: int, rate_limit_window_seconds: int, logger: logging.Logger
+        self,
+        user_id: int,
+        rate_limit: int,
+        rate_limit_window_seconds: int,
+        logger: logging.Logger,
     ) -> bool:
         """Check if a user has exceeded their rate limit in a thread-safe manner.
 
@@ -63,8 +67,10 @@ class RateLimiter:
                 self.last_command_timestamps[user_id] = current_time
                 self.last_command_count[user_id] = 1
                 logger.info(
-                    f"Rate limit reset for user {user_id}: 1/{rate_limit} "
-                    f"(window expired after {rate_limit_window_seconds}s)"
+                    "Rate limit reset for user %s: 1/%d (window expired after %ds)",
+                    user_id,
+                    rate_limit,
+                    rate_limit_window_seconds,
                 )
                 return True
 
@@ -72,22 +78,30 @@ class RateLimiter:
             if current_count < rate_limit:
                 self.last_command_count[user_id] = current_count + 1
                 logger.info(
-                    f"Rate limit check passed for user {user_id}: "
-                    f"{self.last_command_count[user_id]}/{rate_limit} "
-                    f"({rate_limit_window_seconds}s window)"
+                    "Rate limit check passed for user %s: %d/%d (%ds window)",
+                    user_id,
+                    self.last_command_count[user_id],
+                    rate_limit,
+                    rate_limit_window_seconds,
                 )
                 return True
 
             # Rate limit exceeded
             logger.warning(
-                f"Rate limit EXCEEDED for user {user_id}: {current_count}/{rate_limit} "
-                f"in {rate_limit_window_seconds}s window. Next reset in "
-                f"{max(0, rate_limit_window_seconds - (current_time - last_timestamp)):.1f}s"
+                "Rate limit EXCEEDED for user %s: %d/%d in %ds window. Next reset in %.1fs",
+                user_id,
+                current_count,
+                rate_limit,
+                rate_limit_window_seconds,
+                max(0, rate_limit_window_seconds - (current_time - last_timestamp)),
             )
             return False
 
     def get_user_status(
-        self, user_id: int, rate_limit: int, rate_limit_window_seconds: int
+        self,
+        user_id: int,
+        rate_limit: int,
+        rate_limit_window_seconds: int,
     ) -> dict:
         """Get detailed rate limit status for a user (for debugging/monitoring).
 
@@ -118,7 +132,8 @@ class RateLimiter:
                 "current_count": current_count,
                 "remaining": max(0, rate_limit - current_count),
                 "window_reset_in": max(
-                    0, rate_limit_window_seconds - (current_time - last_timestamp)
+                    0,
+                    rate_limit_window_seconds - (current_time - last_timestamp),
                 ),
                 "window_expired": False,
             }
@@ -154,7 +169,10 @@ async def check_rate_limit(
 
     try:
         result = rate_limiter.check_rate_limit(
-            user.id, rate_limit, rate_limit_window_seconds, logger
+            user.id,
+            rate_limit,
+            rate_limit_window_seconds,
+            logger,
         )
 
     except Exception:
@@ -170,7 +188,7 @@ async def check_rate_limit(
     else:
         # Log successful rate limit checks at debug level
         if result:
-            logger.debug(f"Rate limit check successful for {user.name} (ID: {user.id})")
+            logger.debug("Rate limit check successful for %s (ID: %s)", user.name, user.id)
         else:
-            logger.warning(f"Rate limit exceeded for {user.name} (ID: {user.id})")
+            logger.warning("Rate limit exceeded for %s (ID: %s)", user.name, user.id)
         return result
