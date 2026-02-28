@@ -5,9 +5,19 @@ command-line argument parsing, configuration loading, logging setup, and
 bot initialization with comprehensive error recovery.
 """
 
+import sys
+
+# Enforce supported Python version early to avoid subtle import/runtime errors
+# This project targets Python 3.12 and newer; abort with a clear message when
+# an older interpreter is used.
+if sys.version_info < (3, 12):  # noqa: UP036
+    sys.stderr.write(
+        "ERROR: DiscordianAI requires Python 3.12 or newer. Please upgrade your interpreter.\n"
+    )
+    sys.exit(1)
+
 import logging
 from pathlib import Path
-import sys
 from typing import NoReturn
 
 from .api_validation import log_validation_results

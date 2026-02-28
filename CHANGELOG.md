@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added and updated unit tests covering routing sanitization, OpenAI web-inability reroute, search-intent recognition, follow-up/conversational detection, entity pattern tightening, Perplexity persistence behavior, and routing trigger logging assertions.
 - Full test run: `tox -e py312` — **583 passed**, coverage **86.36%** (threshold 84%).
 
+- CI & Coverage: Guard Codecov uploads for PRs lacking repository secrets (forked PRs), and added a unit test covering the new `asyncio.timeout` branch in `src/web_scraper.py` to avoid tokenless upload failures causing CI to appear broken.
+
 ### Notes ⚠️
 - No user-facing API changes to bot commands. Breaking change for contributors/CI: development and CI now target Python 3.12; update local environments accordingly.
 
