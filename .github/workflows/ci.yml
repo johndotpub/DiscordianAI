@@ -68,46 +68,7 @@ jobs:
         token: ${{ secrets.CODECOV_TOKEN }}
         fail_ci_if_error: false
 
-  # Python 3.10/3.11 compatibility tests (informational, allowed to fail)
-  test-compat:
-    name: Tests (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    continue-on-error: true  # Don't fail the workflow if these fail
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.10", "3.11"]
-
-    steps:
-    - uses: actions/checkout@v6
-
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v6
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: pip
-        cache-dependency-path: |
-          requirements.txt
-          pyproject.toml
-
-    - name: Cache tox environments
-      uses: actions/cache@v5
-      with:
-        path: .tox
-        key: ${{ runner.os }}-tox-v3-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
-        restore-keys: |
-          ${{ runner.os }}-tox-v3-${{ matrix.python-version }}-
-
-    - name: Install tox
-      run: |
-        python -m pip install --upgrade pip
-        pip install tox
-
-    - name: Run tests
-      run: |
-        PY_VERSION="${{ matrix.python-version }}"
-        tox -e py${PY_VERSION//.}
+  # Compatibility tests removed: project now targets Python 3.12+
 
   # Lint and format check
   lint:
