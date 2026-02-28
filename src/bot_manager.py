@@ -1,7 +1,6 @@
 """Discord bot manager class for handling bot lifecycle and events."""
 
 import asyncio
-import contextlib
 import signal
 from typing import Any
 
@@ -87,9 +86,15 @@ class DiscordBotManager:
             health_task = self.deps["_health_task"]
             if not health_task.done():
                 health_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    _ = await health_task
+
+            try:
+                await health_task
+            except asyncio.CancelledError:
                 self.logger.info("Health monitoring task cancelled")
+            except Exception:
+                self.logger.exception("Health monitoring task raised during shutdown")
+            else:
+                self.logger.info("Health monitoring task completed")
 
     def setup_signal_handlers(self):
         """Set up signal handlers for graceful shutdown."""

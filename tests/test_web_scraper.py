@@ -18,30 +18,34 @@ from src.web_scraper import (
 class TestWebScrapingValidation:
     """Test URL validation for web scraping."""
 
-    def test_is_scrapable_url_valid_http(self):
+    @pytest.mark.asyncio
+    async def test_is_scrapable_url_valid_http(self):
         """Test valid HTTP URLs."""
-        assert is_scrapable_url("http://example.com")
-        assert is_scrapable_url("https://example.com")
-        assert is_scrapable_url("https://github.com/user/repo/pull/123")
+        assert await is_scrapable_url("http://example.com")
+        assert await is_scrapable_url("https://example.com")
+        assert await is_scrapable_url("https://github.com/user/repo/pull/123")
 
-    def test_is_scrapable_url_invalid_scheme(self):
+    @pytest.mark.asyncio
+    async def test_is_scrapable_url_invalid_scheme(self):
         """Test invalid URL schemes."""
-        assert not is_scrapable_url("ftp://example.com")
-        assert not is_scrapable_url("file:///path/to/file")
-        assert not is_scrapable_url("mailto:user@example.com")
+        assert not await is_scrapable_url("ftp://example.com")
+        assert not await is_scrapable_url("file:///path/to/file")
+        assert not await is_scrapable_url("mailto:user@example.com")
 
-    def test_is_scrapable_url_invalid_format(self):
+    @pytest.mark.asyncio
+    async def test_is_scrapable_url_invalid_format(self):
         """Test malformed URLs."""
-        assert not is_scrapable_url("not-a-url")
-        assert not is_scrapable_url("")
-        assert not is_scrapable_url("://missing-scheme")
+        assert not await is_scrapable_url("not-a-url")
+        assert not await is_scrapable_url("")
+        assert not await is_scrapable_url("://missing-scheme")
 
-    def test_is_scrapable_url_skip_file_types(self):
+    @pytest.mark.asyncio
+    async def test_is_scrapable_url_skip_file_types(self):
         """Test that certain file types are skipped."""
-        assert not is_scrapable_url("https://example.com/file.pdf")
-        assert not is_scrapable_url("https://example.com/document.doc")
-        assert not is_scrapable_url("https://example.com/archive.zip")
-        assert not is_scrapable_url("https://example.com/data.xlsx")
+        assert not await is_scrapable_url("https://example.com/file.pdf")
+        assert not await is_scrapable_url("https://example.com/document.doc")
+        assert not await is_scrapable_url("https://example.com/archive.zip")
+        assert not await is_scrapable_url("https://example.com/data.xlsx")
 
 
 class TestTextCleaning:

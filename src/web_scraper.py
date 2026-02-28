@@ -378,22 +378,27 @@ def _process_final_content(content: str, max_length: int, url: str, logger: logg
     return clean
 
 
-def is_safe_url(url: str) -> bool:
-    """Check if a URL is safe to scrape (prevents SSRF).
+async def _resolve_hostname(hostname: str) -> list[tuple[Any, ...]]:
+    """Resolve hostnames off the main event loop."""
+    return await asyncio.to_thread(
+        socket.getaddrinfo,
+        hostname,
+        None,
+        socket.AF_UNSPEC,
+        socket.SOCK_STREAM,
+        socket.IPPROTO_TCP,
+    )
 
-    Args:
-        url: URL to check
 
-    Returns:
-        True if URL is external and safe
-    """
+async def is_safe_url(url: str) -> bool:
+    """Check if a URL is safe to scrape (prevents SSRF)."""
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname
         if not (parsed.scheme in ["http", "https"] and parsed.netloc and hostname):
             return False
 
-        addr_info = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+        addr_info = await _resolve_hostname(hostname)
         if not addr_info:
             return False
 
@@ -408,7 +413,7 @@ def is_safe_url(url: str) -> bool:
         return True
 
 
-def is_scrapable_url(url: str) -> bool:
+async def is_scrapable_url(url: str) -> bool:
     """Check if a URL is suitable for web scraping based on extension and safety.
 
     Args:
@@ -417,7 +422,7 @@ def is_scrapable_url(url: str) -> bool:
     Returns:
         True if URL appears to be scrapable and safe
     """
-    if not is_safe_url(url):
+    if not await is_safe_url(url):
         return False
 
     try:

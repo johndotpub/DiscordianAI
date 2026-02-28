@@ -46,10 +46,24 @@ async def send_split_message(  # noqa: PLR0913
             MAX_SPLIT_RECURSION,
             len(message),
         )
-        # Fallback send
-        await channel.send(message[: MESSAGE_LIMIT - 50], suppress_embeds=suppress_embeds)
-        trunc_msg = "[Message truncated due to recursion limit]"
-        await channel.send(trunc_msg, suppress_embeds=suppress_embeds)
+        trunc_notice = "[Message truncated due to recursion limit]"
+
+        async def _reply_or_send(content: str, use_prefix: bool = False) -> None:
+            payload = f"{mention_prefix}{content}" if use_prefix and mention_prefix else content
+            if original_message:
+                await original_message.reply(
+                    payload,
+                    suppress_embeds=suppress_embeds,
+                    mention_author=False,
+                    allowed_mentions=discord.AllowedMentions(
+                        users=[original_message.author], replied_user=False
+                    ),
+                )
+            else:
+                await channel.send(payload, suppress_embeds=suppress_embeds)
+
+        await _reply_or_send(message[: MESSAGE_LIMIT - 50], use_prefix=True)
+        await _reply_or_send(trunc_notice)
         return
 
     # Fits in one message

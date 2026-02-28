@@ -277,7 +277,7 @@ async def _enhance_message_with_urls(message: str, urls: list[str], logger: logg
     successful_scrapes = []
 
     for url in urls:
-        if is_scrapable_url(url):
+        if await is_scrapable_url(url):
             try:
                 content = await scrape_url_content(url, logger)
                 if content:
