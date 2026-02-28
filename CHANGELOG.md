@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.9] - 2026-02-26
 
 ### Fixed
+- **Docker Versioned Tags**: Fixed Docker workflow to use `metadata-action` outputs instead of hardcoded `:latest`, so tag pushes now produce both versioned (`v0.2.9`) and `latest` images on GHCR and Docker Hub.
+- **Docker Manual Rebuild**: Added `workflow_dispatch` trigger to the Docker workflow for on-demand rebuilds of any branch or tag.
 - **Embed Continuations**: Align long embed splits with code-block-safe boundaries to prevent duplicated or dropped content in follow-up messages.
 - **Web Scraper Retries**: Stop retry loops on non-HTML or oversized responses by treating them as terminal conditions.
 - **Channel Mentions**: Strip Discord mentions before constructing channel `AIRequest` payloads to keep prompts and logs clean.

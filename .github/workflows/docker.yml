@@ -1,6 +1,7 @@
 name: Docker Build & Deploy
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
     paths-ignore:
@@ -64,8 +65,9 @@ jobs:
       with:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_LOWER }}
         tags: |
-          type=raw,value=latest,event=branch
+          type=raw,value=latest
           type=ref,event=tag
+          type=raw,value=${{ github.ref_name }},enable=${{ github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/') }}
         labels: |
           org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           org.opencontainers.image.revision=${{ github.sha }}
@@ -76,8 +78,9 @@ jobs:
       with:
         images: ${{ env.DOCKERHUB_IMAGE }}
         tags: |
-          type=raw,value=latest,event=branch
+          type=raw,value=latest
           type=ref,event=tag
+          type=raw,value=${{ github.ref_name }},enable=${{ github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/') }}
 
     # Build and push to both registries in one go for speed and multi-platform support
     # Using registry-based caching on GHCR to ensure stability
@@ -88,8 +91,8 @@ jobs:
         platforms: linux/amd64,linux/arm64
         push: true
         tags: |
-          ${{ env.REGISTRY }}/${{ env.IMAGE_LOWER }}:latest
-          ${{ env.DOCKERHUB_IMAGE }}:latest
+          ${{ steps.meta-ghcr.outputs.tags }}
+          ${{ steps.meta-dockerhub.outputs.tags }}
         labels: |
           ${{ steps.meta-ghcr.outputs.labels }}
           ${{ steps.meta-dockerhub.outputs.labels }}
