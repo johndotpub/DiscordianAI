@@ -61,7 +61,7 @@ jobs:
 
     - name: Extract Metadata (GHCR)
       id: meta-ghcr
-      uses: docker/metadata-action@v5
+      uses: docker/metadata-action@v6
       with:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_LOWER }}
         tags: |
@@ -74,7 +74,7 @@ jobs:
 
     - name: Extract Metadata (Docker Hub)
       id: meta-dockerhub
-      uses: docker/metadata-action@v5
+      uses: docker/metadata-action@v6
       with:
         images: ${{ env.DOCKERHUB_IMAGE }}
         tags: |
