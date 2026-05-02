@@ -61,10 +61,14 @@ class ConnectionPoolManager:
             max_keepalive_connections=max_keepalive,
         )
 
+        # Perplexity search + citation generation can take longer than standard
+        # chat completions. Use a service-specific read timeout.
+        read_timeout = 60.0 if api_type == "perplexity" else 45.0
+
         # Configure timeouts
         timeout = httpx.Timeout(
             connect=10.0,  # Connection timeout
-            read=30.0,  # Read timeout
+            read=read_timeout,
             write=10.0,  # Write timeout
             pool=5.0,  # Pool timeout
         )
@@ -131,12 +135,14 @@ class ConnectionPoolManager:
             api_key=api_key,
             base_url=base_url,
             http_client=http_client,
+            max_retries=0,
         )
 
         self._logger.debug(
             "Created OpenAI client with connection pooling for %s "
             "(max_connections=%d, "
-            "max_keepalive=%d)",
+            "max_keepalive=%d, "
+            "max_retries=0)",
             base_url,
             self.openai_max_connections,
             self.openai_max_keepalive,
@@ -166,12 +172,14 @@ class ConnectionPoolManager:
             api_key=api_key,
             base_url=base_url,
             http_client=http_client,
+            max_retries=0,
         )
 
         self._logger.debug(
             "Created Perplexity client with connection pooling for %s "
             "(max_connections=%d, "
-            "max_keepalive=%d)",
+            "max_keepalive=%d, "
+            "max_retries=0)",
             base_url,
             self.perplexity_max_connections,
             self.perplexity_max_keepalive,

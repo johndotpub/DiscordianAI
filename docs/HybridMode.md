@@ -257,9 +257,18 @@ Start your bot and try these examples:
 
 ## Fallback Behavior
 
-If Perplexity is unavailable or not configured:
-- The bot falls back to GPT-5 for all responses
-- You'll see a warning in the logs about web search being disabled
+The hybrid orchestrator (`smart_orchestrator.py`) provides bidirectional fallback between services:
+
+- **OpenAI failure → Perplexity**: When OpenAI returns no response (quota exhaustion, auth errors, timeouts), the orchestrator automatically retries with Perplexity for web-enabled fallback.
+- **Perplexity failure → OpenAI**: When Perplexity fails (network errors, timeouts), the orchestrator falls back to OpenAI for standard completion.
+- **Web-inability reroute**: If OpenAI responds but indicates it cannot browse the web (e.g., "I can't browse the internet"), the orchestrator detects this and reroutes to Perplexity.
+- **Both unavailable**: Returns a user-friendly error message (`"All AI services are temporarily unavailable"`).
+
+Both services share identical retry policy via `retry_with_backoff`:
+- 2 attempts max (1 initial + 1 retry) for transient errors (network blips, 429, 5xx)
+- `insufficient_quota` and `API_TIMEOUT` errors bail immediately — no wasted retries
+- 2.0–4.0s jittered wait between retries to avoid thundering herd
+- SDK-level `max_retries=0` prevents nested retry multiplication
 
 ## Cost Considerations
 

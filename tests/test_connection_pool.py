@@ -124,6 +124,7 @@ class TestConnectionPoolManager:
                 api_key="test-key",
                 base_url="https://api.openai.com/v1/",
                 http_client=mock_http_instance,
+                max_retries=0,
             )
 
     @patch("src.connection_pool.httpx.AsyncClient")
@@ -147,6 +148,7 @@ class TestConnectionPoolManager:
                 api_key="test-key",
                 base_url="https://api.perplexity.ai",
                 http_client=mock_http_instance,
+                max_retries=0,
             )
 
 

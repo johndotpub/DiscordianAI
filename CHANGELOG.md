@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Fixed 🔧
+- Classify OpenAI `insufficient_quota` (429) as non-retryable auth error for instant Perplexity fallback instead of wasteful retry loops.
+- Added `API_TIMEOUT` to non-retryable error list so read timeouts bail immediately to the fallback service rather than compounding retry delays.
+- Symmetrized retry policy across OpenAI and Perplexity: both services now use identical `retry_with_backoff` config (`max_attempts=2`, 2-4s jittered wait, flat delay).
+- Disabled OpenAI SDK-level `max_retries` on both clients to prevent nested retry multiplication (SDK + application wrapper compounding up to 6 calls).
+- Added application-level `retry_with_backoff` wrapper to Perplexity for transient network/5xx resilience (was previously unprotected outside of SDK retries).
+- Increased `httpx.Timeout.read` from 30s to 45s (OpenAI) and 60s (Perplexity) to accommodate high-reasoning and search+citation pipelines.
+
+### Changed 🔁
+- Unified retry wait to 2.0-4.0s flat jittered delay (was 1.0s base with exponential growth up to 30s max_delay).
+
+
 ## [0.2.9.6] - 2026-04-28
 
 ### Fixed 🔧

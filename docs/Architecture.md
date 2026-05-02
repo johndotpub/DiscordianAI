@@ -306,7 +306,7 @@ tests/
 └── ...
 ```
 
-**Coverage Target:** 80%+ (enforced by CI)
+**Coverage Target:** 84%+ (enforced by CI)
 
 ## 📁 Project Structure
 

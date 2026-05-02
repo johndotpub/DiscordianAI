@@ -18,6 +18,7 @@ from .config import (
     URL_PATTERN,
 )
 from .discord_embeds import citation_embed_formatter
+from .error_handling import RetryConfig, retry_with_backoff
 from .models import AIRequest, PerplexityConfig
 from .web_scraper import is_scrapable_url, scrape_url_content
 
@@ -242,7 +243,16 @@ async def process_perplexity_message(
                 request.message, urls_in_message, request.logger
             )
 
-        response = await perplexity_client.chat.completions.create(**api_params)
+        async def _call_perplexity():
+            return await perplexity_client.chat.completions.create(**api_params)
+
+        response = await retry_with_backoff(
+            _call_perplexity,
+            RetryConfig(
+                max_attempts=2, base_delay=4.0, max_delay=4.0, exponential_base=1.0, jitter=True
+            ),
+            request.logger,
+        )
         return _handle_api_response(response, request, urls_in_message, api_params, config)
 
     except TimeoutError:

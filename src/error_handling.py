@@ -166,7 +166,11 @@ async def retry_with_backoff(
             error_details = classify_error(e)
 
             # Don't retry certain error types
-            if error_details.error_type in [ErrorType.API_AUTH_ERROR, ErrorType.CONFIG_ERROR]:
+            if error_details.error_type in [
+                ErrorType.API_AUTH_ERROR,
+                ErrorType.API_TIMEOUT,
+                ErrorType.CONFIG_ERROR,
+            ]:
                 logger.exception("Non-retryable error in %s", func.__name__)
                 raise
 
@@ -223,8 +227,17 @@ def classify_error(exception: Exception) -> ErrorDetails:
     user_message = "An unexpected error occurred. Please try again."
     retry_after = None
 
+    # Permanent billing/quota exhaustion — not a transient rate limit
+    if (
+        "insufficient_quota" in error_msg.lower()
+        or "exceeded your current quota" in error_msg.lower()
+    ):
+        error_type = ErrorType.API_AUTH_ERROR
+        severity = ErrorSeverity.HIGH
+        user_message = "💳 API quota exhausted. Please check your OpenAI plan and billing details."
+
     # OpenAI/API specific errors
-    if "rate limit" in error_msg.lower() or "429" in error_msg:
+    elif "rate limit" in error_msg.lower() or "429" in error_msg:
         error_type = ErrorType.API_RATE_LIMIT
         severity = ErrorSeverity.MEDIUM
         user_message = "⏱️ Service is busy. Please try again in a moment."

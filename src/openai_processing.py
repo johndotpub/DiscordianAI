@@ -37,7 +37,9 @@ async def _fetch_openai_response(
         async def api_call_with_retry():
             return await openai_client.chat.completions.create(**api_params)
 
-        retry_config = RetryConfig(max_attempts=2, base_delay=1.0, max_delay=30.0)
+        retry_config = RetryConfig(
+            max_attempts=2, base_delay=4.0, max_delay=4.0, exponential_base=1.0, jitter=True
+        )
 
         try:
             response = await retry_with_backoff(api_call_with_retry, retry_config, request.logger)

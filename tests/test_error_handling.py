@@ -382,6 +382,25 @@ class TestRetryWithBackoff:
         assert call_count == 1
         mock_logger.exception.assert_called_once()
 
+    async def test_retry_skips_api_timeout_errors(self):
+        """Test that API_TIMEOUT is not retried (fails fast to fallback)."""
+        call_count = 0
+
+        async def test_func():
+            nonlocal call_count
+            call_count += 1
+            msg = "Request timed out after 30 seconds"
+            raise Exception(msg)
+
+        mock_logger = Mock()
+        config = RetryConfig(max_attempts=3, base_delay=0.1)
+
+        with pytest.raises(Exception, match="timed out"):
+            await retry_with_backoff(test_func, config, mock_logger)
+
+        assert call_count == 1
+        mock_logger.exception.assert_called_once()
+
 
 class TestClassifyError:
     """Test error classification functionality."""
@@ -394,6 +413,29 @@ class TestClassifyError:
         assert details.error_type == ErrorType.API_RATE_LIMIT
         assert details.severity == ErrorSeverity.MEDIUM
         assert "service is busy" in details.user_message.lower()
+
+    def test_classify_insufficient_quota_error(self):
+        """Test classification of permanent quota exhaustion as auth error."""
+        error = Exception(
+            "Error code: 429 - insufficient_quota: "
+            "You exceeded your current quota, please check your plan and billing details."
+        )
+        details = classify_error(error)
+
+        assert details.error_type == ErrorType.API_AUTH_ERROR
+        assert details.severity == ErrorSeverity.HIGH
+        assert "quota exhausted" in details.user_message.lower()
+
+    def test_classify_exceeded_quota_variant(self):
+        """Test classification of 'exceeded your current quota' phrasing."""
+        error = Exception(
+            "429 - {'error': {'message': 'You exceeded your current quota, "
+            "please check your plan and billing details.'}}"
+        )
+        details = classify_error(error)
+
+        assert details.error_type == ErrorType.API_AUTH_ERROR
+        assert details.severity == ErrorSeverity.HIGH
 
     def test_classify_api_timeout_error(self):
         """Test classification of timeout errors."""

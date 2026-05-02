@@ -126,3 +126,18 @@ If you see "HTTP/2 not available" warnings:
 - **httpx < 0.28.0**: HTTP/2 support is unreliable, upgrade to 0.28.0+
 - **Missing h2 package**: Install with `pip install h2>=4.3.0`
 - **Version conflicts**: Use `pip install --force-reinstall httpx[http2]>=0.28.0 h2>=4.3.0`
+
+## HTTP Timeouts
+
+Each API client uses service-specific read timeouts tuned for their response characteristics:
+
+| Service | Connect | Read | Write | Pool |
+|---------|---------|------|-------|------|
+| **OpenAI** | 10s | 45s | 10s | 5s |
+| **Perplexity** | 10s | 60s | 10s | 5s |
+
+**Rationale:**
+- **OpenAI 45s read**: Handles GPT-5 reasoning on long context without timing out prematurely.
+- **Perplexity 60s read**: Accommodates the full search → analyze → cite pipeline, which can take 30-55s for complex queries.
+- **Connect/write unchanged (10s)**: Network-level operations complete quickly; only inference needs the longer window.
+- **SDK retries disabled**: The OpenAI SDK's built-in `max_retries` is set to `0` on both clients. Application-level retry with jittered backoff is handled by `error_handling.py`'s `retry_with_backoff`, preventing nested retry multiplication.
