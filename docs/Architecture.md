@@ -52,7 +52,12 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 │  │connection_  │ │ caching.py  │ │error_       │ │ conversation_    │  │
 │  │pool.py      │ │ (LRU+TTL)   │ │handling.py  │ │ manager.py       │  │
 │  │ (HTTP/2)    │ │             │ │(Circuit     │ │ (Thread-safe)    │  │
-│  │             │ │             │ │ Breaker)    │ │                  │  │
+│  │ + metrics   │ │             │ │ Breaker)    │ │                  │  │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └──────────────────┘  │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌──────────────────┐  │
+│  │health_      │ │api_context  │ │structured_  │ │dependencies.py   │  │
+│  │server.py    │ │  .py        │ │logging.py   │ │ (BotDependencies)│  │
+│  │ (HTTP /kube)│ │ (Lifecycle) │ │ (structlog) │ │                  │  │
 │  └─────────────┘ └─────────────┘ └─────────────┘ └──────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -86,6 +91,10 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 | **Conversation Manager** | `conversation_manager.py` | Thread-safe conversation history |
 | **Rate Limiter** | `rate_limits.py` | Per-user rate limiting |
 | **Health Checks** | `health_checks.py` | API health monitoring, metrics |
+| **Health Server** | `health_server.py` | HTTP liveness/readiness probes (Kubernetes-compatible) |
+| **API Context** | `api_context.py` | Context managers for API call lifecycle, timing, and error tracking |
+| **Structured Logging** | `structured_logging.py` | structlog configuration and structured logger factory |
+| **Dependencies** | `dependencies.py` | `BotDependencies` dataclass for formal dependency injection |
 
 ### Discord Integration
 
