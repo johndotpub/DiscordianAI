@@ -15,7 +15,7 @@ from .smart_orchestrator import get_smart_response
 
 async def _process_message_core(
     message: discord.Message,
-    deps: dict[str, Any],
+    deps: dict[str, Any] | Any,
     is_dm: bool = True,
 ) -> None:
     """Core message processing logic shared by DM and channel message handlers."""
@@ -135,11 +135,11 @@ async def _process_message_core(
             logger.exception("Failed to send error message")
 
 
-async def process_dm_message(message: discord.Message, deps: dict[str, Any]) -> None:
+async def process_dm_message(message: discord.Message, deps: dict[str, Any] | Any) -> None:
     """Process direct messages with comprehensive error handling."""
     await _process_message_core(message, deps, is_dm=True)
 
 
-async def process_channel_message(message: discord.Message, deps: dict[str, Any]) -> None:
+async def process_channel_message(message: discord.Message, deps: dict[str, Any] | Any) -> None:
     """Process channel messages with comprehensive error handling."""
     await _process_message_core(message, deps, is_dm=False)

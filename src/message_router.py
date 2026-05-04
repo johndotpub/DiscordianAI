@@ -10,7 +10,7 @@ from .message_processor import process_channel_message, process_dm_message
 
 async def handle_incoming_message(
     message: discord.Message,
-    deps: dict[str, Any],
+    deps: dict[str, Any] | Any,
     bot: discord.Client,
 ) -> None:
     """Handle incoming message with comprehensive routing and error handling."""

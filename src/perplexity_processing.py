@@ -11,6 +11,7 @@ from typing import Any
 
 import requests
 
+from .api_context import api_call
 from .config import (
     BARE_URL_PATTERN,
     CITATION_PATTERN,
@@ -226,38 +227,32 @@ async def process_perplexity_message(
         successful response is obtained, or `None` on failure/timeouts.
     """
     try:
-        request.logger.info("Processing Perplexity request for user %s", request.user.id)
-
-        urls_in_message = URL_PATTERN.findall(request.message)
-        api_params = _build_api_params(
-            config.model, config.system_message, request.message, config.output_tokens
-        )
-
-        # Note: user message persistence occurs after a successful API response
-        # in `_handle_api_response` to match OpenAI processing behavior (only
-        # record turns when a response was actually generated). This avoids
-        # storing user turns when Perplexity times out or fails.
-
-        if urls_in_message:
-            api_params["messages"][1]["content"] = await _enhance_message_with_urls(
-                request.message, urls_in_message, request.logger
+        async with api_call("perplexity", request.logger, request) as ctx:
+            urls_in_message = URL_PATTERN.findall(request.message)
+            api_params = _build_api_params(
+                config.model, config.system_message, request.message, config.output_tokens
             )
 
-        async def _call_perplexity():
-            return await perplexity_client.chat.completions.create(**api_params)
+            if urls_in_message:
+                api_params["messages"][1]["content"] = await _enhance_message_with_urls(
+                    request.message, urls_in_message, request.logger
+                )
 
-        response = await retry_with_backoff(
-            _call_perplexity,
-            RetryConfig(
-                max_attempts=2, base_delay=4.0, max_delay=4.0, exponential_base=1.0, jitter=True
-            ),
-            request.logger,
-        )
-        return _handle_api_response(response, request, urls_in_message, api_params, config)
+            response = await retry_with_backoff(
+                lambda: perplexity_client.chat.completions.create(**api_params),
+                RetryConfig(
+                    max_attempts=2,
+                    base_delay=4.0,
+                    max_delay=4.0,
+                    exponential_base=1.0,
+                    jitter=True,
+                ),
+                request.logger,
+            )
+            ctx.set_result(response)
 
-    except TimeoutError:
-        request.logger.exception("Perplexity API call timed out for user %s", request.user.id)
-        return None
+            return _handle_api_response(response, request, urls_in_message, api_params, config)
+
     except Exception:
         request.logger.exception("Perplexity API call failed for user %s", request.user.id)
         return None

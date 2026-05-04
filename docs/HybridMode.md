@@ -205,9 +205,6 @@ LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 # Maximum conversation entries per user before pruning
 MAX_HISTORY_PER_USER=50
 
-# Maximum conversation entries per user before pruning
-MAX_HISTORY_PER_USER=50
-
 # How often to clean up inactive user locks (seconds) - default 1 hour
 USER_LOCK_CLEANUP_INTERVAL=3600
 ```
@@ -329,19 +326,17 @@ DiscordianAI uses a robust thread-safe architecture that handles concurrent user
 ## Customization & Advanced Usage 🛠️
 
 ### Detection Pattern Customization
-Adjust the AI service selection patterns in `src/smart_orchestrator.py`:
+Adjust the AI service selection patterns in `src/config.py`:
 
 ```python
-# Time-sensitive patterns
-_TIME_SENSITIVITY_PATTERNS = [
-    re.compile(r"\b(today|yesterday|this week|recently|latest|current|now)\b", re.IGNORECASE),
-    # Add your custom time-sensitive keywords here
+# Time-sensitive patterns (compiled in config.py)
+TIME_SENSITIVITY_PATTERNS = [
+    re.compile(r"\b(today|yesterday|this week|recently|latest|current)\b", re.IGNORECASE),
 ]
 
-# Follow-up detection patterns  
-_FOLLOW_UP_PATTERNS = [
+# Follow-up detection patterns (compiled in config.py)
+FOLLOW_UP_PATTERNS = [
     re.compile(r"\b(continue|more|tell me more|also|furthermore)\b", re.IGNORECASE),
-    # Add your custom follow-up patterns here
 ]
 ```
 
@@ -350,7 +345,6 @@ All configuration values can be overridden via environment variables:
 
 ```bash
 export LOOKBACK_MESSAGES_FOR_CONSISTENCY=8
-export ENTITY_DETECTION_MIN_WORDS=5
 export MAX_HISTORY_PER_USER=100
 ```
 
@@ -358,4 +352,3 @@ export MAX_HISTORY_PER_USER=100
 1. **Monitor Memory**: Watch the logs for cleanup messages to ensure memory management is working
 2. **Adjust History**: Increase `MAX_HISTORY_PER_USER` for better long-term context
 3. **Tune Consistency**: Adjust `LOOKBACK_MESSAGES_FOR_CONSISTENCY` based on your user conversation patterns
-4. **Performance**: Lower `ENTITY_DETECTION_MIN_WORDS` for more sensitive routing (at cost of CPU)

@@ -34,6 +34,9 @@ Welcome to the DiscordianAI documentation! This guide covers everything you need
 - **[Security](Security.md)** - API key management, rate limiting, hardening
 - **[Development Guide](Development.md)** - Modern workflow with black + ruff
 
+### 📖 API Reference
+- **[Sphinx API Docs](api/)** - Auto-generated API reference (build with `make -C docs html`)
+
 ---
 
 ## 🤖 AI Service Selection
@@ -42,7 +45,6 @@ The bot intelligently chooses between OpenAI and Perplexity based on message con
 
 ```mermaid
 flowchart TD
-    A[User Message] --> B{Follow-up to previous?}
     A[User Message] --> S[Sanitize for routing]
     S --> B{Follow-up to previous?}
     B -->|Yes| C[Use same AI service]
@@ -78,6 +80,9 @@ flowchart TD
     C --> N{Previous service}
     N -->|OpenAI| J
     N -->|Perplexity| F
+```
+
+| Topic | Reference |
 |-------------------|-----------|
 | Set up the bot from scratch | [Setup Guide](Setup.md) |
 | Configure bot settings | [Configuration](Configuration.md) |

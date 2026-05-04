@@ -85,10 +85,7 @@ pre-commit install
 
 ### Updating Baseline
 
-If you need to add a legitimate secret-like string:
-```bash
-detect-secrets scan --baseline .secrets.baseline
-```
+If you need to add a legitimate secret-like string, update the pre-commit configuration in `.pre-commit-config.yaml` to exclude the false positive.
 
 ## ⏱️ Rate Limiting
 

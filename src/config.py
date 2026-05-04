@@ -379,6 +379,7 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
             _parse_limits_config(config, config_data, logger)
             _parse_orchestrator_config(config, config_data, logger)
             _parse_logging_config(config, config_data, base_folder)
+            _parse_health_config(config, config_data, logger)
         except (configparser.Error, OSError):
             logger.warning("Failed to parse config file %s, using defaults", config_file)
 
@@ -481,6 +482,9 @@ def _apply_config_defaults(config_data: dict[str, Any]) -> None:
         "USER_LOCK_CLEANUP_INTERVAL": 3600,
         "LOG_FILE": "bot.log",
         "LOG_LEVEL": "INFO",
+        "HEALTH_ENABLED": True,
+        "HEALTH_HOST": "127.0.0.1",
+        "HEALTH_PORT": 8080,
     }
     for key, value in defaults.items():
         if key not in config_data or config_data[key] is None:
@@ -538,6 +542,21 @@ def _parse_logging_config(
     if base_folder and not Path(config_data["LOG_FILE"]).is_absolute():
         config_data["LOG_FILE"] = str(Path(base_folder) / config_data["LOG_FILE"])
     config_data["LOG_LEVEL"] = config.get("Logging", "LOG_LEVEL", fallback="INFO")
+
+
+def _parse_health_config(
+    config: configparser.ConfigParser,
+    config_data: dict[str, Any],
+    logger: logging.Logger,
+) -> None:
+    """Parse Health section of configuration."""
+    config_data["HEALTH_ENABLED"] = config.getboolean("Health", "HEALTH_ENABLED", fallback=True)
+    config_data["HEALTH_HOST"] = config.get("Health", "HEALTH_HOST", fallback="127.0.0.1")
+    try:
+        config_data["HEALTH_PORT"] = config.getint("Health", "HEALTH_PORT", fallback=8080)
+    except ValueError:
+        logger.warning("Invalid HEALTH_PORT value, using default 8080")
+        config_data["HEALTH_PORT"] = 8080
 
 
 def _parse_discord_config(config: configparser.ConfigParser, config_data: dict[str, Any]) -> None:

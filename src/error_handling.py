@@ -352,7 +352,8 @@ error_tracker = ErrorTracker()
 def handle_api_error(func):
     """Decorator for enhanced API error handling with retries and circuit breaking.
 
-    Usage:
+    Example::
+
         @handle_api_error
         async def my_api_call():
             # API call code

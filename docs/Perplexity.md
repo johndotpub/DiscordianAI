@@ -167,7 +167,6 @@ PERPLEXITY_API_KEY=pplx-your-perplexity-key
 # Smart routing configuration
 [Orchestrator]
 LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
-ENTITY_DETECTION_MIN_WORDS=10
 ```
 
 ## Orchestrator Integration
@@ -201,7 +200,6 @@ The bot analyzes queries to determine when web search is beneficial:
 
 ### Integration Tips
 - **Hybrid mode recommended**: Combines web search with conversational AI
-- **Set appropriate context**: Use ENTITY_DETECTION_MIN_WORDS for precision
 - **Monitor usage**: Track API costs and optimize token limits
 
 ## Troubleshooting

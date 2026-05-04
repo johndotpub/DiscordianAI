@@ -1,6 +1,6 @@
 """Tests for connection pooling functionality."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -192,3 +192,163 @@ class TestGetConnectionPoolManager:
         assert manager.openai_max_keepalive == 10  # default
         assert manager.perplexity_max_connections == 30  # default
         assert manager.perplexity_max_keepalive == 5  # default
+
+
+class TestPoolMetrics:
+    """Test connection pool metrics and lifecycle tracking."""
+
+    def test_get_pool_metrics_empty(self):
+        """get_pool_metrics returns empty dict when no clients are tracked."""
+        manager = ConnectionPoolManager()
+        metrics = manager.get_pool_metrics()
+        assert metrics == {}
+
+    @patch("src.connection_pool.httpx.AsyncClient")
+    def test_get_pool_metrics_tracks_client(self, mock_client):
+        """get_pool_metrics includes client info after creation."""
+        mock_instance = Mock(spec=[])  # empty spec avoids hasattr false positives
+        mock_instance.is_closed = False
+        mock_client.return_value = mock_instance
+
+        manager = ConnectionPoolManager()
+        manager.create_http_client("openai")
+
+        metrics = manager.get_pool_metrics()
+        assert "openai" in metrics
+        assert metrics["openai"]["max_connections"] == 50
+        assert metrics["openai"]["max_keepalive"] == 10
+        assert metrics["openai"]["status"] == "active"
+
+    @patch("src.connection_pool.httpx.AsyncClient")
+    def test_get_pool_metrics_closed_client(self, mock_client):
+        """get_pool_metrics reports closed clients correctly."""
+        mock_instance = Mock(spec=["is_closed"])
+        mock_instance.is_closed = True
+        mock_client.return_value = mock_instance
+
+        manager = ConnectionPoolManager()
+        manager.create_http_client("openai")
+
+        metrics = manager.get_pool_metrics()
+        assert metrics["openai"]["status"] == "closed"
+
+    @patch("src.connection_pool.httpx.AsyncClient")
+    def test_get_pool_metrics_uptime(self, mock_client):
+        """get_pool_metrics includes uptime_seconds for tracked clients."""
+        mock_instance = Mock(spec=[])
+        mock_instance.is_closed = False
+        mock_client.return_value = mock_instance
+
+        manager = ConnectionPoolManager()
+        manager.create_http_client("openai")
+
+        metrics = manager.get_pool_metrics()
+        assert "uptime_seconds" in metrics["openai"]
+        assert metrics["openai"]["uptime_seconds"] >= 0
+
+    def test_check_pool_health_none_client(self):
+        """check_pool_health returns unavailable when client is None."""
+        manager = ConnectionPoolManager()
+        result = manager.check_pool_health(None)
+        assert result["status"] == "unavailable"
+
+    def test_check_pool_health_closed_client(self):
+        """check_pool_health returns unhealthy when client is closed."""
+        mock_client = Mock(spec=["is_closed"])
+        mock_client.is_closed = True
+        manager = ConnectionPoolManager()
+        result = manager.check_pool_health(mock_client)
+        assert result["status"] == "unhealthy"
+
+    def test_check_pool_health_healthy_client(self):
+        """check_pool_health returns healthy for active client."""
+        mock_client = Mock(spec=["is_closed"])
+        mock_client.is_closed = False
+        manager = ConnectionPoolManager()
+        result = manager.check_pool_health(mock_client)
+        assert result["status"] == "healthy"
+
+    def test_check_pool_health_with_transport(self):
+        """check_pool_health extracts pool stats from transport internals."""
+        mock_pool = Mock(spec=["_connections", "_max_connections"])
+        mock_pool._connections = [Mock(), Mock()]
+        mock_pool._max_connections = 50
+
+        mock_transport = Mock(spec=["_pool"])
+        mock_transport._pool = mock_pool
+
+        mock_client = Mock(spec=["is_closed", "_transport"])
+        mock_client.is_closed = False
+        mock_client._transport = mock_transport
+
+        manager = ConnectionPoolManager()
+        result = manager.check_pool_health(mock_client)
+        assert result["status"] == "healthy"
+        assert result["active_connections"] == 2
+        assert result["max_connections"] == 50
+
+    def test_check_pool_health_attribute_error(self):
+        """check_pool_health handles unexpected AttributeError gracefully."""
+        mock_client = Mock(spec=["is_closed"])
+        mock_client.is_closed = False
+        del mock_client._transport
+
+        attr_err = AttributeError("unexpected")
+
+        def raise_attr_error(*_args, **_kwargs):
+            raise attr_err
+
+        manager = ConnectionPoolManager()
+        with patch("src.connection_pool.hasattr", side_effect=raise_attr_error):
+            result = manager.check_pool_health(mock_client)
+        assert result["status"] == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_close_http_client_success(self):
+        """close_http_client closes a client successfully."""
+        mock_client = AsyncMock()
+        mock_client.aclose = AsyncMock()
+        manager = ConnectionPoolManager()
+        await manager.close_http_client(mock_client)
+        mock_client.aclose.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_close_http_client_error(self):
+        """close_http_client logs warning on close error."""
+        mock_client = AsyncMock()
+        mock_client.aclose.side_effect = OSError("connection reset")
+        manager = ConnectionPoolManager()
+        await manager.close_http_client(mock_client)
+
+    @pytest.mark.asyncio
+    async def test_close_all(self):
+        """close_all closes all tracked HTTP clients."""
+        mock_client1 = AsyncMock()
+        mock_client2 = AsyncMock()
+        manager = ConnectionPoolManager()
+        manager._clients = {"openai": mock_client1, "perplexity": mock_client2}
+        await manager.close_all()
+        mock_client1.aclose.assert_awaited_once()
+        mock_client2.aclose.assert_awaited_once()
+        assert manager._clients["openai"] is None
+        assert manager._clients["perplexity"] is None
+
+    @pytest.mark.asyncio
+    async def test_close_all_handles_error(self):
+        """close_all logs warning but continues on client close error."""
+        mock_client1 = AsyncMock()
+        mock_client1.aclose.side_effect = OSError("fail")
+        mock_client2 = AsyncMock()
+        manager = ConnectionPoolManager()
+        manager._clients = {"openai": mock_client1, "perplexity": mock_client2}
+        await manager.close_all()
+        mock_client2.aclose.assert_awaited_once()
+        assert manager._clients["openai"] is None
+
+    def test_get_pool_metrics_unavailable_client(self):
+        """get_pool_metrics reports unavailable when client is None in tracked dict."""
+        manager = ConnectionPoolManager()
+        manager._clients = {"openai": None}
+        manager._creation_times = {"openai": 0.0}
+        metrics = manager.get_pool_metrics()
+        assert metrics["openai"]["status"] == "unavailable"

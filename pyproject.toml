@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "DiscordianAI"
-version = "0.2.9.6"
+version = "0.2.9.8"
 description = "A Discord bot that uses OpenAI's GPT API to generate responses."
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -18,7 +18,10 @@ dependencies = [
     "requests>=2.33.1",
     "beautifulsoup4>=4.14.3",
     "httpx[http2]>=0.28.1",
-    "h2>=4.3.0"
+    "h2>=4.3.0",
+    "starlette>=0.45.0",
+    "uvicorn>=0.34.0",
+    "structlog>=24.4.0",
 ]
 urls = {"Homepage" = "https://github.com/johndotpub/DiscordianAI"}
 classifiers = [
@@ -50,6 +53,11 @@ dev = [
     "detect-secrets>=1.5.0",  # Secret detection for pre-commit
 ]
 
+docs = [
+    "sphinx>=8.0.0",
+    "furo>=2024.8.0",
+]
+
 [tool.pytest.ini_options]
 addopts = "-ra -q"
 filterwarnings = [
@@ -75,6 +83,7 @@ extend-exclude = '''
   | htmlcov
   | .*\.log
   | scripts
+  | docs
 )/
 '''
 
@@ -121,6 +130,7 @@ extend-exclude = [
     "htmlcov",
     "*.log",
     "scripts",
+    "docs",
 ]
 
 [tool.ruff.lint]

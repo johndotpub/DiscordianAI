@@ -86,9 +86,6 @@ Choose **either** OpenAI only **or** Perplexity only based on your needs.
    # How many recent messages to check for AI service consistency
    LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
    
-   # Minimum words before checking for entities in routing decisions  
-   ENTITY_DETECTION_MIN_WORDS=10
-   
    # Maximum conversation entries per user before pruning
    MAX_HISTORY_PER_USER=50
    
@@ -197,7 +194,6 @@ INFO: Message analysis suggests web search would be beneficial - trying Perplexi
 - Monitor logs for cleanup messages
 
 **Performance problems**:
-- Increase `ENTITY_DETECTION_MIN_WORDS` to reduce processing
 - Adjust `LOOKBACK_MESSAGES_FOR_CONSISTENCY` based on usage patterns
 
 ### Getting Help

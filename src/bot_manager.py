@@ -14,7 +14,7 @@ from .message_router import handle_incoming_message
 class DiscordBotManager:
     """Manages Discord bot lifecycle, event registration, and state."""
 
-    def __init__(self, deps: dict[str, Any]):
+    def __init__(self, deps: dict[str, Any] | Any):
         """Initialize the bot manager with dependencies."""
         self.deps = deps
         self.bot = deps["bot"]
@@ -55,6 +55,11 @@ class DiscordBotManager:
             )
             self.logger.info("Bot ready to process messages")
 
+            # Start the health server after bot is ready
+            health_server = self.deps.get("health_server")
+            if health_server:
+                await health_server.start()
+
         @self.bot.event
         async def on_message(message: discord.Message):
             # Handled by message router
@@ -71,6 +76,11 @@ class DiscordBotManager:
     async def graceful_shutdown(self):
         """Perform graceful shutdown of the bot and cleanup resources."""
         self.logger.info("Initiating graceful shutdown...")
+
+        # Stop health server first
+        health_server = self.deps.get("health_server")
+        if health_server:
+            await health_server.stop()
 
         if not self.bot.is_closed():
             await self.bot.close()

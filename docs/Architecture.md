@@ -52,7 +52,12 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 │  │connection_  │ │ caching.py  │ │error_       │ │ conversation_    │  │
 │  │pool.py      │ │ (LRU+TTL)   │ │handling.py  │ │ manager.py       │  │
 │  │ (HTTP/2)    │ │             │ │(Circuit     │ │ (Thread-safe)    │  │
-│  │             │ │             │ │ Breaker)    │ │                  │  │
+│  │ + metrics   │ │             │ │ Breaker)    │ │                  │  │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └──────────────────┘  │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌──────────────────┐  │
+│  │health_      │ │api_context  │ │structured_  │ │dependencies.py   │  │
+│  │server.py    │ │  .py        │ │logging.py   │ │ (BotDependencies)│  │
+│  │ (HTTP /kube)│ │ (Lifecycle) │ │ (structlog) │ │                  │  │
 │  └─────────────┘ └─────────────┘ └─────────────┘ └──────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -86,6 +91,10 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 | **Conversation Manager** | `conversation_manager.py` | Thread-safe conversation history |
 | **Rate Limiter** | `rate_limits.py` | Per-user rate limiting |
 | **Health Checks** | `health_checks.py` | API health monitoring, metrics |
+| **Health Server** | `health_server.py` | HTTP liveness/readiness probes (Kubernetes-compatible) |
+| **API Context** | `api_context.py` | Context managers for API call lifecycle, timing, and error tracking |
+| **Structured Logging** | `structured_logging.py` | structlog configuration and structured logger factory |
+| **Dependencies** | `dependencies.py` | `BotDependencies` dataclass for formal dependency injection |
 
 ### Discord Integration
 
@@ -106,7 +115,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 - **Channel Targeting** (`message_router.py`): `ALLOWED_CHANNELS` gating ensures the bot only replies where it is expected.
 - **Smart Message Splitting** (`message_splitter.py`): Discord-safe splitting protects code blocks, embeds, and citations from truncation.
 - **Global Exception Handling** (`error_handling.py` + `bot.py`): Centralized logging and graceful fallbacks keep the process alive after faults.
-- **Shard Support** (`discord_bot.py`): When large guild counts demand it, the client can run in sharded mode for scalability.
+- **Health Server** (`health_server.py`): Lightweight HTTP endpoint for liveness/readiness probes, compatible with Kubernetes and load balancers.
 
 ## 🔄 Request Flow
 
@@ -156,26 +165,31 @@ sequenceDiagram
 
 ## 🎯 Design Patterns
 
-### 1. Dependency Injection (Informal)
+### 1. Dependency Injection
 
-The bot uses a `deps` dictionary to pass dependencies between components:
+The bot uses a typed `BotDependencies` dataclass to pass dependencies between components:
 
 ```python
-deps = {
-    "logger": logger,
-    "bot": bot,
-    "client": openai_client,
-    "perplexity_client": perplexity_client,
-    "rate_limiter": rate_limiter,
-    "conversation_manager": conversation_manager,
-    "config": config,
-}
+from src.dependencies import BotDependencies
+
+deps = BotDependencies(
+    bot=discord_client,
+    logger=logger,
+    config=config,
+    client=openai_client,
+    perplexity_client=perplexity_client,
+    rate_limiter=rate_limiter,
+    conversation_manager=conversation_manager,
+)
 ```
 
+The dataclass supports dict-style access (`deps["logger"]`, `deps.get("key")`, `"key" in deps`) and `.to_dict()` for backward compatibility with legacy code.
+
 **Benefits:**
+- Typed dependencies with IDE autocompletion
 - Testable components (easy to mock)
 - Loose coupling between modules
-- Configuration flexibility
+- Configuration flexibility with backward-compatible dict access
 
 ### 2. Circuit Breaker Pattern
 
@@ -251,7 +265,6 @@ class RetryConfig:
 
 ### Pre-commit Hooks
 - `detect-secrets` prevents accidental key commits
-- `.secrets.baseline` for tracking known safe strings
 
 ## 📊 Observability
 
@@ -327,6 +340,10 @@ DiscordianAI/
 │   ├── caching.py            # Response caching
 │   ├── rate_limits.py        # Rate limiting
 │   ├── health_checks.py      # API monitoring
+│   ├── health_server.py      # HTTP liveness/readiness probes
+│   ├── api_context.py         # API call context managers
+│   ├── structured_logging.py  # structlog configuration
+│   ├── dependencies.py       # BotDependencies dataclass (DI)
 │   └── ...
 ├── tests/                    # Test suite
 ├── docs/                     # Documentation
@@ -338,12 +355,9 @@ DiscordianAI/
 ## 🔮 Future Considerations
 
 ### Potential Improvements
-1. **Formal DI Container**: Replace `deps` dict with dataclass
-2. **Protocol Classes**: Define interfaces for AI clients
-3. **Structured Logging**: JSON format for log aggregation
-4. **Metrics Export**: Prometheus/OpenTelemetry integration
-5. **HTTP Health Endpoint**: For container orchestration
-6. **Message Queue**: For high-volume deployments
+1. **Protocol Classes**: Define interfaces for AI clients (pre-empt multi-platform support)
+2. **Metrics Export**: Prometheus/OpenTelemetry integration
+3. **Message Queue**: For high-volume deployments
 
 ### Scalability Path
 - Current: Single instance, in-memory state

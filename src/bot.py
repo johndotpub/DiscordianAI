@@ -7,46 +7,39 @@ This module provides the main Discord bot implementation including:
 - Graceful shutdown with signal handlers
 - Integration with AI services (OpenAI, Perplexity)
 
-The bot uses a dependency injection pattern via a `deps` dictionary
-to provide loose coupling and testability.
+The bot uses a ``BotDependencies`` dataclass for typed dependency injection,
+replacing the previous untyped ``deps`` dict pattern.
 """
 
-# Standard library imports
 import logging
 from typing import Any
 
-# Third-party imports
 import discord
 
 from .bot_manager import DiscordBotManager
 from .connection_pool import get_connection_pool_manager
 from .conversation_manager import ThreadSafeConversationManager
+from .dependencies import BotDependencies
+from .health_server import HealthServer
 from .rate_limits import RateLimiter
 
 
-def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
+def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
     """Initialize Discord bot and all required dependencies with comprehensive error handling.
 
     This function sets up the Discord client, API clients (OpenAI and Perplexity),
     logging, rate limiting, and conversation management in a production-ready manner.
 
     Args:
-        config (Dict[str, Any]): Configuration dictionary containing all bot settings
-                                including API keys, Discord settings, and operational parameters.
+        config: Configuration dictionary containing all bot settings
+            including API keys, Discord settings, and operational parameters.
 
     Returns:
-        Dict[str, Any]: Dependency injection container with all initialized components:
-            - logger: Configured logger instance
-            - bot: Discord client with appropriate intents
-            - client: OpenAI client (None if OPENAI_API_KEY not provided)
-            - perplexity_client: Perplexity client (None if PERPLEXITY_API_KEY not provided)
-            - rate_limiter: Thread-safe rate limiting instance
-            - conversation_manager: Thread-safe conversation history manager
-            - Various configuration values for runtime use
+        BotDependencies: Typed dependency container with all initialized components.
 
     Raises:
         ValueError: If critical configuration is missing or invalid
-        Exception: If client initialization fails
+        RuntimeError: If client initialization fails
     """
     logger = logging.getLogger("discordianai.bot")
     logger.setLevel(getattr(logging, config["LOG_LEVEL"].upper(), logging.INFO))
@@ -120,52 +113,53 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
     cleanup_interval = config.get("USER_LOCK_CLEANUP_INTERVAL", 3600)
     logger.info("Health checks will be initiated after bot startup")
 
-    # Return dependency injection container
-    deps = {
-        "logger": logger,
-        "bot": discord.Client(intents=intents),
-        "client": client,
-        "perplexity_client": perplexity_client,
-        "config": config,
-        "connection_pool_manager": pool_manager,
-        "ALLOWED_CHANNELS": config["ALLOWED_CHANNELS"],
-        "BOT_PRESENCE": config["BOT_PRESENCE"],
-        "ACTIVITY_TYPE": config["ACTIVITY_TYPE"],
-        "ACTIVITY_STATUS": config["ACTIVITY_STATUS"],
-        "DISCORD_TOKEN": config["DISCORD_TOKEN"],
-        "RATE_LIMIT": config["RATE_LIMIT"],
-        "RATE_LIMIT_PER": config["RATE_LIMIT_PER"],
-        "GPT_MODEL": config["GPT_MODEL"],
-        "SYSTEM_MESSAGE": config["SYSTEM_MESSAGE"],
-        "OUTPUT_TOKENS": config["OUTPUT_TOKENS"],
-    }
-
-    # Add thread-safe components to deps
-    deps["rate_limiter"] = RateLimiter()
-    deps["conversation_manager"] = ThreadSafeConversationManager(
-        max_history_per_user=max_history,
-        cleanup_interval=cleanup_interval,
+    deps = BotDependencies(
+        bot=discord.Client(intents=intents),
+        logger=logger,
+        config=config,
+        client=client,
+        perplexity_client=perplexity_client,
+        connection_pool_manager=pool_manager,
+        allowed_channels=config["ALLOWED_CHANNELS"],
+        bot_presence=config["BOT_PRESENCE"],
+        activity_type=config["ACTIVITY_TYPE"],
+        activity_status=config["ACTIVITY_STATUS"],
+        discord_token=config["DISCORD_TOKEN"],
+        rate_limit=config["RATE_LIMIT"],
+        rate_limit_period=config["RATE_LIMIT_PER"],
+        gpt_model=config["GPT_MODEL"],
+        perplexity_model=config.get("PERPLEXITY_MODEL", "sonar-pro"),
+        system_message=config["SYSTEM_MESSAGE"],
+        output_tokens=config["OUTPUT_TOKENS"],
+        rate_limiter=RateLimiter(),
+        conversation_manager=ThreadSafeConversationManager(
+            max_history_per_user=max_history,
+            cleanup_interval=cleanup_interval,
+        ),
     )
 
+    # Initialize health server
+    health_server = HealthServer(
+        deps.to_dict(),
+        host=config.get("HEALTH_HOST", "127.0.0.1"),
+        port=config.get("HEALTH_PORT", 8080),
+    )
+    deps.health_server = health_server
+
     return deps
-
-
-# Message processing is now handled by src/message_processor.py
-# Message splitting and formatting are now handled by src/message_splitter.py
 
 
 def run_bot(config: dict[str, Any]) -> None:
     """Initialize and run the Discord bot using DiscordBotManager."""
     try:
         deps = initialize_bot_and_dependencies(config)
-        bot_logger = deps["logger"]
-        bot_logger.info("Starting Discord bot manager...")
+        deps.logger.info("Starting Discord bot manager...")
         manager = DiscordBotManager(deps)
         manager.run()
     except Exception as e:
         # Fatal startup error
-        if "deps" in locals() and "logger" in deps:
-            deps["logger"].critical("Fatal error starting bot: %s", e, exc_info=True)
+        if isinstance(deps, BotDependencies):
+            deps.logger.critical("Fatal error starting bot: %s", e, exc_info=True)
         else:
             print(f"CRITICAL: Fatal error starting bot: {e}")  # noqa: T201
         raise
