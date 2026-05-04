@@ -4,6 +4,7 @@ This module handles all OpenAI API interactions including GPT-5 specific paramet
 conversation state management, and comprehensive error recovery.
 """
 
+from .api_context import api_call
 from .caching import cached_response, deduplicated_request
 from .config import DEFAULT_CACHE_TTL
 from .error_handling import RetryConfig, retry_with_backoff
@@ -19,7 +20,7 @@ async def _fetch_openai_response(
     config: OpenAIConfig,
 ) -> str | None:
     """Fetch an OpenAI response (cached/deduped) without side effects."""
-    try:
+    async with api_call("openai", request.logger, request):
         api_params = {
             "model": config.model,
             "messages": [
@@ -34,43 +35,38 @@ async def _fetch_openai_response(
             "Making OpenAI API call with %d messages", len(api_params["messages"])
         )
 
-        async def api_call_with_retry():
-            return await openai_client.chat.completions.create(**api_params)
-
         retry_config = RetryConfig(
             max_attempts=2, base_delay=4.0, max_delay=4.0, exponential_base=1.0, jitter=True
         )
 
         try:
-            response = await retry_with_backoff(api_call_with_retry, retry_config, request.logger)
+            response = await retry_with_backoff(
+                lambda: openai_client.chat.completions.create(**api_params),
+                retry_config,
+                request.logger,
+            )
         except Exception:
             request.logger.exception("OpenAI API call failed after retries")
             return None
 
-    except TimeoutError:
-        request.logger.exception("OpenAI API call timed out for user %s", request.user.id)
-        return None
-    except Exception:
-        request.logger.exception("OpenAI API call failed for user %s", request.user.id)
-        return None
-    else:
-        if response.choices and response.choices[0].message.content:
-            response_content = response.choices[0].message.content.strip()
-
-            if not response_content:
-                request.logger.warning("OpenAI returned empty response content")
-                return None
-
-            request.logger.info(
-                "OpenAI response generated successfully: %d characters, finish_reason: %s",
-                len(response_content),
-                getattr(response.choices[0], "finish_reason", "unknown"),
-            )
-
-            return response_content
-
+    if not (response and hasattr(response, "choices") and response.choices):
         request.logger.error("OpenAI API returned invalid response structure: %s", response)
         return None
+
+    response_content = response.choices[0].message.content
+    if not response_content or not response_content.strip():
+        request.logger.warning("OpenAI returned empty response content")
+        return None
+
+    response_content = response_content.strip()
+
+    request.logger.info(
+        "OpenAI response generated successfully: %d characters, finish_reason: %s",
+        len(response_content),
+        getattr(response.choices[0], "finish_reason", "unknown"),
+    )
+
+    return response_content
 
 
 async def process_openai_message(

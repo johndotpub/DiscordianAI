@@ -38,6 +38,7 @@ DiscordianAI API Reference
    :maxdepth: 2
    :caption: Infrastructure
 
+   api_context
    connection_pool
    error_handling
    rate_limits
