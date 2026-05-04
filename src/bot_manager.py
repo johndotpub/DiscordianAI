@@ -14,7 +14,7 @@ from .message_router import handle_incoming_message
 class DiscordBotManager:
     """Manages Discord bot lifecycle, event registration, and state."""
 
-    def __init__(self, deps: dict[str, Any]):
+    def __init__(self, deps: dict[str, Any] | Any):
         """Initialize the bot manager with dependencies."""
         self.deps = deps
         self.bot = deps["bot"]

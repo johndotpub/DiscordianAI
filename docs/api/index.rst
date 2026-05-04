@@ -14,6 +14,7 @@ DiscordianAI API Reference
    :caption: Configuration
 
    config
+   dependencies
    models
    dependency_check
    api_validation
