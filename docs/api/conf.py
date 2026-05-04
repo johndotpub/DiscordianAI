@@ -9,8 +9,8 @@ project = "DiscordianAI"
 copyright = "2025, johndotpub"
 author = "johndotpub"
 
-release = "0.2.9"
-version = "0.2.9"
+release = "0.2.9.7"
+version = "0.2.9.7"
 
 extensions = [
     "sphinx.ext.autodoc",
@@ -38,7 +38,7 @@ html_theme_options = {
 html_title = "DiscordianAI API Reference"
 html_short_title = "DiscordianAI"
 
-autosummary_generate = True
+autosummary_generate = False
 autosummary_imported_members = True
 
 autodoc_default_options = {

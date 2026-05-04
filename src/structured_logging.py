@@ -30,7 +30,9 @@ import structlog
 
 
 def _add_logger_name(
-    _logger: logging.Logger, _method_name: str, event_dict: dict[str, Any],
+    _logger: logging.Logger,
+    _method_name: str,
+    event_dict: dict[str, Any],
 ) -> dict[str, Any]:
     """Inject the logger name (module) into the event dict."""
     record = event_dict.get("_record")
@@ -42,7 +44,9 @@ def _add_logger_name(
 
 
 def _drop_record(
-    _logger: logging.Logger, _method_name: str, event_dict: dict[str, Any],
+    _logger: logging.Logger,
+    _method_name: str,
+    event_dict: dict[str, Any],
 ) -> dict[str, Any]:
     """Remove internal ``_record`` / ``record`` keys before rendering."""
     event_dict.pop("_record", None)

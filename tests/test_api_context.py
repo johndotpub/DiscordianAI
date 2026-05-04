@@ -93,6 +93,7 @@ async def test_api_call_with_request(logger):
 @pytest.mark.asyncio
 async def test_call_with_retry_success(logger):
     """call_with_retry returns APICallResult on success."""
+
     async def factory():
         return {"data": "response"}
 
@@ -107,6 +108,7 @@ async def test_call_with_retry_success(logger):
 @pytest.mark.asyncio
 async def test_call_with_retry_failure(logger):
     """call_with_retry returns APICallResult on failure."""
+
     async def factory():
         raise _TEST_API_ERROR
 

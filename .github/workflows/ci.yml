@@ -7,14 +7,12 @@ on:
     branches: [ main, develop ]
     paths-ignore:
       - '**.md'
-      - 'docs/**'
       - '.github/codeql/**'
       - 'LICENSE'
   pull_request:
     branches: [ main, develop ]
     paths-ignore:
       - '**.md'
-      - 'docs/**'
       - '.github/codeql/**'
       - 'LICENSE'
   workflow_dispatch:  # Allow manual trigger
@@ -87,7 +85,7 @@ jobs:
         cache-dependency-path: pyproject.toml
 
     - name: Install linters
-      run: pip install black ruff
+      run: pip install "black>=26.1.0" "ruff>=0.15.4"
 
     - name: Check formatting (black)
       run: black . --check --diff
@@ -120,3 +118,24 @@ jobs:
         pip install -r requirements.txt
         pip install pip-audit
         pip-audit --desc --progress-spinner=off
+
+  # Sphinx documentation build (warnings as errors)
+  docs:
+    name: Docs Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: pyproject.toml
+
+    - name: Install docs dependencies
+      run: pip install ".[docs]"
+
+    - name: Build Sphinx docs (warnings as errors)
+      run: python -m sphinx -b html docs/api docs/api/_build -W

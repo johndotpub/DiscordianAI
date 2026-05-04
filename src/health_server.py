@@ -65,9 +65,7 @@ async def _collect_health_data(app: Starlette) -> dict[str, Any]:
     perplexity_client = app.state.deps.get("perplexity_client")
 
     services["openai"] = "configured" if openai_client else "not_configured"
-    services["perplexity"] = (
-        "configured" if perplexity_client else "not_configured"
-    )
+    services["perplexity"] = "configured" if perplexity_client else "not_configured"
 
     if bot and bot.is_ready():
         services["discord"] = "connected"
@@ -166,9 +164,7 @@ class HealthServer:
 
         import uvicorn  # noqa: PLC0415 — lazy import; only needed when start() is called
 
-        logger.info(
-            "health_server: starting on %s:%s", self._host, self._port
-        )
+        logger.info("health_server: starting on %s:%s", self._host, self._port)
         self._task = asyncio.create_task(
             uvicorn.Server(
                 uvicorn.Config(

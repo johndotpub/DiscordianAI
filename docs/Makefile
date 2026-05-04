@@ -1,7 +1,7 @@
 # Minimal makefile for Sphinx API documentation
 
 # You can set these variables from the command line.
-SPHINXOPTS   ?=
+SPHINXOPTS   ?= -W
 SPHINXBUILD  ?= python -m sphinx
 SOURCEDIR     = api
 BUILDDIR      = api/_build

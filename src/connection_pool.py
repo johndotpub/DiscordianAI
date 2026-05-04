@@ -294,9 +294,7 @@ class ConnectionPoolManager:
                     entry["status"] = "active"
                     pool_health = self.check_pool_health(client)
                     # Merge pool details without overwriting our active status
-                    entry.update(
-                        {k: v for k, v in pool_health.items() if k != "status"}
-                    )
+                    entry.update({k: v for k, v in pool_health.items() if k != "status"})
 
                 metrics[api_type] = entry
 

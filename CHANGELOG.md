@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed 🔁
 - Unified retry wait to 2.0-4.0s flat jittered delay (was 1.0s base with exponential growth up to 30s max_delay).
+- **CI hardening**: Added Sphinx docs build job to CI (warnings as errors via `-W`), pinned lint deps (`black>=26.1.0`, `ruff>=0.15.4`), removed `docs/**` from path-ignore so doc changes trigger CI, added `testenv:docs` to tox.
+- Disabled `autosummary_generate` in Sphinx conf (we use per-module `.rst` files; autosummary was producing 21 duplicate stub warnings for `BotDependencies` fields).
+- Bumped Sphinx `version`/`release` to `0.2.9.7` to match `pyproject.toml`.
 
 
 ## [0.2.9.6] - 2026-04-28

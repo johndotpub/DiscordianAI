@@ -241,8 +241,11 @@ async def process_perplexity_message(
             response = await retry_with_backoff(
                 lambda: perplexity_client.chat.completions.create(**api_params),
                 RetryConfig(
-                    max_attempts=2, base_delay=4.0, max_delay=4.0,
-                    exponential_base=1.0, jitter=True,
+                    max_attempts=2,
+                    base_delay=4.0,
+                    max_delay=4.0,
+                    exponential_base=1.0,
+                    jitter=True,
                 ),
                 request.logger,
             )
