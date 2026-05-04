@@ -34,6 +34,9 @@ Welcome to the DiscordianAI documentation! This guide covers everything you need
 - **[Security](Security.md)** - API key management, rate limiting, hardening
 - **[Development Guide](Development.md)** - Modern workflow with black + ruff
 
+### 📖 API Reference
+- **[Sphinx API Docs](api/)** - Auto-generated API reference (build with `make -C docs html`)
+
 ---
 
 ## 🤖 AI Service Selection

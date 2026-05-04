@@ -52,6 +52,12 @@ dev = [
     "detect-secrets>=1.5.0",  # Secret detection for pre-commit
 ]
 
+[project.optional-dependencies.docs]
+docs = [
+    "sphinx>=8.0.0",
+    "furo>=2024.8.0",
+]
+
 [tool.pytest.ini_options]
 addopts = "-ra -q"
 filterwarnings = [

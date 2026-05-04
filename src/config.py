@@ -544,12 +544,22 @@ def _parse_logging_config(
     config_data["LOG_LEVEL"] = config.get("Logging", "LOG_LEVEL", fallback="INFO")
 
 
-def _parse_health_config(config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger) -> None:
+def _parse_health_config(
+    config: configparser.ConfigParser,
+    config_data: dict[str, Any],
+    logger: logging.Logger,
+) -> None:
     """Parse Health section of configuration."""
-    config_data["HEALTH_ENABLED"] = config.getboolean("Health", "HEALTH_ENABLED", fallback=True)
-    config_data["HEALTH_HOST"] = config.get("Health", "HEALTH_HOST", fallback="127.0.0.1")
+    config_data["HEALTH_ENABLED"] = config.getboolean(
+        "Health", "HEALTH_ENABLED", fallback=True
+    )
+    config_data["HEALTH_HOST"] = config.get(
+        "Health", "HEALTH_HOST", fallback="127.0.0.1"
+    )
     try:
-        config_data["HEALTH_PORT"] = config.getint("Health", "HEALTH_PORT", fallback=8080)
+        config_data["HEALTH_PORT"] = config.getint(
+            "Health", "HEALTH_PORT", fallback=8080
+        )
     except ValueError:
         logger.warning("Invalid HEALTH_PORT value, using default 8080")
         config_data["HEALTH_PORT"] = 8080
