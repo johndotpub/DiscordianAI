@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added ✨
+- **HTTP Health Endpoint (#210)**: Starlette-based `/health`, `/health/live`, `/health/ready` probes for Kubernetes/Docker health checks. New `HealthServer` class manages lifecycle alongside the Discord bot.
+- **Sphinx API Documentation (#205)**: Auto-generated API reference using Sphinx + Furo theme for all 26 source modules. Build with `make -C docs html`.
+- **API Call Context Managers (#208)**: `api_context.py` module with `api_call()` async context manager and `call_with_retry()` helper. Unifies timing, error classification, tracking, and logging across all external API calls.
+- **Connection Pool Tracking (#212)**: `ConnectionPoolManager` now tracks created HTTP clients with creation timestamps, exposes `get_pool_metrics()` for monitoring visibility, and properly closes all clients on `close_all()`.
+- **Structured Logging (#209)**: `structlog` integration with hybrid console/JSON renderer via `configure_structlog()`. All existing `logging.getLogger()` calls are enriched transparently; new code can use `get_structured_logger()` for bound context.
+- **Formal Dependency Injection (#206)**: `BotDependencies` dataclass replaces the untyped `deps` dict. Supports `__getitem__`, `__contains__`, `.get()`, and `.to_dict()` for full backward compatibility.
+- New runtime dependencies: `starlette>=0.45.0`, `uvicorn>=0.34.0`, `structlog>=24.4.0`.
+- New dev dependency: `sphinx>=8.0.0` and `furo>=2024.8.0` under `[docs]` extras.
+
 ### Fixed 🔧
 - Classify OpenAI `insufficient_quota` (429) as non-retryable auth error for instant Perplexity fallback instead of wasteful retry loops.
 - Added `API_TIMEOUT` to non-retryable error list so read timeouts bail immediately to the fallback service rather than compounding retry delays.
