@@ -74,6 +74,13 @@ USER_LOCK_CLEANUP_INTERVAL=3600
 LOG_FILE=bot.log
 LOG_LEVEL=INFO
 
+[Health]
+# HTTP health endpoint for Kubernetes / load balancer probes
+# Binds to localhost only by default (not externally accessible)
+HEALTH_ENABLED=true
+HEALTH_HOST=127.0.0.1
+HEALTH_PORT=8080
+
 # === CONFIGURATION EXAMPLES ===
 #
 # HYBRID MODE (Smart Auto-Selection - Recommended):

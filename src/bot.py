@@ -21,6 +21,7 @@ import discord
 from .bot_manager import DiscordBotManager
 from .connection_pool import get_connection_pool_manager
 from .conversation_manager import ThreadSafeConversationManager
+from .health_server import HealthServer
 from .rate_limits import RateLimiter
 
 
@@ -146,6 +147,14 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> dict[str, Any]:
         max_history_per_user=max_history,
         cleanup_interval=cleanup_interval,
     )
+
+    # Initialize health server
+    health_server = HealthServer(
+        deps,
+        host=config.get("HEALTH_HOST", "127.0.0.1"),
+        port=config.get("HEALTH_PORT", 8080),
+    )
+    deps["health_server"] = health_server
 
     return deps
 
