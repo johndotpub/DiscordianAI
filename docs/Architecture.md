@@ -165,26 +165,31 @@ sequenceDiagram
 
 ## 🎯 Design Patterns
 
-### 1. Dependency Injection (Informal)
+### 1. Dependency Injection
 
-The bot uses a `deps` dictionary to pass dependencies between components:
+The bot uses a typed `BotDependencies` dataclass to pass dependencies between components:
 
 ```python
-deps = {
-    "logger": logger,
-    "bot": bot,
-    "client": openai_client,
-    "perplexity_client": perplexity_client,
-    "rate_limiter": rate_limiter,
-    "conversation_manager": conversation_manager,
-    "config": config,
-}
+from src.dependencies import BotDependencies
+
+deps = BotDependencies(
+    bot=discord_client,
+    logger=logger,
+    config=config,
+    client=openai_client,
+    perplexity_client=perplexity_client,
+    rate_limiter=rate_limiter,
+    conversation_manager=conversation_manager,
+)
 ```
 
+The dataclass supports dict-style access (`deps["logger"]`, `deps.get("key")`, `"key" in deps`) and `.to_dict()` for backward compatibility with legacy code.
+
 **Benefits:**
+- Typed dependencies with IDE autocompletion
 - Testable components (easy to mock)
 - Loose coupling between modules
-- Configuration flexibility
+- Configuration flexibility with backward-compatible dict access
 
 ### 2. Circuit Breaker Pattern
 
@@ -259,7 +264,6 @@ class RetryConfig:
 - Rate limiting per user
 
 ### Pre-commit Hooks
-- `detect-secrets` prevents accidental key commits
 - `detect-secrets` prevents accidental key commits
 
 ## 📊 Observability
@@ -336,6 +340,10 @@ DiscordianAI/
 │   ├── caching.py            # Response caching
 │   ├── rate_limits.py        # Rate limiting
 │   ├── health_checks.py      # API monitoring
+│   ├── health_server.py      # HTTP liveness/readiness probes
+│   ├── api_context.py         # API call context managers
+│   ├── structured_logging.py  # structlog configuration
+│   ├── dependencies.py       # BotDependencies dataclass (DI)
 │   └── ...
 ├── tests/                    # Test suite
 ├── docs/                     # Documentation

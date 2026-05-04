@@ -142,6 +142,68 @@ async def test_health_server_disabled():
     assert server._task is None
 
 
+def test_health_endpoint_disconnected_bot():
+    """Health endpoint reports disconnected when bot is not ready."""
+    deps = _mock_deps(connected=False, has_openai=True)
+    app = create_health_app(deps)
+    from starlette.testclient import TestClient
+
+    with TestClient(app) as client:
+        response = client.get("/health")
+    assert response.status_code == 503
+    assert response.json()["services"]["discord"] == "disconnected"
+
+
+def test_health_endpoint_pool_with_check_pool_health():
+    """Health endpoint uses check_pool_health when get_pool_metrics unavailable."""
+    pool_manager = MagicMock()
+    del pool_manager.get_pool_metrics
+    pool_manager.check_pool_health.return_value = {"status": "healthy"}
+    deps = _mock_deps(connected=True, has_openai=True)
+    deps["connection_pool_manager"] = pool_manager
+    app = create_health_app(deps)
+    from starlette.testclient import TestClient
+
+    with TestClient(app) as client:
+        response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["services"]["pool"]["status"] == "healthy"
+
+
+@pytest.mark.asyncio
+async def test_health_server_already_running():
+    """Health server start() is a no-op when already running."""
+    deps = _mock_deps()
+    server = HealthServer(deps)
+    mock_task = MagicMock()
+    mock_task.done.return_value = False
+    server._task = mock_task
+    await server.start()
+    assert server._task is mock_task
+
+
+@pytest.mark.asyncio
+async def test_health_server_string_config_enabled():
+    """Health server handles string HEALTH_ENABLED='true'."""
+    deps = _mock_deps()
+    deps["config"]["HEALTH_ENABLED"] = "true"
+    with patch("uvicorn.Server") as mock_server_class:
+        mock_server_instance = AsyncMock()
+        mock_server_class.return_value = mock_server_instance
+        server = HealthServer(deps, port=0)
+        await server.start()
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_health_server_stop_no_task():
+    """Health server stop() is safe when no task exists."""
+    deps = _mock_deps()
+    server = HealthServer(deps)
+    server._task = None
+    await server.stop()
+
+
 @pytest.mark.asyncio
 async def test_health_server_start_stop():
     """Health server start and stop lifecycle."""
