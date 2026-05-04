@@ -46,6 +46,7 @@ DiscordianAI API Reference
    health_server
    health_checks
    logging_adapter
+   structured_logging
 
 .. toctree::
    :maxdepth: 2

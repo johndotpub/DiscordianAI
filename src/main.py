@@ -29,6 +29,7 @@ from .config import (
     load_config,
     parse_arguments,
 )
+from .structured_logging import configure_structlog
 
 # Constants for validation
 DEFAULT_OUTPUT_TOKENS_VAL = 8000
@@ -43,12 +44,7 @@ def setup_early_logging() -> logging.Logger:
     Returns:
         logging.Logger: Early logger instance for startup phases
     """
-    # Set up basic logging to stderr for early startup
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-        stream=sys.stderr,
-    )
+    configure_structlog(json_logs=False, log_level="INFO")
 
     logger = logging.getLogger("discordianai.startup")
     logger.info("Early logging initialized - starting DiscordianAI bot")
@@ -59,7 +55,8 @@ def setup_production_logging(config: dict, logger: logging.Logger) -> None:
     """Configure production logging based on loaded configuration.
 
     Reconfigures logging to use the settings from the config file,
-    including log file location and verbosity level.
+    including log file location and verbosity level. Uses structlog
+    for structured, machine-readable output.
 
     Args:
         config (dict): Configuration dictionary with LOG_FILE and LOG_LEVEL
@@ -69,46 +66,39 @@ def setup_production_logging(config: dict, logger: logging.Logger) -> None:
         Exception: If logging configuration fails
     """
     try:
-        log_file = config["LOG_FILE"]
         log_level = config["LOG_LEVEL"].upper()
 
         # Validate log level
         numeric_level = getattr(logging, log_level, None)
         if numeric_level is None:
             logger.warning("Invalid log level '%s', defaulting to INFO", log_level)
-            numeric_level = logging.INFO
             log_level = "INFO"
 
-        # Ensure log directory exists
-        log_dir = Path(log_file).parent
-        if log_dir and not log_dir.exists():
-            log_dir.mkdir(parents=True, exist_ok=True)
-            logger.info("Created log directory: %s", log_dir)
+        # Configure structlog for production
+        configure_structlog(json_logs=False, log_level=log_level)
 
-        # Reconfigure logging with production settings
-        logging.basicConfig(
-            filename=log_file,
-            level=numeric_level,
-            format="%(asctime)s %(levelname)s %(name)s %(message)s",
-            force=True,  # Override existing configuration
-        )
+        # Set up file handler if log file is configured
+        log_file = config.get("LOG_FILE")
+        if log_file:
+            log_dir = Path(log_file).parent
+            if log_dir and not log_dir.exists():
+                log_dir.mkdir(parents=True, exist_ok=True)
+                logger.info("Created log directory: %s", log_dir)
 
-        # Also add console handler if we're not in a daemon mode
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setLevel(getattr(logging, log_level, logging.INFO))
+            logging.getLogger().addHandler(file_handler)
+
+        # Add console handler for warnings/errors
         console_handler = logging.StreamHandler(sys.stderr)
-        console_handler.setLevel(logging.WARNING)  # Only warnings and errors to console
-        console_handler.setFormatter(
-            logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"),
-        )
+        console_handler.setLevel(logging.WARNING)
+        logging.getLogger().addHandler(console_handler)
 
-        root_logger = logging.getLogger()
-        root_logger.addHandler(console_handler)
-
-        logger.info("Production logging configured: file=%s, level=%s", log_file, log_level)
+        logger.info("Production logging configured: level=%s", log_level)
 
     except Exception:
         logger.exception("Failed to configure production logging")
         logger.warning("Continuing with basic logging configuration")
-        # Don't raise - better to continue with basic logging than fail
 
 
 def validate_critical_config(config: dict, logger: logging.Logger) -> None:

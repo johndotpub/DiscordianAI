@@ -21,6 +21,7 @@ dependencies = [
     "h2>=4.3.0",
     "starlette>=0.45.0",
     "uvicorn>=0.34.0",
+    "structlog>=24.4.0",
 ]
 urls = {"Homepage" = "https://github.com/johndotpub/DiscordianAI"}
 classifiers = [

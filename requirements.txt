@@ -7,3 +7,4 @@ httpx[http2]>=0.28.1
 h2>=4.3.0
 starlette>=0.45.0
 uvicorn>=0.34.0
+structlog>=24.4.0
