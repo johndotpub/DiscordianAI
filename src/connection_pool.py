@@ -4,7 +4,10 @@ This module provides optimized HTTP connection pooling for OpenAI and Perplexity
 API clients to reduce connection overhead and improve performance.
 """
 
+import contextlib
 import logging
+import threading
+import time
 from typing import Any
 
 import httpx
@@ -16,6 +19,8 @@ class ConnectionPoolManager:
 
     Provides optimized connection pooling settings for OpenAI and Perplexity
     API clients to reduce connection overhead and improve performance.
+    Tracks created clients for lifecycle management and exposes pool metrics
+    for monitoring.
     """
 
     def __init__(
@@ -38,6 +43,15 @@ class ConnectionPoolManager:
         self.perplexity_max_connections = perplexity_max_connections
         self.perplexity_max_keepalive = perplexity_max_keepalive
         self._logger = logging.getLogger(__name__)
+        self._clients: dict[str, httpx.AsyncClient] = {}
+        self._creation_times: dict[str, float] = {}
+        self._lock = threading.Lock()
+
+    def _register_client(self, api_type: str, client: httpx.AsyncClient) -> None:
+        """Track a newly created HTTP client for lifecycle management."""
+        with self._lock:
+            self._clients[api_type] = client
+            self._creation_times[api_type] = time.monotonic()
 
     def create_http_client(self, api_type: str = "openai") -> httpx.AsyncClient:
         """Create an optimized HTTP client with connection pooling.
@@ -110,6 +124,7 @@ class ConnectionPoolManager:
             max_keepalive,
         )
 
+        self._register_client(api_type, client)
         return client
 
     def create_openai_client(
@@ -228,7 +243,8 @@ class ConnectionPoolManager:
             ):
                 pool = client._transport._pool  # noqa: SLF001
                 if hasattr(pool, "_connections"):
-                    pool_info["active_connections"] = len(pool._connections)  # noqa: SLF001
+                    with contextlib.suppress(TypeError):
+                        pool_info["active_connections"] = len(pool._connections)  # noqa: SLF001
                 if hasattr(pool, "_max_connections"):
                     pool_info["max_connections"] = pool._max_connections  # noqa: SLF001
 
@@ -238,11 +254,71 @@ class ConnectionPoolManager:
         else:
             return pool_info
 
+    def get_pool_metrics(self) -> dict[str, Any]:
+        """Return pool metrics for all tracked HTTP clients.
+
+        Provides visibility into pool utilization, client status, and uptime
+        for each registered client key (``"openai"`` or ``"perplexity"``).
+
+        Returns:
+            Dictionary keyed by client type with status and configuration data.
+        """
+        metrics: dict[str, Any] = {}
+        now = time.monotonic()
+
+        with self._lock:
+            for api_type, client in self._clients.items():
+                entry: dict[str, Any] = {
+                    "status": "unknown",
+                    "max_connections": (
+                        self.openai_max_connections
+                        if api_type == "openai"
+                        else self.perplexity_max_connections
+                    ),
+                    "max_keepalive": (
+                        self.openai_max_keepalive
+                        if api_type == "openai"
+                        else self.perplexity_max_keepalive
+                    ),
+                }
+
+                creation = self._creation_times.get(api_type)
+                if creation is not None:
+                    entry["uptime_seconds"] = round(now - creation, 1)
+
+                if client is None:
+                    entry["status"] = "unavailable"
+                elif getattr(client, "is_closed", False):
+                    entry["status"] = "closed"
+                else:
+                    entry["status"] = "active"
+                    pool_health = self.check_pool_health(client)
+                    # Merge pool details without overwriting our active status
+                    entry.update(
+                        {k: v for k, v in pool_health.items() if k != "status"}
+                    )
+
+                metrics[api_type] = entry
+
+        return metrics
+
     async def close_all(self) -> None:
         """Close all HTTP clients managed by this pool manager."""
-        # This would need to track clients if we want to close them all
-        # For now, clients are managed by the OpenAI/Perplexity clients
         self._logger.info("Connection pool manager shutdown requested")
+        with self._lock:
+            clients_to_close = list(self._clients.items())
+
+        for api_type, client in clients_to_close:
+            try:
+                await client.aclose()
+                self._logger.info("Closed %s HTTP client", api_type)
+            except (httpx.HTTPError, OSError) as e:
+                self._logger.warning("Error closing %s HTTP client: %s", api_type, e)
+
+        with self._lock:
+            # Mark all clients as closed
+            for api_type in self._clients:
+                self._clients[api_type] = None  # type: ignore[assignment]
 
 
 def get_connection_pool_manager(config: dict | None = None) -> ConnectionPoolManager:

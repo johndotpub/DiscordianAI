@@ -192,3 +192,56 @@ class TestGetConnectionPoolManager:
         assert manager.openai_max_keepalive == 10  # default
         assert manager.perplexity_max_connections == 30  # default
         assert manager.perplexity_max_keepalive == 5  # default
+
+
+class TestPoolMetrics:
+    """Test connection pool metrics and lifecycle tracking."""
+
+    def test_get_pool_metrics_empty(self):
+        """get_pool_metrics returns empty dict when no clients are tracked."""
+        manager = ConnectionPoolManager()
+        metrics = manager.get_pool_metrics()
+        assert metrics == {}
+
+    @patch("src.connection_pool.httpx.AsyncClient")
+    def test_get_pool_metrics_tracks_client(self, mock_client):
+        """get_pool_metrics includes client info after creation."""
+        mock_instance = Mock(spec=[])  # empty spec avoids hasattr false positives
+        mock_instance.is_closed = False
+        mock_client.return_value = mock_instance
+
+        manager = ConnectionPoolManager()
+        manager.create_http_client("openai")
+
+        metrics = manager.get_pool_metrics()
+        assert "openai" in metrics
+        assert metrics["openai"]["max_connections"] == 50
+        assert metrics["openai"]["max_keepalive"] == 10
+        assert metrics["openai"]["status"] == "active"
+
+    @patch("src.connection_pool.httpx.AsyncClient")
+    def test_get_pool_metrics_closed_client(self, mock_client):
+        """get_pool_metrics reports closed clients correctly."""
+        mock_instance = Mock(spec=["is_closed"])
+        mock_instance.is_closed = True
+        mock_client.return_value = mock_instance
+
+        manager = ConnectionPoolManager()
+        manager.create_http_client("openai")
+
+        metrics = manager.get_pool_metrics()
+        assert metrics["openai"]["status"] == "closed"
+
+    @patch("src.connection_pool.httpx.AsyncClient")
+    def test_get_pool_metrics_uptime(self, mock_client):
+        """get_pool_metrics includes uptime_seconds for tracked clients."""
+        mock_instance = Mock(spec=[])
+        mock_instance.is_closed = False
+        mock_client.return_value = mock_instance
+
+        manager = ConnectionPoolManager()
+        manager.create_http_client("openai")
+
+        metrics = manager.get_pool_metrics()
+        assert "uptime_seconds" in metrics["openai"]
+        assert metrics["openai"]["uptime_seconds"] >= 0
