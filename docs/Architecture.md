@@ -106,7 +106,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 - **Channel Targeting** (`message_router.py`): `ALLOWED_CHANNELS` gating ensures the bot only replies where it is expected.
 - **Smart Message Splitting** (`message_splitter.py`): Discord-safe splitting protects code blocks, embeds, and citations from truncation.
 - **Global Exception Handling** (`error_handling.py` + `bot.py`): Centralized logging and graceful fallbacks keep the process alive after faults.
-- **Shard Support** (`discord_bot.py`): When large guild counts demand it, the client can run in sharded mode for scalability.
+- **Health Server** (`health_server.py`): Lightweight HTTP endpoint for liveness/readiness probes, compatible with Kubernetes and load balancers.
 
 ## 🔄 Request Flow
 
@@ -251,7 +251,7 @@ class RetryConfig:
 
 ### Pre-commit Hooks
 - `detect-secrets` prevents accidental key commits
-- `.secrets.baseline` for tracking known safe strings
+- `detect-secrets` prevents accidental key commits
 
 ## 📊 Observability
 
@@ -338,12 +338,9 @@ DiscordianAI/
 ## 🔮 Future Considerations
 
 ### Potential Improvements
-1. **Formal DI Container**: Replace `deps` dict with dataclass
-2. **Protocol Classes**: Define interfaces for AI clients
-3. **Structured Logging**: JSON format for log aggregation
-4. **Metrics Export**: Prometheus/OpenTelemetry integration
-5. **HTTP Health Endpoint**: For container orchestration
-6. **Message Queue**: For high-volume deployments
+1. **Protocol Classes**: Define interfaces for AI clients (pre-empt multi-platform support)
+2. **Metrics Export**: Prometheus/OpenTelemetry integration
+3. **Message Queue**: For high-volume deployments
 
 ### Scalability Path
 - Current: Single instance, in-memory state
