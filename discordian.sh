@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Define PATH if running from crontab. Adjust as necessary.
-# PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Ensure linuxbrew/python3 is in PATH for cron environments
+export PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Script for launching a DiscordianAI bot with customizable configurations.
 # Suitable for both manual execution and running via crontab.
@@ -97,9 +97,10 @@ if [[ -z $output ]]; then
     # Normal execution
     eval "$command"
 else
-    # Daemon execution
-    log "Running command in background: $command > $output 2>&1 &"
-    if ! ($command > "$output" 2>&1 &); then
+    # Daemon execution — log output instead of /dev/null so crashes are visible
+    logfile="${base_folder:-.}/bot.log"
+    log "Running command in background: $command >> $logfile 2>&1 &"
+    if ! ($command >> "$logfile" 2>&1 &); then
         log "Error: Failed to execute command."
         exit 1
     fi
