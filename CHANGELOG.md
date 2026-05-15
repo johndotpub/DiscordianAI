@@ -19,6 +19,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New dev dependency: `sphinx>=8.0.0` and `furo>=2024.8.0` under `[docs]` extras.
 
 ### Fixed 🔧
+- **discordian.sh launcher rewrite**: Fixed `ModuleNotFoundError: No module named 'src'` when running from cron — the script now always `cd`s into the project directory before launching Python.
+- **Python resolution**: Removed hardcoded linuxbrew PATH. The launcher now resolves Python in a portable priority order: pyenv → project venv → shell venv → system `python3`.
+- **Venv bootstrapping**: Automatically creates a project-local `.venv/` with dependencies if one doesn't exist, using the resolved Python interpreter.
+- **Process management**: Replaced bare `pkill` with PID-file based shutdown (SIGTERM → 10s wait → SIGKILL) and stray process cleanup.
+- **Startup health check**: Daemon mode now waits 3 seconds after launch and confirms the process survived before reporting success.
+- **Version gating**: Added Python ≥3.12 check with a clear error message on older interpreters.
+
+### Added ✨
+- **`--install-systemd` flag** on `discordian.sh`: generates and installs a systemd user service from a config file name (e.g., `./discordian.sh --install-systemd bot.ini` creates `discordian-bot@bot.service`). Auto-detects paths, builds PATH dynamically from pyenv and Homebrew (via `brew --prefix`), and enables the service.
+- **systemd template unit** (`contrib/systemd/discordian-bot@.service`): reference template for manual setup. Instance name maps to config file (`discordian-bot@bot` → `bot.ini`).
+- **docs/Daemon.md**: rewritten with both cron and systemd deployment paths, `--install-systemd` quick-setup, Python resolution order (pyenv first), venv bootstrapping guide, and troubleshooting section.
+- **README.md**: added "Running with the launcher script" section with usage examples including `--install-systemd`.
+- **`.bot.pid` gitignore**: added PID file to `.gitignore`.
+
+---
+
+### Fixed 🔧
 - Classify OpenAI `insufficient_quota` (429) as non-retryable auth error for instant Perplexity fallback instead of wasteful retry loops.
 - Added `API_TIMEOUT` to non-retryable error list so read timeouts bail immediately to the fallback service rather than compounding retry delays.
 - Symmetrized retry policy across OpenAI and Perplexity: both services now use identical `retry_with_backoff` config (`max_attempts=2`, 2-4s jittered wait, flat delay).

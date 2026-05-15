@@ -3,6 +3,7 @@ bender.ini*
 nohup.out
 bot.log
 test.log
+.bot.pid
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,0 +1,56 @@
+# DiscordianAI — systemd user service template
+#
+# RECOMMENDED: Use the launcher's --install-systemd flag instead of
+# copying this file manually. It auto-detects paths and generates
+# a correct, ready-to-run unit file:
+#
+#   ./discordian.sh --install-systemd bot.ini
+#
+# That command creates ~/.config/systemd/user/discordian-bot@bot.service
+# with all paths filled in from the script's actual location, enables
+# it, and prints management commands.
+#
+# MANUAL SETUP: If you prefer to install by hand:
+#
+#   1. Copy this file to ~/.config/systemd/user/
+#   2. Edit the copy: replace all /path/to/DiscordianAI with your
+#      actual installation path
+#   3. Adjust PATH to include pyenv or Homebrew if needed
+#      (the --install-systemd flag does this automatically)
+#   4. Reload and enable:
+#        systemctl --user daemon-reload
+#        systemctl --user enable --now discordian-bot@bot
+#
+# The instance name (%i) becomes the config file name:
+#   discordian-bot@bot      → bot.ini
+#   discordian-bot@prod     → prod.ini
+#   discordian-bot@staging  → staging.ini
+
+[Unit]
+Description=DiscordianAI Bot (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/path/to/DiscordianAI/discordian.sh -c %i.ini -f /path/to/DiscordianAI
+WorkingDirectory=/path/to/DiscordianAI
+Restart=on-failure
+RestartSec=15
+
+StandardOutput=append:/path/to/DiscordianAI/bot.log
+StandardError=append:/path/to/DiscordianAI/bot.log
+
+# Adjust PATH to include pyenv/Homebrew/python as needed for your system.
+# The --install-systemd flag auto-detects these paths.
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=HOME=%h
+Environment=LANG=en_US.UTF-8
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/path/to/DiscordianAI
+
+[Install]
+WantedBy=default.target
