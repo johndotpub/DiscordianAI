@@ -133,7 +133,7 @@ RATE_LIMIT_PER=60
 ### Reliability & Ops
 - `connection_pool.py` exposes tuned HTTP/2 clients (50/10 connections for OpenAI, 30/5 for Perplexity).
 - `health_checks.py` verifies API reachability and validates GPT-5/Sonar configurations at startup.
-- `api_validation.py` + `api_utils.py` guard against unsupported model strings and capture structured error metadata.
+- `api_validation.py` guards against unsupported model strings; structured error metadata and classification is centralized in `error_handling.py`.
 
 ## Documentation Map
 
