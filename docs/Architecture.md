@@ -17,10 +17,9 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 │  │   bot.py     │  │ discord_bot  │  │ discord_     │  │ message_     │ │
 │  │ (Event Loop) │  │   .py        │  │ embeds.py    │  │ processor.py │ │
 │  └──────┬───────┘  └──────────────┘  └──────────────┘  └──────┬───────┘ │
-│                                                       ┌───────▼───────┐ │
-│                                                       │ message_      │ │
-│                                                       │ splitter.py   │ │
-│                                                       └───────────────┘ │
+│                                                       ┌─────────────────────┐ │
+│                                                       │ message_splitter.py │ │
+│                                                       └─────────────────────┘ │
 └─────────┼───────────────────────────────────────────────────────────────┘
           │
           ▼
@@ -48,12 +47,10 @@ This document provides a comprehensive overview of the DiscordianAI system archi
               ▼                                      ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                        Infrastructure Layer                              │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌──────────────────┐  │
-│  │connection_  │ │ caching.py  │ │error_       │ │ conversation_    │  │
-│  │pool.py      │ │ (LRU+TTL)   │ │handling.py  │ │ manager.py       │  │
-│  │ (HTTP/2)    │ │             │ │(Circuit     │ │ (Thread-safe)    │  │
-│  │ + metrics   │ │             │ │ Breaker)    │ │                  │  │
-│  └─────────────┘ └─────────────┘ └─────────────┘ └──────────────────┘  │
+│  ┌──────────────────────┐ ┌──────────────────┐ ┌────────────────────┐ ┌────────────────────────────┐ │
+│  │ connection_pool.py   │ │ caching.py       │ │ error_handling.py  │ │ conversation_manager.py   │ │
+│  │ (HTTP/2 + metrics)   │ │ (LRU+TTL)        │ │ (Circuit Breaker)  │ │ (Thread-safe)             │ │
+│  └──────────────────────┘ └──────────────────┘ └────────────────────┘ └────────────────────────────┘ │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌──────────────────┐  │
 │  │health_      │ │api_context  │ │structured_  │ │dependencies.py   │  │
 │  │server.py    │ │  .py        │ │logging.py   │ │ (BotDependencies)│  │
@@ -76,7 +73,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 | Component | File | Purpose |
 |-----------|------|---------|
 | **Smart Orchestrator** | `smart_orchestrator.py` | AI service selection logic based on message analysis |
-| **OpenAI Processing** | `openai_processing.py` | GPT-5 API interactions, conversation handling |
+| **OpenAI Processing** | `openai_processing.py` | GPT-5 API interactions, response formatting |
 | **Perplexity Processing** | `perplexity_processing.py` | Web search, citation extraction |
 | **Web Scraper** | `web_scraper.py` | URL content extraction for context enrichment |
 
@@ -156,7 +153,7 @@ sequenceDiagram
         end
     end
     O-->>MP: Response payload
-    MP->>CM: Update conversation history
+    O->>CM: Update conversation history
     MP->>MP: Split/format output
     MP-->>B: Final payload
     B->>D: Send response
@@ -219,7 +216,7 @@ async def process_openai_message(...):
     ...
 ```
 
-This example is aspirational; the codebase currently uses explicit caching and deduplication helpers rather than this exact decorator stack.
+`_extract_message_context()` has been extracted as a shared helper, but the full decorator stack shown here is still aspirational; the codebase currently uses explicit caching and deduplication helpers.
 
 **Features:**
 - TTL-based expiration
@@ -327,25 +324,36 @@ tests/
 ```
 DiscordianAI/
 ├── src/
-│   ├── __init__.py           # Package exports
-│   ├── py.typed              # PEP 561 type hints marker
-│   ├── main.py               # Entry point
-│   ├── bot.py                # Discord bot core
-│   ├── config.py             # Configuration (single source of truth)
-│   ├── smart_orchestrator.py # AI routing logic
-│   ├── openai_processing.py  # OpenAI integration
+│   ├── __init__.py              # Package exports
+│   ├── health_checks.py         # API monitoring
+│   ├── api_validation.py        # Configuration validation
+│   ├── api_utils.py             # Shared API helpers
+│   ├── message_processor.py     # Discord event normalization
+│   ├── rate_limits.py           # Rate limiting
+│   ├── bot.py                   # Discord bot core
+│   ├── web_scraper.py           # URL content extraction
+│   ├── smart_orchestrator.py    # AI routing logic
+│   ├── openai_processing.py     # OpenAI integration
+│   ├── structured_logging.py    # structlog configuration
+│   ├── caching.py               # Response caching
+│   ├── health_server.py         # HTTP liveness/readiness probes
+│   ├── dependency_check.py      # Dependency validation
+│   ├── api_context.py           # API call context managers
+│   ├── message_router.py        # Mention and DM routing
+│   ├── conversation_manager.py  # Thread-safe conversations
+│   ├── error_handling.py        # Resilience patterns
+│   ├── logging_adapter.py       # Structured logging adapter
 │   ├── perplexity_processing.py # Perplexity integration
-│   ├── connection_pool.py    # HTTP connection management
-│   ├── conversation_manager.py # Thread-safe conversations
-│   ├── error_handling.py     # Resilience patterns
-│   ├── caching.py            # Response caching
-│   ├── rate_limits.py        # Rate limiting
-│   ├── health_checks.py      # API monitoring
-│   ├── health_server.py      # HTTP liveness/readiness probes
-│   ├── api_context.py         # API call context managers
-│   ├── structured_logging.py  # structlog configuration
-│   ├── dependencies.py       # BotDependencies dataclass (DI)
-│   └── ...
+│   ├── main.py                  # Entry point
+│   ├── connection_pool.py       # HTTP connection management
+│   ├── discord_embeds.py        # Citation embed formatting
+│   ├── discord_bot.py           # Activity / presence management
+│   ├── models.py                # Shared data models
+│   ├── dependencies.py          # BotDependencies dataclass (DI)
+│   ├── config.py                # Configuration (single source of truth)
+│   ├── message_splitter.py      # Message splitting and formatting
+│   ├── py.typed                 # PEP 561 type hints marker
+│   └── bot_manager.py           # Lifecycle management
 ├── tests/                    # Test suite
 ├── docs/                     # Documentation
 ├── pyproject.toml            # Build & tool configuration

@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Timeout documentation**: Updated read timeout documentation to reflect actual values: 45s (OpenAI) / 60s (Perplexity).
 - **Docker security**: Updated `docs/Security.md` Docker user from `botuser` to `appuser` to match actual Dockerfile.
 - **Entity detection docs**: Fixed `docs/Development.md` claim of "no unnecessary word count thresholds" — now accurately describes `ENTITY_DETECTION_MIN_WORDS=10`.
+- **Docs**: Updated `docs/Architecture.md` visual alignment (border overflow, box sizing) and accuracy notes for orchestrator persistence flow, response formatting, and the decorator helper note.
 - **Dependency bumps**: Updated `openai` 2.32.0→2.41.0, `requests` 2.33.1→2.34.1, `starlette` 0.45.0→1.2.1, and `structlog` 24.4.0→25.5.0 in `pyproject.toml` and `requirements.txt`.
 - **Dev dependency**: Added `httpx2` for `starlette.testclient` compatibility.
 - **Architecture diagram**: Standardized file extensions in ASCII diagram; updated ConnectionPooling example to use `ConnectionPoolManager` wrapper; noted caching decorator as aspirational.
