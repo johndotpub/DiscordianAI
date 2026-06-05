@@ -276,8 +276,7 @@ def classify_error(exception: Exception) -> ErrorDetails:
         user_message = "🔐 Authentication issue. Please contact administrator."
 
     elif any(
-        re.search(rf"(?<!\\d){code}(?!\\d)", error_msg)
-        for code in ["500", "502", "503", "504"]
+        re.search(rf"(?<!\\d){code}(?!\\d)", error_msg) for code in ["500", "502", "503", "504"]
     ):
         error_type = ErrorType.API_SERVER_ERROR
         severity = ErrorSeverity.HIGH
@@ -398,6 +397,7 @@ def handle_api_error(func):
         func_kwargs.pop("logger", None)
 
         try:
+
             async def call_func():
                 return await func(*args, **func_kwargs)
 

@@ -84,7 +84,9 @@ def test_setup_production_logging_keeps_single_root_handler():
     try:
         root.handlers[:] = []
 
-        setup_production_logging({"LOG_LEVEL": "INFO", "LOG_FILE": "test.log"}, logging.getLogger("test"))
+        setup_production_logging(
+            {"LOG_LEVEL": "INFO", "LOG_FILE": "test.log"}, logging.getLogger("test")
+        )
 
         assert len(root.handlers) == 1
     finally:

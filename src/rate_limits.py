@@ -160,6 +160,7 @@ class RateLimiter:
                 "window_expired": False,
             }
 
+
 async def check_rate_limit(
     user: discord.User,
     rate_limiter: RateLimiter,
@@ -224,13 +225,9 @@ async def check_rate_limit(
         if fail_open_errors >= FAIL_OPEN_LIMIT:
             rate_limiter.fail_open_cooldown_until = now + 60
             rate_limiter.fail_open_errors = 0
-            logger.critical(
-                "RATE_LIMITER_ERROR: entering cooldown after repeated failures"
-            )
+            logger.critical("RATE_LIMITER_ERROR: entering cooldown after repeated failures")
         else:
-            logger.critical(
-                "RATE_LIMITER_ERROR: Failing open due to transient error: %s", exc
-            )
+            logger.critical("RATE_LIMITER_ERROR: Failing open due to transient error: %s", exc)
         return True
     else:
         # Log successful rate limit checks at debug level

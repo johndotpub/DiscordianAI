@@ -457,9 +457,7 @@ def sanitize_for_discord(text: str) -> str:
     if not text:
         return ""
 
-    return text.replace("@everyone", "@\u200beveryone").replace(
-        "@here", "@\u200bhere"
-    )
+    return text.replace("@everyone", "@\u200beveryone").replace("@here", "@\u200bhere")
 
 
 def parse_command_args(content: str, prefix: str = "!") -> tuple[str, list[str]]:
