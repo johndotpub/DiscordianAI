@@ -86,6 +86,8 @@ async def send_split_message(  # noqa: PLR0913
     # Fits in one message
     if len(message) <= max_first_chunk:
         content = f"{prefix_text}{message}" if prefix_text else message
+        if len(content) > MESSAGE_LIMIT:
+            content = content[: MESSAGE_LIMIT - 3] + "..."
         if original_message:
             await original_message.reply(
                 content,
@@ -308,6 +310,27 @@ async def send_formatted_message(  # noqa: PLR0913
             original_message=original_message,
             mention_prefix=mention_prefix,
         )
+
+
+async def send_message_with_embeds(  # noqa: PLR0913
+    channel: discord.TextChannel | discord.DMChannel,
+    message: str,
+    deps: dict[str, Any],
+    embed: discord.Embed,
+    citations: dict[str, str] | None = None,
+    original_message: discord.Message | None = None,
+    mention_prefix: str | None = None,
+) -> None:
+    """Backward-compatible embed send path."""
+    await send_split_message_with_embed(
+        channel,
+        message,
+        deps,
+        embed,
+        citations,
+        original_message,
+        mention_prefix,
+    )
 
 
 # ============================================================================

@@ -58,15 +58,16 @@ class CitationEmbedFormatter:
 
         # Format the content with clickable citations for embed description
         formatted_content = self._format_citations_for_embed_description(content, citations)
+        original_formatted_length = len(formatted_content)
 
         # Discord embed description has a character limit
-        was_truncated = len(formatted_content) > EMBED_LIMIT
+        was_truncated = original_formatted_length > EMBED_LIMIT
         if was_truncated:
             # Truncate and add notice
             formatted_content = formatted_content[:EMBED_SAFE_LIMIT] + "..."
             self.logger.warning(
                 "Embed description truncated from %d to %d chars",
-                len(formatted_content),
+                original_formatted_length,
                 EMBED_SAFE_LIMIT,
             )
 
@@ -86,7 +87,7 @@ class CitationEmbedFormatter:
         metadata = {
             "was_truncated": was_truncated,
             "original_length": len(content),
-            "formatted_length": len(formatted_content),
+            "formatted_length": original_formatted_length,
         }
 
         self.logger.debug("Created citation embed with %d citations", len(citations))
