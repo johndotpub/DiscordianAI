@@ -38,7 +38,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                           AI Service Layer                               │
 │  ┌─────────────────────┐              ┌─────────────────────┐          │
-│  │ openai_processing.py│              │perplexity_processing│          │
+│  │ openai_processing.py│              │perplexity_processing.py│       │
 │  │  • GPT-5 Models     │              │  • Sonar Models     │          │
 │  │  • Conversational   │              │  • Web Search       │          │
 │  │  • Creative Tasks   │              │  • Citations        │          │
@@ -219,6 +219,8 @@ async def process_openai_message(...):
     ...
 ```
 
+This example is aspirational; the codebase currently uses explicit caching and deduplication helpers rather than this exact decorator stack.
+
 **Features:**
 - TTL-based expiration
 - Request deduplication (prevents duplicate API calls)
@@ -239,15 +241,15 @@ class ThreadSafeConversationManager:
 - Automatic history pruning
 - Deep copy returns to prevent external modification
 
-### 5. Retry with Exponential Backoff
+### 5. Retry with Flat Jittered Delay
 
 ```python
 @dataclass
 class RetryConfig:
-    max_attempts: int = 3
-    base_delay: float = 1.0
-    max_delay: float = 60.0
-    exponential_base: float = 2.0
+    max_attempts: int = 2
+    base_delay: float = 2.0
+    max_delay: float = 4.0
+    exponential_base: float = 1.0
     jitter: bool = True  # Prevents thundering herd
 ```
 
@@ -288,11 +290,10 @@ class RetryConfig:
 
 ### Connection Pooling
 ```python
-# HTTP/2 with connection reuse
-limits = httpx.Limits(
-    max_connections=50,
-    max_keepalive_connections=10,
-)
+from src.connection_pool import ConnectionPoolManager
+
+pool = ConnectionPoolManager()
+client = pool.get_openai_client()
 ```
 
 ### Caching Strategy
@@ -363,4 +364,3 @@ DiscordianAI/
 - Current: Single instance, in-memory state
 - Future: Redis for distributed caching/rate limiting
 - Future: Multiple bot instances with shared state
-
