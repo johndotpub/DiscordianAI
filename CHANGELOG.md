@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ALLOWED_CHANNEL_IDS`**: Added ID-based channel matching alongside name-based `ALLOWED_CHANNELS` — channel IDs are unique across servers unlike names.
 - **`.env.example`**: Created template file with all 21 supported environment variables, commented out with descriptions.
 - **`CONTRIBUTING.md`**: Updated Python version from 3.10 to 3.12+ to match `pyproject.toml` requirement.
+- **structlog 25.x compatibility**: Removed redundant `structlog.stdlib.add_logger_name` processor that crashes with `None` logger in the `ProcessorFormatter` chain; custom `_add_logger_name` already handles this correctly.
 
 ### Fixed 🔧 — Source Code Reliability & Security
 - **`BotDependencies.__setitem__`**: Added `__setitem__` method to support dict-style writes (`deps["_health_task"] = ...`) — previously caused `TypeError` crash in `on_ready`, preventing health monitoring from starting.
