@@ -104,9 +104,8 @@ class TestProcessOpenAIMessageBasic:
 
     @pytest.mark.asyncio
     async def test_empty_response(self):
-        from src.caching import conversation_cache, response_cache
+        from src.caching import response_cache
 
-        conversation_cache.clear()
         response_cache.cache.clear()
 
         user = MagicMock()
@@ -149,9 +148,8 @@ class TestProcessOpenAIMessageBasic:
 
     @pytest.mark.asyncio
     async def test_timeout_error(self):
-        from src.caching import conversation_cache, response_cache
+        from src.caching import response_cache
 
-        conversation_cache.clear()
         response_cache.cache.clear()
 
         user = MagicMock()
@@ -192,9 +190,8 @@ class TestProcessOpenAIMessageBasic:
 
     @pytest.mark.asyncio
     async def test_generic_error(self):
-        from src.caching import conversation_cache, response_cache
+        from src.caching import response_cache
 
-        conversation_cache.clear()
         response_cache.cache.clear()
 
         user = MagicMock()

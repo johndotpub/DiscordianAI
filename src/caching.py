@@ -109,12 +109,6 @@ class ThreadSafeLRUCache:
             "expired": 0,
         }
 
-    def _make_key(self, *args, **kwargs) -> str:
-        """Generate cache key from arguments."""
-        # Create a deterministic key from arguments
-        key_data = repr((args, sorted(kwargs.items())))
-        return hashlib.sha256(key_data.encode()).hexdigest()
-
     def get(self, key: str) -> Any | None:
         """Get value from cache."""
         with self._lock:
@@ -351,7 +345,6 @@ class RequestDeduplicator:
 
 # Global cache instances
 response_cache = ResponseCache(max_size=1000, default_ttl=300.0)
-conversation_cache = ThreadSafeLRUCache(max_size=500, default_ttl=1800.0)  # 30 minutes
 request_deduplicator = RequestDeduplicator()
 
 
@@ -495,27 +488,21 @@ class PerformanceMonitor:
             }
 
 
-# Global performance monitor
-performance_monitor = PerformanceMonitor()
-
-
 async def cleanup_caches():
     """Clean up expired cache entries."""
     try:
         response_expired = response_cache.cleanup()
-        conversation_expired = conversation_cache.cleanup_expired()
 
-        if response_expired > 0 or conversation_expired > 0:
+        if response_expired > 0:
             logger = logging.getLogger(__name__)
             logger.info("Cleaned up %d expired response cache entries", response_expired)
-            logger.info("Cleaned up %d expired conversation cache entries", conversation_expired)
-
-        return response_expired + conversation_expired
 
     except Exception:
         logger = logging.getLogger(__name__)
         logger.exception("Cache cleanup failed")
         return 0
+    else:
+        return response_expired
 
 
 async def _cache_cleanup_tick(interval: int, logger: logging.Logger) -> None:

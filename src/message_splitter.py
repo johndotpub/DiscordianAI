@@ -18,7 +18,6 @@ from .config import (
     EMBED_SAFE_LIMIT,
     LINK_PATTERN,
     MAX_SPLIT_RECURSION,
-    MENTION_PATTERN,
     MESSAGE_BUFFER,
     MESSAGE_LIMIT,
 )
@@ -345,27 +344,6 @@ async def send_formatted_message(  # noqa: PLR0913
         )
 
 
-async def send_message_with_embeds(  # noqa: PLR0913
-    channel: discord.TextChannel | discord.DMChannel,
-    message: str,
-    deps: dict[str, Any],
-    embed: discord.Embed,
-    citations: dict[str, str] | None = None,
-    original_message: discord.Message | None = None,
-    mention_prefix: str | None = None,
-) -> None:
-    """Backward-compatible embed send path."""
-    await send_split_message_with_embed(
-        channel,
-        message,
-        deps,
-        embed,
-        citations,
-        original_message,
-        mention_prefix,
-    )
-
-
 # ============================================================================
 # LOGICAL SPLITTING UTILITIES
 # ============================================================================
@@ -458,17 +436,6 @@ def clean_message_content(content: str, max_length: int = 100) -> str:
     return cleaned
 
 
-def extract_mentions(content: str) -> list[str]:
-    """Extract user mentions from message content."""
-    return MENTION_PATTERN.findall(content)
-
-
-def format_user_context(user: Any, is_dm: bool) -> str:
-    """Format user context for logging and error messages."""
-    message_type = "DM" if is_dm else "channel message"
-    return f"{message_type} from {user.name} (ID: {user.id})"
-
-
 def count_links(text: str) -> int:
     """Count the number of links in text for embed suppression decisions."""
     # Count Discord hyperlinks [title](url)
@@ -493,36 +460,9 @@ def sanitize_for_discord(text: str) -> str:
     return text.replace("@everyone", "@\u200beveryone").replace("@here", "@\u200bhere")
 
 
-def parse_command_args(content: str, prefix: str = "!") -> tuple[str, list[str]]:
-    """Parse command and arguments from message content."""
-    if not content.startswith(prefix):
-        return "", []
-
-    parts = content[len(prefix) :].split()
-    if not parts:
-        return "", []
-
-    return parts[0].lower(), parts[1:]
-
-
 def error_message(user_mention: str, error_text: str) -> str:
     """Format error message with user mention."""
     return f"{user_mention} {error_text}"
-
-
-def rate_limit_message(user_mention: str, reset_time: float) -> str:
-    """Format rate limit message."""
-    return f"{user_mention} ⏱️ Please wait {reset_time:.1f}s before sending another message."
-
-
-def service_unavailable(service_name: str) -> str:
-    """Format service unavailable message."""
-    return f"🔧 {service_name} is temporarily unavailable. Please try again later."
-
-
-def processing_message() -> str:
-    """Format processing indicator."""
-    return "🤔 Processing your request..."
 
 
 def truncation_notice(original_length: int) -> str:

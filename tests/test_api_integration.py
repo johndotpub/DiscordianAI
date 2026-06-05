@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from src.api_utils import APICallBuilder, log_api_call, log_api_response
 from src.conversation_manager import ThreadSafeConversationManager
 from src.error_handling import ErrorType, classify_error, safe_discord_send
 from src.openai_processing import process_openai_message
@@ -90,9 +89,8 @@ class TestOpenAIAPIIntegration:
     async def test_openai_api_error_handling(self):
         """Test OpenAI API error handling and classification."""
         # Clear caches to ensure test isolation
-        from src.caching import conversation_cache, response_cache
+        from src.caching import response_cache
 
-        conversation_cache.clear()
         response_cache.cache.clear()
 
         user = Mock()
@@ -422,80 +420,6 @@ class TestAPIErrorClassification:
         assert details.error_type == ErrorType.API_SERVER_ERROR
         assert "temporarily unavailable" in details.user_message
         assert details.retry_after == 60
-
-
-class TestAPIUtilities:
-    """Test API utility functions."""
-
-    def test_api_call_builder_openai(self):
-        """Test OpenAI API call builder."""
-        params = APICallBuilder.openai_call(
-            model="gpt-5-mini",
-            system_message="Test system message",
-            conversation_summary=[{"role": "user", "content": "Previous message"}],
-            user_message="Current user message",
-            output_tokens=2000,
-        )
-
-        assert params["model"] == "gpt-5-mini"
-        assert params["max_completion_tokens"] == 2000
-        assert len(params["messages"]) == 3  # system + previous + current
-
-    def test_api_call_builder_perplexity(self):
-        """Test Perplexity API call builder."""
-        params = APICallBuilder.perplexity_call(
-            system_message="Web search assistant",
-            user_message="Search query",
-            model="sonar-pro",
-            max_tokens=1500,
-        )
-
-        assert params["model"] == "sonar-pro"
-        assert params["max_tokens"] == 1500
-        assert len(params["messages"]) == 2  # system + user
-
-    def test_log_api_call(self):
-        """Test API call logging utility."""
-        logger = Mock()
-
-        log_api_call(
-            logger=logger,
-            service="OpenAI",
-            model="gpt-5-mini",
-            message_length=150,
-            conversation_length=5,
-        )
-
-        # Verify logger was called with appropriate messages
-        logger.info.assert_called_once()
-        logger.debug.assert_called_once()
-
-        # Check info call for service and model
-        args, _ = logger.info.call_args
-        assert args[1] == "OpenAI"
-        assert args[2] == "gpt-5-mini"
-
-        # Check debug call for message stats
-        args, _ = logger.debug.call_args
-        assert args[1] == 150
-        assert args[2] == 5
-
-    def test_log_api_response(self):
-        """Test API response logging utility."""
-        logger = Mock()
-
-        log_api_response(
-            logger=logger,
-            service="Perplexity",
-            response_length=800,
-            metadata={"citations": 3, "model": "sonar-pro"},
-        )
-
-        # Verify logger was called
-        assert logger.info.called
-        args, _ = logger.info.call_args
-        assert args[1] == "Perplexity"
-        assert args[2] == 800
 
 
 @pytest.mark.asyncio
