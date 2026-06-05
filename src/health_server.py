@@ -162,7 +162,11 @@ class HealthServer:
             logger.info("health_server: disabled by configuration")
             return
 
-        import uvicorn  # noqa: PLC0415 — lazy import; only needed when start() is called
+        try:
+            import uvicorn  # noqa: PLC0415 — lazy import; only needed when start() is called
+        except ImportError:
+            logger.warning("health_server: uvicorn is not installed; health server disabled")
+            return
 
         logger.info("health_server: starting on %s:%s", self._host, self._port)
         self._task = asyncio.create_task(

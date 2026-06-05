@@ -126,6 +126,7 @@ async def _process_message_core(
         logger.exception("Error processing message")
 
         # Classify error for better user messaging
+        error_details = None
         error_details = classify_error(e)
         user_friendly_msg = (
             error_details.user_message if hasattr(error_details, "user_message") else error_msg
