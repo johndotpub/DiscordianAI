@@ -63,12 +63,12 @@ class RateLimiter:
             fail_open_errors += 1
             self.fail_open_errors = fail_open_errors
 
-            cooldown_active = now < cooldown_until
-            entering_cooldown = not cooldown_active and fail_open_errors >= FAIL_OPEN_LIMIT
+            entering_cooldown = cooldown_until <= now and fail_open_errors >= FAIL_OPEN_LIMIT
             if entering_cooldown:
                 self.fail_open_cooldown_until = now + 60
                 self.fail_open_errors = 0
 
+            cooldown_active = now < self._fail_open_cooldown_until
             return fail_open_errors, cooldown_active, entering_cooldown
 
     def reset_fail_open_state(self) -> None:

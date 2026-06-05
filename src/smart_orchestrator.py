@@ -38,6 +38,7 @@ def _record_conversation_turn(
     ai_service: str,
     model: str,
 ) -> None:
+    """Record the user prompt and assistant response in conversation history."""
     request.conversation_manager.add_message(request.user.id, "user", request.message)
     request.conversation_manager.add_message(
         request.user.id,

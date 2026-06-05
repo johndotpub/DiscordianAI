@@ -121,11 +121,17 @@ def test_drop_record():
 
 
 def test_structured_logger_binds_context():
-    """Bound context is attached to the structlog logger."""
-    configure_structlog(json_logs=True)
-    log = get_structured_logger("test.module", request_id="abc123")
+    """Bound context is rendered into the structured log output."""
+    stream = StringIO()
 
-    assert log._context["request_id"] == "abc123"
+    configure_structlog(json_logs=True, stream=stream)
+    log = get_structured_logger("test.module", request_id="abc123")
+    log.info("hello world")
+
+    output = stream.getvalue()
+    assert "abc123" in output
+    assert '"request_id": "abc123"' in output
+    assert '"event": "hello world"' in output
 
 
 def test_configure_structlog_plain_stream_renders_colors_on_non_tty():
