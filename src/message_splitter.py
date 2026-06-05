@@ -461,10 +461,6 @@ def sanitize_for_discord(text: str) -> str:
     text = text.replace("@everyone", "@\u200beveryone")
     text = text.replace("@here", "@\u200bhere")
 
-    # Ensure text isn't too long
-    if len(text) > MESSAGE_LIMIT:
-        text = text[: MESSAGE_LIMIT - 3] + "..."
-
     return text
 
 
