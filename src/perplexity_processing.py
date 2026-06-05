@@ -80,7 +80,8 @@ def _map_from_metadata(unique: list[str], metadata: list[Any], target: dict[str,
     for num in unique:
         idx = int(num) - 1
         if 0 <= idx < len(metadata):
-            target[num] = metadata[idx]
+            citation = metadata[idx]
+            target[num] = getattr(citation, "url", citation)
 
 
 def _map_from_search_results(
