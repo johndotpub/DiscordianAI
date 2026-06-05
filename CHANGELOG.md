@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.9.8] - 2026-05-04
 
+## [0.2.9.7] - 2026-04-30
+
+### Skipped
+- Version 0.2.9.7 was not published; documentation and release notes resume at 0.2.9.8.
+
 ### Added ✨
 - **HTTP Health Endpoint (#210)**: Starlette-based `/health`, `/health/live`, `/health/ready` probes for Kubernetes/Docker health checks. New `HealthServer` class manages lifecycle alongside the Discord bot.
 - **Sphinx API Documentation (#205)**: Auto-generated API reference using Sphinx + Furo theme for all 26 source modules. Build with `make -C docs html`.

@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0, os.path.abspath("../.."))
 
 project = "DiscordianAI"
-copyright = "2025, johndotpub"
+copyright = "2025-2026, johndotpub"
 author = "johndotpub"
 
 release = "0.2.9.8"
