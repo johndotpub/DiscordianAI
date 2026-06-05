@@ -71,16 +71,16 @@ asyncio_default_fixture_loop_scope = "function"
 line-length = 99
 extend-exclude = '''
 /(
-    \\.git
+    \.git
   | __pycache__
   | build
   | dist
-  | \\.tox
-  | \\.venv
+  | \.tox
+  | \.venv
   | venv
-  | \\.egg-info
-  | \\.pytest_cache
-  | \\.coverage.*
+  | \.egg-info
+  | \.pytest_cache
+  | \.coverage.*
   | htmlcov
   | .*\\.log
   | scripts

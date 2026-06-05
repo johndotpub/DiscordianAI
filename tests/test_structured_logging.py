@@ -123,10 +123,9 @@ def test_structured_logger_binds_context():
     assert log._context["request_id"] == "abc123"
 
 
-def test_configure_structlog_plain_stream_disables_colors_and_padding():
-    """Non-TTY streams render colored text by default."""
+def test_configure_structlog_plain_stream_renders_colors_on_non_tty():
+    """Non-TTY streams render colored text by default (colors are enabled unless explicitly disabled)."""
     stream = StringIO()
-    stream.isatty = lambda: False  # type: ignore[attr-defined]
 
     configure_structlog(stream=stream)
 
@@ -141,7 +140,6 @@ def test_configure_structlog_plain_stream_disables_colors_and_padding():
 def test_configure_structlog_env_color_defaults_to_colors_on_non_tty_stream():
     """Unset DISCORDIANAI_LOG_COLOR keeps colored output on non-TTY streams."""
     stream = StringIO()
-    stream.isatty = lambda: False  # type: ignore[attr-defined]
 
     with patch.dict(os.environ, {}, clear=False):
         os.environ.pop("DISCORDIANAI_LOG_COLOR", None)
@@ -156,7 +154,6 @@ def test_configure_structlog_env_color_defaults_to_colors_on_non_tty_stream():
 def test_configure_structlog_env_color_forces_colors_on_non_tty_stream():
     """DISCORDIANAI_LOG_COLOR=1 forces colored output on non-TTY streams."""
     stream = StringIO()
-    stream.isatty = lambda: False  # type: ignore[attr-defined]
 
     with patch.dict(os.environ, {"DISCORDIANAI_LOG_COLOR": "1"}):
         configure_structlog(stream=stream)
@@ -167,10 +164,16 @@ def test_configure_structlog_env_color_forces_colors_on_non_tty_stream():
     assert "hello world" in output
 
 
+class _TTYStringIO(StringIO):
+    """StringIO subclass that reports isatty() == True."""
+
+    def isatty(self) -> bool:
+        return True
+
+
 def test_configure_structlog_env_color_disables_colors_on_tty_stream():
     """DISCORDIANAI_LOG_COLOR=0 forces plain output on TTY streams."""
-    stream = StringIO()
-    stream.isatty = lambda: True  # type: ignore[attr-defined]
+    stream = _TTYStringIO()
 
     with patch.dict(os.environ, {"DISCORDIANAI_LOG_COLOR": "0"}):
         configure_structlog(stream=stream)
