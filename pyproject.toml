@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "DiscordianAI"
-version = "0.2.9.8"
+version = "0.2.9.9"
 description = "A Discord bot that uses OpenAI's GPT API to generate responses."
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -13,15 +13,15 @@ requires-python = ">=3.12"
 dependencies = [
     "discord.py>=2.7.1",
     "aiohttp>=3.13.5",
-    "openai>=2.32.0",
+    "openai>=2.41.0",
     "websockets>=16.0",
-    "requests>=2.33.1",
+    "requests>=2.34.1",
     "beautifulsoup4>=4.14.3",
     "httpx[http2]>=0.28.1",
     "h2>=4.3.0",
-    "starlette>=0.45.0",
+    "starlette>=1.2.1",
     "uvicorn>=0.34.0",
-    "structlog>=24.4.0",
+    "structlog>=25.5.0",
 ]
 urls = {"Homepage" = "https://github.com/johndotpub/DiscordianAI"}
 classifiers = [
@@ -70,18 +70,18 @@ asyncio_default_fixture_loop_scope = "function"
 line-length = 99
 extend-exclude = '''
 /(
-    \.git
+    \\.git
   | __pycache__
   | build
   | dist
-  | \.tox
-  | \.venv
+  | \\.tox
+  | \\.venv
   | venv
-  | \.egg-info
-  | \.pytest_cache
-  | \.coverage.*
+  | \\.egg-info
+  | \\.pytest_cache
+  | \\.coverage.*
   | htmlcov
-  | .*\.log
+  | .*\\.log
   | scripts
   | docs
 )/
@@ -187,7 +187,6 @@ select = [
 ]
 
 
-
 # Rules to ignore (equivalent to flake8 ignore)
 ignore = [
     "S101",   # Use of assert detected (OK in tests)
@@ -232,4 +231,3 @@ mark-parentheses = false
 
 # Loosen specific modules to reduce noisy warnings without changing behavior
 # Keep core modules strict; no unnecessary ignores remain
-

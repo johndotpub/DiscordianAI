@@ -54,6 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disabled `autosummary_generate` in Sphinx conf (we use per-module `.rst` files; autosummary was producing 21 duplicate stub warnings for `BotDependencies` fields).
 - Bumped Sphinx `version`/`release` to `0.2.9.8` to match `pyproject.toml`.
 
+## [0.2.9.9] - Unreleased
+
 ### Fixed 🔧 — Dependency & Configuration (VectorContext QA)
 - **`websockets` dependency**: Added `websockets>=16.0` to `requirements.txt` to match `pyproject.toml` declaration and ensure Docker builds include the runtime dependency.
 - **`ConnectionPool` config parsing**: Wired `[ConnectionPool]` section parser (`_parse_connection_pool_config()`) into `load_config()` — this section was documented in `config.ini.example` and had defaults defined, but was silently ignored at runtime.
