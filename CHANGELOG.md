@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.env.example`**: Created template file with all 21 supported environment variables, commented out with descriptions.
 - **`CONTRIBUTING.md`**: Updated Python version from 3.10 to 3.12+ to match `pyproject.toml` requirement.
 - **structlog 25.x compatibility**: Removed redundant `structlog.stdlib.add_logger_name` processor that crashes with `None` logger in the `ProcessorFormatter` chain; custom `_add_logger_name` already handles this correctly.
+- **CI validation hardening**: added pip install steps for black and ruff in pre-push validation to eliminate version drift between local tools and CI (black 26.1.0→26.5.1, ruff 0.15.10→0.15.16). Resolved 7 formatting/lint violations caught by CI but missed locally.
 
 ### Fixed 🔧 — Logging
 - **`DISCORDIANAI_LOG_COLOR` default**: Colors are now enabled by default even for non-TTY/file output; only explicit `0`/`false`/`no` disables color.
