@@ -54,8 +54,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disabled `autosummary_generate` in Sphinx conf (we use per-module `.rst` files; autosummary was producing 21 duplicate stub warnings for `BotDependencies` fields).
 - Bumped Sphinx `version`/`release` to `0.2.9.8` to match `pyproject.toml`.
 
+### Fixed 🔧 — Dependency & Configuration (VectorContext QA)
+- **`websockets` dependency**: Added `websockets>=16.0` to `requirements.txt` to match `pyproject.toml` declaration and ensure Docker builds include the runtime dependency.
+- **`ConnectionPool` config parsing**: Wired `[ConnectionPool]` section parser (`_parse_connection_pool_config()`) into `load_config()` — this section was documented in `config.ini.example` and had defaults defined, but was silently ignored at runtime.
+- **`ENTITY_DETECTION_MIN_WORDS`**: Now reads from config file and environment variables (was documented but unimplemented in the parser).
+- **`ALLOWED_CHANNEL_IDS`**: Added ID-based channel matching alongside name-based `ALLOWED_CHANNELS` — channel IDs are unique across servers unlike names.
+- **`.env.example`**: Created template file with all 21 supported environment variables, commented out with descriptions.
+- **`CONTRIBUTING.md`**: Updated Python version from 3.10 to 3.12+ to match `pyproject.toml` requirement.
 
-## [0.2.9.6] - 2026-04-28
+### Fixed 🔧 — Source Code Reliability & Security
+- **`BotDependencies.__setitem__`**: Added `__setitem__` method to support dict-style writes (`deps["_health_task"] = ...`) — previously caused `TypeError` crash in `on_ready`, preventing health monitoring from starting.
+- **`sanitize_for_discord()`**: Wired into all send paths in message splitter — function was dead code, leaving `@everyone`/`@here` unsanitized in AI responses.
+- **`run_bot` NameError**: Initialized `deps = None` before try block — if `initialize_bot_and_dependencies()` raised before assignment, the except handler crashed with a secondary `NameError` masking the real error.
+- **`asyncio.sleep` in web scraper**: Replaced blocking `time.sleep()` with `await asyncio.sleep()` — 1-3 second sleep was freezing the entire event loop.
+- **`time.monotonic()` in CircuitBreaker**: Replaced `time.time()` with `time.monotonic()` for clock-jump safety; added time-based failure count decay to prevent permanent trip from sparse intermittent failures.
+- **`FAIL_OPEN_LIMIT` constant**: Added module-level constant replacing magic number `3` for rate limiter fail-open threshold.
+- **Perplexity citation extraction**: Fixed `_map_from_metadata()` to store citation URLs instead of raw objects — downstream comparison against string URLs was always failing.
+- **Embed truncation logging**: Fixed log message reporting post-truncation length as the "from" value — now reports original pre-truncation length.
+- **Message overflow guard**: Added length check after prefix concatenation to prevent exceeding Discord's 2000-char limit when prefix nearly fills the message.
+- **OpenAI→Perplexity reroute deduplication**: Added `persist_history` flag to `process_perplexity_message()`, preventing duplicate user messages in conversation history when OpenAI response is rerouted.
+- **Rate limiter fail-open**: Narrowed `except Exception` to catch only transient errors; added fail-open cooldown on repeated failures to prevent permanent rate-limit bypass.
+- **Content-Length handling**: Unparseable `content-length` headers in web scraper now proceed with download instead of aborting all retries.
+- **uviicorn ImportError**: `HealthServer.start()` now catches `ImportError` when uvicorn is missing and returns cleanly instead of crashing startup.
+- **Error classification**: Fixed `"5" in error_msg` matching model names and timestamps; now uses regex word-boundary HTTP status code matching.
+- **Decorator kwarg leak**: Changed `kwargs.pop("logger")` to `kwargs.get("logger")` in `handle_api_error` to avoid silently removing legitimate caller kwargs.
+- **Double-fault NameError**: Initialized `error_details = None` before `classify_error()` call to prevent `NameError` if classification itself raises.
+- **Cache time-indicator blocking**: Changed from substring matching to regex word-boundary matching — responses containing "today" or "latest" in body text are cached unless the word appears in a time-sensitive position.
+
+### Changed 🔁
+- **Retry documentation**: Updated `docs/Security.md`, `docs/Architecture.md` with current flat jittered retry defaults (was still showing deprecated exponential backoff values).
+- **Timeout documentation**: Updated read timeout documentation to reflect actual values: 45s (OpenAI) / 60s (Perplexity).
+- **Docker security**: Updated `docs/Security.md` Docker user from `botuser` to `appuser` to match actual Dockerfile.
+- **Entity detection docs**: Fixed `docs/Development.md` claim of "no unnecessary word count thresholds" — now accurately describes `ENTITY_DETECTION_MIN_WORDS=10`.
+- **Architecture diagram**: Standardized file extensions in ASCII diagram; updated ConnectionPooling example to use `ConnectionPoolManager` wrapper; noted caching decorator as aspirational.
+- **Sphinx API docs**: Added missing `conversation_manager.rst` to `docs/api/`; fixed copyright year to `2025-2026`; added 27th module to count reference.
+- **Usage docs**: Updated `docs/Setup.md` to show `discordian.sh -c config.ini` invocation; `docs/HybridMode.md` to mention `ENTITY_DETECTION_MIN_WORDS`; `docs/Docker.md` to reference launcher and `docker-compose.yml`.
+- **Python version docs**: Updated `docs/Python_Versions.md` with pyenv/launcher notes for cron and systemd deployments.
+
+### Tests ✅
+- **`logging_adapter.py` coverage**: New `test_logging_adapter.py` with 3 tests covering `ContextualLoggerAdapter.process()` with/without guild context and `get_logger_with_context()` factory.
+- **`models.py` coverage**: New `test_models.py` with 5 tests verifying frozen dataclass immutability and correct defaults for all 5 model classes.
+- **`py313` tox support**: Added `py313` to tox envlist alongside `py312`.
+- **Structured logging race fix**: Replaced `_reset_logging` fixture's global root logger mutation with clean return — eliminating race condition with `pytest-xdist -n auto`.
+- **Real sleep removal**: Replaced `time.sleep()` calls in `test_rate_limits_comprehensive.py`, `test_caching.py`, and `test_errors.py` with `unittest.mock.patch` — eliminated ~4 seconds of wall-clock waiting.
+- **Benchmark cleanup**: Removed hard timing assertions from `test_performance_integration.py` and `test_load_stress.py` — converted to pure functional assertions.
+
+### Lint ✅
+- All 16 ruff warnings resolved across source and tests — zero errors on `ruff check src/ tests/`.
+- Import ordering standardized, line length compliance, private member access replaced with properties, magic values extracted to named constants.
+
+### Stats 📊
+- **Files changed**: 40 files, +681/-311 lines
+- **New tests**: +13 test assertions (652 total, up from 639 baseline)
+- **Test result**: 652 passed, 0 skipped
+- **Lint**: `ruff check src/ tests/` clean
+- **Coverage**: maintained at or above existing thresholds
 
 ### Fixed 🔧
 - Synced `discord.py` minimum version across `requirements.txt` and `pyproject.toml` (>=2.7.1).
