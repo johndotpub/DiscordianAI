@@ -80,6 +80,11 @@ All project dependencies are verified to work with Python 3.12:
 - **ruff**: ✅ Python 3.7+
 - **black**: ✅ Python 3.7+
 
+## Launcher Notes
+
+- The launcher resolves Python through pyenv first when pyenv is installed.
+- Cron environments must have pyenv initialized and available on PATH so the launcher can find the intended interpreter.
+
 ## Migration Guide
 
 ### From Python 3.10 or 3.11
