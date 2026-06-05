@@ -151,6 +151,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
 
 def run_bot(config: dict[str, Any]) -> None:
     """Initialize and run the Discord bot using DiscordBotManager."""
+    deps: BotDependencies | None = None
     try:
         deps = initialize_bot_and_dependencies(config)
         deps.logger.info("Starting Discord bot manager...")

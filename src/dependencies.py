@@ -128,6 +128,30 @@ class BotDependencies:
         mapping = self.to_dict()
         return mapping[key]
 
+    def __setitem__(self, key: str, value: Any) -> None:
+        """Support dict-style writes for backward compatibility."""
+        if key in self.to_dict():
+            field_name = {
+                "ALLOWED_CHANNELS": "allowed_channels",
+                "BOT_PRESENCE": "bot_presence",
+                "ACTIVITY_TYPE": "activity_type",
+                "ACTIVITY_STATUS": "activity_status",
+                "DISCORD_TOKEN": "discord_token",
+                "RATE_LIMIT": "rate_limit",
+                "RATE_LIMIT_PER": "rate_limit_period",
+                "GPT_MODEL": "gpt_model",
+                "PERPLEXITY_MODEL": "perplexity_model",
+                "SYSTEM_MESSAGE": "system_message",
+                "OUTPUT_TOKENS": "output_tokens",
+                "_health_task": "health_task",
+            }.get(key)
+            if field_name:
+                setattr(self, field_name, value)
+            else:
+                setattr(self, key, value)
+        else:
+            setattr(self, key, value)
+
     def __contains__(self, key: str) -> bool:
         """Support ``key in deps`` for backward compatibility."""
         return key in self.to_dict()
