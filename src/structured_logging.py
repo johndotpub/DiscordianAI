@@ -98,6 +98,7 @@ def configure_structlog(
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
         _add_logger_name,
+        structlog.stdlib.ExtraAdder(),
         _drop_record,
     ]
 
@@ -109,7 +110,7 @@ def configure_structlog(
         if force_colors is False:
             renderer = structlog.dev.ConsoleRenderer(colors=False, pad_event_to=0)
         else:
-            renderer = structlog.dev.ConsoleRenderer()
+            renderer = structlog.dev.ConsoleRenderer(pad_event_to=0)
 
     structlog.configure(
         processors=[

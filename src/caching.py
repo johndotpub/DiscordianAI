@@ -20,6 +20,8 @@ import threading
 import time
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 # Constants for caching
 MIN_CACHABLE_RESPONSE_LENGTH = 10
 RESPONSE_LENGTH_TTL_THRESHOLD = 1000
@@ -37,7 +39,6 @@ def _extract_message_context(
     argument 3 is the config-like object. If a decorated signature drifts,
     this helper falls back to keyword arguments and logs a warning.
     """
-    logger = logging.getLogger(__name__)
     request = args[0] if args and hasattr(args[0], "message") else kwargs.get("request")
     config = (
         args[POSITIONAL_CONFIG_INDEX]
@@ -494,11 +495,9 @@ async def cleanup_caches():
         response_expired = response_cache.cleanup()
 
         if response_expired > 0:
-            logger = logging.getLogger(__name__)
             logger.info("Cleaned up %d expired response cache entries", response_expired)
 
     except Exception:
-        logger = logging.getLogger(__name__)
         logger.exception("Cache cleanup failed")
         return 0
     else:
@@ -521,7 +520,6 @@ async def _cache_cleanup_tick(interval: int, logger: logging.Logger) -> None:
 # Background cache cleanup task
 async def start_cache_cleanup_task(interval: int = 300):  # 5 minutes
     """Start background cache cleanup task."""
-    logger = logging.getLogger(__name__)
     logger.info("Starting cache cleanup background task")
 
     while True:

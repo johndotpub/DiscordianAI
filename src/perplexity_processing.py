@@ -9,7 +9,7 @@ import logging
 import re
 from typing import Any
 
-import requests
+import httpx
 
 from .api_context import api_call
 from .config import CITATION_PATTERN, URL_PATTERN
@@ -300,7 +300,7 @@ async def _enhance_message_with_urls(message: str, urls: list[str], logger: logg
                 if content:
                     scraped_contents.append(f"Content from {url}:\n{content}")
                     successful_scrapes.append(url)
-            except (TimeoutError, requests.RequestException):
+            except (TimeoutError, httpx.HTTPError):
                 logger.exception("Web scraping failed for %s", url)
 
     if scraped_contents:

@@ -1,8 +1,9 @@
 """Tests for web scraping functionality."""
 
 import logging
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
+import httpx
 import pytest
 
 from src.web_scraper import (
@@ -13,6 +14,27 @@ from src.web_scraper import (
     is_scrapable_url,
     scrape_url_content,
 )
+
+
+def _mock_async_client(response: Mock):
+    mock_client = Mock()
+    mock_client.stream.return_value = Mock(
+        __aenter__=AsyncMock(return_value=response), __aexit__=AsyncMock(return_value=False)
+    )
+
+    mock_client_class = Mock()
+    mock_client_class.return_value = Mock(
+        __aenter__=AsyncMock(return_value=mock_client), __aexit__=AsyncMock(return_value=False)
+    )
+    return mock_client_class, mock_client
+
+
+def _aiter_bytes(chunks: list[bytes]):
+    async def _gen():
+        for chunk in chunks:
+            yield chunk
+
+    return _gen()
 
 
 class TestWebScrapingValidation:
@@ -151,16 +173,18 @@ class TestWebScraping:
             "content-type": "text/html; charset=utf-8",
         }
         mock_response.raise_for_status.return_value = None
-        mock_response.iter_content.return_value = [
-            b"<html><head><title>Test Page</title></head>",
-            b"<body><main>Test content</main></body></html>",
-        ]
+        mock_response.aiter_bytes = Mock(
+            return_value=_aiter_bytes(
+                [
+                    b"<html><head><title>Test Page</title></head>",
+                    b"<body><main>Test content</main></body></html>",
+                ]
+            )
+        )
 
-        # Mock the session.get method since the function uses requests.Session()
-        with patch("src.web_scraper.requests.Session") as mock_session_class:
-            mock_session = Mock()
-            mock_session.get.return_value = mock_response
-            mock_session_class.return_value = mock_session
+        mock_client_class, _mock_client = _mock_async_client(mock_response)
+
+        with patch("src.web_scraper.httpx.AsyncClient", mock_client_class):
 
             result = await scrape_url_content("https://example.com")
 
@@ -173,19 +197,7 @@ class TestWebScraping:
     @pytest.mark.asyncio
     async def test_scrape_url_content_timeout(self):
         """Test handling of request timeout."""
-
-        # Create a custom exception class for testing
-        class TimeoutTestError(Exception):
-            pass
-
-        timeout_exception = TimeoutTestError("Timeout")
-
-        # Mock the session.get method since the function uses requests.Session()
-        with patch("src.web_scraper.requests.Session") as mock_session_class:
-            mock_session = Mock()
-            mock_session.get.side_effect = timeout_exception
-            mock_session_class.return_value = mock_session
-
+        with patch("src.web_scraper.asyncio.timeout", side_effect=TimeoutError("Timeout")):
             result = await scrape_url_content("https://example.com")
 
         assert result is None
@@ -211,18 +223,19 @@ class TestWebScraping:
     @pytest.mark.asyncio
     async def test_scrape_url_content_connection_error(self):
         """Test handling of connection errors."""
+        mock_stream = Mock()
+        mock_stream.__aenter__ = AsyncMock(side_effect=httpx.ConnectError("Connection failed"))
+        mock_stream.__aexit__ = AsyncMock(return_value=False)
 
-        # Create a custom exception class for testing
-        class ConnectionTestError(Exception):
-            pass
+        mock_client = Mock()
+        mock_client.stream.return_value = mock_stream
+        mock_client_class = Mock()
+        mock_client_class.return_value = Mock(
+            __aenter__=AsyncMock(return_value=mock_client),
+            __aexit__=AsyncMock(return_value=False),
+        )
 
-        connection_error = ConnectionTestError("Connection failed")
-
-        # Mock the session.get method since the function uses requests.Session()
-        with patch("src.web_scraper.requests.Session") as mock_session_class:
-            mock_session = Mock()
-            mock_session.get.side_effect = connection_error
-            mock_session_class.return_value = mock_session
+        with patch("src.web_scraper.httpx.AsyncClient", mock_client_class):
 
             result = await scrape_url_content("https://example.com")
 
@@ -233,20 +246,12 @@ class TestWebScraping:
         """Test handling of HTTP errors."""
         mock_response = Mock()
         mock_response.status_code = 404
+        http_error = httpx.HTTPStatusError("404 Not Found", request=Mock(), response=mock_response)
+        mock_response.raise_for_status.side_effect = http_error
 
-        # Create a custom exception class for testing
-        class HTTPError(Exception):
-            def __init__(self, message, response=None):
-                super().__init__(message)
-                self.response = response
+        mock_client_class, _mock_client = _mock_async_client(mock_response)
 
-        http_error = HTTPError("404 Not Found", mock_response)
-
-        # Mock the session.get method since the function uses requests.Session()
-        with patch("src.web_scraper.requests.Session") as mock_session_class:
-            mock_session = Mock()
-            mock_session.get.side_effect = http_error
-            mock_session_class.return_value = mock_session
+        with patch("src.web_scraper.httpx.AsyncClient", mock_client_class):
 
             result = await scrape_url_content("https://example.com")
 
@@ -269,11 +274,9 @@ class TestWebScraping:
         mock_response.headers = {"content-length": "1000000"}  # 1MB
         mock_response.raise_for_status.return_value = None
 
-        # Mock the session.get method since the function uses requests.Session()
-        with patch("src.web_scraper.requests.Session") as mock_session_class:
-            mock_session = Mock()
-            mock_session.get.return_value = mock_response
-            mock_session_class.return_value = mock_session
+        mock_client_class, _mock_client = _mock_async_client(mock_response)
+
+        with patch("src.web_scraper.httpx.AsyncClient", mock_client_class):
 
             result = await scrape_url_content("https://example.com", max_content_length=50000)
 
@@ -291,15 +294,17 @@ class TestWebScraping:
             "content-type": "text/html; charset=utf-8",
         }
         mock_response.raise_for_status.return_value = None
-        mock_response.iter_content.return_value = [
-            b"<html><head><title>Test</title></head><body>Content</body></html>",
-        ]
+        mock_response.aiter_bytes = Mock(
+            return_value=_aiter_bytes(
+                [
+                    b"<html><head><title>Test</title></head><body>Content</body></html>",
+                ]
+            )
+        )
 
-        # Mock the session.get method since the function uses requests.Session()
-        with patch("src.web_scraper.requests.Session") as mock_session_class:
-            mock_session = Mock()
-            mock_session.get.return_value = mock_response
-            mock_session_class.return_value = mock_session
+        mock_client_class, _mock_client = _mock_async_client(mock_response)
+
+        with patch("src.web_scraper.httpx.AsyncClient", mock_client_class):
 
             result = await scrape_url_content("https://example.com", logger=mock_logger)
 
@@ -318,13 +323,11 @@ class TestWebScraping:
             "content-type": "text/html; charset=utf-8",
         }
         mock_response.raise_for_status.return_value = None
-        mock_response.iter_content.return_value = [large_content.encode()]
+        mock_response.aiter_bytes = Mock(return_value=_aiter_bytes([large_content.encode()]))
 
-        # Mock the session.get method since the function uses requests.Session()
-        with patch("src.web_scraper.requests.Session") as mock_session_class:
-            mock_session = Mock()
-            mock_session.get.return_value = mock_response
-            mock_session_class.return_value = mock_session
+        mock_client_class, _mock_client = _mock_async_client(mock_response)
+
+        with patch("src.web_scraper.httpx.AsyncClient", mock_client_class):
 
             result = await scrape_url_content("https://example.com", max_content_length=1000)
 
@@ -342,19 +345,16 @@ class TestWebScraping:
             "content-type": "application/json",
         }
         mock_response.raise_for_status.return_value = None
-        mock_response.iter_content.return_value = [b"{}"]
-        mock_response.close = Mock()
+        mock_response.aiter_bytes = Mock(return_value=_aiter_bytes([b"{}"]))
 
-        with patch("src.web_scraper.requests.Session") as mock_session_class:
-            mock_session = Mock()
-            mock_session.get.return_value = mock_response
-            mock_session_class.return_value = mock_session
+        mock_client_class, mock_client = _mock_async_client(mock_response)
+
+        with patch("src.web_scraper.httpx.AsyncClient", mock_client_class):
 
             result = await scrape_url_content("https://example.com/data")
 
         assert result is None
-        mock_session.get.assert_called_once()
-        assert mock_response.close.called
+        mock_client.stream.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_scrape_url_content_large_payload_closes_response(self):
@@ -366,17 +366,16 @@ class TestWebScraping:
             "content-type": "text/html",
         }
         mock_response.raise_for_status.return_value = None
-        mock_response.close = Mock()
+        mock_response.aiter_bytes = Mock(return_value=_aiter_bytes([b"x"]))
 
-        with patch("src.web_scraper.requests.Session") as mock_session_class:
-            mock_session = Mock()
-            mock_session.get.return_value = mock_response
-            mock_session_class.return_value = mock_session
+        mock_client_class, mock_client = _mock_async_client(mock_response)
+
+        with patch("src.web_scraper.httpx.AsyncClient", mock_client_class):
 
             result = await scrape_url_content("https://example.com/large")
 
         assert result is None
-        assert mock_response.close.called
+        mock_client.stream.assert_called_once()
 
 
 class TestWebScrapingIntegration:
@@ -393,13 +392,11 @@ class TestWebScrapingIntegration:
         mock_response.status_code = 200
         mock_response.headers = {}
         mock_response.raise_for_status.return_value = None
-        mock_response.iter_content.return_value = [b""]
+        mock_response.aiter_bytes = Mock(return_value=_aiter_bytes([b""]))
 
-        # Mock the session.get method since the function uses requests.Session()
-        with patch("src.web_scraper.requests.Session") as mock_session_class:
-            mock_session = Mock()
-            mock_session.get.return_value = mock_response
-            mock_session_class.return_value = mock_session
+        mock_client_class, _mock_client = _mock_async_client(mock_response)
+
+        with patch("src.web_scraper.httpx.AsyncClient", mock_client_class):
 
             result = await scrape_url_content("https://example.com")
 
@@ -415,13 +412,13 @@ class TestWebScrapingIntegration:
             "content-type": "text/html; charset=utf-8",
         }
         mock_response.raise_for_status.return_value = None
-        mock_response.iter_content.return_value = [b"<html><head><title>Test</title>"]  # Malformed
+        mock_response.aiter_bytes = Mock(
+            return_value=_aiter_bytes([b"<html><head><title>Test</title>"])
+        )  # Malformed
 
-        # Mock the session.get method since the function uses requests.Session()
-        with patch("src.web_scraper.requests.Session") as mock_session_class:
-            mock_session = Mock()
-            mock_session.get.return_value = mock_response
-            mock_session_class.return_value = mock_session
+        mock_client_class, _mock_client = _mock_async_client(mock_response)
+
+        with patch("src.web_scraper.httpx.AsyncClient", mock_client_class):
 
             result = await scrape_url_content("https://example.com")
 
