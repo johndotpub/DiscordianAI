@@ -377,6 +377,7 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
             _parse_discord_config(config, config_data)
             _parse_default_config(config, config_data, logger)
             _parse_limits_config(config, config_data, logger)
+            _parse_connection_pool_config(config, config_data, logger)
             _parse_orchestrator_config(config, config_data, logger)
             _parse_logging_config(config, config_data, base_folder)
             _parse_health_config(config, config_data, logger)
@@ -412,9 +413,14 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "SYSTEM_MESSAGE",
         "RATE_LIMIT",
         "RATE_LIMIT_PER",
+        "OPENAI_MAX_CONNECTIONS",
+        "OPENAI_MAX_KEEPALIVE",
+        "PERPLEXITY_MAX_CONNECTIONS",
+        "PERPLEXITY_MAX_KEEPALIVE",
         "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
         "MAX_HISTORY_PER_USER",
         "USER_LOCK_CLEANUP_INTERVAL",
+        "ENTITY_DETECTION_MIN_WORDS",
         "LOG_FILE",
         "LOG_LEVEL",
     ]
@@ -435,9 +441,14 @@ def _apply_single_env_override(
         "CONTEXT_WINDOW",
         "RATE_LIMIT",
         "RATE_LIMIT_PER",
+        "OPENAI_MAX_CONNECTIONS",
+        "OPENAI_MAX_KEEPALIVE",
+        "PERPLEXITY_MAX_CONNECTIONS",
+        "PERPLEXITY_MAX_KEEPALIVE",
         "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
         "MAX_HISTORY_PER_USER",
         "USER_LOCK_CLEANUP_INTERVAL",
+        "ENTITY_DETECTION_MIN_WORDS",
     }
 
     if key == "ALLOWED_CHANNELS":
@@ -480,6 +491,7 @@ def _apply_config_defaults(config_data: dict[str, Any]) -> None:
         "LOOKBACK_MESSAGES_FOR_CONSISTENCY": 6,
         "MAX_HISTORY_PER_USER": 50,
         "USER_LOCK_CLEANUP_INTERVAL": 3600,
+        "ENTITY_DETECTION_MIN_WORDS": 10,
         "LOG_FILE": "bot.log",
         "LOG_LEVEL": "INFO",
         "HEALTH_ENABLED": True,
@@ -507,6 +519,39 @@ def _parse_limits_config(
         config_data["RATE_LIMIT_PER"] = 60
 
 
+def _parse_connection_pool_config(
+    config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger
+) -> None:
+    """Parse ConnectionPool section of configuration."""
+    try:
+        config_data["OPENAI_MAX_CONNECTIONS"] = config.getint(
+            "ConnectionPool",
+            "OPENAI_MAX_CONNECTIONS",
+            fallback=50,
+        )
+        config_data["OPENAI_MAX_KEEPALIVE"] = config.getint(
+            "ConnectionPool",
+            "OPENAI_MAX_KEEPALIVE",
+            fallback=10,
+        )
+        config_data["PERPLEXITY_MAX_CONNECTIONS"] = config.getint(
+            "ConnectionPool",
+            "PERPLEXITY_MAX_CONNECTIONS",
+            fallback=30,
+        )
+        config_data["PERPLEXITY_MAX_KEEPALIVE"] = config.getint(
+            "ConnectionPool",
+            "PERPLEXITY_MAX_KEEPALIVE",
+            fallback=5,
+        )
+    except ValueError:
+        logger.warning("Invalid ConnectionPool config value, using defaults")
+        config_data.setdefault("OPENAI_MAX_CONNECTIONS", 50)
+        config_data.setdefault("OPENAI_MAX_KEEPALIVE", 10)
+        config_data.setdefault("PERPLEXITY_MAX_CONNECTIONS", 30)
+        config_data.setdefault("PERPLEXITY_MAX_KEEPALIVE", 5)
+
+
 def _parse_orchestrator_config(
     config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger
 ) -> None:
@@ -527,11 +572,17 @@ def _parse_orchestrator_config(
             "USER_LOCK_CLEANUP_INTERVAL",
             fallback=3600,
         )
+        config_data["ENTITY_DETECTION_MIN_WORDS"] = config.getint(
+            "Orchestrator",
+            "ENTITY_DETECTION_MIN_WORDS",
+            fallback=10,
+        )
     except ValueError:
         logger.warning("Invalid Orchestrator config value, using defaults")
         config_data.setdefault("LOOKBACK_MESSAGES_FOR_CONSISTENCY", 6)
         config_data.setdefault("MAX_HISTORY_PER_USER", 50)
         config_data.setdefault("USER_LOCK_CLEANUP_INTERVAL", 3600)
+        config_data.setdefault("ENTITY_DETECTION_MIN_WORDS", 10)
 
 
 def _parse_logging_config(
