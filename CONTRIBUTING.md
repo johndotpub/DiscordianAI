@@ -6,9 +6,11 @@ Thank you for your interest in contributing! This project follows modern Python 
 
 ### Prerequisites
 
-- **Python**: 3.12
+- **Python**: 3.12+
 - **Git**: Latest version
 - **pip**: Latest version
+
+If you use pyenv, ensure it is initialized before system package managers that also provide Python on PATH.
 
 ### Environment Setup
 
