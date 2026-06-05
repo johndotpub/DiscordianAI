@@ -12,7 +12,7 @@ from src.structured_logging import configure_structlog, get_structured_logger
 @pytest.fixture(autouse=True)
 def _reset_logging():
     """Ensure tests do not depend on pre-existing root handlers."""
-    yield
+    return
 
 
 def test_configure_structlog_defaults():

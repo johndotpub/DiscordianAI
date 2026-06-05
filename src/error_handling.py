@@ -111,7 +111,9 @@ class CircuitBreaker:
                 result = await func(*args, **kwargs)
             except self.expected_exception:
                 async with self._lock:
-                    if self.state == "CLOSED" and self._seconds_since_last_failure() > self.timeout:
+                    if self.state == "CLOSED" and (
+                        self._seconds_since_last_failure() > self.timeout
+                    ):
                         self.failure_count = 0
                     self.failure_count += 1
                     self.last_failure_time = time.monotonic()
@@ -273,7 +275,10 @@ def classify_error(exception: Exception) -> ErrorDetails:
         severity = ErrorSeverity.HIGH
         user_message = "🔐 Authentication issue. Please contact administrator."
 
-    elif any(re.search(rf"(?<!\\d){code}(?!\\d)", error_msg) for code in ["500", "502", "503", "504"]):
+    elif any(
+        re.search(rf"(?<!\\d){code}(?!\\d)", error_msg)
+        for code in ["500", "502", "503", "504"]
+    ):
         error_type = ErrorType.API_SERVER_ERROR
         severity = ErrorSeverity.HIGH
         user_message = "🔧 Service temporarily unavailable. Please try again later."

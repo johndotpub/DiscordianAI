@@ -5,8 +5,8 @@ and orchestrates the response generation with comprehensive error handling,
 logging, and thread-safe conversation management.
 """
 
-import logging
 import inspect
+import logging
 from typing import Any
 
 from .config import (
@@ -368,7 +368,11 @@ async def _process_hybrid_mode(
             request.logger.warning(
                 "OpenAI response indicates web-inability; rerouting to Perplexity"
             )
-            per_res = await _process_perplexity_reroute(request, clients.perplexity, config.perplexity)
+            per_res = await _process_perplexity_reroute(
+                request,
+                clients.perplexity,
+                config.perplexity,
+            )
             if per_res is None:
                 per_res = await process_perplexity_message(
                     request,
@@ -395,7 +399,11 @@ async def _process_hybrid_mode(
     return ERROR_MESSAGES["both_services_unavailable"], False, None
 
 
-async def _process_perplexity_reroute(request: AIRequest, perplexity_client: Any, config) -> tuple[str, bool, dict | None] | None:
+async def _process_perplexity_reroute(
+    request: AIRequest,
+    perplexity_client: Any,
+    config,
+) -> tuple[str, bool, dict | None] | None:
     """Invoke Perplexity while avoiding duplicate history writes on reroute."""
     params = inspect.signature(process_perplexity_message).parameters
     if "persist_history" in params:

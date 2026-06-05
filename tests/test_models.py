@@ -1,7 +1,4 @@
-"""Tests for AI service configuration models."""
-
 from dataclasses import FrozenInstanceError
-
 import logging
 
 import pytest
