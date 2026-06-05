@@ -66,7 +66,7 @@ def _add_respectful_delay():
     """Add a respectful delay between requests to avoid overwhelming servers."""
     # Using random for non-cryptographic purposes (rate limiting)
     delay = random.uniform(MIN_DELAY_BETWEEN_REQUESTS, MAX_DELAY_BETWEEN_REQUESTS)  # noqa: S311
-    time.sleep(delay)
+    return asyncio.sleep(delay)
 
 
 def _clean_text(text: str) -> str:
@@ -271,7 +271,7 @@ async def scrape_url_content(
         if not _validate_url(url, logger):
             return None
 
-        _add_respectful_delay()
+        await _add_respectful_delay()
 
         # Execute request asynchronously, enforcing an overall asyncio timeout
         try:
