@@ -5,51 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-
-## [0.2.9.8] - 2026-05-04
-
-### Added ✨
-- **HTTP Health Endpoint (#210)**: Starlette-based `/health`, `/health/live`, `/health/ready` probes for Kubernetes/Docker health checks. New `HealthServer` class manages lifecycle alongside the Discord bot.
-- **Sphinx API Documentation (#205)**: Auto-generated API reference using Sphinx + Furo theme for all 26 source modules. Build with `make -C docs html`.
-- **API Call Context Managers (#208)**: `api_context.py` module with `api_call()` async context manager and `call_with_retry()` helper. Unifies timing, error classification, tracking, and logging across all external API calls.
-- **Connection Pool Tracking (#212)**: `ConnectionPoolManager` now tracks created HTTP clients with creation timestamps, exposes `get_pool_metrics()` for monitoring visibility, and properly closes all clients on `close_all()`.
-- **Structured Logging (#209)**: `structlog` integration with hybrid console/JSON renderer via `configure_structlog()`. All existing `logging.getLogger()` calls are enriched transparently; new code can use `get_structured_logger()` for bound context.
-- **Formal Dependency Injection (#206)**: `BotDependencies` dataclass replaces the untyped `deps` dict. Supports `__getitem__`, `__contains__`, `.get()`, and `.to_dict()` for full backward compatibility.
-- New runtime dependencies: `starlette>=0.45.0`, `uvicorn>=0.34.0`, `structlog>=24.4.0`.
-- New dev dependency: `sphinx>=8.0.0` and `furo>=2024.8.0` under `[docs]` extras.
-
-### Fixed 🔧
-- **discordian.sh launcher rewrite**: Fixed `ModuleNotFoundError: No module named 'src'` when running from cron — the script now always `cd`s into the project directory before launching Python.
-- **Python resolution**: Removed hardcoded linuxbrew PATH. The launcher now resolves Python in a portable priority order: pyenv → project venv → shell venv → system `python3`.
-- **Venv bootstrapping**: Automatically creates a project-local `.venv/` with dependencies if one doesn't exist, using the resolved Python interpreter.
-- **Process management**: Replaced bare `pkill` with PID-file based shutdown (SIGTERM → 10s wait → SIGKILL) and stray process cleanup.
-- **Startup health check**: Daemon mode now waits 3 seconds after launch and confirms the process survived before reporting success.
-- **Version gating**: Added Python ≥3.12 check with a clear error message on older interpreters.
-
-### Added ✨
-- **`--install-systemd` flag** on `discordian.sh`: generates and installs a systemd user service from a config file name (e.g., `./discordian.sh --install-systemd bot.ini` creates `discordian-bot@bot.service`). Auto-detects paths, builds PATH dynamically from pyenv and Homebrew (via `brew --prefix`), and enables the service.
-- **systemd template unit** (`contrib/systemd/discordian-bot@.service`): reference template for manual setup. Instance name maps to config file (`discordian-bot@bot` → `bot.ini`).
-- **docs/Daemon.md**: rewritten with both cron and systemd deployment paths, `--install-systemd` quick-setup, Python resolution order (pyenv first), venv bootstrapping guide, and troubleshooting section.
-- **README.md**: added "Running with the launcher script" section with usage examples including `--install-systemd`.
-- **`.bot.pid` gitignore**: added PID file to `.gitignore`.
-
----
-
-### Fixed 🔧
-- Classify OpenAI `insufficient_quota` (429) as non-retryable auth error for instant Perplexity fallback instead of wasteful retry loops.
-- Added `API_TIMEOUT` to non-retryable error list so read timeouts bail immediately to the fallback service rather than compounding retry delays.
-- Symmetrized retry policy across OpenAI and Perplexity: both services now use identical `retry_with_backoff` config (`max_attempts=2`, 2-4s jittered wait, flat delay).
-- Disabled OpenAI SDK-level `max_retries` on both clients to prevent nested retry multiplication (SDK + application wrapper compounding up to 6 calls).
-- Added application-level `retry_with_backoff` wrapper to Perplexity for transient network/5xx resilience (was previously unprotected outside of SDK retries).
-- Increased `httpx.Timeout.read` from 30s to 45s (OpenAI) and 60s (Perplexity) to accommodate high-reasoning and search+citation pipelines.
-
-### Changed 🔁
-- Unified retry wait to 2.0-4.0s flat jittered delay (was 1.0s base with exponential growth up to 30s max_delay).
-- **CI hardening**: Added Sphinx docs build job to CI (warnings as errors via `-W`), pinned lint deps (`black>=26.1.0`, `ruff>=0.15.4`), removed `docs/**` from path-ignore so doc changes trigger CI, added `testenv:docs` to tox.
-- Disabled `autosummary_generate` in Sphinx conf (we use per-module `.rst` files; autosummary was producing 21 duplicate stub warnings for `BotDependencies` fields).
-- Bumped Sphinx `version`/`release` to `0.2.9.8` to match `pyproject.toml`.
-
-## [0.2.9.9] - Unreleased
+## [0.2.9.9] - 2026-06-04
 
 ### Fixed 🔧 — Dependency & Configuration (VectorContext QA)
 - **`websockets` dependency**: Added `websockets>=16.0` to `requirements.txt` to match `pyproject.toml` declaration and ensure Docker builds include the runtime dependency.
@@ -106,6 +62,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Test result**: 652 passed, 0 skipped
 - **Lint**: `ruff check src/ tests/` clean
 - **Coverage**: maintained at or above existing thresholds
+
+## [0.2.9.8] - 2026-05-04
+
+### Added ✨
+- **HTTP Health Endpoint (#210)**: Starlette-based `/health`, `/health/live`, `/health/ready` probes for Kubernetes/Docker health checks. New `HealthServer` class manages lifecycle alongside the Discord bot.
+- **Sphinx API Documentation (#205)**: Auto-generated API reference using Sphinx + Furo theme for all 26 source modules. Build with `make -C docs html`.
+- **API Call Context Managers (#208)**: `api_context.py` module with `api_call()` async context manager and `call_with_retry()` helper. Unifies timing, error classification, tracking, and logging across all external API calls.
+- **Connection Pool Tracking (#212)**: `ConnectionPoolManager` now tracks created HTTP clients with creation timestamps, exposes `get_pool_metrics()` for monitoring visibility, and properly closes all clients on `close_all()`.
+- **Structured Logging (#209)**: `structlog` integration with hybrid console/JSON renderer via `configure_structlog()`. All existing `logging.getLogger()` calls are enriched transparently; new code can use `get_structured_logger()` for bound context.
+- **Formal Dependency Injection (#206)**: `BotDependencies` dataclass replaces the untyped `deps` dict. Supports `__getitem__`, `__contains__`, `.get()`, and `.to_dict()` for full backward compatibility.
+- New runtime dependencies: `starlette>=0.45.0`, `uvicorn>=0.34.0`, `structlog>=24.4.0`.
+- New dev dependency: `sphinx>=8.0.0` and `furo>=2024.8.0` under `[docs]` extras.
+
+### Fixed 🔧
+- **discordian.sh launcher rewrite**: Fixed `ModuleNotFoundError: No module named 'src'` when running from cron — the script now always `cd`s into the project directory before launching Python.
+- **Python resolution**: Removed hardcoded linuxbrew PATH. The launcher now resolves Python in a portable priority order: pyenv → project venv → shell venv → system `python3`.
+- **Venv bootstrapping**: Automatically creates a project-local `.venv/` with dependencies if one doesn't exist, using the resolved Python interpreter.
+- **Process management**: Replaced bare `pkill` with PID-file based shutdown (SIGTERM → 10s wait → SIGKILL) and stray process cleanup.
+- **Startup health check**: Daemon mode now waits 3 seconds after launch and confirms the process survived before reporting success.
+- **Version gating**: Added Python ≥3.12 check with a clear error message on older interpreters.
+
+### Added ✨
+- **`--install-systemd` flag** on `discordian.sh`: generates and installs a systemd user service from a config file name (e.g., `./discordian.sh --install-systemd bot.ini` creates `discordian-bot@bot.service`). Auto-detects paths, builds PATH dynamically from pyenv and Homebrew (via `brew --prefix`), and enables the service.
+- **systemd template unit** (`contrib/systemd/discordian-bot@.service`): reference template for manual setup. Instance name maps to config file (`discordian-bot@bot` → `bot.ini`).
+- **docs/Daemon.md**: rewritten with both cron and systemd deployment paths, `--install-systemd` quick-setup, Python resolution order (pyenv first), venv bootstrapping guide, and troubleshooting section.
+- **README.md**: added "Running with the launcher script" section with usage examples including `--install-systemd`.
+- **`.bot.pid` gitignore**: added PID file to `.gitignore`.
+
+---
+
+### Fixed 🔧
+- Classify OpenAI `insufficient_quota` (429) as non-retryable auth error for instant Perplexity fallback instead of wasteful retry loops.
+- Added `API_TIMEOUT` to non-retryable error list so read timeouts bail immediately to the fallback service rather than compounding retry delays.
+- Symmetrized retry policy across OpenAI and Perplexity: both services now use identical `retry_with_backoff` config (`max_attempts=2`, 2-4s jittered wait, flat delay).
+- Disabled OpenAI SDK-level `max_retries` on both clients to prevent nested retry multiplication (SDK + application wrapper compounding up to 6 calls).
+- Added application-level `retry_with_backoff` wrapper to Perplexity for transient network/5xx resilience (was previously unprotected outside of SDK retries).
+- Increased `httpx.Timeout.read` from 30s to 45s (OpenAI) and 60s (Perplexity) to accommodate high-reasoning and search+citation pipelines.
+
+### Changed 🔁
+- Unified retry wait to 2.0-4.0s flat jittered delay (was 1.0s base with exponential growth up to 30s max_delay).
+- **CI hardening**: Added Sphinx docs build job to CI (warnings as errors via `-W`), pinned lint deps (`black>=26.1.0`, `ruff>=0.15.4`), removed `docs/**` from path-ignore so doc changes trigger CI, added `testenv:docs` to tox.
+- Disabled `autosummary_generate` in Sphinx conf (we use per-module `.rst` files; autosummary was producing 21 duplicate stub warnings for `BotDependencies` fields).
+- Bumped Sphinx `version`/`release` to `0.2.9.8` to match `pyproject.toml`.
 
 ## [0.2.9.6] - 2026-04-28
 
