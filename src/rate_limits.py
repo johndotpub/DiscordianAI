@@ -27,6 +27,8 @@ class RateLimiter:
         """
         self.last_command_timestamps: dict[int, float] = {}
         self.last_command_count: dict[int, int] = {}
+        self._fail_open_errors = 0
+        self._fail_open_cooldown_until = 0.0
         self._lock = threading.RLock()  # Use RLock for consistency with conversation manager
         self._logger = logging.getLogger(f"{__name__}.RateLimiter")
 
@@ -138,7 +140,6 @@ class RateLimiter:
                 "window_expired": False,
             }
 
-
 async def check_rate_limit(
     user: discord.User,
     rate_limiter: RateLimiter,
@@ -175,18 +176,46 @@ async def check_rate_limit(
             logger,
         )
 
-    except Exception:
+    except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
         logger.exception(
             "Unexpected error in rate limit check for user %s (ID: %s)",
             user.name,
             user.id,
         )
+        now = time.time()
+        fail_open_errors = getattr(rate_limiter, "_fail_open_errors", 0)
+        if not isinstance(fail_open_errors, int):
+            fail_open_errors = 0
+        cooldown_until = getattr(rate_limiter, "_fail_open_cooldown_until", 0.0)
+        if not isinstance(cooldown_until, (int, float)):
+            cooldown_until = 0.0
+
+        fail_open_errors += 1
+        rate_limiter._fail_open_errors = fail_open_errors
+
+        if now < cooldown_until:
+            logger.warning(
+                "RATE_LIMITER_ERROR: cooldown active, denying request after repeated failures"
+            )
+            return False
+
         # In case of error, allow the request (fail-open for availability)
-        # but log it prominently for investigation
-        logger.critical("RATE_LIMITER_ERROR: Failing open - allowing request due to error")
+        # but only for a limited number of consecutive failures.
+        if fail_open_errors >= 3:
+            rate_limiter._fail_open_cooldown_until = now + 60
+            rate_limiter._fail_open_errors = 0
+            logger.critical(
+                "RATE_LIMITER_ERROR: entering cooldown after repeated failures"
+            )
+        else:
+            logger.critical(
+                "RATE_LIMITER_ERROR: Failing open due to transient error: %s", exc
+            )
         return True
     else:
         # Log successful rate limit checks at debug level
+        rate_limiter._fail_open_errors = 0
+        rate_limiter._fail_open_cooldown_until = 0.0
         if result:
             logger.debug("Rate limit check successful for %s (ID: %s)", user.name, user.id)
         else:

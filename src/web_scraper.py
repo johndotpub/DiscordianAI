@@ -358,7 +358,7 @@ def _fetch_attempt(
             if int(response.headers.get("content-length", 0)) > MAX_DOWNLOAD_SIZE:
                 return _STOP_RETRY
         except (TypeError, ValueError):
-            return _STOP_RETRY
+            pass
 
         content = bytearray()
         for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
