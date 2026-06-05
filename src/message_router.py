@@ -25,14 +25,19 @@ async def handle_incoming_message(
                 await process_dm_message(message, deps)
             return
 
-        if (
-            isinstance(message.channel, discord.TextChannel)
-            and message.channel.name in deps["ALLOWED_CHANNELS"]
-            and bot.user in message.mentions
-        ):
-            async with message.channel.typing():
-                await process_channel_message(message, deps)
-            return
+        allowed_channel_ids = deps.get("ALLOWED_CHANNEL_IDS", [])
+        allowed_channel_names = deps.get("ALLOWED_CHANNELS", [])
+
+        if isinstance(message.channel, discord.TextChannel) and bot.user in message.mentions:
+            if allowed_channel_ids:
+                channel_allowed = message.channel.id in allowed_channel_ids
+            else:
+                channel_allowed = message.channel.name in allowed_channel_names
+
+            if channel_allowed:
+                async with message.channel.typing():
+                    await process_channel_message(message, deps)
+                return
 
     except Exception:
         logger.exception("Unhandled error in message routing")

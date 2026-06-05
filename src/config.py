@@ -398,6 +398,7 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
     env_keys = [
         "DISCORD_TOKEN",
         "ALLOWED_CHANNELS",
+        "ALLOWED_CHANNEL_IDS",
         "BOT_PRESENCE",
         "ACTIVITY_TYPE",
         "ACTIVITY_STATUS",
@@ -455,6 +456,12 @@ def _apply_single_env_override(
         config_data[key] = (
             [c.strip() for c in value.split(",") if c.strip()] if value.strip() else []
         )
+    elif key == "ALLOWED_CHANNEL_IDS":
+        try:
+            config_data[key] = [int(c.strip()) for c in value.split(",") if c.strip()]
+        except ValueError:
+            logger.warning("Invalid integer in %s: %s", key, value)
+            config_data[key] = []
     elif key in int_keys:
         try:
             config_data[key] = int(value)
@@ -469,6 +476,7 @@ def _apply_config_defaults(config_data: dict[str, Any]) -> None:
     defaults = {
         "DISCORD_TOKEN": None,
         "ALLOWED_CHANNELS": [],
+        "ALLOWED_CHANNEL_IDS": [],
         "BOT_PRESENCE": "online",
         "ACTIVITY_TYPE": "listening",
         "ACTIVITY_STATUS": "Humans",
@@ -615,6 +623,13 @@ def _parse_discord_config(config: configparser.ConfigParser, config_data: dict[s
     config_data["DISCORD_TOKEN"] = config.get("Discord", "DISCORD_TOKEN", fallback=None)
     channels_str = config.get("Discord", "ALLOWED_CHANNELS", fallback="")
     config_data["ALLOWED_CHANNELS"] = [c.strip() for c in channels_str.split(",") if c.strip()]
+    channel_ids_str = config.get("Discord", "ALLOWED_CHANNEL_IDS", fallback="")
+    try:
+        config_data["ALLOWED_CHANNEL_IDS"] = [
+            int(c.strip()) for c in channel_ids_str.split(",") if c.strip()
+        ]
+    except ValueError:
+        config_data["ALLOWED_CHANNEL_IDS"] = []
     config_data["BOT_PRESENCE"] = config.get("Discord", "BOT_PRESENCE", fallback="online")
     config_data["ACTIVITY_TYPE"] = config.get("Discord", "ACTIVITY_TYPE", fallback="listening")
     config_data["ACTIVITY_STATUS"] = config.get("Discord", "ACTIVITY_STATUS", fallback="Humans")

@@ -75,6 +75,7 @@ class BotDependencies:
 
     # Configuration scalars (extracted from config for convenience)
     allowed_channels: list[int] = field(default_factory=list)
+    allowed_channel_ids: list[int] = field(default_factory=list)
     bot_presence: str = "online"
     activity_type: str = "watching"
     activity_status: str = ""
@@ -110,6 +111,7 @@ class BotDependencies:
             "conversation_manager": self.conversation_manager,
             "health_server": self.health_server,
             "ALLOWED_CHANNELS": self.allowed_channels,
+            "ALLOWED_CHANNEL_IDS": self.allowed_channel_ids,
             "BOT_PRESENCE": self.bot_presence,
             "ACTIVITY_TYPE": self.activity_type,
             "ACTIVITY_STATUS": self.activity_status,
@@ -133,6 +135,7 @@ class BotDependencies:
         if key in self.to_dict():
             field_name = {
                 "ALLOWED_CHANNELS": "allowed_channels",
+                "ALLOWED_CHANNEL_IDS": "allowed_channel_ids",
                 "BOT_PRESENCE": "bot_presence",
                 "ACTIVITY_TYPE": "activity_type",
                 "ACTIVITY_STATUS": "activity_status",

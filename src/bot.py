@@ -121,6 +121,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
         perplexity_client=perplexity_client,
         connection_pool_manager=pool_manager,
         allowed_channels=config["ALLOWED_CHANNELS"],
+        allowed_channel_ids=config.get("ALLOWED_CHANNEL_IDS", []),
         bot_presence=config["BOT_PRESENCE"],
         activity_type=config["ACTIVITY_TYPE"],
         activity_status=config["ACTIVITY_STATUS"],
