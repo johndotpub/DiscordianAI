@@ -104,6 +104,10 @@ class RateLimiter:
             preventing race conditions in concurrent message processing.
         """
         current_time = time.time()
+        log_method = None
+        log_message = None
+        log_args: tuple[object, ...] = ()
+        result = False
 
         # Acquire lock to prevent race conditions
         with self._lock:
@@ -114,36 +118,42 @@ class RateLimiter:
             if current_time - last_timestamp > rate_limit_window_seconds:
                 self.last_command_timestamps[user_id] = current_time
                 self.last_command_count[user_id] = 1
-                logger.info(
-                    "Rate limit reset for user %s: 1/%d (window expired after %ds)",
-                    user_id,
-                    rate_limit,
-                    rate_limit_window_seconds,
-                )
-                return True
+                log_method = logger.info
+                log_message = "Rate limit reset for user %s: 1/%d (window expired after %ds)"
+                log_args = (user_id, rate_limit, rate_limit_window_seconds)
+                result = True
 
             # Check if user is within rate limit
-            if current_count < rate_limit:
+            elif current_count < rate_limit:
                 self.last_command_count[user_id] = current_count + 1
-                logger.info(
-                    "Rate limit check passed for user %s: %d/%d (%ds window)",
+                log_method = logger.info
+                log_message = "Rate limit check passed for user %s: %d/%d (%ds window)"
+                log_args = (
                     user_id,
                     self.last_command_count[user_id],
                     rate_limit,
                     rate_limit_window_seconds,
                 )
-                return True
+                result = True
 
             # Rate limit exceeded
-            logger.warning(
-                "Rate limit EXCEEDED for user %s: %d/%d in %ds window. Next reset in %.1fs",
-                user_id,
-                current_count,
-                rate_limit,
-                rate_limit_window_seconds,
-                max(0, rate_limit_window_seconds - (current_time - last_timestamp)),
-            )
-            return False
+            else:
+                log_method = logger.warning
+                log_message = (
+                    "Rate limit EXCEEDED for user %s: %d/%d in %ds window. Next reset in %.1fs"
+                )
+                log_args = (
+                    user_id,
+                    current_count,
+                    rate_limit,
+                    rate_limit_window_seconds,
+                    max(0, rate_limit_window_seconds - (current_time - last_timestamp)),
+                )
+
+        if log_method and log_message:
+            log_method(log_message, *log_args)
+
+        return result
 
     def get_user_status(
         self,

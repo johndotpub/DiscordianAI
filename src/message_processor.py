@@ -89,6 +89,17 @@ async def _process_message_core(
             output_tokens=deps["OUTPUT_TOKENS"],
         )
         ai_config = AIConfig(openai=openai_config, perplexity=perplexity_config)
+        config = deps.get("config") or {}
+        orchestrator_config = {
+            key: config[key]
+            for key in (
+                "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
+                "MAX_HISTORY_PER_USER",
+                "USER_LOCK_CLEANUP_INTERVAL",
+                "ENTITY_DETECTION_MIN_WORDS",
+            )
+            if key in config
+        }
 
         # Create the unified AIRequest object
         request_message = message.content if is_dm else clean_content
@@ -107,7 +118,7 @@ async def _process_message_core(
             conversation_summary,
             clients,
             ai_config,
-            deps.get("config"),
+            orchestrator_config,
         )
 
         # Send response with automatic message splitting if needed
