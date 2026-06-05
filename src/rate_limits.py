@@ -11,6 +11,7 @@ import time
 import discord
 
 FAIL_OPEN_LIMIT = 3
+STALE_CLEANUP_INTERVAL = 100
 
 
 class RateLimiter:
@@ -31,17 +32,31 @@ class RateLimiter:
         self.last_command_count: dict[int, int] = {}
         self._fail_open_errors = 0
         self._fail_open_cooldown_until = 0.0
+        self._cleanup_checks = 0
         self._lock = threading.RLock()  # Use RLock for consistency with conversation manager
         self._logger = logging.getLogger(f"{__name__}.RateLimiter")
+
+    def cleanup_stale_entries(self, now: float, rate_limit_window_seconds: int) -> None:
+        """Remove users whose rate-limit window expired long ago."""
+        with self._lock:
+            stale_cutoff = now - (2 * rate_limit_window_seconds)
+            stale_users = [
+                user_id
+                for user_id, last_timestamp in self.last_command_timestamps.items()
+                if last_timestamp < stale_cutoff
+            ]
+            for user_id in stale_users:
+                self.last_command_timestamps.pop(user_id, None)
+                self.last_command_count.pop(user_id, None)
 
     def record_fail_open_error(self, now: float) -> tuple[int, bool, bool]:
         """Record a fail-open error and update cooldown state atomically."""
         with self._lock:
-            fail_open_errors = self.fail_open_errors
+            fail_open_errors = self._fail_open_errors
             if not isinstance(fail_open_errors, int):
                 fail_open_errors = 0
 
-            cooldown_until = self.fail_open_cooldown_until
+            cooldown_until = self._fail_open_cooldown_until
             if not isinstance(cooldown_until, (int, float)):
                 cooldown_until = 0.0
 
@@ -113,6 +128,11 @@ class RateLimiter:
         with self._lock:
             last_timestamp = self.last_command_timestamps.get(user_id, 0)
             current_count = self.last_command_count.get(user_id, 0)
+
+            self._cleanup_checks += 1
+            if self._cleanup_checks >= STALE_CLEANUP_INTERVAL:
+                self.cleanup_stale_entries(current_time, rate_limit_window_seconds)
+                self._cleanup_checks = 0
 
             # Check if rate limit window has expired - reset if so
             if current_time - last_timestamp > rate_limit_window_seconds:

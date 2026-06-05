@@ -18,7 +18,13 @@ import logging
 import time
 from typing import Any
 
-from .error_handling import classify_error, error_tracker, retry_with_backoff
+from .error_handling import (
+    DEFAULT_API_RETRY_CONFIG,
+    RetryConfig,
+    classify_error,
+    error_tracker,
+    retry_with_backoff,
+)
 from .models import AIRequest
 
 
@@ -146,14 +152,20 @@ async def call_with_retry(  # noqa: PLR0913
     Returns:
         ``APICallResult`` with outcome details.
     """
-    from .error_handling import RetryConfig  # noqa: PLC0415
-
-    retry_config = RetryConfig(
-        max_attempts=max_attempts,
-        base_delay=base_delay,
-        max_delay=max_delay,
-        exponential_base=1.0,
-        jitter=True,
+    retry_config = (
+        DEFAULT_API_RETRY_CONFIG
+        if (
+            max_attempts == DEFAULT_API_RETRY_CONFIG.max_attempts
+            and base_delay == DEFAULT_API_RETRY_CONFIG.base_delay
+            and max_delay == DEFAULT_API_RETRY_CONFIG.max_delay
+        )
+        else RetryConfig(
+            max_attempts=max_attempts,
+            base_delay=base_delay,
+            max_delay=max_delay,
+            exponential_base=1.0,
+            jitter=True,
+        )
     )
 
     start_time = time.monotonic()

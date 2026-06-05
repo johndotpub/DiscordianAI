@@ -95,7 +95,6 @@ def configure_structlog(
 
     level = getattr(logging, log_level, logging.INFO)
     shared_processors: list[Any] = [
-        structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
         _add_logger_name,

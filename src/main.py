@@ -28,6 +28,7 @@ from .config import (
     load_config,
     parse_arguments,
 )
+from .dependency_check import check_dependencies
 from .structured_logging import configure_structlog
 
 # Constants for validation
@@ -204,6 +205,11 @@ def main() -> NoReturn:
     # Step 1: Set up early logging before anything else
     early_logger = setup_early_logging()
     logger = None
+
+    dependencies_ok, missing_dependencies = check_dependencies()
+    if not dependencies_ok:
+        early_logger.error("Missing required packages: %s", ", ".join(missing_dependencies))
+        sys.exit(1)
 
     try:
         # Step 2: Parse command-line arguments

@@ -12,14 +12,10 @@ from typing import Any
 import requests
 
 from .api_context import api_call
-from .config import (
-    BARE_URL_PATTERN,
-    CITATION_PATTERN,
-    LINK_PATTERN,
-    URL_PATTERN,
-)
+from .config import CITATION_PATTERN, URL_PATTERN
 from .discord_embeds import citation_embed_formatter
-from .error_handling import RetryConfig, retry_with_backoff
+from .error_handling import DEFAULT_API_RETRY_CONFIG, retry_with_backoff
+from .message_splitter import should_suppress_embeds
 from .models import AIRequest, PerplexityConfig
 from .web_scraper import is_scrapable_url, scrape_url_content
 
@@ -185,26 +181,6 @@ def format_citations_for_discord(
     return CITATION_PATTERN.sub(replace_citation, text)
 
 
-def should_suppress_embeds(text: str) -> bool:
-    """Decide whether to suppress embed rendering for a message.
-
-    The function counts distinct links/markdown links present in `text`
-    and returns True when the total exceeds a configured threshold, which
-    helps avoid large embed-heavy messages in Discord.
-
-    Args:
-        text: The message text to analyze for links.
-
-    Returns:
-        True when embeds should be suppressed, False otherwise.
-    """
-    links = LINK_PATTERN.findall(text)
-    urls = BARE_URL_PATTERN.findall(text)
-    total_links = len(links) + len(urls)
-
-    return total_links >= LINK_THRESHOLD
-
-
 async def process_perplexity_message(
     request: AIRequest,
     perplexity_client: Any,
@@ -241,13 +217,7 @@ async def process_perplexity_message(
 
             response = await retry_with_backoff(
                 lambda: perplexity_client.chat.completions.create(**api_params),
-                RetryConfig(
-                    max_attempts=2,
-                    base_delay=4.0,
-                    max_delay=4.0,
-                    exponential_base=1.0,
-                    jitter=True,
-                ),
+                DEFAULT_API_RETRY_CONFIG,
                 request.logger,
             )
             ctx.set_result(response)
@@ -307,7 +277,7 @@ def _handle_api_response(
         )
 
     final_text = format_citations_for_discord(fmt_text, cit_map, linkify=False)
-    suppress_embeds = should_suppress_embeds(final_text)
+    suppress_embeds = should_suppress_embeds(final_text, threshold=LINK_THRESHOLD)
 
     embed_data = None
     if cit_map:

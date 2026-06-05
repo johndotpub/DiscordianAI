@@ -16,6 +16,7 @@ import functools
 import logging
 import re
 import secrets
+import threading
 import time
 from typing import Any
 
@@ -195,6 +196,15 @@ class RetryConfig:
         self.jitter = jitter
 
 
+DEFAULT_API_RETRY_CONFIG = RetryConfig(
+    max_attempts=2,
+    base_delay=4.0,
+    max_delay=4.0,
+    exponential_base=1.0,
+    jitter=True,
+)
+
+
 async def retry_with_backoff(
     func: Callable,
     retry_config: RetryConfig,
@@ -362,50 +372,53 @@ class ErrorTracker:
         self.error_counts: dict[str, int] = {}
         self.error_history: list[dict[str, Any]] = []
         self.max_history = 1000
+        self._lock = threading.Lock()
 
     def record_error(self, error_details: ErrorDetails, context: dict | None = None):
         """Record error occurrence for tracking and analysis."""
-        error_key = f"{error_details.error_type.value}_{error_details.severity.value}"
-        self.error_counts[error_key] = self.error_counts.get(error_key, 0) + 1
+        with self._lock:
+            error_key = f"{error_details.error_type.value}_{error_details.severity.value}"
+            self.error_counts[error_key] = self.error_counts.get(error_key, 0) + 1
 
-        error_record = {
-            "timestamp": time.time(),
-            "error_type": error_details.error_type.value,
-            "severity": error_details.severity.value,
-            "message": error_details.message,
-            "context": context or {},
-        }
+            error_record = {
+                "timestamp": time.time(),
+                "error_type": error_details.error_type.value,
+                "severity": error_details.severity.value,
+                "message": error_details.message,
+                "context": context or {},
+            }
 
-        self.error_history.append(error_record)
+            self.error_history.append(error_record)
 
-        # Keep history bounded
-        if len(self.error_history) > self.max_history:
-            self.error_history = self.error_history[-self.max_history :]
+            # Keep history bounded
+            if len(self.error_history) > self.max_history:
+                self.error_history = self.error_history[-self.max_history :]
 
     def get_error_summary(self, time_window: int = 3600) -> dict[str, Any]:
         """Get error summary for the specified time window (seconds)."""
-        cutoff_time = time.time() - time_window
-        recent_errors = [e for e in self.error_history if e["timestamp"] > cutoff_time]
+        with self._lock:
+            cutoff_time = time.time() - time_window
+            recent_errors = [e for e in self.error_history if e["timestamp"] > cutoff_time]
 
-        summary = {
-            "total_errors": len(recent_errors),
-            "error_types": {},
-            "critical_count": 0,
-            "high_count": 0,
-        }
+            summary = {
+                "total_errors": len(recent_errors),
+                "error_types": {},
+                "critical_count": 0,
+                "high_count": 0,
+            }
 
-        for error in recent_errors:
-            error_type = error["error_type"]
-            severity = error["severity"]
+            for error in recent_errors:
+                error_type = error["error_type"]
+                severity = error["severity"]
 
-            summary["error_types"][error_type] = summary["error_types"].get(error_type, 0) + 1
+                summary["error_types"][error_type] = summary["error_types"].get(error_type, 0) + 1
 
-            if severity == "critical":
-                summary["critical_count"] += 1
-            elif severity == "high":
-                summary["high_count"] += 1
+                if severity == "critical":
+                    summary["critical_count"] += 1
+                elif severity == "high":
+                    summary["high_count"] += 1
 
-        return summary
+            return summary
 
 
 # Global error tracker instance

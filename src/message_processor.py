@@ -148,7 +148,7 @@ async def _process_message_core(
         )
 
         if not await safe_discord_send(message.channel, user_friendly_msg, logger):
-            logger.exception("Failed to send error message")
+            logger.error("Failed to send error message")  # noqa: TRY400
 
 
 async def process_dm_message(message: discord.Message, deps: dict[str, Any] | Any) -> None:

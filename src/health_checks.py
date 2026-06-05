@@ -90,12 +90,6 @@ class APIHealthMonitor:
         start_time = time.time()
 
         try:
-            # Test basic API connectivity with minimal request
-            test_messages = [
-                {"role": "system", "content": "Health check"},
-                {"role": "user", "content": "ping"},
-            ]
-
             model = config.get("GPT_MODEL", "gpt-5-mini")
 
             # Validate model is still supported
@@ -109,29 +103,19 @@ class APIHealthMonitor:
                     details={"available_models": OPENAI_VALID_MODELS[:5]},  # Show first 5
                 )
 
-            # Make minimal API call
-            # Use appropriate token parameter based on model
-            api_params = {
-                "model": model,
-                "messages": test_messages,
-                "timeout": 30,  # Quick timeout for health check
-            }
-
-            # GPT-5 models use max_completion_tokens
-            api_params["max_completion_tokens"] = 10  # Minimal response
-
-            response = await openai_client.chat.completions.create(**api_params)
+            response = await openai_client.models.list()
 
             response_time_ms = (time.time() - start_time) * 1000
 
             # Validate response structure
-            if not response or not response.choices or not response.choices[0].message.content:
+            model_ids = [getattr(item, "id", None) for item in getattr(response, "data", [])]
+            if not model_ids:
                 return HealthCheckResult(
                     service="openai",
                     status="unhealthy",
                     response_time_ms=response_time_ms,
                     timestamp=datetime.now(UTC),
-                    error="Invalid response structure from OpenAI API",
+                    error="Invalid response structure from OpenAI model listing API",
                 )
 
             # Check response time thresholds
@@ -150,12 +134,8 @@ class APIHealthMonitor:
                 timestamp=datetime.now(UTC),
                 details={
                     "model": model,
-                    "response_id": getattr(response, "id", "unknown"),
-                    "usage": (
-                        getattr(response, "usage", {}).__dict__
-                        if hasattr(response, "usage")
-                        else {}
-                    ),
+                    "available_models": model_ids[:10],
+                    "model_count": len(model_ids),
                 },
             )
 
@@ -200,36 +180,19 @@ class APIHealthMonitor:
                     details={"available_models": PERPLEXITY_MODELS},
                 )
 
-            # Test web search functionality
-            response = await perplexity_client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": "Health check for web search"},
-                    {"role": "user", "content": "What is the current date?"},
-                ],
-                max_tokens=50,  # Minimal response
-            )
+            response = await perplexity_client.models.list()
 
             response_time_ms = (time.time() - start_time) * 1000
 
-            if not response or not response.choices or not response.choices[0].message.content:
+            model_ids = [getattr(item, "id", None) for item in getattr(response, "data", [])]
+            if not model_ids:
                 return HealthCheckResult(
                     service="perplexity",
                     status="unhealthy",
                     response_time_ms=response_time_ms,
                     timestamp=datetime.now(UTC),
-                    error="Invalid response structure from Perplexity API",
+                    error="Invalid response structure from Perplexity model listing API",
                 )
-
-            # Check for web search indicators (URLs, citations)
-            response_content = response.choices[0].message.content
-            has_web_indicators = any(
-                [
-                    "http" in response_content.lower(),
-                    "[" in response_content and "]" in response_content,
-                    "source" in response_content.lower(),
-                ],
-            )
 
             status = "healthy"
             if response_time_ms > PERPLEXITY_RESPONSE_UNHEALTHY_THRESHOLD_MS:
@@ -244,13 +207,8 @@ class APIHealthMonitor:
                 timestamp=datetime.now(UTC),
                 details={
                     "model": model,
-                    "response_length": len(response_content),
-                    "has_web_indicators": has_web_indicators,
-                    "usage": (
-                        getattr(response, "usage", {}).__dict__
-                        if hasattr(response, "usage")
-                        else {}
-                    ),
+                    "available_models": model_ids[:10],
+                    "model_count": len(model_ids),
                 },
             )
 

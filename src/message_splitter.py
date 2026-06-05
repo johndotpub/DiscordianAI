@@ -153,13 +153,40 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
     citations: dict[str, str] | None = None,
     original_message: discord.Message | None = None,
     mention_prefix: str | None = None,
+    _recursion_depth: int = 0,
 ) -> None:
     """Send a long message with citation embeds, maintaining citations across parts.
 
     The provided embed is modified in place so the head chunk stays aligned with
     the adjusted text.
     """
+    logger = deps["logger"]
     message = sanitize_for_discord(message)
+    prefix_text = mention_prefix or ""
+    prefix_length = len(prefix_text)
+    max_first_chunk = max(1, MESSAGE_LIMIT - prefix_length)
+
+    if _recursion_depth > MAX_SPLIT_RECURSION:
+        logger.error(
+            "Max embed split recursion reached (%d) for message length %d",
+            MAX_SPLIT_RECURSION,
+            len(message),
+        )
+        truncated = message[: max(1, max_first_chunk - 1)]
+        fallback_text = f"{prefix_text}{truncated}{truncation_notice(len(message))}"
+        if original_message:
+            await original_message.reply(
+                fallback_text,
+                suppress_embeds=False,
+                mention_author=False,
+                allowed_mentions=discord.AllowedMentions(
+                    users=[original_message.author], replied_user=False
+                ),
+            )
+        else:
+            await channel.send(fallback_text, suppress_embeds=False)
+        return
+
     head_text = message
     after_split = ""
     if len(message) > EMBED_SAFE_LIMIT:
@@ -209,6 +236,7 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
                         remaining_citations,
                         original_message,
                         None,
+                        _recursion_depth=_recursion_depth + 1,
                     )
                 elif original_message:
                     await original_message.reply(
@@ -228,6 +256,7 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
                     deps,
                     original_message=original_message,
                     mention_prefix=None,
+                    _recursion_depth=_recursion_depth + 1,
                 )
         else:
             await send_split_message(
@@ -236,6 +265,7 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
                 deps,
                 original_message=original_message,
                 mention_prefix=None,
+                _recursion_depth=_recursion_depth + 1,
             )
     elif citations and message and original_message:
         # Embed was truncated but clean text fit; send remaining text to avoid dropping tail
@@ -246,6 +276,7 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
             suppress_embeds=False,
             original_message=original_message,
             mention_prefix=None,
+            _recursion_depth=_recursion_depth + 1,
         )
 
 

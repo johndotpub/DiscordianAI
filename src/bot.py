@@ -12,6 +12,7 @@ replacing the previous untyped ``deps`` dict pattern.
 """
 
 import logging
+import sys
 from typing import Any
 
 import discord
@@ -42,7 +43,6 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
         RuntimeError: If client initialization fails
     """
     logger = logging.getLogger("discordianai.bot")
-    logger.setLevel(getattr(logging, config["LOG_LEVEL"].upper(), logging.INFO))
 
     # Configure Discord intents for optimal performance
     intents = discord.Intents.default()
@@ -162,5 +162,5 @@ def run_bot(config: dict[str, Any]) -> None:
         if deps is not None:
             deps.logger.critical("Fatal error starting bot: %s", e, exc_info=True)
         else:
-            print(f"CRITICAL: Fatal error starting bot: {e}")  # noqa: T201
+            sys.stderr.write(f"CRITICAL: Fatal error starting bot: {e}\n")
         raise
