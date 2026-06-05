@@ -75,21 +75,12 @@ async def process_openai_message(
     openai_client,
     config: OpenAIConfig,
 ) -> str | None:
-    """Process message using OpenAI API and persist conversation history."""
+    """Process message using OpenAI API."""
     response_content = await _fetch_openai_response(
         request, conversation_summary, openai_client, config
     )
 
     if not response_content:
         return None
-
-    # Add both user and assistant messages to conversation history (thread-safe)
-    request.conversation_manager.add_message(request.user.id, "user", request.message)
-    request.conversation_manager.add_message(
-        request.user.id,
-        "assistant",
-        response_content,
-        metadata={"ai_service": "openai", "model": config.model},
-    )
 
     return response_content

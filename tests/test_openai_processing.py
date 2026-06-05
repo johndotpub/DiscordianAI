@@ -58,13 +58,7 @@ class TestProcessOpenAIMessageBasic:
         )
 
         assert result == "Test response from OpenAI"
-        conversation_manager.add_message.assert_any_call(12345, "user", "Hello OpenAI")
-        conversation_manager.add_message.assert_any_call(
-            12345,
-            "assistant",
-            "Test response from OpenAI",
-            metadata={"ai_service": "openai", "model": "gpt-5-mini"},
-        )
+        conversation_manager.add_message.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_basic_gpt5_processing(self):
@@ -439,7 +433,7 @@ class TestProcessOpenAIMessageAdditionalCoverage:
                 config=config,
             )
             assert result == "A" * 300
-            assert conversation_manager.add_message.call_count == 2
+            conversation_manager.add_message.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_invalid_response_structure(self):

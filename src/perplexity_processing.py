@@ -214,7 +214,7 @@ async def process_perplexity_message(
 
     This function builds the Perplexity API parameters, optionally enhances the
     prompt with scraped URL content, calls the Perplexity API, extracts
-    and formats citations, and persists the conversation history on success.
+    and formats citations.
     It returns `None` when the API call fails or times out.
 
     Args:
@@ -252,7 +252,7 @@ async def process_perplexity_message(
             )
             ctx.set_result(response)
 
-            return _handle_api_response(response, request, urls_in_message, api_params, config)
+            return _handle_api_response(response, request, urls_in_message, api_params)
 
     except Exception:
         request.logger.exception("Perplexity API call failed for user %s", request.user.id)
@@ -276,7 +276,6 @@ def _handle_api_response(
     request: AIRequest,
     urls_in_message: list[str],
     api_params: dict[str, Any],
-    config: PerplexityConfig,
 ) -> tuple[str, bool, dict | None] | None:
     """Process and format the API response."""
     if not (response.choices and response.choices[0].message.content):
@@ -315,15 +314,6 @@ def _handle_api_response(
         embed, meta = citation_embed_formatter.create_citation_embed(final_text, cit_map)
         embed_data = {"embed": embed, "citations": cit_map, "clean_text": final_text, "meta": meta}
 
-    # Persist
-    # Persist both user and assistant messages (only after a successful response)
-    request.conversation_manager.add_message(request.user.id, "user", request.message)
-    request.conversation_manager.add_message(
-        request.user.id,
-        "assistant",
-        final_text,
-        metadata={"ai_service": "perplexity", "model": config.model},
-    )
     return final_text, suppress_embeds, embed_data
 
 

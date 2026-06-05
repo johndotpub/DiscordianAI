@@ -83,8 +83,8 @@ class TestOpenAIAPIIntegration:
         assert call_args["max_completion_tokens"] == 1000
         assert len(call_args["messages"]) == 2  # system + user message
 
-        # Verify conversation history was updated
-        assert conversation_manager.add_message.call_count == 2  # user + assistant
+        # Processors no longer persist history directly
+        conversation_manager.add_message.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_openai_api_error_handling(self):

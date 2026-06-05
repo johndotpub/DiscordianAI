@@ -370,6 +370,14 @@ class TestProcessingModes:
             assert response == "Perplexity response"
             assert _suppress_embeds is True
             mock_perplexity.assert_called_once()
+            conversation_manager.add_message.assert_any_call(12345, "user", "Test query")
+            conversation_manager.add_message.assert_any_call(
+                12345,
+                "assistant",
+                "Perplexity response",
+                metadata={"ai_service": "perplexity", "model": "sonar-pro"},
+            )
+            assert conversation_manager.add_message.call_count == 2
 
     @pytest.mark.asyncio
     async def test_process_perplexity_only_mode_failure(self):
@@ -438,6 +446,14 @@ class TestProcessingModes:
             assert response == "OpenAI response"
             assert _suppress_embeds is False
             mock_openai.assert_called_once()
+            conversation_manager.add_message.assert_any_call(12345, "user", "Test query")
+            conversation_manager.add_message.assert_any_call(
+                12345,
+                "assistant",
+                "OpenAI response",
+                metadata={"ai_service": "openai", "model": "gpt-5-mini"},
+            )
+            assert conversation_manager.add_message.call_count == 2
 
     @pytest.mark.asyncio
     async def test_process_openai_only_mode_failure(self):
@@ -508,6 +524,16 @@ class TestProcessingModes:
             assert _suppress_embeds is True
             mock_perplexity.assert_called_once()
             mock_openai.assert_not_called()
+            conversation_manager.add_message.assert_any_call(
+                12345, "user", "What's the latest news?"
+            )
+            conversation_manager.add_message.assert_any_call(
+                12345,
+                "assistant",
+                "Web search result",
+                metadata={"ai_service": "perplexity", "model": "sonar-pro"},
+            )
+            assert conversation_manager.add_message.call_count == 2
 
     @pytest.mark.asyncio
     async def test_process_hybrid_mode_basic(self):
@@ -573,6 +599,14 @@ class TestProcessingModes:
 
             assert response == "OpenAI fallback response"
             mock_openai.assert_called_once()
+            conversation_manager.add_message.assert_any_call(12345, "user", "Complex query")
+            conversation_manager.add_message.assert_any_call(
+                12345,
+                "assistant",
+                "OpenAI fallback response",
+                metadata={"ai_service": "openai", "model": "gpt-5-mini"},
+            )
+            assert conversation_manager.add_message.call_count == 2
 
     @pytest.mark.asyncio
     async def test_openai_web_inability_triggers_perplexity_reroute(self):
@@ -614,6 +648,16 @@ class TestProcessingModes:
             # Should have used Perplexity after detecting web-inability
             assert response == "Perplexity result"
             mock_perplexity.assert_called_once()
+            conversation_manager.add_message.assert_any_call(
+                12345, "user", "Tell me the latest news"
+            )
+            conversation_manager.add_message.assert_any_call(
+                12345,
+                "assistant",
+                "Perplexity result",
+                metadata={"ai_service": "perplexity", "model": "sonar-pro"},
+            )
+            assert conversation_manager.add_message.call_count == 2
 
 
 class TestMainOrchestrator:
