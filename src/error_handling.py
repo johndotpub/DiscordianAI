@@ -75,8 +75,12 @@ class CircuitBreaker:
         self.expected_exception = expected_exception
         self.failure_count = 0
         self.last_failure_time = 0
+        self.last_success_time = 0
         self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
         self._lock = asyncio.Lock()
+
+    def _should_attempt_reset(self) -> bool:
+        return time.monotonic() - self.last_failure_time > self.timeout
 
     def __call__(self, func):
         """Decorator to wrap a function with circuit breaker logic."""
@@ -85,7 +89,7 @@ class CircuitBreaker:
         async def wrapper(*args, **kwargs):
             async with self._lock:
                 if self.state == "OPEN":
-                    if time.time() - self.last_failure_time > self.timeout:
+                    if self._should_attempt_reset():
                         self.state = "HALF_OPEN"
                     else:
                         open_msg = f"Circuit breaker OPEN for {func.__name__}"
@@ -95,8 +99,11 @@ class CircuitBreaker:
                 result = await func(*args, **kwargs)
             except self.expected_exception:
                 async with self._lock:
+                    if self.state == "CLOSED" and self.last_failure_time:
+                        if time.monotonic() - self.last_failure_time > self.timeout:
+                            self.failure_count = 0
                     self.failure_count += 1
-                    self.last_failure_time = time.time()
+                    self.last_failure_time = time.monotonic()
 
                     # If in HALF_OPEN state, any failure should open the circuit
                     if self.state == "HALF_OPEN" or self.failure_count >= self.failure_threshold:
@@ -108,6 +115,7 @@ class CircuitBreaker:
                     if self.state == "HALF_OPEN":
                         self.state = "CLOSED"
                         self.failure_count = 0
+                    self.last_success_time = time.monotonic()
                 # In CLOSED state, don't reset failure_count on success
                 # (only reset in HALF_OPEN to CLOSED transition)
                 return result
