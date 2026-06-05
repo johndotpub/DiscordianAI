@@ -43,6 +43,46 @@ class ErrorType(Enum):
     UNKNOWN = "unknown"
 
 
+ERROR_CLASSIFICATION_PATTERNS = {
+    "quota": ("insufficient_quota", "exceeded your current quota"),
+    "rate_limit": ("rate limit", "429"),
+    "timeout": ("timeout", "timed out"),
+    "auth": ("401", "unauthorized"),
+    "server": ("500", "502", "503", "504"),
+    "network": ("connection", "network", "dns"),
+    "discord": ("discord", "websocket", "gateway"),
+    "config": ("config", "missing", "invalid"),
+}
+
+
+def classify_error_message(error_msg: str) -> dict[str, bool]:
+    """Classify a raw error message using shared string-matching rules."""
+    lowered = error_msg.lower()
+    return {
+        "is_quota_exhausted": any(
+            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["quota"]
+        ),
+        "is_rate_limit": any(
+            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["rate_limit"]
+        ),
+        "is_timeout": any(term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["timeout"]),
+        "is_auth_error": any(term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["auth"]),
+        "is_server_error": any(
+            re.search(rf"(?<!\d){code}(?!\d)", error_msg)
+            for code in ERROR_CLASSIFICATION_PATTERNS["server"]
+        ),
+        "is_network_error": any(
+            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["network"]
+        ),
+        "is_discord_error": any(
+            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["discord"]
+        ),
+        "is_config_error": any(
+            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["config"]
+        ),
+    }
+
+
 @dataclass
 class ErrorDetails:
     """Structured error information for better handling and logging."""
@@ -384,6 +424,7 @@ def handle_api_error(func):
     """
 
     @CircuitBreaker(failure_threshold=3, timeout=30)
+    @functools.wraps(func)
     async def wrapper(*args, **kwargs):
         func_logger = logging.getLogger(func.__module__)
         retry_config = RetryConfig(

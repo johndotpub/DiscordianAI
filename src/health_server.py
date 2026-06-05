@@ -156,7 +156,9 @@ class HealthServer:
         config = self._deps.get("config", {})
         enabled = config.get("HEALTH_ENABLED", True)
         if isinstance(enabled, str):
-            enabled = enabled.lower() in ("true", "1", "yes")
+            enabled = str(enabled).lower() in ("true", "1", "yes")
+        else:
+            enabled = bool(enabled)
 
         if not enabled:
             logger.info("Health server disabled by configuration")

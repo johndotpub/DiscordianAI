@@ -10,6 +10,7 @@ import re
 from typing import Any
 
 from .config import OPENAI_VALID_MODELS, is_supported_openai_model
+from .error_handling import classify_error_message
 
 
 class OpenAIParams:
@@ -34,8 +35,6 @@ class OpenAIParams:
             {"role": "user", "content": user_message},
         ]
         return self
-
-    # Removed unsupported GPT-5 parameter helpers
 
     def build(self) -> dict[str, Any]:
         """Build the final API parameters dictionary."""
@@ -105,14 +104,15 @@ def extract_api_error_info(exception: Exception) -> dict[str, Any]:
         Dictionary with error information
     """
     error_msg = str(exception)
+    classification = classify_error_message(error_msg)
 
     info = {
         "error_type": type(exception).__name__,
         "message": error_msg,
-        "is_rate_limit": "rate limit" in error_msg.lower() or "429" in error_msg,
-        "is_timeout": "timeout" in error_msg.lower() or "timed out" in error_msg.lower(),
-        "is_auth_error": "401" in error_msg or "unauthorized" in error_msg.lower(),
-        "is_server_error": any(code in error_msg for code in ["500", "502", "503", "504"]),
+        "is_rate_limit": classification["is_rate_limit"],
+        "is_timeout": classification["is_timeout"],
+        "is_auth_error": classification["is_auth_error"],
+        "is_server_error": classification["is_server_error"],
         "retry_recommended": False,
         "retry_after": None,
     }

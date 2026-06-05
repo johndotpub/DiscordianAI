@@ -14,18 +14,22 @@ This test suite covers:
 from unittest.mock import Mock
 
 from src.message_splitter import (
-    MessageFormatter,
     adjust_split_for_code_blocks,
     clean_message_content,
     count_links,
     detect_code_blocks,
+    error_message,
     extract_mentions,
     find_optimal_split_point,
     format_user_context,
     is_inside_code_block,
     parse_command_args,
+    processing_message,
+    rate_limit_message,
     sanitize_for_discord,
+    service_unavailable,
     should_suppress_embeds,
+    truncation_notice,
 )
 
 
@@ -620,14 +624,14 @@ class TestParseCommandArgs:
 
 
 class TestMessageFormatter:
-    """Test MessageFormatter class."""
+    """Test message formatting helpers."""
 
     def test_format_error_message(self):
         """Test formatting error message."""
         mention = "<@123456789>"
         error = "Something went wrong"
 
-        result = MessageFormatter.error_message(mention, error)
+        result = error_message(mention, error)
 
         assert mention in result
         assert error in result
@@ -638,7 +642,7 @@ class TestMessageFormatter:
         mention = "<@123456789>"
         reset_time = 30.5
 
-        result = MessageFormatter.rate_limit_message(mention, reset_time)
+        result = rate_limit_message(mention, reset_time)
 
         assert mention in result
         assert "30.5" in result
@@ -648,7 +652,7 @@ class TestMessageFormatter:
         """Test formatting service unavailable message."""
         service = "OpenAI"
 
-        result = MessageFormatter.service_unavailable(service)
+        result = service_unavailable(service)
 
         assert service in result
         assert "unavailable" in result.lower()
@@ -656,7 +660,7 @@ class TestMessageFormatter:
 
     def test_format_processing_message(self):
         """Test formatting processing message."""
-        result = MessageFormatter.processing_message()
+        result = processing_message()
 
         assert "processing" in result.lower()
         assert "🤔" in result
@@ -665,7 +669,7 @@ class TestMessageFormatter:
         """Test formatting truncation notice."""
         original_length = 5000
 
-        result = MessageFormatter.truncation_notice(original_length)
+        result = truncation_notice(original_length)
 
         assert "5000" in result
         assert "truncated" in result.lower()

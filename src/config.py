@@ -279,7 +279,7 @@ CITATION_PATTERN = re.compile(r"\[(\d+)\]")
 MENTION_PATTERN = re.compile(r"<@!?(\d+)>")
 
 # URL detection patterns for smart routing
-BARE_URL_PATTERN = (
+_BARE_URL_PATTERN_STR = (
     r"(?:https?://)?[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
     r"(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}"
     r"(?:/[^\s]*)?"
@@ -288,7 +288,7 @@ BARE_URL_PATTERN = (
 URL_DETECTION_PATTERNS = [
     r"https?://[^\s\[\]()]+[^\s\[\]().,;!?]",  # Standard URLs with common punctuation
     r"\[([^\]]+)\]\(([^)]+)\)",  # Markdown links [text](url)
-    BARE_URL_PATTERN,  # Bare URLs (domain.tld/path)
+    _BARE_URL_PATTERN_STR,  # Bare URLs (domain.tld/path)
 ]
 
 # Compile URL detection patterns for performance

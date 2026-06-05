@@ -264,10 +264,16 @@ async def scrape_url_content(
         if not _validate_url(url, logger):
             return None
 
+        # DNS is resolved again inside the fetch path, so a target can change
+        # between this safety check and the actual request. Closing that TOCTOU
+        # race requires resolving once and reusing the bound address.
+
         await _add_respectful_delay()
 
         # Execute request asynchronously, enforcing an overall asyncio timeout
         try:
+            # asyncio.timeout cannot stop the worker thread once to_thread starts;
+            # if the timeout fires, the thread keeps running in the background.
             async with asyncio.timeout(request_timeout):
                 html_content = await asyncio.to_thread(
                     _fetch_content_with_retries, url, request_timeout, logger

@@ -21,6 +21,8 @@ class DiscordBotManager:
         self.logger = deps["logger"]
         self.config = deps["config"]
         self._shutdown_requested = False
+        self._running = False
+        self._bot_loop: asyncio.AbstractEventLoop | None = None
 
     def register_events(self):
         """Register all Discord event handlers."""
@@ -126,16 +128,34 @@ class DiscordBotManager:
 
     def run(self):
         """Start the bot."""
+        if self._running:
+            self.logger.error("Bot manager run() called while already running")
+            return
+
         self.register_events()
         self.setup_signal_handlers()
         try:
+            self._running = True
+            try:
+                self._bot_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                self._bot_loop = getattr(self.bot, "loop", None)
             self.bot.run(self.deps["DISCORD_TOKEN"], log_handler=None)
         except KeyboardInterrupt:
             if not self._shutdown_requested:
                 self.logger.info("Bot interrupted by user, shutting down")
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
             try:
-                loop.run_until_complete(self.graceful_shutdown())
+                if self._bot_loop and not self._bot_loop.is_closed():
+                    self._bot_loop.run_until_complete(self.graceful_shutdown())
+                else:
+                    self.logger.warning("Bot loop unavailable; creating fallback shutdown loop")
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(self.graceful_shutdown())
+                    finally:
+                        loop.close()
             finally:
-                loop.close()
+                self._running = False
+        finally:
+            self._running = False

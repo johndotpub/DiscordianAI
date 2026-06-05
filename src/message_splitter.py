@@ -154,7 +154,11 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
     original_message: discord.Message | None = None,
     mention_prefix: str | None = None,
 ) -> None:
-    """Send a long message with citation embeds, maintaining citations across parts."""
+    """Send a long message with citation embeds, maintaining citations across parts.
+
+    The provided embed is modified in place so the head chunk stays aligned with
+    the adjusted text.
+    """
     message = sanitize_for_discord(message)
     head_text = message
     after_split = ""
@@ -174,19 +178,17 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
     # Preserve existing footer unless empty; otherwise copy rebuilt footer
     if (not embed.footer or not embed.footer.text) and rebuilt_head.footer:
         embed.set_footer(text=rebuilt_head.footer.text)
-    head_embed = embed
-
     if original_message:
         await original_message.reply(
             mention_prefix or "",
-            embed=head_embed,
+            embed=embed,
             mention_author=False,
             allowed_mentions=discord.AllowedMentions(
                 users=[original_message.author], replied_user=False
             ),
         )
     else:
-        await channel.send("", embed=head_embed)
+        await channel.send("", embed=embed)
 
     if after_split.strip():
         message_part2 = after_split.strip()
@@ -472,30 +474,26 @@ def parse_command_args(content: str, prefix: str = "!") -> tuple[str, list[str]]
     return parts[0].lower(), parts[1:]
 
 
-class MessageFormatter:
-    """Utility class for consistent message formatting."""
+def error_message(user_mention: str, error_text: str) -> str:
+    """Format error message with user mention."""
+    return f"{user_mention} {error_text}"
 
-    @staticmethod
-    def error_message(user_mention: str, error_text: str) -> str:
-        """Format error message with user mention."""
-        return f"{user_mention} {error_text}"
 
-    @staticmethod
-    def rate_limit_message(user_mention: str, reset_time: float) -> str:
-        """Format rate limit message."""
-        return f"{user_mention} ⏱️ Please wait {reset_time:.1f}s before sending another message."
+def rate_limit_message(user_mention: str, reset_time: float) -> str:
+    """Format rate limit message."""
+    return f"{user_mention} ⏱️ Please wait {reset_time:.1f}s before sending another message."
 
-    @staticmethod
-    def service_unavailable(service_name: str) -> str:
-        """Format service unavailable message."""
-        return f"🔧 {service_name} is temporarily unavailable. Please try again later."
 
-    @staticmethod
-    def processing_message() -> str:
-        """Format processing indicator."""
-        return "🤔 Processing your request..."
+def service_unavailable(service_name: str) -> str:
+    """Format service unavailable message."""
+    return f"🔧 {service_name} is temporarily unavailable. Please try again later."
 
-    @staticmethod
-    def truncation_notice(original_length: int) -> str:
-        """Format message truncation notice."""
-        return f"\n\n[Message truncated from {original_length} characters for Discord limits]"
+
+def processing_message() -> str:
+    """Format processing indicator."""
+    return "🤔 Processing your request..."
+
+
+def truncation_notice(original_length: int) -> str:
+    """Format message truncation notice."""
+    return f"\n\n[Message truncated from {original_length} characters for Discord limits]"

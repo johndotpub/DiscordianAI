@@ -384,8 +384,9 @@ class TestAsyncCheckRateLimit:
 
     async def test_async_check_rate_limit_exception_handling(self):
         """Test async rate limit check with exception handling."""
-        rate_limiter = Mock()
-        rate_limiter.check_rate_limit.side_effect = ValueError("Test error")
+        rate_limiter = RateLimiter()
+        rate_limiter.check_rate_limit = Mock(side_effect=ValueError("Test error"))
+        rate_limiter.record_fail_open_error = Mock(return_value=(1, False, False))
 
         mock_user = Mock()
         mock_user.id = 12345

@@ -159,7 +159,7 @@ def run_bot(config: dict[str, Any]) -> None:
         manager.run()
     except Exception as e:
         # Fatal startup error
-        if isinstance(deps, BotDependencies):
+        if deps is not None:
             deps.logger.critical("Fatal error starting bot: %s", e, exc_info=True)
         else:
             print(f"CRITICAL: Fatal error starting bot: {e}")  # noqa: T201

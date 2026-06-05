@@ -7,7 +7,7 @@ import discord
 
 from .error_handling import classify_error, safe_discord_send
 from .logging_adapter import get_logger_with_context
-from .message_splitter import MessageFormatter, clean_message_content, send_formatted_message
+from .message_splitter import clean_message_content, error_message, send_formatted_message
 from .models import AIClients, AIConfig, AIRequest, OpenAIConfig, PerplexityConfig
 from .rate_limits import check_rate_limit
 from .smart_orchestrator import get_smart_response
@@ -43,7 +43,7 @@ async def _process_message_core(
             len(clean_content),
         )
         rate_limit_msg = "⏱️ Rate limit exceeded! Please wait a moment before mentioning me again."
-        error_msg = MessageFormatter.error_message(
+        error_msg = error_message(
             message.author.mention,
             "🔧 Sorry, I encountered an error while processing your message. "
             "Please try again in a moment.",

@@ -31,6 +31,13 @@ POSITIONAL_CONFIG_INDEX = 3
 def _extract_message_context(
     args: tuple[Any, ...], kwargs: dict[str, Any]
 ) -> tuple[str, str, str]:
+    """Extract message, model, and system message from decorated calls.
+
+    Assumes positional argument 0 is the request-like object and positional
+    argument 3 is the config-like object. If a decorated signature drifts,
+    this helper falls back to keyword arguments and logs a warning.
+    """
+    logger = logging.getLogger(__name__)
     request = args[0] if args and hasattr(args[0], "message") else kwargs.get("request")
     config = (
         args[POSITIONAL_CONFIG_INDEX]
@@ -38,6 +45,12 @@ def _extract_message_context(
         and hasattr(args[POSITIONAL_CONFIG_INDEX], "system_message")
         else kwargs.get("config")
     )
+
+    if args and not hasattr(args[0], "message") and "request" not in kwargs:
+        logger.warning(
+            "Cached call signature drift: args[0] lacks message attribute for %s",
+            type(args[0]).__name__,
+        )
 
     if request and hasattr(request, "message"):
         message = request.message

@@ -203,6 +203,7 @@ def main() -> NoReturn:
     """
     # Step 1: Set up early logging before anything else
     early_logger = setup_early_logging()
+    logger = None
 
     try:
         # Step 2: Parse command-line arguments
@@ -252,19 +253,17 @@ def main() -> NoReturn:
         run_bot(config)
 
     except KeyboardInterrupt:
-        try:
-            # Try to use the configured logger first
+        if logger is not None:
             logger.info("Bot startup interrupted by user")
-        except NameError:
-            # Fall back to early logger if main logger not initialized
+        else:
             early_logger.info("Bot startup interrupted by user")
         sys.exit(0)
 
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         # Use appropriate logger based on where we are in startup
-        try:
+        if logger is not None:
             logger.critical("Fatal error during bot startup: %s", e, exc_info=True)
-        except NameError:
+        else:
             early_logger.critical("Fatal error during bot startup: %s", e, exc_info=True)
         sys.exit(1)
 
