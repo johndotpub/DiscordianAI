@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from functools import wraps
 import hashlib
 import logging
+import re
 import threading
 import time
 from typing import Any
@@ -174,24 +175,17 @@ class ResponseCache:
             return False  # Don't cache very short responses
 
         # Don't cache time-sensitive responses
+        response_lower = response.lower()
         time_indicators = [
-            "current time",
-            "right now",
-            "today",
-            "yesterday",
-            "tomorrow",
-            "this morning",
-            "this afternoon",
-            "this evening",
-            "tonight",
-            "latest",
-            "recent",
-            "just now",
-            "breaking news",
+            r"\bcurrent time\b",
+            r"(?:^|[.!?]\s+)(?:today(?:'s)?|yesterday|tomorrow|latest|recent|tonight)\b",
+            r"(?:^|[.!?]\s+)right now\b",
+            r"(?:^|[.!?]\s+)just now\b",
+            r"(?:^|[.!?]\s+)breaking news\b",
+            r"\bthis (?:morning|afternoon|evening)\b",
         ]
 
-        response_lower = response.lower()
-        return not any(indicator in response_lower for indicator in time_indicators)
+        return not any(re.search(pattern, response_lower) for pattern in time_indicators)
 
     def _generate_cache_key(self, message: str, context: dict[str, Any]) -> str:
         """Generate cache key for message and context."""
