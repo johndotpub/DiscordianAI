@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`CONTRIBUTING.md`**: Updated Python version from 3.10 to 3.12+ to match `pyproject.toml` requirement.
 - **structlog 25.x compatibility**: Removed redundant `structlog.stdlib.add_logger_name` processor that crashes with `None` logger in the `ProcessorFormatter` chain; custom `_add_logger_name` already handles this correctly.
 
+### Fixed 🔧 — Logging
+- **`DISCORDIANAI_LOG_COLOR` default**: Colors are now enabled by default even for non-TTY/file output; only explicit `0`/`false`/`no` disables color.
+
 ### Fixed 🔧 — Source Code Reliability & Security
 - **`BotDependencies.__setitem__`**: Added `__setitem__` method to support dict-style writes (`deps["_health_task"] = ...`) — previously caused `TypeError` crash in `on_ready`, preventing health monitoring from starting.
 - **`sanitize_for_discord()`**: Wired into all send paths in message splitter — function was dead code, leaving `@everyone`/`@here` unsanitized in AI responses.

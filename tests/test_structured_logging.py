@@ -124,7 +124,7 @@ def test_structured_logger_binds_context():
 
 
 def test_configure_structlog_plain_stream_disables_colors_and_padding():
-    """Non-TTY streams should render plain text without ANSI color codes."""
+    """Non-TTY streams render colored text by default."""
     stream = StringIO()
     stream.isatty = lambda: False  # type: ignore[attr-defined]
 
@@ -134,8 +134,22 @@ def test_configure_structlog_plain_stream_disables_colors_and_padding():
     logger.info("hello world")
 
     output = stream.getvalue()
-    assert "\x1b[" not in output
-    assert output.rstrip("\n") == output.rstrip()
+    assert "\x1b[" in output
+    assert "hello world" in output
+
+
+def test_configure_structlog_env_color_defaults_to_colors_on_non_tty_stream():
+    """Unset DISCORDIANAI_LOG_COLOR keeps colored output on non-TTY streams."""
+    stream = StringIO()
+    stream.isatty = lambda: False  # type: ignore[attr-defined]
+
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("DISCORDIANAI_LOG_COLOR", None)
+        configure_structlog(stream=stream)
+        logging.getLogger("test.rendering").info("hello world")
+
+    output = stream.getvalue()
+    assert "\x1b[" in output
     assert "hello world" in output
 
 

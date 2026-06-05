@@ -58,7 +58,7 @@ Production-ready logging configuration.
 
 - **`LOG_FILE`**: Log file path *(default: "bot.log")*
 - **`LOG_LEVEL`**: Logging verbosity ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL") *(default: "INFO")*
-- **`DISCORDIANAI_LOG_COLOR`**: Force colored console logging (`1`/`true`/`yes`) or disable it (`0`/`false`/`no`). When unset, TTY detection decides.
+- **`DISCORDIANAI_LOG_COLOR`**: Colored console logging is on by default. Set to `1`/`true`/`yes` to keep colors on, or `0`/`false`/`no` to disable them.
 
 ## Operation Modes
 

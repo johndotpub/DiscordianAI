@@ -3,8 +3,8 @@
 Configures structlog with a hybrid renderer that outputs human-readable
 logs to the console (for development) and JSON-structured logs when
 environment variable ``DISCORDIANAI_LOG_JSON=1`` is set (for production
-observability). Console color output follows TTY detection by default,
-but can be overridden with ``DISCORDIANAI_LOG_COLOR``.
+observability). Console color output is enabled by default and can be
+disabled with ``DISCORDIANAI_LOG_COLOR``.
 
 All existing ``logging.getLogger()`` calls are automatically enriched
 with structlog processors via the stdlib integration layer. No changes
@@ -107,16 +107,10 @@ def configure_structlog(
     else:
         if stream is None:
             stream = sys.stderr
-        if force_colors is True:
-            renderer = structlog.dev.ConsoleRenderer()
-        elif force_colors is False:
+        if force_colors is False:
             renderer = structlog.dev.ConsoleRenderer(colors=False, pad_event_to=0)
         else:
-            is_tty = bool(getattr(stream, "isatty", lambda: False)())
-            if is_tty:
-                renderer = structlog.dev.ConsoleRenderer()
-            else:
-                renderer = structlog.dev.ConsoleRenderer(colors=False, pad_event_to=0)
+            renderer = structlog.dev.ConsoleRenderer()
 
     structlog.configure(
         processors=[
