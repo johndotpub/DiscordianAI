@@ -61,7 +61,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
                 base_url=config["OPENAI_API_URL"],
             )
             logger.info(
-                "OpenAI client initialized with model: %s (connection pooling enabled)",
+                "OpenAI client initialized with model %s (connection pooling enabled)",
                 config["GPT_MODEL"],
             )
         except Exception as e:
@@ -69,7 +69,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
             error_msg = "OpenAI client initialization failed"
             raise RuntimeError(error_msg) from e
     else:
-        logger.info("No OpenAI API key provided - GPT models disabled")
+        logger.info("No OpenAI API key provided; GPT models disabled")
 
     # Initialize Perplexity client for web search if API key is provided
     perplexity_client = None
@@ -80,7 +80,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
                 base_url=config["PERPLEXITY_API_URL"],
             )
             logger.info(
-                "Perplexity client initialized successfully for web search "
+                "Perplexity client initialized for web search "
                 "(connection pooling enabled)",
             )
         except Exception as e:
@@ -88,7 +88,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
             error_msg = "Perplexity client initialization failed"
             raise RuntimeError(error_msg) from e
     else:
-        logger.info("No Perplexity API key provided - web search disabled")
+        logger.info("No Perplexity API key provided; web search disabled")
 
     # Verify at least one API is configured
     if not client and not perplexity_client:
@@ -101,7 +101,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
         raise ValueError(error_msg)
     if client and perplexity_client:
         logger.info(
-            "Running in HYBRID mode (OpenAI + Perplexity) - Smart AI orchestration enabled",
+            "Running in hybrid mode (OpenAI + Perplexity); smart orchestration enabled",
         )
     elif client:
         logger.info("Running in OpenAI-only mode")
@@ -111,7 +111,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
     # Initialize thread-safe components
     max_history = config.get("MAX_HISTORY_PER_USER", 50)
     cleanup_interval = config.get("USER_LOCK_CLEANUP_INTERVAL", 3600)
-    logger.info("Health checks will be initiated after bot startup")
+    logger.info("Health checks will run after bot startup")
 
     deps = BotDependencies(
         bot=discord.Client(intents=intents),
@@ -155,7 +155,7 @@ def run_bot(config: dict[str, Any]) -> None:
     deps: BotDependencies | None = None
     try:
         deps = initialize_bot_and_dependencies(config)
-        deps.logger.info("Starting Discord bot manager...")
+        deps.logger.info("Starting Discord bot manager")
         manager = DiscordBotManager(deps)
         manager.run()
     except Exception as e:

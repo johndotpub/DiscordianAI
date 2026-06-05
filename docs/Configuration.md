@@ -58,6 +58,7 @@ Production-ready logging configuration.
 
 - **`LOG_FILE`**: Log file path *(default: "bot.log")*
 - **`LOG_LEVEL`**: Logging verbosity ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL") *(default: "INFO")*
+- **`DISCORDIANAI_LOG_COLOR`**: Force colored console logging (`1`/`true`/`yes`) or disable it (`0`/`false`/`no`). When unset, TTY detection decides.
 
 ## Operation Modes
 
@@ -165,6 +166,7 @@ export MAX_HISTORY_PER_USER=100
 
 # Logging
 export LOG_LEVEL="DEBUG"
+export DISCORDIANAI_LOG_COLOR="1"
 ```
 
 Environment variables take precedence over `config.ini` values, allowing for flexible deployment configurations.

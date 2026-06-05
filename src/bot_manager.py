@@ -20,6 +20,7 @@ class DiscordBotManager:
         self.bot = deps["bot"]
         self.logger = deps["logger"]
         self.config = deps["config"]
+        self._shutdown_requested = False
 
     def register_events(self):
         """Register all Discord event handlers."""
@@ -44,7 +45,7 @@ class DiscordBotManager:
             )
 
             # Schedule health checks
-            self.logger.info("Initiating health monitoring...")
+            self.logger.info("Initiating health monitoring")
             health_monitor = APIHealthMonitor()
             clients_for_health_check = {
                 "openai": self.deps.get("client"),
@@ -67,15 +68,15 @@ class DiscordBotManager:
 
         @self.bot.event
         async def on_disconnect():
-            self.logger.warning("Bot has disconnected from Discord")
+            self.logger.warning("Bot disconnected from Discord")
 
         @self.bot.event
         async def on_resumed():
-            self.logger.info("Bot connection resumed successfully")
+            self.logger.info("Bot connection resumed")
 
     async def graceful_shutdown(self):
         """Perform graceful shutdown of the bot and cleanup resources."""
-        self.logger.info("Initiating graceful shutdown...")
+        self.logger.info("Initiating graceful shutdown")
 
         # Stop health server first
         health_server = self.deps.get("health_server")
@@ -110,8 +111,15 @@ class DiscordBotManager:
         """Set up signal handlers for graceful shutdown."""
 
         def signal_handler(signum, _frame):
-            self.logger.info("Received signal %s, initiating graceful shutdown...", signum)
-            raise KeyboardInterrupt
+            if self._shutdown_requested:
+                return
+
+            self._shutdown_requested = True
+            self.logger.info("Received signal %s, shutting down", signum)
+
+            loop = getattr(self.bot, "loop", None)
+            if loop and not loop.is_closed():
+                loop.call_soon_threadsafe(loop.create_task, self.graceful_shutdown())
 
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
@@ -121,9 +129,10 @@ class DiscordBotManager:
         self.register_events()
         self.setup_signal_handlers()
         try:
-            self.bot.run(self.deps["DISCORD_TOKEN"])
+            self.bot.run(self.deps["DISCORD_TOKEN"], log_handler=None)
         except KeyboardInterrupt:
-            self.logger.info("Bot interrupted by user, shutting down...")
+            if not self._shutdown_requested:
+                self.logger.info("Bot interrupted by user, shutting down")
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:

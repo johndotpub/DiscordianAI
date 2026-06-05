@@ -38,7 +38,7 @@ async def _process_message_core(
         # Clean message content for logging (remove mentions)
         clean_content = re.sub(r"<@\d+>", "", message.content).strip()
         logger.info(
-            "Captured message for processing (ID: %s, Length: %d)",
+            "Captured message for processing (ID: %s, length: %d)",
             message.id,
             len(clean_content),
         )
@@ -120,7 +120,7 @@ async def _process_message_core(
             original_message=message,
             mention_prefix=f"{message.author.mention} ",
         )
-        logger.info("Successfully processed and responded")
+        logger.info("Message processed and response sent")
 
     except Exception as e:
         logger.exception("Error processing message")

@@ -17,6 +17,7 @@ class DummyBot:
         self.guilds = [SimpleNamespace(id=10), SimpleNamespace(id=11)]
         self.presence_calls: list[tuple] = []
         self.closed_calls = 0
+        self.run_calls: list[tuple] = []
 
     def event(self, func):
         self.event_handlers[func.__name__] = func
@@ -30,6 +31,9 @@ class DummyBot:
 
     async def close(self):
         self.closed_calls += 1
+
+    def run(self, token, **kwargs):
+        self.run_calls.append((token, kwargs))
 
 
 class DummyTask(asyncio.Future):
@@ -156,6 +160,33 @@ def test_setup_signal_handlers(monkeypatch, base_deps):
     assert {sig for sig, _ in calls} == {signal.SIGTERM, signal.SIGINT}
 
 
+@pytest.mark.asyncio
+async def test_signal_handler_requests_graceful_shutdown(monkeypatch, base_deps):
+    captured_handlers = []
+
+    def fake_signal(_sig, handler):
+        captured_handlers.append(handler)
+
+    monkeypatch.setattr("signal.signal", fake_signal)
+
+    manager = DiscordBotManager(base_deps)
+    manager.graceful_shutdown = AsyncMock()
+    loop = asyncio.get_running_loop()
+    manager.bot.loop = SimpleNamespace(
+        is_closed=lambda: False,
+        call_soon_threadsafe=lambda callback, coro: callback(coro),
+        create_task=loop.create_task,
+    )
+    manager.setup_signal_handlers()
+
+    assert len(captured_handlers) == 2
+
+    captured_handlers[0](signal.SIGTERM, None)
+
+    await asyncio.sleep(0)
+    manager.graceful_shutdown.assert_awaited_once()
+
+
 def test_run_handles_keyboard_interrupt(monkeypatch, base_deps):
     class FakeLoop:
         def __init__(self):
@@ -171,7 +202,7 @@ def test_run_handles_keyboard_interrupt(monkeypatch, base_deps):
     manager.graceful_shutdown = AsyncMock()
     manager.register_events = lambda: None
 
-    base_deps["bot"].run = lambda _token=None: (_ for _ in ()).throw(KeyboardInterrupt)
+    base_deps["bot"].run = lambda _token=None, **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt)
 
     monkeypatch.setattr(asyncio, "new_event_loop", FakeLoop)
     monkeypatch.setattr(asyncio, "set_event_loop", lambda _loop=None: None)
@@ -191,7 +222,7 @@ def test_run_happy_path(base_deps):
     def mark_signals():
         ran.setdefault("signals", True)
 
-    def run_bot(token):
+    def run_bot(token, **_kwargs):
         ran.setdefault("token", token)
 
     manager.register_events = mark_registered
@@ -201,3 +232,13 @@ def test_run_happy_path(base_deps):
     manager.run()
 
     assert ran == {"registered": True, "signals": True, "token": "token"}
+
+
+def test_run_disables_discord_default_logging(base_deps):
+    manager = DiscordBotManager(base_deps)
+    manager.register_events = lambda: None
+    manager.setup_signal_handlers = lambda: None
+
+    manager.run()
+
+    assert base_deps["bot"].run_calls == [("token", {"log_handler": None})]

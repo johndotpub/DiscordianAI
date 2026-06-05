@@ -147,7 +147,7 @@ def log_api_call(
         message_length: Length of user message
         conversation_length: Length of conversation history
     """
-    logger.info("%s API call - Model: %s", service, model)
+    logger.info("Calling %s API with model %s", service, model)
     logger.debug(
         "Message length: %d chars, History: %d messages",
         message_length,
@@ -169,12 +169,12 @@ def log_api_response(
         response_length: Length of response
         metadata: Additional response metadata
     """
-    logger.info("%s response: %d characters", service, response_length)
+    logger.info("%s response was %d characters", service, response_length)
 
     if metadata:
         debug_parts = []
         if "finish_reason" in metadata:
-            debug_parts.append(f"finish_reason: {metadata['finish_reason']}")
+            debug_parts.append(f"finish reason: {metadata['finish_reason']}")
         if "usage" in metadata:
             usage = metadata["usage"]
             if hasattr(usage, "total_tokens"):

@@ -1,4 +1,6 @@
 import importlib
+import logging
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -57,3 +59,33 @@ def test_main_handles_exception(monkeypatch):
     )
     with pytest.raises(SystemExit, match="1"):
         main.main()
+
+
+def test_handle_unhandled_keyboard_interrupt_is_clean(monkeypatch):
+    from src.main import handle_unhandled_exception
+    from unittest.mock import Mock
+
+    logger = logging.getLogger("test.keyboardinterrupt")
+    logger.addHandler(logging.NullHandler())
+
+    ex_hook = Mock()
+    monkeypatch.setattr(sys, "__excepthook__", ex_hook)
+
+    handle_unhandled_exception(KeyboardInterrupt, KeyboardInterrupt(), None, logger)
+
+    ex_hook.assert_not_called()
+
+
+def test_setup_production_logging_keeps_single_root_handler():
+    from src.main import setup_production_logging
+
+    root = logging.getLogger()
+    original_handlers = list(root.handlers)
+    try:
+        root.handlers[:] = []
+
+        setup_production_logging({"LOG_LEVEL": "INFO", "LOG_FILE": "test.log"}, logging.getLogger("test"))
+
+        assert len(root.handlers) == 1
+    finally:
+        root.handlers[:] = original_handlers

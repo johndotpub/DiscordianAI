@@ -17,7 +17,6 @@ if sys.version_info < (3, 12):  # noqa: UP036
     sys.exit(1)
 
 import logging
-from pathlib import Path
 from typing import NoReturn
 
 from .api_validation import log_validation_results
@@ -47,7 +46,7 @@ def setup_early_logging() -> logging.Logger:
     configure_structlog(json_logs=False, log_level="INFO")
 
     logger = logging.getLogger("discordianai.startup")
-    logger.info("Early logging initialized - starting DiscordianAI bot")
+    logger.info("Early logging initialized")
     return logger
 
 
@@ -77,24 +76,10 @@ def setup_production_logging(config: dict, logger: logging.Logger) -> None:
         # Configure structlog for production
         configure_structlog(json_logs=False, log_level=log_level)
 
-        # Set up file handler if log file is configured
-        log_file = config.get("LOG_FILE")
-        if log_file:
-            log_dir = Path(log_file).parent
-            if log_dir and not log_dir.exists():
-                log_dir.mkdir(parents=True, exist_ok=True)
-                logger.info("Created log directory: %s", log_dir)
+        # The process supervisor or launcher owns bot.log redirection.
+        # Keep a single structured stream here to avoid duplicate lines.
 
-            file_handler = logging.FileHandler(log_file)
-            file_handler.setLevel(getattr(logging, log_level, logging.INFO))
-            logging.getLogger().addHandler(file_handler)
-
-        # Add console handler for warnings/errors
-        console_handler = logging.StreamHandler(sys.stderr)
-        console_handler.setLevel(logging.WARNING)
-        logging.getLogger().addHandler(console_handler)
-
-        logger.info("Production logging configured: level=%s", log_level)
+        logger.info("Production logging configured with level %s", log_level)
 
     except Exception:
         logger.exception("Failed to configure production logging")
@@ -187,19 +172,12 @@ def handle_unhandled_exception(exc_type, exc_value, exc_traceback, logger: loggi
     # Handle keyboard interrupts gracefully (Ctrl+C)
     if issubclass(exc_type, KeyboardInterrupt):
         logger.info("Bot shutdown requested by user (KeyboardInterrupt)")
-        sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
 
     # Log all other unhandled exceptions with full context
     logger.critical(
         "UNHANDLED EXCEPTION - Bot crashed unexpectedly",
         exc_info=(exc_type, exc_value, exc_traceback),
-    )
-
-    # Also print to stderr as fallback
-    # Use logging instead of print to avoid potential information leakage
-    logging.getLogger(__name__).critical(
-        "Unhandled exception %s: %s", exc_type.__name__, exc_value
     )
 
 
@@ -237,27 +215,27 @@ def main() -> NoReturn:
         )
 
         # Step 3: Load configuration (with early logging available for errors)
-        early_logger.info("Loading configuration...")
+        early_logger.info("Loading configuration")
         config = load_config(args.conf, getattr(args, "folder", None))
-        early_logger.info("Configuration loaded successfully")
+        early_logger.info("Configuration loaded")
 
         # Step 4: Set up production logging based on config
-        early_logger.info("Configuring production logging...")
+        early_logger.info("Configuring production logging")
         setup_production_logging(config, early_logger)
 
         # Get the properly configured logger
         logger = logging.getLogger("discordianai.main")
-        logger.info("=== DiscordianAI Bot Starting ===")
+        logger.info("DiscordianAI bot starting")
 
         # Step 5: Validate critical configuration
-        logger.info("Validating configuration...")
+        logger.info("Validating configuration")
         validate_critical_config(config, logger)
 
         # Step 5.1: Validate API parameters
-        logger.info("Validating API parameters...")
+        logger.info("Validating API parameters")
         api_validation_passed = log_validation_results(config, logger)
         if not api_validation_passed:
-            logger.warning("API validation found issues, but continuing with startup")
+            logger.warning("API validation found issues, continuing startup")
 
         # Health checks will run after bot initialization since we need the clients
         logger.info("Health checks will run after bot initialization")
@@ -270,7 +248,7 @@ def main() -> NoReturn:
         logger.info("Global exception handler configured")
 
         # Step 7: Start the bot (this blocks until the bot stops)
-        logger.info("Starting Discord bot...")
+        logger.info("Starting Discord bot")
         run_bot(config)
 
     except KeyboardInterrupt:
@@ -288,10 +266,6 @@ def main() -> NoReturn:
             logger.critical("Fatal error during bot startup: %s", e, exc_info=True)
         except NameError:
             early_logger.critical("Fatal error during bot startup: %s", e, exc_info=True)
-
-        # Use logging for security instead of print statements
-        logging.getLogger(__name__).critical("Bot startup failed: %s", e)
-        logging.getLogger(__name__).critical("Check the logs for detailed error information.")
         sys.exit(1)
 
 
