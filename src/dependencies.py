@@ -49,7 +49,8 @@ class BotDependencies:
         rate_limiter: Per-user rate limiter.
         conversation_manager: Thread-safe conversation history store.
         health_server: Health endpoint server (or ``None``).
-        allowed_channels: List of channel IDs the bot responds in.
+        allowed_channels: Channel names the bot responds in (used as fallback if no
+            IDs are configured).
         bot_presence: Discord presence status string.
         activity_type: Discord activity type string.
         activity_status: Discord activity status text.

@@ -15,7 +15,6 @@ dependencies = [
     "aiohttp>=3.13.5",
     "openai>=2.41.0",
     "websockets>=16.0",
-    "requests>=2.34.1",
     "beautifulsoup4>=4.14.3",
     "httpx[http2]>=0.28.1",
     "h2>=4.3.0",

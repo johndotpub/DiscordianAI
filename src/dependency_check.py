@@ -22,7 +22,6 @@ def check_dependencies() -> tuple[bool, list[str]]:
         ("discord", "discord.py"),
         ("openai", "openai"),
         ("websockets", "websockets"),
-        ("requests", "requests"),
         ("bs4", "beautifulsoup4"),
     ]
 
