@@ -1,7 +1,7 @@
 """Perplexity API processing with web search capabilities and citation handling.
 
-This module handles Perplexity API interactions for web-enabled responses,
-including citation extraction, Discord formatting, and thread-safe
+This module handles Perplexity API interactions for web-enabled responses via
+``httpx``, including citation extraction, Discord formatting, and thread-safe
 conversation management.
 """
 

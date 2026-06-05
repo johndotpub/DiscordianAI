@@ -6,6 +6,7 @@ import os
 from unittest.mock import patch
 
 import pytest
+import structlog
 
 from src.structured_logging import configure_structlog, get_structured_logger
 
@@ -28,6 +29,10 @@ def test_configure_structlog_defaults():
     root = logging.getLogger()
     assert root.level == logging.INFO
     assert len(root.handlers) == 1
+    assert any(
+        isinstance(proc, structlog.stdlib.ExtraAdder)
+        for proc in root.handlers[0].formatter.processors
+    )
 
 
 def test_configure_structlog_json_mode():

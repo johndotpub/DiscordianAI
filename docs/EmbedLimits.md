@@ -54,24 +54,27 @@ formatted = "This is research about AI [[1]](https://academic-journal.com/ai-res
 
 ### Truncation Logic
 ```python
-# discord_embeds.py
+# src.message_splitter.py
 if len(formatted_content) > EMBED_LIMIT:
-    formatted_content = formatted_content[:EMBED_SAFE_LIMIT] + "..."
+    formatted_content = (
+        formatted_content[:EMBED_SAFE_LIMIT]
+        + "\n\n[Content truncated due to length]"
+    )
 ```
 
 ### Split Point Calculation
 ```python
-# bot.py
+# src.message_splitter.py
 if len(message) > EMBED_SAFE_LIMIT:
     split_point = find_optimal_split_point(message, EMBED_SAFE_LIMIT)
 ```
 
 ### Overflow Detection
 ```python
-# bot.py
+# src.message_splitter.py
 was_truncated = (
     len(clean_text) > EMBED_LIMIT 
-    and embed_description.endswith("...")
+    and "[Content truncated due to length]" in embed_description
 )
 ```
 

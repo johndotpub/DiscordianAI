@@ -128,49 +128,28 @@ flowchart TD
 ### Regular Message Splitting
 
 ```python
-async def send_split_message(channel, message, deps, suppress_embeds=False):
-    """Split long messages at optimal boundaries."""
-    if len(message) <= 2000:
-        await channel.send(message, suppress_embeds=suppress_embeds)
-        return
-    
-    # Find optimal split point
-    split_point = find_optimal_split_point(message, len(message) // 2)
-    
-    # Adjust for code blocks
-    before, after = adjust_split_for_code_blocks(message, split_point)
-    
-    # Send parts
-    await channel.send(before.strip(), suppress_embeds=suppress_embeds)
-    if after.strip():
-        await send_split_message(channel, after.strip(), deps, False)
+await send_split_message(
+    channel,
+    message,
+    deps,
+    suppress_embeds=False,
+    original_message=original_message,
+    mention_prefix=f"{user.mention} ",
+)
 ```
 
 ### Embed Splitting with Citations
 
 ```python
-async def send_split_message_with_embed(channel, message, deps, embed, citations):
-    """Split embed content while preserving citations."""
-    if len(message) <= EMBED_SAFE_LIMIT:
-        await channel.send("", embed=embed)
-        return
-    
-    # Split content
-    split_point = find_optimal_split_point(message, EMBED_SAFE_LIMIT)
-    part1, part2 = adjust_split_for_code_blocks(message, split_point)
-    
-    # Send first part with original embed
-    await channel.send("", embed=embed)
-    
-    # Process remaining parts
-    if part2 and citations:
-        remaining_citations = find_citations_in_text(part2, citations)
-        if remaining_citations:
-            continuation_embed = create_citation_embed(
-                part2, remaining_citations, 
-                footer_text="Web search results (continued)"
-            )
-            await channel.send("", embed=continuation_embed)
+await send_split_message_with_embed(
+    channel,
+    message,
+    deps,
+    embed,
+    citations,
+    original_message=original_message,
+    mention_prefix=f"{user.mention} ",
+)
 ```
 
 ## Split Point Algorithm
@@ -294,14 +273,14 @@ flowchart TD
 ### Customizing Split Behavior
 
 ```python
-# Adjust search window for split points
-SPLIT_SEARCH_WINDOW = 50  # characters around target
+# Discord limits used by the splitter
+MESSAGE_LIMIT = 2000
+EMBED_SAFE_LIMIT = 3840
 
 # Maximum recursion depth for splitting
 MAX_SPLIT_RECURSION = 10
 
-# Preferred split characters (in priority order)
-SPLIT_PRIORITIES = ['\n', '. ', '! ', '? ', ' ']
+# Prefer the helpers from ``src.message_splitter`` instead of duplicating the logic.
 ```
 
 ### Monitoring Split Operations

@@ -60,6 +60,14 @@ Production-ready logging configuration.
 - **`LOG_LEVEL`**: Logging verbosity ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL") *(default: "INFO")*
 - **`DISCORDIANAI_LOG_COLOR`**: Colored console logging is on by default. Set to `1`/`true`/`yes` to keep colors on, or `0`/`false`/`no` to disable them.
 
+### Health
+
+Lightweight HTTP health checks for Docker and Kubernetes deployments.
+
+- **`HEALTH_ENABLED`**: Enable or disable the health server *(default: `true`)*
+- **`HEALTH_HOST`**: Bind address for the health server *(default: `127.0.0.1`)*
+- **`HEALTH_PORT`**: Port for readiness/liveness probes *(default: `8080`)*
+
 ## Operation Modes
 
 DiscordianAI supports three distinct operation modes based on your API key configuration:

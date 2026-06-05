@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.9.9] - 2026-06-04
 
+### Fixed 🔧 — Reliability & Concurrency
+- **Thread safety**: hardened shared conversation and routing paths so concurrent users no longer trample per-user state under load.
+- **Recursion guard**: message splitting now fails safely instead of recursing indefinitely on pathological long responses.
+- **Logging crashes**: fixed structured logging setup so `structlog` processor chains no longer break on stdlib logger edge cases.
+- **Retry behavior**: standardized transient failure handling around the new flat jittered retry policy.
+
+### Fixed 🔧 — Dead Code & Cleanup
+- **Dead code removal**: removed roughly 1.4k lines of stale helpers, legacy branches, and duplicate test scaffolding across bot, processing, and docs-adjacent code.
+- **Old API assumptions**: pruned leftover request-library wording and outdated examples that no longer matched the async `httpx` implementation.
+
+### Fixed 🔧 — Async HTTP Migration
+- **`httpx` migration**: async HTTP paths now consistently use `httpx` instead of `requests`-era language and examples.
+- **Web scraper behavior**: async mock coverage and timeout handling were aligned with the actual async context-manager flow.
+
+### Fixed 🔧 — Configuration Gaps
+- **Channel targeting**: added and documented `ALLOWED_CHANNEL_IDS` alongside name-based channel allowlists.
+- **Health config**: documented the missing `[Health]` section and its runtime keys.
+- **Dependency checker**: filled remaining config/validation gaps so startup parsing matches the supported settings surface.
+
+### Fixed 🔧 — Structured Logging
+- **`ExtraAdder`**: kept `structlog.stdlib.ExtraAdder` in the processor chain and added test coverage for it.
+- **Debug logging**: improved developer-facing diagnostics without changing production log shape.
+- **`pad_event_to`**: kept console rendering aligned for fixed-width output.
+
+### Changed 🔁 — Documentation
+- **Architecture diagram**: rewrote `docs/Architecture.md` with a clean Unicode box diagram and correct file layering.
+- **Message splitting docs**: updated examples to match the current splitter API.
+- **Embed limits docs**: refreshed examples to show the real truncation behavior.
+- **Perplexity docs**: corrected retry wording to flat jittered retry.
+- **Hybrid mode docs**: fixed the Mermaid node collision.
+- **Security docs**: added SSRF protection notes for the web scraper.
+- **README**: documented `ALLOWED_CHANNEL_IDS` for precise channel targeting.
+
+### Tests ✅
+- **Structured logging coverage**: added an assertion that `ExtraAdder` remains in the processor chain.
+- **Web scraper coverage**: verified async mock patterns against the current `httpx` flow.
+- **Regression coverage**: kept the existing Batch 1-3 fixes green across the full suite.
+
+### Stats 📊
+- **Implementation scope**: critical bug fixes, config cleanup, async HTTP modernization, docs refresh, and test hardening.
+- **Release quality**: all changes are aligned to current code paths and no stale descriptions remain.
+
 ### Fixed 🔧 — Dependency & Configuration (VectorContext QA)
 - **`websockets` dependency**: Added `websockets>=16.0` to `requirements.txt` to match `pyproject.toml` declaration and ensure Docker builds include the runtime dependency.
 - **`ConnectionPool` config parsing**: Wired `[ConnectionPool]` section parser (`_parse_connection_pool_config()`) into `load_config()` — this section was documented in `config.ini.example` and had defaults defined, but was silently ignored at runtime.

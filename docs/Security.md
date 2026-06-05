@@ -154,6 +154,12 @@ HTTP connections use secure defaults:
   - Read: 45s (OpenAI) / 60s (Perplexity)
   - Write: 10 seconds
 
+### Web Scraper SSRF Protection
+
+The web scraper validates URLs before fetching them and rejects non-public
+targets. Hostnames are resolved first, and private, loopback, link-local, and
+other non-global IP ranges are blocked before any request is made.
+
 ### API Endpoints
 
 Only these endpoints are allowed:

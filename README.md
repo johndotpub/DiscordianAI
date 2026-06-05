@@ -91,6 +91,12 @@ The launcher resolves Python in this order: pyenv → project-local `.venv` → 
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | How many prior turns to inspect when enforcing AI service consistency.
 | `OPENAI_MAX_CONNECTIONS` / `PERPLEXITY_MAX_CONNECTIONS` | HTTP/2 pooling limits for each API client.
 
+### Channel Targeting
+
+- `ALLOWED_CHANNELS` matches channel names.
+- `ALLOWED_CHANNEL_IDS` matches channel IDs and takes precedence when set.
+- Prefer IDs for stable targeting across servers; names are handy for local testing.
+
 ### Minimal hybrid config
 
 ```ini
@@ -170,6 +176,7 @@ Use `tox` for the CI matrix (`tox`, `tox -e py312`, `tox --parallel auto`, `tox 
 - Prefer environment variables in production (`export DISCORD_TOKEN=...`).
 - Rotate OpenAI (`sk-...`) and Perplexity (`pplx-...`) keys regularly; validators will reject malformed prefixes.
 - Limit Discord bot permissions to the channels where it operates.
+- Prefer `ALLOWED_CHANNEL_IDS` for precise channel targeting in shared or multi-server deployments.
 - Monitor logs for rate-limit bursts or scraping failures and adjust `RATE_LIMIT` / `RATE_LIMIT_PER` accordingly.
 
 ## Support & License

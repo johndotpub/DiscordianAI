@@ -264,5 +264,5 @@ export PERPLEXITY_MODEL="sonar-pro"
 
 ### Error Handling
 - Graceful fallback to OpenAI when Perplexity is unavailable
-- Retry logic with exponential backoff for transient failures
+- Retry logic with flat jittered retry for transient failures
 - Circuit breaker pattern prevents cascade failures
