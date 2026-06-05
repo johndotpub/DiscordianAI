@@ -333,7 +333,6 @@ DiscordianAI/
 │   ├── __init__.py              # Package exports
 │   ├── health_checks.py         # API monitoring
 │   ├── api_validation.py        # Configuration validation
-│   ├── api_utils.py             # Shared API helpers
 │   ├── message_processor.py     # Discord event normalization
 │   ├── rate_limits.py           # Rate limiting
 │   ├── bot.py                   # Discord bot core

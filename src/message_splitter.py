@@ -162,8 +162,6 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
     logger = deps["logger"]
     message = sanitize_for_discord(message)
     prefix_text = mention_prefix or ""
-    prefix_length = len(prefix_text)
-    max_first_chunk = max(1, MESSAGE_LIMIT - prefix_length)
 
     if _recursion_depth > MAX_SPLIT_RECURSION:
         logger.error(
@@ -171,8 +169,13 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
             MAX_SPLIT_RECURSION,
             len(message),
         )
-        truncated = message[: max(1, max_first_chunk - 1)]
-        fallback_text = f"{prefix_text}{truncated}{truncation_notice(len(message))}"
+        trunc_notice = truncation_notice(len(message))
+        available = MESSAGE_LIMIT - len(prefix_text) - len(trunc_notice)
+        if available < 0:
+            prefix_text = ""
+            available = MESSAGE_LIMIT - len(trunc_notice)
+        truncated = message[: max(0, available)]
+        fallback_text = f"{prefix_text}{truncated}{trunc_notice}"
         if original_message:
             await original_message.reply(
                 fallback_text,
