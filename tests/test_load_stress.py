@@ -5,7 +5,6 @@ simulating scenarios with 10k+ users as claimed in the documentation.
 """
 
 import asyncio
-import time
 
 import pytest
 
@@ -19,8 +18,6 @@ class TestConcurrentUserLoad:
     @pytest.mark.asyncio
     async def test_conversation_manager_concurrent_users(self):
         """Test conversation manager with 1000+ concurrent users."""
-        pytest.skip("Benchmark timing assertion removed from test suite")
-
         manager = ThreadSafeConversationManager(max_history_per_user=50)
 
         async def simulate_user(user_id: int, num_messages: int):
@@ -41,8 +38,6 @@ class TestConcurrentUserLoad:
         for user_id in range(num_users):
             conversation = manager.get_conversation(user_id)
             assert len(conversation) == messages_per_user
-
-        pytest.skip("Performance timing assertion removed from test suite")
 
     @pytest.mark.asyncio
     async def test_conversation_manager_memory_cleanup(self):
@@ -68,8 +63,6 @@ class TestConcurrentUserLoad:
     @pytest.mark.asyncio
     async def test_rate_limiter_concurrent_requests(self):
         """Test rate limiter with concurrent requests from many users."""
-        pytest.skip("Benchmark timing assertion removed from test suite")
-
         rate_limiter = RateLimiter()
         rate_limit = 10
         rate_limit_per = 60
@@ -89,8 +82,6 @@ class TestConcurrentUserLoad:
 
         # All should pass (first request for each user)
         assert all(results), "All users should pass rate limit on first request"
-
-        pytest.skip("Performance timing assertion removed from test suite")
 
     @pytest.mark.asyncio
     async def test_rate_limiter_high_frequency_requests(self):
@@ -117,8 +108,6 @@ class TestConcurrentUserLoad:
     @pytest.mark.asyncio
     async def test_concurrent_message_processing(self):
         """Test concurrent message processing simulation."""
-        pytest.skip("Benchmark timing assertion removed from test suite")
-
         manager = ThreadSafeConversationManager()
 
         async def process_message(user_id: int, message_num: int):
@@ -149,8 +138,6 @@ class TestConcurrentUserLoad:
         # Verify all messages processed
         assert len(results) == num_users * messages_per_user
 
-        pytest.skip("Performance timing assertion removed from test suite")
-
     @pytest.mark.asyncio
     async def test_memory_usage_with_many_users(self):
         """Test memory usage doesn't grow unbounded with many users."""
@@ -172,8 +159,6 @@ class TestConcurrentUserLoad:
     @pytest.mark.asyncio
     async def test_concurrent_get_conversation_summary(self):
         """Test concurrent conversation summary generation."""
-        pytest.skip("Benchmark timing assertion removed from test suite")
-
         manager = ThreadSafeConversationManager()
 
         # Pre-populate conversations
@@ -195,13 +180,9 @@ class TestConcurrentUserLoad:
         assert len(summaries) == num_users
         assert all(len(s) <= 10 for s in summaries), "Summaries should be limited"
 
-        pytest.skip("Performance timing assertion removed from test suite")
-
     @pytest.mark.asyncio
     async def test_thread_safety_under_load(self):
         """Test thread safety with concurrent read/write operations."""
-        pytest.skip("Benchmark timing assertion removed from test suite")
-
         manager = ThreadSafeConversationManager()
 
         async def writer(user_id: int, num_writes: int):
@@ -231,8 +212,6 @@ class TestConcurrentUserLoad:
         for user_id in range(min(100, num_users)):  # Check sample
             conversation = manager.get_conversation(user_id)
             assert len(conversation) == writes_per_user
-
-        pytest.skip("Performance timing assertion removed from test suite")
 
     @pytest.mark.asyncio
     async def test_cleanup_under_load(self):
