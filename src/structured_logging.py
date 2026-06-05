@@ -85,7 +85,7 @@ def configure_structlog(
         log_level: Set the root logger level. If ``None``, reads
             ``DISCORDIANAI_LOG_LEVEL`` (defaults to ``INFO``).
         stream: Optional stream for the root handler, used by tests and
-            to detect whether the output target is a TTY.
+            as the output target for the root logging handler.
     """
     if json_logs is None:
         json_logs = _env_flag("DISCORDIANAI_LOG_JSON") is True

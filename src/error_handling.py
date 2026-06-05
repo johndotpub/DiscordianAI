@@ -397,11 +397,13 @@ def handle_api_error(func):
         func_kwargs.pop("logger", None)
 
         try:
-
-            async def call_func():
-                return await func(*args, **func_kwargs)
-
-            return await retry_with_backoff(call_func, retry_config, original_logger)
+            return await retry_with_backoff(
+                func,
+                retry_config,
+                original_logger,
+                *args,
+                **func_kwargs,
+            )
 
         except Exception as e:
             error_details = classify_error(e)

@@ -62,11 +62,11 @@ class ContentExtractionError(WebScrapingError):
     """Exception raised when content extraction fails."""
 
 
-def _add_respectful_delay():
+async def _add_respectful_delay():
     """Add a respectful delay between requests to avoid overwhelming servers."""
     # Using random for non-cryptographic purposes (rate limiting)
     delay = random.uniform(MIN_DELAY_BETWEEN_REQUESTS, MAX_DELAY_BETWEEN_REQUESTS)  # noqa: S311
-    return asyncio.sleep(delay)
+    await asyncio.sleep(delay)
 
 
 def _clean_text(text: str) -> str:
