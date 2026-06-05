@@ -16,6 +16,17 @@ from src.web_scraper import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _patch_web_scraper_sleep():
+    """Patch asyncio.sleep in the web_scraper module so tests run instantly.
+
+    scrape_url_content() always calls _add_respectful_delay() (1-3s) and may
+    also hit retry backoff sleeps. This fixture eliminates all real delays.
+    """
+    with patch("src.web_scraper.asyncio.sleep", AsyncMock(return_value=None)):
+        yield
+
+
 def _mock_async_client(response: Mock):
     mock_client = Mock()
     mock_client.stream.return_value = Mock(

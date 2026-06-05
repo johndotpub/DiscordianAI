@@ -250,7 +250,7 @@ class ThreadSafeConversationManager:
 @dataclass
 class RetryConfig:
     max_attempts: int = 2
-    base_delay: float = 2.0
+    base_delay: float = 4.0
     max_delay: float = 4.0
     exponential_base: float = 1.0
     jitter: bool = True  # Prevents thundering herd

@@ -110,10 +110,10 @@ The bot handles upstream API rate limits gracefully:
 3. **Circuit Breaker**: Stops requests after repeated failures
 
 ```python
-# Example retry configuration
+# Example retry configuration (matches DEFAULT_API_RETRY_CONFIG)
 RetryConfig(
     max_attempts=2,
-    base_delay=2.0,
+    base_delay=4.0,
     max_delay=4.0,
     exponential_base=1.0,
     jitter=True
