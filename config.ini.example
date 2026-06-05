@@ -70,6 +70,9 @@ MAX_HISTORY_PER_USER=50
 # How often to clean up inactive user locks (seconds) - default 1 hour
 USER_LOCK_CLEANUP_INTERVAL=3600
 
+# Minimum words required before entity detection runs
+ENTITY_DETECTION_MIN_WORDS=10
+
 [Logging]
 LOG_FILE=bot.log
 LOG_LEVEL=INFO

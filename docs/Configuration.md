@@ -50,6 +50,7 @@ Advanced configuration for intelligent AI service routing.
   
 - **`MAX_HISTORY_PER_USER`**: Maximum conversation history per user *(default: 50)*
 - **`USER_LOCK_CLEANUP_INTERVAL`**: Memory cleanup interval in seconds *(default: 3600)*
+- **`ENTITY_DETECTION_MIN_WORDS`**: Minimum message length before entity detection runs *(default: 10)*
 
 ### Logging
 
