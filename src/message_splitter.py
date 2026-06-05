@@ -40,6 +40,7 @@ async def send_split_message(  # noqa: PLR0913
 ) -> None:
     """Send messages with automatic splitting for Discord's message character limit."""
     logger = deps["logger"]
+    message = sanitize_for_discord(message)
     prefix_text = mention_prefix or ""
     prefix_length = len(prefix_text)
 
@@ -152,6 +153,7 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
     mention_prefix: str | None = None,
 ) -> None:
     """Send a long message with citation embeds, maintaining citations across parts."""
+    message = sanitize_for_discord(message)
     head_text = message
     after_split = ""
     if len(message) > EMBED_SAFE_LIMIT:
@@ -254,6 +256,7 @@ async def send_formatted_message(  # noqa: PLR0913
 ) -> None:
     """Send formatted message to Discord, using extracted splitter logic."""
     logger = deps["logger"]
+    message = sanitize_for_discord(message)
 
     if embed_data and "embed" in embed_data:
         embed = embed_data["embed"]
