@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from enum import Enum
 import functools
 import logging
+import re
 import secrets
 import time
 from typing import Any
@@ -80,7 +81,18 @@ class CircuitBreaker:
         self._lock = asyncio.Lock()
 
     def _should_attempt_reset(self) -> bool:
-        return time.monotonic() - self.last_failure_time > self.timeout
+        elapsed = self._seconds_since_last_failure()
+        return elapsed > self.timeout
+
+    def _seconds_since_last_failure(self) -> float:
+        if self.last_failure_time == 0:
+            return 0
+
+        now_monotonic = time.monotonic()
+        if self.last_failure_time > now_monotonic:
+            return time.time() - self.last_failure_time
+
+        return now_monotonic - self.last_failure_time
 
     def __call__(self, func):
         """Decorator to wrap a function with circuit breaker logic."""
@@ -99,9 +111,8 @@ class CircuitBreaker:
                 result = await func(*args, **kwargs)
             except self.expected_exception:
                 async with self._lock:
-                    if self.state == "CLOSED" and self.last_failure_time:
-                        if time.monotonic() - self.last_failure_time > self.timeout:
-                            self.failure_count = 0
+                    if self.state == "CLOSED" and self._seconds_since_last_failure() > self.timeout:
+                        self.failure_count = 0
                     self.failure_count += 1
                     self.last_failure_time = time.monotonic()
 
@@ -262,7 +273,7 @@ def classify_error(exception: Exception) -> ErrorDetails:
         severity = ErrorSeverity.HIGH
         user_message = "🔐 Authentication issue. Please contact administrator."
 
-    elif "5" in error_msg and any(code in error_msg for code in ["500", "502", "503", "504"]):
+    elif any(re.search(rf"(?<!\\d){code}(?!\\d)", error_msg) for code in ["500", "502", "503", "504"]):
         error_type = ErrorType.API_SERVER_ERROR
         severity = ErrorSeverity.HIGH
         user_message = "🔧 Service temporarily unavailable. Please try again later."
@@ -377,11 +388,16 @@ def handle_api_error(func):
             base_delay=0.1,
         )  # 3 attempts with short delay for tests
 
-        # Extract the original logger if it exists in kwargs to avoid conflicts
-        original_logger = kwargs.pop("logger", func_logger)
+        # Use the original logger if it exists in kwargs without removing it.
+        original_logger = kwargs.get("logger", func_logger)
+        func_kwargs = dict(kwargs)
+        func_kwargs.pop("logger", None)
 
         try:
-            return await retry_with_backoff(func, retry_config, original_logger, *args, **kwargs)
+            async def call_func():
+                return await func(*args, **func_kwargs)
+
+            return await retry_with_backoff(call_func, retry_config, original_logger)
 
         except Exception as e:
             error_details = classify_error(e)
