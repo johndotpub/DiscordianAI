@@ -130,9 +130,10 @@ class TestThreadSafeLRUCache:
             # Cleanup expired entries
             expired_count = self.cache.cleanup_expired()
 
-        assert expired_count == 1
-        assert self.cache.get("short") is None
-        assert self.cache.get("long") == "value2"
+        with patch("src.caching.time.time", return_value=200.25):
+            assert expired_count == 1
+            assert self.cache.get("short") is None
+            assert self.cache.get("long") == "value2"
 
     def test_cache_clear(self):
         """Test clearing all cache entries."""
