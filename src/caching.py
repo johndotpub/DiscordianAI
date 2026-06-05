@@ -25,6 +25,33 @@ MIN_CACHABLE_RESPONSE_LENGTH = 10
 RESPONSE_LENGTH_TTL_THRESHOLD = 1000
 LONG_RESPONSE_TTL = 600.0
 SHORT_RESPONSE_TTL = 300.0
+POSITIONAL_CONFIG_INDEX = 3
+
+
+def _extract_message_context(
+    args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> tuple[str, str, str]:
+    request = args[0] if args and hasattr(args[0], "message") else kwargs.get("request")
+    config = (
+        args[POSITIONAL_CONFIG_INDEX]
+        if len(args) > POSITIONAL_CONFIG_INDEX
+        and hasattr(args[POSITIONAL_CONFIG_INDEX], "system_message")
+        else kwargs.get("config")
+    )
+
+    if request and hasattr(request, "message"):
+        message = request.message
+    else:
+        message = kwargs.get("message") or (args[0] if args and isinstance(args[0], str) else "")
+
+    if config and hasattr(config, "system_message"):
+        model = getattr(config, "model", "unknown")
+        system_message = config.system_message
+    else:
+        model = kwargs.get("gpt_model") or kwargs.get("model", "unknown")
+        system_message = kwargs.get("system_message", "")
+
+    return message, model, system_message
 
 
 @dataclass
@@ -72,7 +99,7 @@ class ThreadSafeLRUCache:
     def _make_key(self, *args, **kwargs) -> str:
         """Generate cache key from arguments."""
         # Create a deterministic key from arguments
-        key_data = str((args, sorted(kwargs.items())))
+        key_data = repr((args, sorted(kwargs.items())))
         return hashlib.sha256(key_data.encode()).hexdigest()
 
     def get(self, key: str) -> Any | None:
@@ -331,33 +358,7 @@ def cached_response(ttl: float = 300.0, cache_instance: ResponseCache | None = N
             # Generate cache key from function name and arguments
             func_name = func.__name__
 
-            # Try to extract request and config from new models
-            request = None
-            if args and hasattr(args[0], "message"):
-                request = args[0]
-            elif "request" in kwargs:
-                request = kwargs["request"]
-
-            # Try to extract config
-            config = None
-            if len(args) > 3 and hasattr(args[3], "system_message"):  # noqa: PLR2004
-                config = args[3]
-            elif "config" in kwargs:
-                config = kwargs["config"]
-
-            if request and hasattr(request, "message"):
-                message = request.message
-            else:
-                message = kwargs.get("message") or (
-                    args[0] if args and isinstance(args[0], str) else ""
-                )
-
-            if config and hasattr(config, "system_message"):
-                model = getattr(config, "model", "unknown")
-                system_message = config.system_message
-            else:
-                model = kwargs.get("gpt_model") or kwargs.get("model", "unknown")
-                system_message = kwargs.get("system_message", "")
+            message, model, system_message = _extract_message_context(args, kwargs)
 
             context = {
                 "function": func_name,
@@ -400,31 +401,9 @@ def deduplicated_request(key_func: Callable | None = None):
                 request_key = key_func(*args, **kwargs)
             else:
                 # Default key generation
-                request = None
-                if args and hasattr(args[0], "message"):
-                    request = args[0]
-                elif "request" in kwargs:
-                    request = kwargs["request"]
+                message, model, _ = _extract_message_context(args, kwargs)
 
-                config = None
-                if len(args) > 3 and hasattr(args[3], "system_message"):  # noqa: PLR2004
-                    config = args[3]
-                elif "config" in kwargs:
-                    config = kwargs["config"]
-
-                if request and hasattr(request, "message"):
-                    message = request.message
-                else:
-                    message = kwargs.get("message") or (
-                        args[0] if args and isinstance(args[0], str) else ""
-                    )
-
-                if config and hasattr(config, "system_message"):
-                    model = getattr(config, "model", "unknown")
-                else:
-                    model = kwargs.get("gpt_model") or kwargs.get("model", "unknown")
-
-                request_key = f"{func.__name__}:{model}:{hash(str(message))}"
+                request_key = f"{func.__name__}:{model}:{hash(repr(message))}"
 
             # Execute with deduplication
             async def request_func():

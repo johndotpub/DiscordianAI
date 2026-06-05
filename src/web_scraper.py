@@ -58,10 +58,6 @@ class WebScrapingError(Exception):
     """Base exception for web scraping errors."""
 
 
-class ContentExtractionError(WebScrapingError):
-    """Exception raised when content extraction fails."""
-
-
 async def _add_respectful_delay():
     """Add a respectful delay between requests to avoid overwhelming servers."""
     # Using random for non-cryptographic purposes (rate limiting)
@@ -174,9 +170,6 @@ def _extract_content(soup: BeautifulSoup) -> str:
         "#main-content",
         ".article-content",
         ".story-content",
-        ".post",
-        ".entry",
-        ".article",
         ".story",
         ".markdown-body",
     ]

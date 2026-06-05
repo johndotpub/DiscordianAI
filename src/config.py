@@ -515,82 +515,88 @@ def _parse_limits_config(
     config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger
 ) -> None:
     """Parse Limits section of configuration."""
-    try:
-        config_data["RATE_LIMIT"] = config.getint("Limits", "RATE_LIMIT", fallback=10)
-    except ValueError:
-        logger.warning("Invalid RATE_LIMIT value, using default 10")
-        config_data["RATE_LIMIT"] = 10
-    try:
-        config_data["RATE_LIMIT_PER"] = config.getint("Limits", "RATE_LIMIT_PER", fallback=60)
-    except ValueError:
-        logger.warning("Invalid RATE_LIMIT_PER value, using default 60")
-        config_data["RATE_LIMIT_PER"] = 60
+    config_data["RATE_LIMIT"] = _get_int_safe(
+        config,
+        "RATE_LIMIT",
+        10,
+        logger,
+        section="Limits",
+    )
+    config_data["RATE_LIMIT_PER"] = _get_int_safe(
+        config,
+        "RATE_LIMIT_PER",
+        60,
+        logger,
+        section="Limits",
+    )
 
 
 def _parse_connection_pool_config(
     config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger
 ) -> None:
     """Parse ConnectionPool section of configuration."""
-    try:
-        config_data["OPENAI_MAX_CONNECTIONS"] = config.getint(
-            "ConnectionPool",
-            "OPENAI_MAX_CONNECTIONS",
-            fallback=50,
-        )
-        config_data["OPENAI_MAX_KEEPALIVE"] = config.getint(
-            "ConnectionPool",
-            "OPENAI_MAX_KEEPALIVE",
-            fallback=10,
-        )
-        config_data["PERPLEXITY_MAX_CONNECTIONS"] = config.getint(
-            "ConnectionPool",
-            "PERPLEXITY_MAX_CONNECTIONS",
-            fallback=30,
-        )
-        config_data["PERPLEXITY_MAX_KEEPALIVE"] = config.getint(
-            "ConnectionPool",
-            "PERPLEXITY_MAX_KEEPALIVE",
-            fallback=5,
-        )
-    except ValueError:
-        logger.warning("Invalid ConnectionPool config value, using defaults")
-        config_data.setdefault("OPENAI_MAX_CONNECTIONS", 50)
-        config_data.setdefault("OPENAI_MAX_KEEPALIVE", 10)
-        config_data.setdefault("PERPLEXITY_MAX_CONNECTIONS", 30)
-        config_data.setdefault("PERPLEXITY_MAX_KEEPALIVE", 5)
+    config_data["OPENAI_MAX_CONNECTIONS"] = _get_int_safe(
+        config,
+        "OPENAI_MAX_CONNECTIONS",
+        50,
+        logger,
+        section="ConnectionPool",
+    )
+    config_data["OPENAI_MAX_KEEPALIVE"] = _get_int_safe(
+        config,
+        "OPENAI_MAX_KEEPALIVE",
+        10,
+        logger,
+        section="ConnectionPool",
+    )
+    config_data["PERPLEXITY_MAX_CONNECTIONS"] = _get_int_safe(
+        config,
+        "PERPLEXITY_MAX_CONNECTIONS",
+        30,
+        logger,
+        section="ConnectionPool",
+    )
+    config_data["PERPLEXITY_MAX_KEEPALIVE"] = _get_int_safe(
+        config,
+        "PERPLEXITY_MAX_KEEPALIVE",
+        5,
+        logger,
+        section="ConnectionPool",
+    )
 
 
 def _parse_orchestrator_config(
     config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger
 ) -> None:
     """Parse Orchestrator section of configuration."""
-    try:
-        config_data["LOOKBACK_MESSAGES_FOR_CONSISTENCY"] = config.getint(
-            "Orchestrator",
-            "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
-            fallback=6,
-        )
-        config_data["MAX_HISTORY_PER_USER"] = config.getint(
-            "Orchestrator",
-            "MAX_HISTORY_PER_USER",
-            fallback=50,
-        )
-        config_data["USER_LOCK_CLEANUP_INTERVAL"] = config.getint(
-            "Orchestrator",
-            "USER_LOCK_CLEANUP_INTERVAL",
-            fallback=3600,
-        )
-        config_data["ENTITY_DETECTION_MIN_WORDS"] = config.getint(
-            "Orchestrator",
-            "ENTITY_DETECTION_MIN_WORDS",
-            fallback=10,
-        )
-    except ValueError:
-        logger.warning("Invalid Orchestrator config value, using defaults")
-        config_data.setdefault("LOOKBACK_MESSAGES_FOR_CONSISTENCY", 6)
-        config_data.setdefault("MAX_HISTORY_PER_USER", 50)
-        config_data.setdefault("USER_LOCK_CLEANUP_INTERVAL", 3600)
-        config_data.setdefault("ENTITY_DETECTION_MIN_WORDS", 10)
+    config_data["LOOKBACK_MESSAGES_FOR_CONSISTENCY"] = _get_int_safe(
+        config,
+        "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
+        6,
+        logger,
+        section="Orchestrator",
+    )
+    config_data["MAX_HISTORY_PER_USER"] = _get_int_safe(
+        config,
+        "MAX_HISTORY_PER_USER",
+        50,
+        logger,
+        section="Orchestrator",
+    )
+    config_data["USER_LOCK_CLEANUP_INTERVAL"] = _get_int_safe(
+        config,
+        "USER_LOCK_CLEANUP_INTERVAL",
+        3600,
+        logger,
+        section="Orchestrator",
+    )
+    config_data["ENTITY_DETECTION_MIN_WORDS"] = _get_int_safe(
+        config,
+        "ENTITY_DETECTION_MIN_WORDS",
+        10,
+        logger,
+        section="Orchestrator",
+    )
 
 
 def _parse_logging_config(
@@ -611,11 +617,13 @@ def _parse_health_config(
     """Parse Health section of configuration."""
     config_data["HEALTH_ENABLED"] = config.getboolean("Health", "HEALTH_ENABLED", fallback=True)
     config_data["HEALTH_HOST"] = config.get("Health", "HEALTH_HOST", fallback="127.0.0.1")
-    try:
-        config_data["HEALTH_PORT"] = config.getint("Health", "HEALTH_PORT", fallback=8080)
-    except ValueError:
-        logger.warning("Invalid HEALTH_PORT value, using default 8080")
-        config_data["HEALTH_PORT"] = 8080
+    config_data["HEALTH_PORT"] = _get_int_safe(
+        config,
+        "HEALTH_PORT",
+        8080,
+        logger,
+        section="Health",
+    )
 
 
 def _parse_discord_config(config: configparser.ConfigParser, config_data: dict[str, Any]) -> None:
@@ -668,11 +676,15 @@ def _parse_default_config(
 
 
 def _get_int_safe(
-    config: configparser.ConfigParser, key: str, default: int, logger: logging.Logger
+    config: configparser.ConfigParser,
+    key: str,
+    default: int,
+    logger: logging.Logger,
+    section: str = "Default",
 ) -> int:
     """Safely get an integer from configuration with fallback."""
     try:
-        return config.getint("Default", key, fallback=default)
+        return config.getint(section, key, fallback=default)
     except ValueError:
         logger.warning("Invalid %s value, using default %d", key, default)
         return default

@@ -7,7 +7,6 @@ import pytest
 
 from src.web_scraper import (
     MAX_DOWNLOAD_SIZE,
-    ContentExtractionError,
     WebScrapingError,
     _clean_text,
     _extract_content,
@@ -386,7 +385,6 @@ class TestWebScrapingIntegration:
     def test_web_scraping_error_inheritance(self):
         """Test that web scraping exceptions inherit correctly."""
         assert issubclass(WebScrapingError, Exception)
-        assert issubclass(ContentExtractionError, WebScrapingError)
 
     @pytest.mark.asyncio
     async def test_scrape_url_content_empty_response(self):

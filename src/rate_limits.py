@@ -188,42 +188,6 @@ class RateLimiter:
             }
 
 
-def _record_fail_open_error(rate_limiter: RateLimiter, now: float) -> tuple[bool, bool]:
-    """Record a fail-open error, preserving lock safety when available."""
-    if hasattr(type(rate_limiter), "record_fail_open_error"):
-        _, cooldown_active, entering_cooldown = rate_limiter.record_fail_open_error(now)
-        return cooldown_active, entering_cooldown
-
-    fail_open_errors = rate_limiter.fail_open_errors
-    if not isinstance(fail_open_errors, int):
-        fail_open_errors = 0
-
-    cooldown_until = rate_limiter.fail_open_cooldown_until
-    if not isinstance(cooldown_until, (int, float)):
-        cooldown_until = 0.0
-
-    fail_open_errors += 1
-    rate_limiter.fail_open_errors = fail_open_errors
-
-    cooldown_active = now < cooldown_until
-    entering_cooldown = not cooldown_active and fail_open_errors >= FAIL_OPEN_LIMIT
-    if entering_cooldown:
-        rate_limiter.fail_open_cooldown_until = now + 60
-        rate_limiter.fail_open_errors = 0
-
-    return cooldown_active, entering_cooldown
-
-
-def _reset_fail_open_state(rate_limiter: RateLimiter) -> None:
-    """Reset fail-open counters, preserving lock safety when available."""
-    if hasattr(type(rate_limiter), "reset_fail_open_state"):
-        rate_limiter.reset_fail_open_state()
-        return
-
-    rate_limiter.fail_open_errors = 0
-    rate_limiter.fail_open_cooldown_until = 0.0
-
-
 async def check_rate_limit(
     user: discord.User,
     rate_limiter: RateLimiter,
@@ -267,7 +231,15 @@ async def check_rate_limit(
             user.id,
         )
         now = time.time()
-        cooldown_active, entering_cooldown = _record_fail_open_error(rate_limiter, now)
+        fail_open_result = rate_limiter.record_fail_open_error(now)
+        try:
+            _, cooldown_active, entering_cooldown = fail_open_result
+        except (TypeError, ValueError):
+            cooldown_until = getattr(rate_limiter, "fail_open_cooldown_until", 0.0)
+            if not isinstance(cooldown_until, (int, float)):
+                cooldown_until = 0.0
+            cooldown_active = now < cooldown_until
+            entering_cooldown = False
 
         if cooldown_active:
             logger.warning(
@@ -284,7 +256,7 @@ async def check_rate_limit(
         return True
     else:
         # Log successful rate limit checks at debug level
-        _reset_fail_open_state(rate_limiter)
+        rate_limiter.reset_fail_open_state()
         if result:
             logger.debug("Rate limit check successful for %s (ID: %s)", user.name, user.id)
         else:

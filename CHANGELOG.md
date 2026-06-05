@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧 — Logging
 - **`DISCORDIANAI_LOG_COLOR` default**: Colors are now enabled by default even for non-TTY/file output; only explicit `0`/`false`/`no` disables color.
-- **ANSI escape codes in file output**: `ConsoleRenderer` now respects TTY detection so non-color file output no longer includes ANSI escape sequences.
+- **ANSI escape codes in file output**: `ConsoleRenderer` now only disables ANSI when `DISCORDIANAI_LOG_COLOR` is explicitly turned off; colors remain enabled by default even for file output.
 - **Duplicate log lines**: Removed `discord.py`'s `log_handler=None` duplication path and the redundant `FileHandler` so messages are emitted once.
 - **Clean shutdown logging**: `SIGTERM`/`KeyboardInterrupt` shutdowns no longer dump rich tracebacks with source excerpts and local variables into `bot.log`.
 - **Double-format crash**: Removed `structlog.stdlib.add_logger_name` to avoid crashing when the logger is `None`; the custom logger-name processor already handles this case.
@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Perplexity citation extraction**: Fixed `_map_from_metadata()` to store citation URLs instead of raw objects — downstream comparison against string URLs was always failing.
 - **Embed truncation logging**: Fixed log message reporting post-truncation length as the "from" value — now reports original pre-truncation length.
 - **Message overflow guard**: Added length check after prefix concatenation to prevent exceeding Discord's 2000-char limit when prefix nearly fills the message.
-- **OpenAI→Perplexity reroute deduplication**: Added `persist_history` flag to `process_perplexity_message()`, preventing duplicate user messages in conversation history when OpenAI response is rerouted.
+- **OpenAI→Perplexity reroute deduplication**: Moved conversation persistence into the orchestrator after successful responses, keeping `process_*_message()` side-effect free and preventing duplicate history entries during reroutes.
 - **Rate limiter fail-open**: Narrowed `except Exception` to catch only transient errors; added fail-open cooldown on repeated failures to prevent permanent rate-limit bypass.
 - **Content-Length handling**: Unparseable `content-length` headers in web scraper now proceed with download instead of aborting all retries.
 - **uviicorn ImportError**: `HealthServer.start()` now catches `ImportError` when uvicorn is missing and returns cleanly instead of crashing startup.

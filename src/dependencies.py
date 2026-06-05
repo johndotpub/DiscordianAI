@@ -18,12 +18,13 @@ Usage::
 
 from __future__ import annotations
 
-import asyncio  # noqa: TC003
 from dataclasses import dataclass, field
-import logging  # noqa: TC003
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    import asyncio
+    import logging
+
     from .connection_pool import ConnectionPoolManager
     from .conversation_manager import ThreadSafeConversationManager
     from .health_server import HealthServer
@@ -74,7 +75,7 @@ class BotDependencies:
     health_server: HealthServer | None = None
 
     # Configuration scalars (extracted from config for convenience)
-    allowed_channels: list[int] = field(default_factory=list)
+    allowed_channels: list[str] = field(default_factory=list)
     allowed_channel_ids: list[int] = field(default_factory=list)
     bot_presence: str = "online"
     activity_type: str = "watching"
@@ -132,28 +133,30 @@ class BotDependencies:
 
     def __setitem__(self, key: str, value: Any) -> None:
         """Support dict-style writes for backward compatibility."""
-        if key in self.to_dict():
-            field_name = {
-                "ALLOWED_CHANNELS": "allowed_channels",
-                "ALLOWED_CHANNEL_IDS": "allowed_channel_ids",
-                "BOT_PRESENCE": "bot_presence",
-                "ACTIVITY_TYPE": "activity_type",
-                "ACTIVITY_STATUS": "activity_status",
-                "DISCORD_TOKEN": "discord_token",
-                "RATE_LIMIT": "rate_limit",
-                "RATE_LIMIT_PER": "rate_limit_period",
-                "GPT_MODEL": "gpt_model",
-                "PERPLEXITY_MODEL": "perplexity_model",
-                "SYSTEM_MESSAGE": "system_message",
-                "OUTPUT_TOKENS": "output_tokens",
-                "_health_task": "health_task",
-            }.get(key)
-            if field_name:
-                setattr(self, field_name, value)
-            else:
-                setattr(self, key, value)
-        else:
+        field_name = {
+            "ALLOWED_CHANNELS": "allowed_channels",
+            "ALLOWED_CHANNEL_IDS": "allowed_channel_ids",
+            "BOT_PRESENCE": "bot_presence",
+            "ACTIVITY_TYPE": "activity_type",
+            "ACTIVITY_STATUS": "activity_status",
+            "DISCORD_TOKEN": "discord_token",
+            "RATE_LIMIT": "rate_limit",
+            "RATE_LIMIT_PER": "rate_limit_period",
+            "GPT_MODEL": "gpt_model",
+            "PERPLEXITY_MODEL": "perplexity_model",
+            "SYSTEM_MESSAGE": "system_message",
+            "OUTPUT_TOKENS": "output_tokens",
+            "_health_task": "health_task",
+        }.get(key)
+        if field_name:
+            setattr(self, field_name, value)
+            return
+
+        if hasattr(self, key):
             setattr(self, key, value)
+            return
+
+        raise KeyError(key)
 
     def __contains__(self, key: str) -> bool:
         """Support ``key in deps`` for backward compatibility."""
