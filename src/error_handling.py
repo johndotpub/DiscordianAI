@@ -75,8 +75,8 @@ class CircuitBreaker:
         self.timeout = timeout
         self.expected_exception = expected_exception
         self.failure_count = 0
-        self.last_failure_time = 0
-        self.last_success_time = 0
+        self.last_failure_time = 0.0
+        self.last_success_time = 0.0
         self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
         self._lock = asyncio.Lock()
 
@@ -90,7 +90,7 @@ class CircuitBreaker:
 
         now_monotonic = time.monotonic()
         if self.last_failure_time > now_monotonic:
-            return time.time() - self.last_failure_time
+            return self.timeout + 1  # force reset on clock jump
 
         return now_monotonic - self.last_failure_time
 
@@ -385,7 +385,6 @@ def handle_api_error(func):
     """
 
     @CircuitBreaker(failure_threshold=3, timeout=30)
-    @functools.wraps(func)
     async def wrapper(*args, **kwargs):
         func_logger = logging.getLogger(func.__module__)
         retry_config = RetryConfig(

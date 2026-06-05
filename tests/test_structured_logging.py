@@ -11,7 +11,13 @@ from src.structured_logging import configure_structlog, get_structured_logger
 
 @pytest.fixture(autouse=True)
 def _reset_logging():
-    """Ensure tests do not depend on pre-existing root handlers."""
+    """Ensure tests do not depend on pre-existing root handlers.
+
+    Previously this fixture removed root logger handlers, but that
+    races with ``pytest-xdist -n auto`` (multiple workers mutating the
+    shared root logger). The fixture is kept as a no-op anchor — tests
+    that need fresh state should configure their own loggers explicitly.
+    """
     return
 
 

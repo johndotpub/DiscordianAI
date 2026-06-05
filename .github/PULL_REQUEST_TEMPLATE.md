@@ -1,4 +1,4 @@
-# 🧹🔧 v0.2.9.8 QA Pass — Comprehensive Codebase Review & Hardening
+# 🧹🔧 v0.2.9.9 QA Pass — Comprehensive Codebase Review & Hardening
 
 > **Author:** Vector Context  
 > **Branch:** `fix/comprehensive-cleanup`  

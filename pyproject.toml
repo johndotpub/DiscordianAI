@@ -47,6 +47,7 @@ dev = [
     "pytest-cov>=7.1.0", 
     "pytest-xdist[psutil]>=3.8.0",  # For parallel test execution
     "coverage[toml]>=7.13.5",
+    "httpx2>=0.2.0",  # Required by starlette.testclient ≥1.0
     "tox>=4.53.0",
     "pip-audit>=2.10.0",  # Dependency vulnerability scanning
     "pre-commit>=4.6.0",  # Pre-commit hooks framework

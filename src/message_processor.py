@@ -126,10 +126,14 @@ async def _process_message_core(
         logger.exception("Error processing message")
 
         # Classify error for better user messaging
-        error_details = None
-        error_details = classify_error(e)
+        try:
+            error_details = classify_error(e)
+        except Exception:
+            error_details = None
         user_friendly_msg = (
-            error_details.user_message if hasattr(error_details, "user_message") else error_msg
+            error_details.user_message
+            if (error_details is not None and hasattr(error_details, "user_message"))
+            else error_msg
         )
 
         if not await safe_discord_send(message.channel, user_friendly_msg, logger):

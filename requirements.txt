@@ -1,11 +1,11 @@
 discord.py>=2.7.1
 aiohttp>=3.13.5
-openai>=2.32.0
+openai>=2.41.0
 websockets>=16.0
-requests>=2.33.1
+requests>=2.34.1
 beautifulsoup4>=4.14.3
 httpx[http2]>=0.28.1
 h2>=4.3.0
-starlette>=0.45.0
+starlette>=1.2.1
 uvicorn>=0.34.0
-structlog>=24.4.0
+structlog>=25.5.0

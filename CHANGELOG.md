@@ -57,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Import ordering standardized, line length compliance, private member access replaced with properties, magic values extracted to named constants.
 
 ### Stats 📊
-- **Files changed**: 40 files, +681/-311 lines
+- **Files changed**: 44 files, +882/-352 lines
 - **New tests**: +13 test assertions (652 total, up from 639 baseline)
 - **Test result**: 652 passed, 0 skipped
 - **Lint**: `ruff check src/ tests/` clean
