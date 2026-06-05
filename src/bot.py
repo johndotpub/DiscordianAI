@@ -80,7 +80,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
                 base_url=config["PERPLEXITY_API_URL"],
             )
             logger.info(
-                "Perplexity client initialized for web search " "(connection pooling enabled)",
+                "Perplexity client initialized for web search (connection pooling enabled)",
             )
         except Exception as e:
             logger.exception("Failed to initialize Perplexity client")

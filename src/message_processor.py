@@ -128,7 +128,7 @@ async def _process_message_core(
         # Classify error for better user messaging
         try:
             error_details = classify_error(e)
-        except Exception:
+        except (AttributeError, TypeError):
             error_details = None
         user_friendly_msg = (
             error_details.user_message

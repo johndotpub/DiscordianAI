@@ -62,8 +62,9 @@ def test_main_handles_exception(monkeypatch):
 
 
 def test_handle_unhandled_keyboard_interrupt_is_clean(monkeypatch):
-    from src.main import handle_unhandled_exception
     from unittest.mock import Mock
+
+    from src.main import handle_unhandled_exception
 
     logger = logging.getLogger("test.keyboardinterrupt")
     logger.addHandler(logging.NullHandler())

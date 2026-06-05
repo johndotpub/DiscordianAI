@@ -117,7 +117,10 @@ class ConnectionPoolManager:
                 raise
 
         self._logger.debug(
-            "Created HTTP client with connection pool: max_connections=%d, max_keepalive_connections=%d",
+            (
+                "Created HTTP client with connection pool: max_connections=%d, "
+                "max_keepalive_connections=%d"
+            ),
             max_connections,
             max_keepalive,
         )
@@ -152,7 +155,10 @@ class ConnectionPoolManager:
         )
 
         self._logger.debug(
-            "Created OpenAI client with connection pooling for %s (max_connections=%d, max_keepalive=%d, max_retries=0)",
+            (
+                "Created OpenAI client with connection pooling for %s "
+                "(max_connections=%d, max_keepalive=%d, max_retries=0)"
+            ),
             base_url,
             self.openai_max_connections,
             self.openai_max_keepalive,

@@ -1,8 +1,8 @@
 """Tests for structured logging configuration."""
 
+from io import StringIO
 import logging
 import os
-from io import StringIO
 from unittest.mock import patch
 
 import pytest
@@ -124,7 +124,7 @@ def test_structured_logger_binds_context():
 
 
 def test_configure_structlog_plain_stream_renders_colors_on_non_tty():
-    """Non-TTY streams render colored text by default (colors are enabled unless explicitly disabled)."""
+    """Non-TTY streams render colored text by default when colors are enabled."""
     stream = StringIO()
 
     configure_structlog(stream=stream)
