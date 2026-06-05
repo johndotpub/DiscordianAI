@@ -1,7 +1,7 @@
 # 🧹🔧 v0.2.9.9 QA Pass — Comprehensive Codebase Review & Hardening
 
 > **Author:** Vector Context  
-> **Branch:** `fix/comprehensive-cleanup`  
+> **Branch:** `bender-overhaul`  
 > **Base:** `johndotpub/main`  
 > **Status:** Ready for review
 
@@ -9,19 +9,28 @@
 
 ## 📋 Summary
 
-Full-spectrum QA pass covering dependency management, configuration parsing, source code reliability, security, documentation accuracy, and test hygiene. 33 commits, 40 files changed, +683/-312 lines. 652 tests pass, zero lint errors.
+Full-spectrum QA pass covering dependency management, logging, configuration parsing, source code reliability, security, documentation accuracy, and test hygiene. 41 commits, 49 files changed, +1113/-443 lines. 660 tests pass, zero lint errors.
 
 ---
 
 ## 🎯 What Changed
 
 ### 🔧 Dependency & Configuration Fixes
-- **`websockets>=16.0`** added to `requirements.txt` — matches `pyproject.toml` (Docker builds use `requirements.txt`)
+- **`websockets>=16.0`** added to `requirements.txt` — matches `pyproject.toml` and keeps Docker builds aligned
+- **Dependency bumps** — `openai` `2.32.0 → 2.41.0`, `requests` `2.33.1 → 2.34.1`, `starlette` `0.45.0 → 1.2.1`, `structlog` `24.4.0 → 25.5.0`
+- **`httpx2`** added as a dev dependency for `starlette.testclient` compatibility
 - **`[ConnectionPool]` section** now parsed at runtime — was documented in `config.ini.example` with defaults defined, but silently ignored
 - **`ENTITY_DETECTION_MIN_WORDS`** wired into config file parser and env overrides — was documented but unimplemented
 - **`ALLOWED_CHANNEL_IDS`** — ID-based channel matching alongside name-based `ALLOWED_CHANNELS` (IDs are unique across servers)
 - **`.env.example`** — new template file with all 21 supported environment variables
 - **`CONTRIBUTING.md`** — Python version corrected (3.10 → 3.12+)
+
+### 🧪 Logging Overhaul
+- **structlog 25.x crash fix** — removed redundant `structlog.stdlib.add_logger_name` processor that crashed with `None` loggers in the formatter chain
+- **Double-log elimination** — removed `discord.py` handler duplication and the redundant `FileHandler` so each message is emitted once
+- **Clean shutdown** — `SIGTERM` and `KeyboardInterrupt` no longer dump rich tracebacks with source excerpts and locals into `bot.log`
+- **`DISCORDIANAI_LOG_COLOR`** — colors are enabled by default; only explicit `0`/`false`/`no` disables color
+- **File output hygiene** — `ConsoleRenderer` now respects TTY detection so file logs stay free of ANSI escape codes
 
 ### 🔐 Source Code Reliability & Security
 - **`BotDependencies.__setitem__`** — dict-style writes (`deps["_health_task"] = ...`) now work. Previously crashed with `TypeError` in `on_ready`, blocking health monitoring
@@ -51,7 +60,7 @@ Full-spectrum QA pass covering dependency management, configuration parsing, sou
 - **`docs/HybridMode.md`** — added `ENTITY_DETECTION_MIN_WORDS` routing explanation
 - **`docs/Docker.md`** — mentions launcher and `docker-compose.yml`
 - **`docs/Python_Versions.md`** — pyenv/launcher notes for cron and systemd
-- **`CHANGELOG.md`** — all changes documented under v0.2.9.8
+- **`CHANGELOG.md`** — all changes documented under v0.2.9.9
 
 ### 🧪 Test Improvements
 - **`test_logging_adapter.py`** — 3 new tests (with/without guild context, factory function)
@@ -68,12 +77,11 @@ Full-spectrum QA pass covering dependency management, configuration parsing, sou
 
 ```
 $ python -m pytest
-652 passed in 56.94s
+660 passed in 56.94s
 
 $ ruff check src/ tests/
 All checks passed!
 
 $ git diff --stat origin/main...fix/comprehensive-cleanup
-40 files changed, 681 insertions(+), 311 deletions(-)
+49 files changed, 1113 insertions(+), 443 deletions(-)
 ```
-
