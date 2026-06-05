@@ -192,11 +192,9 @@ class TestCircuitBreaker:
                 await test_func()
         assert breaker.state == "OPEN"
 
-        # Wait for timeout
-        time.sleep(1.1)
-
-        # Next call should put it in HALF_OPEN, and success should close it
-        result = await test_func(should_succeed=True)
+        with patch.object(breaker, "_seconds_since_last_failure", return_value=1.1):
+            # Next call should put it in HALF_OPEN, and success should close it
+            result = await test_func(should_succeed=True)
         assert result == "success"
         assert breaker.state == "CLOSED"
         assert breaker.failure_count == 0
@@ -216,12 +214,10 @@ class TestCircuitBreaker:
             with pytest.raises(ValueError):
                 await test_func()
 
-        # Wait for timeout
-        time.sleep(1.1)
-
-        # Failure in half-open should reopen circuit
-        with pytest.raises(ValueError):
-            await test_func()
+        with patch.object(breaker, "_seconds_since_last_failure", return_value=1.1):
+            # Failure in half-open should reopen circuit
+            with pytest.raises(ValueError):
+                await test_func()
         assert breaker.state == "OPEN"
 
     @pytest.mark.asyncio

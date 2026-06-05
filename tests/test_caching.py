@@ -10,6 +10,7 @@ This test suite covers:
 
 import asyncio
 import time
+from unittest.mock import patch
 
 import pytest
 
@@ -109,29 +110,25 @@ class TestThreadSafeLRUCache:
 
     def test_cache_ttl_expiration(self):
         """Test TTL-based expiration."""
-        # Put entry with short TTL
-        self.cache.put("expire_key", "expire_value", ttl=0.1)
+        with patch("src.caching.time.time", side_effect=[100.0, 100.0, 100.25]):
+            # Put entry with short TTL
+            self.cache.put("expire_key", "expire_value", ttl=0.1)
 
-        # Should be available immediately
-        assert self.cache.get("expire_key") == "expire_value"
+            # Should be available immediately
+            assert self.cache.get("expire_key") == "expire_value"
 
-        # Wait for expiration
-        time.sleep(0.2)
-
-        # Should be expired now
-        assert self.cache.get("expire_key") is None
+            # Should be expired now
+            assert self.cache.get("expire_key") is None
 
     def test_cache_cleanup_expired(self):
         """Test cleanup of expired entries."""
-        # Add entries with different TTLs
-        self.cache.put("short", "value1", ttl=0.1)
-        self.cache.put("long", "value2", ttl=300.0)
+        with patch("src.caching.time.time", side_effect=[200.0, 200.0, 200.25, 200.25]):
+            # Add entries with different TTLs
+            self.cache.put("short", "value1", ttl=0.1)
+            self.cache.put("long", "value2", ttl=300.0)
 
-        # Wait for short TTL to expire
-        time.sleep(0.2)
-
-        # Cleanup expired entries
-        expired_count = self.cache.cleanup_expired()
+            # Cleanup expired entries
+            expired_count = self.cache.cleanup_expired()
 
         assert expired_count == 1
         assert self.cache.get("short") is None
