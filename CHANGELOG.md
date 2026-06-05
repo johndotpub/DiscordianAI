@@ -40,10 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Security docs**: added SSRF protection notes for the web scraper.
 - **README**: documented `ALLOWED_CHANNEL_IDS` for precise channel targeting.
 
+### Fixed 🔧 — Documentation
+- **Stale autodoc reference**: removed `docs/api/api_utils.rst` and its toctree entry after `src/api_utils.py` was deleted — CI Docs Build was failing with `ModuleNotFoundError`.
+
 ### Tests ✅
 - **Structured logging coverage**: added an assertion that `ExtraAdder` remains in the processor chain.
 - **Web scraper coverage**: verified async mock patterns against the current `httpx` flow.
-- **Regression coverage**: kept the existing Batch 1-3 fixes green across the full suite.
+- **Docs integrity guard**: added `test_docs_api_automodule_targets_are_importable` that scans every `.. automodule::` in `docs/api/*.rst` and verifies the target module is importable — catches stale `.rst` files after source deletions before they hit CI.
 
 ### Stats 📊
 - **Implementation scope**: critical bug fixes, config cleanup, async HTTP modernization, docs refresh, and test hardening.
