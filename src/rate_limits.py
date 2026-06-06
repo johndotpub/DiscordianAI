@@ -273,7 +273,7 @@ async def check_rate_limit(
 
         if entering_cooldown:
             logger.critical("RATE_LIMITER_ERROR: entering cooldown after repeated failures")
-            return True
+            return False
 
         if cooldown_active:
             logger.warning(

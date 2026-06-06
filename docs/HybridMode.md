@@ -217,7 +217,7 @@ USER_LOCK_CLEANUP_INTERVAL=3600
 | `MAX_HISTORY_PER_USER` | 50 | Maximum conversation entries stored per user (older entries are automatically pruned) |
 | `USER_LOCK_CLEANUP_INTERVAL` | 3600 | How often to clean up memory from inactive users (in seconds) |
 
-`ENTITY_DETECTION_MIN_WORDS=10` also affects routing: messages shorter than the threshold are less likely to be treated as entity-heavy factual queries, which helps avoid over-routing brief conversational prompts to web search.
+`ENTITY_DETECTION_MIN_WORDS=10` is parsed into config and available for routing; messages shorter than the threshold can be excluded from entity-heavy processing. Note: this setting is not yet wired into the current routing implementation and has no runtime effect.
 
 ### Performance Impact
 - **Higher `LOOKBACK_MESSAGES_FOR_CONSISTENCY`**: More accurate consistency but slightly more processing

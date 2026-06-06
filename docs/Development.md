@@ -203,5 +203,5 @@ line-length = 99
 
 ### Enhanced AI Routing
 - **Improved Time-Sensitivity Detection**: Better recognition of queries needing current information
-- **Optimized Entity Detection**: Entity routing now uses `ENTITY_DETECTION_MIN_WORDS=10` to avoid over-classifying short, ambiguous messages
+- **Optimized Entity Detection**: `ENTITY_DETECTION_MIN_WORDS=10` is parsed into config and available for routing; note that the current routing implementation does not yet consult this value at runtime.
 - **Readable Logic**: Restored clear, readable routing logic with early returns
