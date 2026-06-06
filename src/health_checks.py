@@ -108,7 +108,11 @@ class APIHealthMonitor:
             response_time_ms = (time.time() - start_time) * 1000
 
             # Validate response structure
-            model_ids = [getattr(item, "id", None) for item in getattr(response, "data", [])]
+            model_ids = [
+                model_id
+                for item in getattr(response, "data", [])
+                if (model_id := getattr(item, "id", None))
+            ]
             if not model_ids:
                 return HealthCheckResult(
                     service="openai",
@@ -184,7 +188,11 @@ class APIHealthMonitor:
 
             response_time_ms = (time.time() - start_time) * 1000
 
-            model_ids = [getattr(item, "id", None) for item in getattr(response, "data", [])]
+            model_ids = [
+                model_id
+                for item in getattr(response, "data", [])
+                if (model_id := getattr(item, "id", None))
+            ]
             if not model_ids:
                 return HealthCheckResult(
                     service="perplexity",

@@ -119,9 +119,16 @@ class DiscordBotManager:
             self._shutdown_requested = True
             self.logger.info("Received signal %s, shutting down", signum)
 
-            loop = getattr(self.bot, "loop", None)
+            loop = getattr(self.bot, "loop", None) or self._bot_loop
             if loop and not loop.is_closed():
-                loop.call_soon_threadsafe(loop.create_task, self.graceful_shutdown())
+
+                def schedule_shutdown(_=None):
+                    loop.create_task(self.graceful_shutdown())
+
+                loop.call_soon_threadsafe(schedule_shutdown, None)
+            else:
+                self.logger.warning("Bot loop unavailable; running graceful shutdown directly")
+                asyncio.run(self.graceful_shutdown())
 
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)

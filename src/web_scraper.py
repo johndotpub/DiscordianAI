@@ -363,9 +363,13 @@ async def _fetch_attempt(
 
         content = bytearray()
         async for chunk in response.aiter_bytes(chunk_size=CHUNK_SIZE):
-            content.extend(chunk)
-            if len(content) > MAX_DOWNLOAD_SIZE:
+            remaining = MAX_DOWNLOAD_SIZE - len(content)
+            if remaining <= 0:
                 break
+            if len(chunk) > remaining:
+                content.extend(chunk[:remaining])
+                break
+            content.extend(chunk)
         return bytes(content).decode("utf-8", errors="ignore")
 
 
