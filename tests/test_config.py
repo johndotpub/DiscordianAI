@@ -244,6 +244,43 @@ LOG_FILE=relative.log
                 mock_logger.return_value.warning.assert_called()
                 assert config["OUTPUT_TOKENS"] == 8000  # Default value
 
+    def test_load_config_env_allowed_channel_ids_partial_invalid(self):
+        """Invalid channel IDs should not discard valid IDs from env parsing."""
+        with patch.dict(
+            os.environ,
+            {
+                "ALLOWED_CHANNEL_IDS": "123,abc,456",
+            },
+        ):
+            with patch("src.config.logging.getLogger") as mock_logger:
+                mock_logger.return_value = MagicMock()
+
+                config = load_config()
+
+                assert config["ALLOWED_CHANNEL_IDS"] == [123, 456]
+                mock_logger.return_value.warning.assert_called_once()
+
+    def test_load_config_file_allowed_channel_ids_partial_invalid(self):
+        """Invalid channel IDs should not discard valid IDs from file parsing."""
+        config_content = """[Discord]
+ALLOWED_CHANNEL_IDS=123,abc,456
+"""
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
+            f.write(config_content)
+            temp_config_path = f.name
+
+        try:
+            with patch("src.config.logging.getLogger") as mock_logger:
+                mock_logger.return_value = MagicMock()
+
+                config = load_config(temp_config_path)
+
+                assert config["ALLOWED_CHANNEL_IDS"] == [123, 456]
+                mock_logger.return_value.warning.assert_called_once()
+        finally:
+            os.unlink(temp_config_path)
+
     def test_load_config_integer_conversion(self):
         """Test integer conversion for various config values."""
         with patch.dict(

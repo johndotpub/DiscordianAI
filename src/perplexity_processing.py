@@ -1,8 +1,9 @@
 """Perplexity API processing with web search capabilities and citation handling.
 
-This module handles Perplexity API interactions for web-enabled responses via
-``httpx``, including citation extraction, Discord formatting, and thread-safe
-conversation management.
+This module handles Perplexity API interactions through the OpenAI-compatible
+client, with ``httpx`` used for transport-related exception handling and URL
+scraping helpers. It also covers citation extraction, Discord formatting, and
+thread-safe conversation management.
 """
 
 import logging

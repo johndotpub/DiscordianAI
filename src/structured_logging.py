@@ -110,7 +110,7 @@ def configure_structlog(
         if force_colors is False:
             renderer = structlog.dev.ConsoleRenderer(colors=False, pad_event_to=0)
         else:
-            renderer = structlog.dev.ConsoleRenderer(pad_event_to=0)
+            renderer = structlog.dev.ConsoleRenderer(colors=True, pad_event_to=0)
 
     structlog.configure(
         processors=[

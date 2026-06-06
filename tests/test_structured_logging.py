@@ -35,6 +35,14 @@ def test_configure_structlog_defaults():
     )
 
 
+def test_configure_structlog_default_console_renderer_uses_explicit_colors_true():
+    """Default console renderer should request colors explicitly."""
+    with patch("structlog.dev.ConsoleRenderer") as mock_renderer:
+        configure_structlog()
+
+    mock_renderer.assert_called_with(colors=True, pad_event_to=0)
+
+
 def test_configure_structlog_json_mode():
     """JSON mode can be enabled via argument."""
     configure_structlog(json_logs=True)

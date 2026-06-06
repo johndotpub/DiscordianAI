@@ -374,7 +374,7 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
     if config_file and Path(config_file).exists():
         try:
             config.read(config_file)
-            _parse_discord_config(config, config_data)
+            _parse_discord_config(config, config_data, logger)
             _parse_default_config(config, config_data, logger)
             _parse_limits_config(config, config_data, logger)
             _parse_connection_pool_config(config, config_data, logger)
@@ -457,11 +457,7 @@ def _apply_single_env_override(
             [c.strip() for c in value.split(",") if c.strip()] if value.strip() else []
         )
     elif key == "ALLOWED_CHANNEL_IDS":
-        try:
-            config_data[key] = [int(c.strip()) for c in value.split(",") if c.strip()]
-        except ValueError:
-            logger.warning("Invalid integer in %s: %s", key, value)
-            config_data[key] = []
+        config_data[key] = _parse_channel_ids(value, logger, source=key)
     elif key in int_keys:
         try:
             config_data[key] = int(value)
@@ -626,18 +622,19 @@ def _parse_health_config(
     )
 
 
-def _parse_discord_config(config: configparser.ConfigParser, config_data: dict[str, Any]) -> None:
+def _parse_discord_config(
+    config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger
+) -> None:
     """Parse Discord section of configuration."""
     config_data["DISCORD_TOKEN"] = config.get("Discord", "DISCORD_TOKEN", fallback=None)
     channels_str = config.get("Discord", "ALLOWED_CHANNELS", fallback="")
     config_data["ALLOWED_CHANNELS"] = [c.strip() for c in channels_str.split(",") if c.strip()]
     channel_ids_str = config.get("Discord", "ALLOWED_CHANNEL_IDS", fallback="")
-    try:
-        config_data["ALLOWED_CHANNEL_IDS"] = [
-            int(c.strip()) for c in channel_ids_str.split(",") if c.strip()
-        ]
-    except ValueError:
-        config_data["ALLOWED_CHANNEL_IDS"] = []
+    config_data["ALLOWED_CHANNEL_IDS"] = _parse_channel_ids(
+        channel_ids_str,
+        logger,
+        source="Discord.ALLOWED_CHANNEL_IDS",
+    )
     config_data["BOT_PRESENCE"] = config.get("Discord", "BOT_PRESENCE", fallback="online")
     config_data["ACTIVITY_TYPE"] = config.get("Discord", "ACTIVITY_TYPE", fallback="listening")
     config_data["ACTIVITY_STATUS"] = config.get("Discord", "ACTIVITY_STATUS", fallback="Humans")
@@ -688,6 +685,20 @@ def _get_int_safe(
     except ValueError:
         logger.warning("Invalid %s value, using default %d", key, default)
         return default
+
+
+def _parse_channel_ids(value: str, logger: logging.Logger, source: str) -> list[int]:
+    """Parse a comma-separated list of Discord channel IDs."""
+    channel_ids: list[int] = []
+    for token in value.split(","):
+        stripped = token.strip()
+        if not stripped:
+            continue
+        try:
+            channel_ids.append(int(stripped))
+        except ValueError:
+            logger.warning("Invalid integer in %s: %s", source, stripped)
+    return channel_ids
 
 
 def get_error_messages() -> dict[str, str]:
