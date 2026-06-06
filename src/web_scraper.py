@@ -57,6 +57,13 @@ class WebScrapingError(Exception):
     """Base exception for web scraping errors."""
 
 
+class _StopRetry:
+    """Sentinel indicating the retry loop should stop immediately."""
+
+
+_STOP_RETRY = _StopRetry()
+
+
 async def _add_respectful_delay():
     """Add a respectful delay between requests to avoid overwhelming servers."""
     # Using SystemRandom to stay consistent with the jitter helpers.
@@ -297,9 +304,6 @@ def _validate_url(url: str, logger: logging.Logger) -> bool:
     return True
 
 
-_STOP_RETRY = object()
-
-
 async def _fetch_content_with_retries(
     url: str, request_timeout: int, logger: logging.Logger
 ) -> str | None:
@@ -324,7 +328,7 @@ async def _fetch_attempt_with_retry_logic(
     attempt: int,
     request_timeout: int,
     logger: logging.Logger,
-) -> str | None:
+) -> str | _StopRetry | None:
     """Perform a single fetch attempt with error handling for the retry loop."""
     try:
         return await _fetch_attempt(client, url, attempt, request_timeout, logger)
@@ -342,7 +346,7 @@ async def _fetch_attempt(
     attempt: int,
     request_timeout: int,
     logger: logging.Logger,
-) -> str | None:
+) -> str | _StopRetry:
     """Perform a single fetch attempt."""
     logger.debug("HTTP attempt %d for: %s", attempt + 1, url)
     async with client.stream("GET", url, timeout=request_timeout) as response:

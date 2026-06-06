@@ -271,6 +271,10 @@ async def check_rate_limit(
             cooldown_active = now < cooldown_until
             entering_cooldown = False
 
+        if entering_cooldown:
+            logger.critical("RATE_LIMITER_ERROR: entering cooldown after repeated failures")
+            return True
+
         if cooldown_active:
             logger.warning(
                 "RATE_LIMITER_ERROR: cooldown active, denying request after repeated failures"
@@ -279,10 +283,7 @@ async def check_rate_limit(
 
         # In case of error, allow the request (fail-open for availability)
         # but only for a limited number of consecutive failures.
-        if entering_cooldown:
-            logger.critical("RATE_LIMITER_ERROR: entering cooldown after repeated failures")
-        else:
-            logger.critical("RATE_LIMITER_ERROR: Failing open due to transient error: %s", exc)
+        logger.critical("RATE_LIMITER_ERROR: Failing open due to transient error: %s", exc)
         return True
     else:
         # Log successful rate limit checks at debug level
