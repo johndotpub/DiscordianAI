@@ -55,7 +55,7 @@ async def send_split_message(  # noqa: PLR0913
     max_first_chunk = max(1, MESSAGE_LIMIT - prefix_length)
 
     # Recursion safety
-    if _recursion_depth > MAX_SPLIT_RECURSION:
+    if _recursion_depth >= MAX_SPLIT_RECURSION:
         logger.error(
             "Max split recursion reached (%d) for message length %d",
             MAX_SPLIT_RECURSION,
@@ -163,7 +163,7 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
     message = sanitize_for_discord(message)
     prefix_text = mention_prefix or ""
 
-    if _recursion_depth > MAX_SPLIT_RECURSION:
+    if _recursion_depth >= MAX_SPLIT_RECURSION:
         logger.error(
             "Max embed split recursion reached (%d) for message length %d",
             MAX_SPLIT_RECURSION,

@@ -153,7 +153,13 @@ class DiscordBotManager:
                 self.logger.info("Bot interrupted by user, shutting down")
             try:
                 if self._bot_loop and not self._bot_loop.is_closed():
-                    self._bot_loop.run_until_complete(self.graceful_shutdown())
+                    if self._bot_loop.is_running():
+                        self.logger.warning("Bot loop still running; scheduling graceful shutdown")
+                        self._bot_loop.call_soon_threadsafe(
+                            self._bot_loop.create_task, self.graceful_shutdown()
+                        )
+                    else:
+                        self._bot_loop.run_until_complete(self.graceful_shutdown())
                 else:
                     self.logger.warning("Bot loop unavailable; creating fallback shutdown loop")
                     loop = asyncio.new_event_loop()
