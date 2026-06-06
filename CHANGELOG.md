@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.9.9] - 2026-06-04
+## [0.2.9.9] - 2026-06-06
 
 ### Fixed 🔧 — Reliability & Concurrency
 - **Thread safety**: hardened shared conversation and routing paths so concurrent users no longer trample per-user state under load.
@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed 🔧 — Async HTTP Migration
 - **`httpx` migration**: async HTTP paths now consistently use `httpx` instead of `requests`-era language and examples.
 - **Web scraper behavior**: async mock coverage and timeout handling were aligned with the actual async context-manager flow.
+
+### Fixed 🔧 — Final Review Polish
+- **Copilot review cycle**: addressed 9 rounds of Copilot review feedback (27 comments total), covering rate limiter refinement, type annotations, docstring corrections, TOML literal string fixes, `noqa` placement, recursion guard budget, stale docs references, test hygiene, and sentinel typing.
+- **R9 cleanup**: fixed cooldown transition log ordering so the transition is reachable, and introduced a typed `_StopRetry` sentinel for accurate `web_scraper.py` return annotations.
 
 ### Fixed 🔧 — Configuration Gaps
 - **Channel targeting**: added and documented `ALLOWED_CHANNEL_IDS` alongside name-based channel allowlists.
@@ -94,7 +98,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docker security**: Updated `docs/Security.md` Docker user from `botuser` to `appuser` to match actual Dockerfile.
 - **Entity detection docs**: Fixed `docs/Development.md` claim of "no unnecessary word count thresholds" — now accurately describes `ENTITY_DETECTION_MIN_WORDS=10`.
 - **Docs**: Updated `docs/Architecture.md` visual alignment (border overflow, box sizing) and accuracy notes for orchestrator persistence flow, response formatting, and the decorator helper note.
-- **Dependency bumps**: Updated `openai` 2.32.0→2.41.0, `requests` 2.33.1→2.34.1, `starlette` 0.45.0→1.2.1, and `structlog` 24.4.0→25.5.0 in `pyproject.toml` and `requirements.txt`.
+- **Dependency changes**: Removed `requests` from the project and completed the async HTTP migration to `httpx`; updated `openai` 2.32.0→2.41.0, `starlette` 0.45.0→1.2.1, and `structlog` 24.4.0→25.5.0 in `pyproject.toml` and `requirements.txt`.
 - **Dev dependency**: Added `httpx2` for `starlette.testclient` compatibility.
 - **Architecture diagram**: Standardized file extensions in ASCII diagram; updated ConnectionPooling example to use `ConnectionPoolManager` wrapper; noted caching decorator as aspirational.
 - **Sphinx API docs**: Added missing `conversation_manager.rst` to `docs/api/`; fixed copyright year to `2025-2026`; added 27th module to count reference.
@@ -114,9 +118,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Import ordering standardized, line length compliance, private member access replaced with properties, magic values extracted to named constants.
 
 ### Stats 📊
-- **Files changed**: 49 files, +1113/-443 lines
-- **New tests**: +13 test assertions (652 total, up from 639 baseline)
-- **Test result**: 660 passed, 0 skipped
+- **Files changed**: 72 files changed, +2041/-2581 lines
+- **Test result**: 584 passed, 0 skipped
 - **Lint**: `ruff check src/ tests/` clean
 - **Coverage**: maintained at or above existing thresholds
 
