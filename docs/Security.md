@@ -81,7 +81,7 @@ pre-commit install
 
 2. **black**: Ensures consistent code formatting
 
-3. **ruff**: Lints code for security issues (via `S` rules from flake8-bandit)
+3. **ruff**: Lints code for security issues (via `S` rules)
 
 ### Updating Baseline
 
@@ -105,17 +105,17 @@ RATE_LIMIT_PER=60    # Time window in seconds
 
 The bot handles upstream API rate limits gracefully:
 
-1. **Exponential Backoff**: Automatic retry with increasing delays
-2. **Jitter**: Randomized delays to prevent thundering herd
+1. **Flat Jittered Retry**: Automatic retry with a randomized 2.0-4.0 second delay
+2. **Limited Attempts**: Up to 2 attempts total
 3. **Circuit Breaker**: Stops requests after repeated failures
 
 ```python
-# Example retry configuration
+# Example retry configuration (matches DEFAULT_API_RETRY_CONFIG)
 RetryConfig(
-    max_attempts=3,
-    base_delay=1.0,
-    max_delay=60.0,
-    exponential_base=2.0,
+    max_attempts=2,
+    base_delay=4.0,
+    max_delay=4.0,
+    exponential_base=1.0,
     jitter=True
 )
 ```
@@ -151,8 +151,14 @@ HTTP connections use secure defaults:
 - **TLS**: All API connections use HTTPS
 - **Timeouts**: Configured to prevent hanging connections
   - Connect: 10 seconds
-  - Read: 30 seconds
+  - Read: 45s (OpenAI) / 60s (Perplexity)
   - Write: 10 seconds
+
+### Web Scraper SSRF Protection
+
+The web scraper validates URLs before fetching them and rejects non-public
+targets. Hostnames are resolved first, and private, loopback, link-local, and
+other non-global IP ranges are blocked before any request is made.
 
 ### API Endpoints
 
@@ -173,8 +179,8 @@ The Dockerfile follows security best practices:
 
 ```dockerfile
 # Non-root user (recommended addition)
-RUN useradd -m -u 1000 botuser
-USER botuser
+RUN useradd -m -u 1000 appuser
+USER appuser
 
 # Read-only filesystem where possible
 # No unnecessary packages
@@ -265,4 +271,3 @@ Before deploying to production:
 - [ ] Logging configured (no sensitive data)
 - [ ] Health monitoring in place
 - [ ] Incident response plan documented
-

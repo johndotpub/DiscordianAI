@@ -10,6 +10,9 @@ import time
 
 import discord
 
+FAIL_OPEN_LIMIT = 3
+STALE_CLEANUP_INTERVAL = 100
+
 
 class RateLimiter:
     """Thread-safe rate limiter for Discord bot users.
@@ -27,8 +30,70 @@ class RateLimiter:
         """
         self.last_command_timestamps: dict[int, float] = {}
         self.last_command_count: dict[int, int] = {}
+        self._fail_open_errors = 0
+        self._fail_open_cooldown_until = 0.0
+        self._cleanup_checks = 0
         self._lock = threading.RLock()  # Use RLock for consistency with conversation manager
         self._logger = logging.getLogger(f"{__name__}.RateLimiter")
+
+    def cleanup_stale_entries(self, now: float, rate_limit_window_seconds: int) -> None:
+        """Remove users whose rate-limit window expired long ago."""
+        with self._lock:
+            stale_cutoff = now - (2 * rate_limit_window_seconds)
+            stale_users = [
+                user_id
+                for user_id, last_timestamp in self.last_command_timestamps.items()
+                if last_timestamp < stale_cutoff
+            ]
+            for user_id in stale_users:
+                self.last_command_timestamps.pop(user_id, None)
+                self.last_command_count.pop(user_id, None)
+
+    def record_fail_open_error(self, now: float) -> tuple[int, bool, bool]:
+        """Record a fail-open error and update cooldown state atomically."""
+        with self._lock:
+            fail_open_errors = self._fail_open_errors
+            if not isinstance(fail_open_errors, int):
+                fail_open_errors = 0
+
+            cooldown_until = self._fail_open_cooldown_until
+            if not isinstance(cooldown_until, (int, float)):
+                cooldown_until = 0.0
+
+            fail_open_errors += 1
+            self.fail_open_errors = fail_open_errors
+
+            entering_cooldown = cooldown_until <= now and fail_open_errors >= FAIL_OPEN_LIMIT
+            if entering_cooldown:
+                self.fail_open_cooldown_until = now + 60
+                self.fail_open_errors = 0
+
+            cooldown_active = now < self._fail_open_cooldown_until
+            return fail_open_errors, cooldown_active, entering_cooldown
+
+    def reset_fail_open_state(self) -> None:
+        """Reset fail-open counters atomically."""
+        with self._lock:
+            self.fail_open_errors = 0
+            self.fail_open_cooldown_until = 0.0
+
+    @property
+    def fail_open_errors(self) -> int:
+        """Number of consecutive fail-open errors seen."""
+        return self._fail_open_errors
+
+    @fail_open_errors.setter
+    def fail_open_errors(self, value: int) -> None:
+        self._fail_open_errors = value
+
+    @property
+    def fail_open_cooldown_until(self) -> float:
+        """Unix timestamp until fail-open cooldown expires."""
+        return self._fail_open_cooldown_until
+
+    @fail_open_cooldown_until.setter
+    def fail_open_cooldown_until(self, value: float) -> None:
+        self._fail_open_cooldown_until = value
 
     def check_rate_limit(
         self,
@@ -39,63 +104,76 @@ class RateLimiter:
     ) -> bool:
         """Check if a user has exceeded their rate limit in a thread-safe manner.
 
-        This method uses a threading lock to prevent race conditions where
-        multiple concurrent requests could bypass rate limits.
-
         Args:
-            user_id (int): The Discord user ID to check.
-            rate_limit (int): Maximum number of allowed commands per time period.
-            rate_limit_window_seconds (int): Time period in seconds for the rate limit window.
-            logger (logging.Logger): Logger instance for rate limit events.
+            self: Rate limiter instance.
+            user_id: The Discord user ID to check.
+            rate_limit: Maximum number of allowed commands per time period.
+            rate_limit_window_seconds: Time period in seconds for the rate limit window.
+            logger: Logger instance for rate limit events.
 
         Returns:
-            bool: True if the user is within rate limits, False if exceeded.
+            True if the user is within rate limits, False if exceeded.
 
         Thread Safety:
             Uses threading.Lock to ensure atomic operations on user data,
             preventing race conditions in concurrent message processing.
         """
         current_time = time.time()
+        log_method = None
+        log_message = None
+        log_args: tuple[object, ...] = ()
+        result = False
 
         # Acquire lock to prevent race conditions
         with self._lock:
             last_timestamp = self.last_command_timestamps.get(user_id, 0)
             current_count = self.last_command_count.get(user_id, 0)
 
+            self._cleanup_checks += 1
+            if self._cleanup_checks >= STALE_CLEANUP_INTERVAL:
+                self.cleanup_stale_entries(current_time, rate_limit_window_seconds)
+                self._cleanup_checks = 0
+
             # Check if rate limit window has expired - reset if so
             if current_time - last_timestamp > rate_limit_window_seconds:
                 self.last_command_timestamps[user_id] = current_time
                 self.last_command_count[user_id] = 1
-                logger.info(
-                    "Rate limit reset for user %s: 1/%d (window expired after %ds)",
-                    user_id,
-                    rate_limit,
-                    rate_limit_window_seconds,
-                )
-                return True
+                log_method = logger.info
+                log_message = "Rate limit reset for user %s: 1/%d (window expired after %ds)"
+                log_args = (user_id, rate_limit, rate_limit_window_seconds)
+                result = True
 
             # Check if user is within rate limit
-            if current_count < rate_limit:
+            elif current_count < rate_limit:
                 self.last_command_count[user_id] = current_count + 1
-                logger.info(
-                    "Rate limit check passed for user %s: %d/%d (%ds window)",
+                log_method = logger.info
+                log_message = "Rate limit check passed for user %s: %d/%d (%ds window)"
+                log_args = (
                     user_id,
                     self.last_command_count[user_id],
                     rate_limit,
                     rate_limit_window_seconds,
                 )
-                return True
+                result = True
 
             # Rate limit exceeded
-            logger.warning(
-                "Rate limit EXCEEDED for user %s: %d/%d in %ds window. Next reset in %.1fs",
-                user_id,
-                current_count,
-                rate_limit,
-                rate_limit_window_seconds,
-                max(0, rate_limit_window_seconds - (current_time - last_timestamp)),
-            )
-            return False
+            else:
+                log_method = logger.warning
+                log_message = (
+                    "Rate limit EXCEEDED for user %s: %d/%d in %ds window. Next reset in %.1fs"
+                )
+                log_args = (
+                    user_id,
+                    current_count,
+                    rate_limit,
+                    rate_limit_window_seconds,
+                    max(0, rate_limit_window_seconds - (current_time - last_timestamp)),
+                )
+
+        if log_method and log_message:
+            log_method(log_message, *log_args)
+
+        return result
 
     def get_user_status(
         self,
@@ -106,12 +184,13 @@ class RateLimiter:
         """Get detailed rate limit status for a user (for debugging/monitoring).
 
         Args:
-            user_id (int): The Discord user ID to check.
-            rate_limit (int): Maximum allowed commands per time period.
-            rate_limit_window_seconds (int): Time period in seconds.
+            self: Rate limiter instance.
+            user_id: The Discord user ID to check.
+            rate_limit: Maximum allowed commands per time period.
+            rate_limit_window_seconds: Time period in seconds.
 
         Returns:
-            Dict: Status information including current count, remaining, and reset time.
+            Status information including current count, remaining, and reset time.
         """
         current_time = time.time()
         with self._lock:
@@ -175,18 +254,40 @@ async def check_rate_limit(
             logger,
         )
 
-    except Exception:
+    except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
         logger.exception(
             "Unexpected error in rate limit check for user %s (ID: %s)",
             user.name,
             user.id,
         )
+        now = time.time()
+        fail_open_result = rate_limiter.record_fail_open_error(now)
+        try:
+            _, cooldown_active, entering_cooldown = fail_open_result
+        except (TypeError, ValueError):
+            cooldown_until = getattr(rate_limiter, "fail_open_cooldown_until", 0.0)
+            if not isinstance(cooldown_until, (int, float)):
+                cooldown_until = 0.0
+            cooldown_active = now < cooldown_until
+            entering_cooldown = False
+
+        if entering_cooldown:
+            logger.critical("RATE_LIMITER_ERROR: entering cooldown after repeated failures")
+            return False
+
+        if cooldown_active:
+            logger.warning(
+                "RATE_LIMITER_ERROR: cooldown active, denying request after repeated failures"
+            )
+            return False
+
         # In case of error, allow the request (fail-open for availability)
-        # but log it prominently for investigation
-        logger.critical("RATE_LIMITER_ERROR: Failing open - allowing request due to error")
+        # but only for a limited number of consecutive failures.
+        logger.critical("RATE_LIMITER_ERROR: Failing open due to transient error: %s", exc)
         return True
     else:
         # Log successful rate limit checks at debug level
+        rate_limiter.reset_fail_open_state()
         if result:
             logger.debug("Rate limit check successful for %s (ID: %s)", user.name, user.id)
         else:

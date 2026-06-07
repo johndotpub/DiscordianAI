@@ -279,7 +279,7 @@ CITATION_PATTERN = re.compile(r"\[(\d+)\]")
 MENTION_PATTERN = re.compile(r"<@!?(\d+)>")
 
 # URL detection patterns for smart routing
-BARE_URL_PATTERN = (
+_BARE_URL_PATTERN_STR = (
     r"(?:https?://)?[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
     r"(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}"
     r"(?:/[^\s]*)?"
@@ -288,7 +288,7 @@ BARE_URL_PATTERN = (
 URL_DETECTION_PATTERNS = [
     r"https?://[^\s\[\]()]+[^\s\[\]().,;!?]",  # Standard URLs with common punctuation
     r"\[([^\]]+)\]\(([^)]+)\)",  # Markdown links [text](url)
-    BARE_URL_PATTERN,  # Bare URLs (domain.tld/path)
+    _BARE_URL_PATTERN_STR,  # Bare URLs (domain.tld/path)
 ]
 
 # Compile URL detection patterns for performance
@@ -374,9 +374,10 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
     if config_file and Path(config_file).exists():
         try:
             config.read(config_file)
-            _parse_discord_config(config, config_data)
+            _parse_discord_config(config, config_data, logger)
             _parse_default_config(config, config_data, logger)
             _parse_limits_config(config, config_data, logger)
+            _parse_connection_pool_config(config, config_data, logger)
             _parse_orchestrator_config(config, config_data, logger)
             _parse_logging_config(config, config_data, base_folder)
             _parse_health_config(config, config_data, logger)
@@ -397,6 +398,7 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
     env_keys = [
         "DISCORD_TOKEN",
         "ALLOWED_CHANNELS",
+        "ALLOWED_CHANNEL_IDS",
         "BOT_PRESENCE",
         "ACTIVITY_TYPE",
         "ACTIVITY_STATUS",
@@ -412,9 +414,14 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "SYSTEM_MESSAGE",
         "RATE_LIMIT",
         "RATE_LIMIT_PER",
+        "OPENAI_MAX_CONNECTIONS",
+        "OPENAI_MAX_KEEPALIVE",
+        "PERPLEXITY_MAX_CONNECTIONS",
+        "PERPLEXITY_MAX_KEEPALIVE",
         "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
         "MAX_HISTORY_PER_USER",
         "USER_LOCK_CLEANUP_INTERVAL",
+        "ENTITY_DETECTION_MIN_WORDS",
         "LOG_FILE",
         "LOG_LEVEL",
     ]
@@ -435,15 +442,22 @@ def _apply_single_env_override(
         "CONTEXT_WINDOW",
         "RATE_LIMIT",
         "RATE_LIMIT_PER",
+        "OPENAI_MAX_CONNECTIONS",
+        "OPENAI_MAX_KEEPALIVE",
+        "PERPLEXITY_MAX_CONNECTIONS",
+        "PERPLEXITY_MAX_KEEPALIVE",
         "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
         "MAX_HISTORY_PER_USER",
         "USER_LOCK_CLEANUP_INTERVAL",
+        "ENTITY_DETECTION_MIN_WORDS",
     }
 
     if key == "ALLOWED_CHANNELS":
         config_data[key] = (
             [c.strip() for c in value.split(",") if c.strip()] if value.strip() else []
         )
+    elif key == "ALLOWED_CHANNEL_IDS":
+        config_data[key] = _parse_channel_ids(value, logger, source=key)
     elif key in int_keys:
         try:
             config_data[key] = int(value)
@@ -458,6 +472,7 @@ def _apply_config_defaults(config_data: dict[str, Any]) -> None:
     defaults = {
         "DISCORD_TOKEN": None,
         "ALLOWED_CHANNELS": [],
+        "ALLOWED_CHANNEL_IDS": [],
         "BOT_PRESENCE": "online",
         "ACTIVITY_TYPE": "listening",
         "ACTIVITY_STATUS": "Humans",
@@ -480,6 +495,7 @@ def _apply_config_defaults(config_data: dict[str, Any]) -> None:
         "LOOKBACK_MESSAGES_FOR_CONSISTENCY": 6,
         "MAX_HISTORY_PER_USER": 50,
         "USER_LOCK_CLEANUP_INTERVAL": 3600,
+        "ENTITY_DETECTION_MIN_WORDS": 10,
         "LOG_FILE": "bot.log",
         "LOG_LEVEL": "INFO",
         "HEALTH_ENABLED": True,
@@ -495,43 +511,88 @@ def _parse_limits_config(
     config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger
 ) -> None:
     """Parse Limits section of configuration."""
-    try:
-        config_data["RATE_LIMIT"] = config.getint("Limits", "RATE_LIMIT", fallback=10)
-    except ValueError:
-        logger.warning("Invalid RATE_LIMIT value, using default 10")
-        config_data["RATE_LIMIT"] = 10
-    try:
-        config_data["RATE_LIMIT_PER"] = config.getint("Limits", "RATE_LIMIT_PER", fallback=60)
-    except ValueError:
-        logger.warning("Invalid RATE_LIMIT_PER value, using default 60")
-        config_data["RATE_LIMIT_PER"] = 60
+    config_data["RATE_LIMIT"] = _get_int_safe(
+        config,
+        "RATE_LIMIT",
+        10,
+        logger,
+        section="Limits",
+    )
+    config_data["RATE_LIMIT_PER"] = _get_int_safe(
+        config,
+        "RATE_LIMIT_PER",
+        60,
+        logger,
+        section="Limits",
+    )
+
+
+def _parse_connection_pool_config(
+    config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger
+) -> None:
+    """Parse ConnectionPool section of configuration."""
+    config_data["OPENAI_MAX_CONNECTIONS"] = _get_int_safe(
+        config,
+        "OPENAI_MAX_CONNECTIONS",
+        50,
+        logger,
+        section="ConnectionPool",
+    )
+    config_data["OPENAI_MAX_KEEPALIVE"] = _get_int_safe(
+        config,
+        "OPENAI_MAX_KEEPALIVE",
+        10,
+        logger,
+        section="ConnectionPool",
+    )
+    config_data["PERPLEXITY_MAX_CONNECTIONS"] = _get_int_safe(
+        config,
+        "PERPLEXITY_MAX_CONNECTIONS",
+        30,
+        logger,
+        section="ConnectionPool",
+    )
+    config_data["PERPLEXITY_MAX_KEEPALIVE"] = _get_int_safe(
+        config,
+        "PERPLEXITY_MAX_KEEPALIVE",
+        5,
+        logger,
+        section="ConnectionPool",
+    )
 
 
 def _parse_orchestrator_config(
     config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger
 ) -> None:
     """Parse Orchestrator section of configuration."""
-    try:
-        config_data["LOOKBACK_MESSAGES_FOR_CONSISTENCY"] = config.getint(
-            "Orchestrator",
-            "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
-            fallback=6,
-        )
-        config_data["MAX_HISTORY_PER_USER"] = config.getint(
-            "Orchestrator",
-            "MAX_HISTORY_PER_USER",
-            fallback=50,
-        )
-        config_data["USER_LOCK_CLEANUP_INTERVAL"] = config.getint(
-            "Orchestrator",
-            "USER_LOCK_CLEANUP_INTERVAL",
-            fallback=3600,
-        )
-    except ValueError:
-        logger.warning("Invalid Orchestrator config value, using defaults")
-        config_data.setdefault("LOOKBACK_MESSAGES_FOR_CONSISTENCY", 6)
-        config_data.setdefault("MAX_HISTORY_PER_USER", 50)
-        config_data.setdefault("USER_LOCK_CLEANUP_INTERVAL", 3600)
+    config_data["LOOKBACK_MESSAGES_FOR_CONSISTENCY"] = _get_int_safe(
+        config,
+        "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
+        6,
+        logger,
+        section="Orchestrator",
+    )
+    config_data["MAX_HISTORY_PER_USER"] = _get_int_safe(
+        config,
+        "MAX_HISTORY_PER_USER",
+        50,
+        logger,
+        section="Orchestrator",
+    )
+    config_data["USER_LOCK_CLEANUP_INTERVAL"] = _get_int_safe(
+        config,
+        "USER_LOCK_CLEANUP_INTERVAL",
+        3600,
+        logger,
+        section="Orchestrator",
+    )
+    config_data["ENTITY_DETECTION_MIN_WORDS"] = _get_int_safe(
+        config,
+        "ENTITY_DETECTION_MIN_WORDS",
+        10,
+        logger,
+        section="Orchestrator",
+    )
 
 
 def _parse_logging_config(
@@ -552,18 +613,28 @@ def _parse_health_config(
     """Parse Health section of configuration."""
     config_data["HEALTH_ENABLED"] = config.getboolean("Health", "HEALTH_ENABLED", fallback=True)
     config_data["HEALTH_HOST"] = config.get("Health", "HEALTH_HOST", fallback="127.0.0.1")
-    try:
-        config_data["HEALTH_PORT"] = config.getint("Health", "HEALTH_PORT", fallback=8080)
-    except ValueError:
-        logger.warning("Invalid HEALTH_PORT value, using default 8080")
-        config_data["HEALTH_PORT"] = 8080
+    config_data["HEALTH_PORT"] = _get_int_safe(
+        config,
+        "HEALTH_PORT",
+        8080,
+        logger,
+        section="Health",
+    )
 
 
-def _parse_discord_config(config: configparser.ConfigParser, config_data: dict[str, Any]) -> None:
+def _parse_discord_config(
+    config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger
+) -> None:
     """Parse Discord section of configuration."""
     config_data["DISCORD_TOKEN"] = config.get("Discord", "DISCORD_TOKEN", fallback=None)
     channels_str = config.get("Discord", "ALLOWED_CHANNELS", fallback="")
     config_data["ALLOWED_CHANNELS"] = [c.strip() for c in channels_str.split(",") if c.strip()]
+    channel_ids_str = config.get("Discord", "ALLOWED_CHANNEL_IDS", fallback="")
+    config_data["ALLOWED_CHANNEL_IDS"] = _parse_channel_ids(
+        channel_ids_str,
+        logger,
+        source="Discord.ALLOWED_CHANNEL_IDS",
+    )
     config_data["BOT_PRESENCE"] = config.get("Discord", "BOT_PRESENCE", fallback="online")
     config_data["ACTIVITY_TYPE"] = config.get("Discord", "ACTIVITY_TYPE", fallback="listening")
     config_data["ACTIVITY_STATUS"] = config.get("Discord", "ACTIVITY_STATUS", fallback="Humans")
@@ -602,14 +673,32 @@ def _parse_default_config(
 
 
 def _get_int_safe(
-    config: configparser.ConfigParser, key: str, default: int, logger: logging.Logger
+    config: configparser.ConfigParser,
+    key: str,
+    default: int,
+    logger: logging.Logger,
+    section: str = "Default",
 ) -> int:
     """Safely get an integer from configuration with fallback."""
     try:
-        return config.getint("Default", key, fallback=default)
+        return config.getint(section, key, fallback=default)
     except ValueError:
         logger.warning("Invalid %s value, using default %d", key, default)
         return default
+
+
+def _parse_channel_ids(value: str, logger: logging.Logger, source: str) -> list[int]:
+    """Parse a comma-separated list of Discord channel IDs."""
+    channel_ids: list[int] = []
+    for token in value.split(","):
+        stripped = token.strip()
+        if not stripped:
+            continue
+        try:
+            channel_ids.append(int(stripped))
+        except ValueError:
+            logger.warning("Invalid integer in %s: %s", source, stripped)
+    return channel_ids
 
 
 def get_error_messages() -> dict[str, str]:

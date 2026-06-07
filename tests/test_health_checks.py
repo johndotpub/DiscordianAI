@@ -96,16 +96,11 @@ class TestAPIHealthMonitor:
         # Mock OpenAI client
         openai_client = Mock()
         mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = "Health check response"
-        mock_response.id = "test-response-123"
-        mock_response.usage = Mock()
-        mock_response.usage.prompt_tokens = 5
-        mock_response.usage.completion_tokens = 3
+        mock_response.data = [Mock(id="gpt-5-mini"), Mock(id="gpt-5")]
 
         mock_create = AsyncMock()
         mock_create.return_value = mock_response
-        openai_client.chat.completions.create = mock_create
+        openai_client.models.list = mock_create
 
         config = {"GPT_MODEL": "gpt-5-mini"}
 
@@ -115,14 +110,15 @@ class TestAPIHealthMonitor:
         assert result.status in ["healthy", "degraded"]  # Depending on response time
         assert result.error is None
         assert result.details["model"] == "gpt-5-mini"
-        assert "usage" in result.details
+        assert result.details["model_count"] == 2
+        assert result.details["available_models"] == ["gpt-5-mini", "gpt-5"]
 
     @pytest.mark.asyncio
     async def test_openai_health_check_failure(self):
         """Test OpenAI health check with API failure."""
         # Mock OpenAI client that raises exception
         openai_client = Mock()
-        openai_client.chat.completions.create.side_effect = Exception("API unavailable")
+        openai_client.models.list.side_effect = Exception("API unavailable")
 
         config = {"GPT_MODEL": "gpt-5-mini"}
 
@@ -152,15 +148,11 @@ class TestAPIHealthMonitor:
         # Mock Perplexity client
         perplexity_client = Mock()
         mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = "Current date info from web search"
-        mock_response.usage = Mock()
-        mock_response.usage.prompt_tokens = 10
-        mock_response.usage.completion_tokens = 20
+        mock_response.data = [Mock(id="sonar-pro"), Mock(id="sonar")]
 
         mock_create = AsyncMock()
         mock_create.return_value = mock_response
-        perplexity_client.chat.completions.create = mock_create
+        perplexity_client.models.list = mock_create
 
         config = {"PERPLEXITY_MODEL": "sonar-pro"}
 
@@ -170,10 +162,11 @@ class TestAPIHealthMonitor:
         assert result.status in ["healthy", "degraded"]
         assert result.error is None
         assert result.details["model"] == "sonar-pro"
-        assert "response_length" in result.details
+        assert result.details["model_count"] == 2
+        assert result.details["available_models"] == ["sonar-pro", "sonar"]
 
         # Verify that the API call was made successfully
-        perplexity_client.chat.completions.create.assert_called_once()
+        perplexity_client.models.list.assert_called_once()
         # Citations are now included by default, no special parameters needed
 
     @pytest.mark.asyncio

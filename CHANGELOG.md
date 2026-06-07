@@ -5,6 +5,123 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.9.9] - 2026-06-06
+
+### Fixed 🔧 — Reliability & Concurrency
+- **Thread safety**: hardened shared conversation and routing paths so concurrent users no longer trample per-user state under load.
+- **Recursion guard**: message splitting now fails safely instead of recursing indefinitely on pathological long responses.
+- **Logging crashes**: fixed structured logging setup so `structlog` processor chains no longer break on stdlib logger edge cases.
+- **Retry behavior**: standardized transient failure handling around the new flat jittered retry policy.
+
+### Fixed 🔧 — Dead Code & Cleanup
+- **Dead code removal**: removed roughly 1.4k lines of stale helpers, legacy branches, and duplicate test scaffolding across bot, processing, and docs-adjacent code.
+- **Old API assumptions**: pruned leftover request-library wording and outdated examples that no longer matched the async `httpx` implementation.
+
+### Fixed 🔧 — Async HTTP Migration
+- **`httpx` migration**: async HTTP paths now consistently use `httpx` instead of `requests`-era language and examples.
+- **Web scraper behavior**: async mock coverage and timeout handling were aligned with the actual async context-manager flow.
+
+### Fixed 🔧 — Final Review Polish
+- **Copilot review cycle**: addressed 9 rounds of Copilot review feedback (27 comments total), covering rate limiter refinement, type annotations, docstring corrections, TOML literal string fixes, `noqa` placement, recursion guard budget, stale docs references, test hygiene, and sentinel typing.
+- **R9 cleanup**: fixed cooldown transition log ordering so the transition is reachable, and introduced a typed `_StopRetry` sentinel for accurate `web_scraper.py` return annotations.
+
+### Fixed 🔧 — Configuration Gaps
+- **Channel targeting**: added and documented `ALLOWED_CHANNEL_IDS` alongside name-based channel allowlists.
+- **Health config**: documented the missing `[Health]` section and its runtime keys.
+- **Dependency checker**: filled remaining config/validation gaps so startup parsing matches the supported settings surface.
+
+### Fixed 🔧 — Structured Logging
+- **`ExtraAdder`**: kept `structlog.stdlib.ExtraAdder` in the processor chain and added test coverage for it.
+- **Debug logging**: improved developer-facing diagnostics without changing production log shape.
+- **`pad_event_to`**: kept console rendering aligned for fixed-width output.
+
+### Changed 🔁 — Documentation
+- **Architecture diagram**: rewrote `docs/Architecture.md` with a clean Unicode box diagram and correct file layering.
+- **Message splitting docs**: updated examples to match the current splitter API.
+- **Embed limits docs**: refreshed examples to show the real truncation behavior.
+- **Perplexity docs**: corrected retry wording to flat jittered retry.
+- **Hybrid mode docs**: fixed the Mermaid node collision.
+- **Security docs**: added SSRF protection notes for the web scraper.
+- **README**: documented `ALLOWED_CHANNEL_IDS` for precise channel targeting.
+
+### Fixed 🔧 — Documentation
+- **Stale autodoc reference**: removed `docs/api/api_utils.rst` and its toctree entry after `src/api_utils.py` was deleted — CI Docs Build was failing with `ModuleNotFoundError`.
+
+### Tests ✅
+- **Structured logging coverage**: added an assertion that `ExtraAdder` remains in the processor chain.
+- **Web scraper coverage**: verified async mock patterns against the current `httpx` flow.
+- **Docs integrity guard**: added `test_docs_api_automodule_targets_are_importable` that scans every `.. automodule::` in `docs/api/*.rst` and verifies the target module is importable — catches stale `.rst` files after source deletions before they hit CI.
+
+### Stats 📊
+- **Implementation scope**: critical bug fixes, config cleanup, async HTTP modernization, docs refresh, and test hardening.
+- **Release quality**: all changes are aligned to current code paths and no stale descriptions remain.
+
+### Fixed 🔧 — Dependency & Configuration (VectorContext QA)
+- **`websockets` dependency**: Added `websockets>=16.0` to `requirements.txt` to match `pyproject.toml` declaration and ensure Docker builds include the runtime dependency.
+- **`ConnectionPool` config parsing**: Wired `[ConnectionPool]` section parser (`_parse_connection_pool_config()`) into `load_config()` — this section was documented in `config.ini.example` and had defaults defined, but was silently ignored at runtime.
+- **`ENTITY_DETECTION_MIN_WORDS`**: Now reads from config file and environment variables (was documented but unimplemented in the parser).
+- **`ALLOWED_CHANNEL_IDS`**: Added ID-based channel matching alongside name-based `ALLOWED_CHANNELS` — channel IDs are unique across servers unlike names.
+- **`.env.example`**: Created template file with all 21 supported environment variables, commented out with descriptions.
+- **`CONTRIBUTING.md`**: Updated Python version from 3.10 to 3.12+ to match `pyproject.toml` requirement.
+- **structlog 25.x compatibility**: Removed redundant `structlog.stdlib.add_logger_name` processor that crashes with `None` logger in the `ProcessorFormatter` chain; custom `_add_logger_name` already handles this correctly.
+- **CI validation hardening**: added pip install steps for black and ruff in pre-push validation to eliminate version drift between local tools and CI (black 26.1.0→26.5.1, ruff 0.15.10→0.15.16). Resolved 7 formatting/lint violations caught by CI but missed locally.
+
+### Fixed 🔧 — Logging
+- **`DISCORDIANAI_LOG_COLOR` default**: Colors are now enabled by default even for non-TTY/file output; only explicit `0`/`false`/`no` disables color.
+- **ANSI escape codes in file output**: `ConsoleRenderer` now only disables ANSI when `DISCORDIANAI_LOG_COLOR` is explicitly turned off; colors remain enabled by default even for file output.
+- **Duplicate log lines**: Removed `discord.py`'s `log_handler=None` duplication path and the redundant `FileHandler` so messages are emitted once.
+- **Clean shutdown logging**: `SIGTERM`/`KeyboardInterrupt` shutdowns no longer dump rich tracebacks with source excerpts and local variables into `bot.log`.
+- **Double-format crash**: Removed `structlog.stdlib.add_logger_name` to avoid crashing when the logger is `None`; the custom logger-name processor already handles this case.
+
+### Fixed 🔧 — Source Code Reliability & Security
+- **`BotDependencies.__setitem__`**: Added `__setitem__` method to support dict-style writes (`deps["_health_task"] = ...`) — previously caused `TypeError` crash in `on_ready`, preventing health monitoring from starting.
+- **`sanitize_for_discord()`**: Wired into all send paths in message splitter — function was dead code, leaving `@everyone`/`@here` unsanitized in AI responses.
+- **`run_bot` NameError**: Initialized `deps = None` before try block — if `initialize_bot_and_dependencies()` raised before assignment, the except handler crashed with a secondary `NameError` masking the real error.
+- **`asyncio.sleep` in web scraper**: Replaced blocking `time.sleep()` with `await asyncio.sleep()` — 1-3 second sleep was freezing the entire event loop.
+- **`time.monotonic()` in CircuitBreaker**: Replaced `time.time()` with `time.monotonic()` for clock-jump safety; added time-based failure count decay to prevent permanent trip from sparse intermittent failures.
+- **`FAIL_OPEN_LIMIT` constant**: Added module-level constant replacing magic number `3` for rate limiter fail-open threshold.
+- **Perplexity citation extraction**: Fixed `_map_from_metadata()` to store citation URLs instead of raw objects — downstream comparison against string URLs was always failing.
+- **Embed truncation logging**: Fixed log message reporting post-truncation length as the "from" value — now reports original pre-truncation length.
+- **Message overflow guard**: Added length check after prefix concatenation to prevent exceeding Discord's 2000-char limit when prefix nearly fills the message.
+- **OpenAI→Perplexity reroute deduplication**: Moved conversation persistence into the orchestrator after successful responses, keeping `process_*_message()` side-effect free and preventing duplicate history entries during reroutes.
+- **Rate limiter fail-open**: Narrowed `except Exception` to catch only transient errors; added fail-open cooldown on repeated failures to prevent permanent rate-limit bypass.
+- **Content-Length handling**: Unparseable `content-length` headers in web scraper now proceed with download instead of aborting all retries.
+- **uviicorn ImportError**: `HealthServer.start()` now catches `ImportError` when uvicorn is missing and returns cleanly instead of crashing startup.
+- **Error classification**: Fixed `"5" in error_msg` matching model names and timestamps; now uses regex word-boundary HTTP status code matching.
+- **Decorator kwarg leak**: Changed `kwargs.pop("logger")` to `kwargs.get("logger")` in `handle_api_error` to avoid silently removing legitimate caller kwargs.
+- **Double-fault NameError**: Initialized `error_details = None` before `classify_error()` call to prevent `NameError` if classification itself raises.
+- **Cache time-indicator blocking**: Changed from substring matching to regex word-boundary matching — responses containing "today" or "latest" in body text are cached unless the word appears in a time-sensitive position.
+
+### Changed 🔁
+- **Retry documentation**: Updated `docs/Security.md`, `docs/Architecture.md` with current flat jittered retry defaults (was still showing deprecated exponential backoff values).
+- **Timeout documentation**: Updated read timeout documentation to reflect actual values: 45s (OpenAI) / 60s (Perplexity).
+- **Docker security**: Updated `docs/Security.md` Docker user from `botuser` to `appuser` to match actual Dockerfile.
+- **Entity detection docs**: Fixed `docs/Development.md` claim of "no unnecessary word count thresholds" — now accurately describes `ENTITY_DETECTION_MIN_WORDS=10`.
+- **Docs**: Updated `docs/Architecture.md` visual alignment (border overflow, box sizing) and accuracy notes for orchestrator persistence flow, response formatting, and the decorator helper note.
+- **Dependency changes**: Removed `requests` from the project and completed the async HTTP migration to `httpx`; updated `openai` 2.32.0→2.41.0, `starlette` 0.45.0→1.2.1, and `structlog` 24.4.0→25.5.0 in `pyproject.toml` and `requirements.txt`.
+- **Dev dependency**: Added `httpx2` for `starlette.testclient` compatibility.
+- **Architecture diagram**: Standardized file extensions in ASCII diagram; updated ConnectionPooling example to use `ConnectionPoolManager` wrapper; noted caching decorator as aspirational.
+- **Sphinx API docs**: Added missing `conversation_manager.rst` to `docs/api/`; fixed copyright year to `2025-2026`; added 27th module to count reference.
+- **Usage docs**: Updated `docs/Setup.md` to show `discordian.sh -c config.ini` invocation; `docs/HybridMode.md` to mention `ENTITY_DETECTION_MIN_WORDS`; `docs/Docker.md` to reference launcher and `docker-compose.yml`.
+- **Python version docs**: Updated `docs/Python_Versions.md` with pyenv/launcher notes for cron and systemd deployments.
+
+### Tests ✅
+- **`logging_adapter.py` coverage**: New `test_logging_adapter.py` with 3 tests covering `ContextualLoggerAdapter.process()` with/without guild context and `get_logger_with_context()` factory.
+- **`models.py` coverage**: New `test_models.py` with 5 tests verifying frozen dataclass immutability and correct defaults for all 5 model classes.
+- **`py313` tox support**: Added `py313` to tox envlist alongside `py312`.
+- **Structured logging race fix**: Replaced `_reset_logging` fixture's global root logger mutation with clean return — eliminating race condition with `pytest-xdist -n auto`.
+- **Real sleep removal**: Replaced `time.sleep()` calls in `test_rate_limits_comprehensive.py`, `test_caching.py`, and `test_errors.py` with `unittest.mock.patch` — eliminated ~4 seconds of wall-clock waiting.
+- **Benchmark cleanup**: Removed hard timing assertions from `test_performance_integration.py` and `test_load_stress.py` — converted to pure functional assertions.
+
+### Lint ✅
+- All 16 ruff warnings resolved across source and tests — zero errors on `ruff check src/ tests/`.
+- Import ordering standardized, line length compliance, private member access replaced with properties, magic values extracted to named constants.
+
+### Stats 📊
+- **Files changed**: 72 files changed, +2041/-2581 lines
+- **Test result**: 584 passed, 0 skipped
+- **Lint**: `ruff check src/ tests/` clean
+- **Coverage**: maintained at or above existing thresholds
 
 ## [0.2.9.8] - 2026-05-04
 
@@ -48,7 +165,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CI hardening**: Added Sphinx docs build job to CI (warnings as errors via `-W`), pinned lint deps (`black>=26.1.0`, `ruff>=0.15.4`), removed `docs/**` from path-ignore so doc changes trigger CI, added `testenv:docs` to tox.
 - Disabled `autosummary_generate` in Sphinx conf (we use per-module `.rst` files; autosummary was producing 21 duplicate stub warnings for `BotDependencies` fields).
 - Bumped Sphinx `version`/`release` to `0.2.9.8` to match `pyproject.toml`.
-
 
 ## [0.2.9.6] - 2026-04-28
 

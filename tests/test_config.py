@@ -29,9 +29,14 @@ def isolate_config_env(monkeypatch):
         "SYSTEM_MESSAGE",
         "RATE_LIMIT",
         "RATE_LIMIT_PER",
+        "OPENAI_MAX_CONNECTIONS",
+        "OPENAI_MAX_KEEPALIVE",
+        "PERPLEXITY_MAX_CONNECTIONS",
+        "PERPLEXITY_MAX_KEEPALIVE",
         "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
         "MAX_HISTORY_PER_USER",
         "USER_LOCK_CLEANUP_INTERVAL",
+        "ENTITY_DETECTION_MIN_WORDS",
         "LOG_FILE",
         "LOG_LEVEL",
     ]
@@ -96,11 +101,16 @@ class TestLoadConfig:
         # GPT-5 models use max_completion_tokens instead of max_tokens
         assert config["RATE_LIMIT"] == 10
         assert config["RATE_LIMIT_PER"] == 60
+        assert config["OPENAI_MAX_CONNECTIONS"] == 50
+        assert config["OPENAI_MAX_KEEPALIVE"] == 10
+        assert config["PERPLEXITY_MAX_CONNECTIONS"] == 30
+        assert config["PERPLEXITY_MAX_KEEPALIVE"] == 5
         assert config["LOG_FILE"] == "bot.log"
         assert config["LOG_LEVEL"] == "INFO"
         assert config["LOOKBACK_MESSAGES_FOR_CONSISTENCY"] == 6
         assert config["MAX_HISTORY_PER_USER"] == 50
         assert config["USER_LOCK_CLEANUP_INTERVAL"] == 3600
+        assert config["ENTITY_DETECTION_MIN_WORDS"] == 10
 
     def test_load_config_with_file(self):
         """Test config loading from file."""
@@ -125,10 +135,17 @@ SYSTEM_MESSAGE=Test system message
 RATE_LIMIT=5
 RATE_LIMIT_PER=30
 
+[ConnectionPool]
+OPENAI_MAX_CONNECTIONS=80
+OPENAI_MAX_KEEPALIVE=12
+PERPLEXITY_MAX_CONNECTIONS=40
+PERPLEXITY_MAX_KEEPALIVE=8
+
 [Orchestrator]
 LOOKBACK_MESSAGES_FOR_CONSISTENCY=10
 MAX_HISTORY_PER_USER=100
 USER_LOCK_CLEANUP_INTERVAL=7200
+ENTITY_DETECTION_MIN_WORDS=14
 
 [Logging]
 LOG_FILE=test.log
@@ -158,9 +175,14 @@ LOG_LEVEL=DEBUG
             assert config.get("VERBOSITY") is None
             assert config["RATE_LIMIT"] == 5
             assert config["RATE_LIMIT_PER"] == 30
+            assert config["OPENAI_MAX_CONNECTIONS"] == 80
+            assert config["OPENAI_MAX_KEEPALIVE"] == 12
+            assert config["PERPLEXITY_MAX_CONNECTIONS"] == 40
+            assert config["PERPLEXITY_MAX_KEEPALIVE"] == 8
             assert config["LOOKBACK_MESSAGES_FOR_CONSISTENCY"] == 10
             assert config["MAX_HISTORY_PER_USER"] == 100
             assert config["USER_LOCK_CLEANUP_INTERVAL"] == 7200
+            assert config["ENTITY_DETECTION_MIN_WORDS"] == 14
             assert config["LOG_FILE"] == "test.log"
             assert config["LOG_LEVEL"] == "DEBUG"
 
@@ -201,6 +223,8 @@ LOG_FILE=relative.log
                 "RATE_LIMIT": "20",
                 "ALLOWED_CHANNELS": "channel1,channel2",
                 "OUTPUT_TOKENS": "invalid_integer",  # Test invalid integer handling
+                "OPENAI_MAX_CONNECTIONS": "90",
+                "PERPLEXITY_MAX_KEEPALIVE": "11",
             },
         ):
             with patch("src.config.logging.getLogger") as mock_logger:
@@ -213,10 +237,49 @@ LOG_FILE=relative.log
                 assert config["OPENAI_API_KEY"] == "env_api_key"
                 assert config["RATE_LIMIT"] == 20
                 assert config["ALLOWED_CHANNELS"] == ["channel1", "channel2"]
+                assert config["OPENAI_MAX_CONNECTIONS"] == 90
+                assert config["PERPLEXITY_MAX_KEEPALIVE"] == 11
 
                 # Invalid integer should trigger warning and use default
                 mock_logger.return_value.warning.assert_called()
                 assert config["OUTPUT_TOKENS"] == 8000  # Default value
+
+    def test_load_config_env_allowed_channel_ids_partial_invalid(self):
+        """Invalid channel IDs should not discard valid IDs from env parsing."""
+        with patch.dict(
+            os.environ,
+            {
+                "ALLOWED_CHANNEL_IDS": "123,abc,456",
+            },
+        ):
+            with patch("src.config.logging.getLogger") as mock_logger:
+                mock_logger.return_value = MagicMock()
+
+                config = load_config()
+
+                assert config["ALLOWED_CHANNEL_IDS"] == [123, 456]
+                mock_logger.return_value.warning.assert_called_once()
+
+    def test_load_config_file_allowed_channel_ids_partial_invalid(self):
+        """Invalid channel IDs should not discard valid IDs from file parsing."""
+        config_content = """[Discord]
+ALLOWED_CHANNEL_IDS=123,abc,456
+"""
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
+            f.write(config_content)
+            temp_config_path = f.name
+
+        try:
+            with patch("src.config.logging.getLogger") as mock_logger:
+                mock_logger.return_value = MagicMock()
+
+                config = load_config(temp_config_path)
+
+                assert config["ALLOWED_CHANNEL_IDS"] == [123, 456]
+                mock_logger.return_value.warning.assert_called_once()
+        finally:
+            os.unlink(temp_config_path)
 
     def test_load_config_integer_conversion(self):
         """Test integer conversion for various config values."""
@@ -228,9 +291,14 @@ LOG_FILE=relative.log
                 "CONTEXT_WINDOW": "200000",
                 "RATE_LIMIT": "15",
                 "RATE_LIMIT_PER": "120",
+                "OPENAI_MAX_CONNECTIONS": "70",
+                "OPENAI_MAX_KEEPALIVE": "14",
+                "PERPLEXITY_MAX_CONNECTIONS": "45",
+                "PERPLEXITY_MAX_KEEPALIVE": "9",
                 "LOOKBACK_MESSAGES_FOR_CONSISTENCY": "8",
                 "MAX_HISTORY_PER_USER": "75",
                 "USER_LOCK_CLEANUP_INTERVAL": "1800",
+                "ENTITY_DETECTION_MIN_WORDS": "12",
             },
         ):
             config = load_config()
@@ -240,9 +308,14 @@ LOG_FILE=relative.log
             assert config["CONTEXT_WINDOW"] == 200000
             assert config["RATE_LIMIT"] == 15
             assert config["RATE_LIMIT_PER"] == 120
+            assert config["OPENAI_MAX_CONNECTIONS"] == 70
+            assert config["OPENAI_MAX_KEEPALIVE"] == 14
+            assert config["PERPLEXITY_MAX_CONNECTIONS"] == 45
+            assert config["PERPLEXITY_MAX_KEEPALIVE"] == 9
             assert config["LOOKBACK_MESSAGES_FOR_CONSISTENCY"] == 8
             assert config["MAX_HISTORY_PER_USER"] == 75
             assert config["USER_LOCK_CLEANUP_INTERVAL"] == 1800
+            assert config["ENTITY_DETECTION_MIN_WORDS"] == 12
 
     def test_load_config_absolute_paths(self):
         """Test handling of absolute paths."""
@@ -269,6 +342,15 @@ GPT_MODEL=file_model
 
 [Limits]
 RATE_LIMIT=25
+
+[ConnectionPool]
+OPENAI_MAX_CONNECTIONS=60
+OPENAI_MAX_KEEPALIVE=15
+PERPLEXITY_MAX_CONNECTIONS=35
+PERPLEXITY_MAX_KEEPALIVE=7
+
+[Orchestrator]
+ENTITY_DETECTION_MIN_WORDS=16
 """
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
@@ -291,6 +373,9 @@ RATE_LIMIT=25
                 assert config["GPT_MODEL"] == "file_model"
                 # Env value should be used when not in file
                 assert config["PERPLEXITY_API_KEY"] == "env_perplexity_key"
+                assert config["OPENAI_MAX_CONNECTIONS"] == 60
+                assert config["PERPLEXITY_MAX_KEEPALIVE"] == 7
+                assert config["ENTITY_DETECTION_MIN_WORDS"] == 16
 
         finally:
             os.unlink(temp_config_path)
@@ -420,6 +505,15 @@ CONTEXT_WINDOW=123.45
 [Limits]
 RATE_LIMIT=invalid
 RATE_LIMIT_PER=also_invalid
+
+[ConnectionPool]
+OPENAI_MAX_CONNECTIONS=invalid
+OPENAI_MAX_KEEPALIVE=invalid
+PERPLEXITY_MAX_CONNECTIONS=invalid
+PERPLEXITY_MAX_KEEPALIVE=invalid
+
+[Orchestrator]
+ENTITY_DETECTION_MIN_WORDS=invalid
 """
         with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
             f.write(config_content)
@@ -435,6 +529,11 @@ RATE_LIMIT_PER=also_invalid
                 assert config["OUTPUT_TOKENS"] == 8000  # Default
                 assert config["RATE_LIMIT"] == 10  # Default
                 assert config["RATE_LIMIT_PER"] == 60  # Default
+                assert config["OPENAI_MAX_CONNECTIONS"] == 50  # Default
+                assert config["OPENAI_MAX_KEEPALIVE"] == 10  # Default
+                assert config["PERPLEXITY_MAX_CONNECTIONS"] == 30  # Default
+                assert config["PERPLEXITY_MAX_KEEPALIVE"] == 5  # Default
+                assert config["ENTITY_DETECTION_MIN_WORDS"] == 10  # Default
 
                 # Should log warnings for invalid values
                 assert mock_logger.return_value.warning.called

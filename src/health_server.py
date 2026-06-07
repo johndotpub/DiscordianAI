@@ -150,21 +150,27 @@ class HealthServer:
     async def start(self) -> None:
         """Start the health server as an asyncio task."""
         if self._task and not self._task.done():
-            logger.debug("health_server: already running")
+            logger.debug("Health server already running")
             return
 
         config = self._deps.get("config", {})
         enabled = config.get("HEALTH_ENABLED", True)
         if isinstance(enabled, str):
-            enabled = enabled.lower() in ("true", "1", "yes")
+            enabled = str(enabled).lower() in ("true", "1", "yes")
+        else:
+            enabled = bool(enabled)
 
         if not enabled:
-            logger.info("health_server: disabled by configuration")
+            logger.info("Health server disabled by configuration")
             return
 
-        import uvicorn  # noqa: PLC0415 — lazy import; only needed when start() is called
+        try:
+            import uvicorn  # noqa: PLC0415 — lazy import; only needed when start() is called
+        except ImportError:
+            logger.warning("Health server disabled because uvicorn is not installed")
+            return
 
-        logger.info("health_server: starting on %s:%s", self._host, self._port)
+        logger.info("Health server starting on %s:%s", self._host, self._port)
         self._task = asyncio.create_task(
             uvicorn.Server(
                 uvicorn.Config(
@@ -183,4 +189,4 @@ class HealthServer:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            logger.info("health_server: stopped")
+            logger.info("Health server stopped")

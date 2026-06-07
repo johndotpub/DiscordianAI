@@ -1,23 +1,26 @@
 """Tests for structured logging configuration."""
 
+from io import StringIO
 import logging
 import os
 from unittest.mock import patch
 
 import pytest
+import structlog
 
 from src.structured_logging import configure_structlog, get_structured_logger
 
 
 @pytest.fixture(autouse=True)
 def _reset_logging():
-    """Reset root logger handlers between tests."""
-    root = logging.getLogger()
-    for handler in root.handlers[:]:
-        root.removeHandler(handler)
-    yield
-    for handler in root.handlers[:]:
-        root.removeHandler(handler)
+    """Ensure tests do not depend on pre-existing root handlers.
+
+    Previously this fixture removed root logger handlers, but that
+    races with ``pytest-xdist -n auto`` (multiple workers mutating the
+    shared root logger). The fixture is kept as a no-op anchor — tests
+    that need fresh state should configure their own loggers explicitly.
+    """
+    return
 
 
 def test_configure_structlog_defaults():
@@ -25,6 +28,19 @@ def test_configure_structlog_defaults():
     configure_structlog()
     root = logging.getLogger()
     assert root.level == logging.INFO
+    assert len(root.handlers) == 1
+    assert any(
+        isinstance(proc, structlog.stdlib.ExtraAdder)
+        for proc in root.handlers[0].formatter.processors
+    )
+
+
+def test_configure_structlog_default_console_renderer_uses_explicit_colors_true():
+    """Default console renderer should request colors explicitly."""
+    with patch("structlog.dev.ConsoleRenderer") as mock_renderer:
+        configure_structlog()
+
+    mock_renderer.assert_called_with(colors=True, pad_event_to=0)
 
 
 def test_configure_structlog_json_mode():
@@ -32,6 +48,7 @@ def test_configure_structlog_json_mode():
     configure_structlog(json_logs=True)
     root = logging.getLogger()
     assert root.level == logging.INFO
+    assert len(root.handlers) == 1
 
 
 def test_configure_structlog_debug_level():
@@ -39,6 +56,7 @@ def test_configure_structlog_debug_level():
     configure_structlog(log_level="DEBUG")
     root = logging.getLogger()
     assert root.level == logging.DEBUG
+    assert len(root.handlers) == 1
 
 
 def test_configure_structlog_env_json():
@@ -47,6 +65,7 @@ def test_configure_structlog_env_json():
         configure_structlog()
         root = logging.getLogger()
         assert root.level == logging.INFO
+        assert len(root.handlers) == 1
 
 
 def test_configure_structlog_env_level():
@@ -55,6 +74,7 @@ def test_configure_structlog_env_level():
         configure_structlog()
         root = logging.getLogger()
         assert root.level == logging.WARNING
+        assert len(root.handlers) == 1
 
 
 def test_get_structured_logger():
@@ -109,18 +129,75 @@ def test_drop_record():
 
 
 def test_structured_logger_binds_context():
-    """Bound context appears in log output."""
-    configure_structlog(json_logs=True)
+    """Bound context is rendered into the structured log output."""
+    stream = StringIO()
+
+    configure_structlog(json_logs=True, stream=stream)
     log = get_structured_logger("test.module", request_id="abc123")
+    log.info("hello world")
 
-    import io
-
-    buffer = io.StringIO()
-    handler = logging.StreamHandler(buffer)
-    handler.setLevel(logging.DEBUG)
-    logging.getLogger().addHandler(handler)
-
-    log.info("test message")
-    output = buffer.getvalue()
-    assert "request_id" in output
+    output = stream.getvalue()
     assert "abc123" in output
+    assert '"request_id": "abc123"' in output
+    assert '"event": "hello world"' in output
+
+
+def test_configure_structlog_plain_stream_renders_colors_on_non_tty():
+    """Non-TTY streams render colored text by default when colors are enabled."""
+    stream = StringIO()
+
+    configure_structlog(stream=stream)
+
+    logger = logging.getLogger("test.rendering")
+    logger.info("hello world")
+
+    output = stream.getvalue()
+    assert "\x1b[" in output
+    assert "hello world" in output
+
+
+def test_configure_structlog_env_color_defaults_to_colors_on_non_tty_stream():
+    """Unset DISCORDIANAI_LOG_COLOR keeps colored output on non-TTY streams."""
+    stream = StringIO()
+
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("DISCORDIANAI_LOG_COLOR", None)
+        configure_structlog(stream=stream)
+        logging.getLogger("test.rendering").info("hello world")
+
+    output = stream.getvalue()
+    assert "\x1b[" in output
+    assert "hello world" in output
+
+
+def test_configure_structlog_env_color_forces_colors_on_non_tty_stream():
+    """DISCORDIANAI_LOG_COLOR=1 forces colored output on non-TTY streams."""
+    stream = StringIO()
+
+    with patch.dict(os.environ, {"DISCORDIANAI_LOG_COLOR": "1"}):
+        configure_structlog(stream=stream)
+        logging.getLogger("test.rendering").info("hello world")
+
+    output = stream.getvalue()
+    assert "\x1b[" in output
+    assert "hello world" in output
+
+
+class _TTYStringIO(StringIO):
+    """StringIO subclass that reports isatty() == True."""
+
+    def isatty(self) -> bool:
+        return True
+
+
+def test_configure_structlog_env_color_disables_colors_on_tty_stream():
+    """DISCORDIANAI_LOG_COLOR=0 forces plain output on TTY streams."""
+    stream = _TTYStringIO()
+
+    with patch.dict(os.environ, {"DISCORDIANAI_LOG_COLOR": "0"}):
+        configure_structlog(stream=stream)
+        logging.getLogger("test.rendering").info("hello world")
+
+    output = stream.getvalue()
+    assert "\x1b[" not in output
+    assert "hello world" in output

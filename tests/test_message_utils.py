@@ -11,21 +11,17 @@ This test suite covers:
 - MessageFormatter class
 """
 
-from unittest.mock import Mock
-
 from src.message_splitter import (
-    MessageFormatter,
     adjust_split_for_code_blocks,
     clean_message_content,
     count_links,
     detect_code_blocks,
-    extract_mentions,
+    error_message,
     find_optimal_split_point,
-    format_user_context,
     is_inside_code_block,
-    parse_command_args,
     sanitize_for_discord,
     should_suppress_embeds,
+    truncation_notice,
 )
 
 
@@ -298,102 +294,6 @@ class TestCleanMessageContent:
         assert result == "This is a ..."
 
 
-class TestExtractMentions:
-    """Test extract_mentions function."""
-
-    def test_extract_single_mention(self):
-        """Test extracting single user mention."""
-        content = "Hello <@123456789> how are you?"
-
-        mentions = extract_mentions(content)
-
-        assert mentions == ["123456789"]
-
-    def test_extract_multiple_mentions(self):
-        """Test extracting multiple user mentions."""
-        content = "Hey <@123> and <@456> and <@789>!"
-
-        mentions = extract_mentions(content)
-
-        assert set(mentions) == {"123", "456", "789"}
-        assert len(mentions) == 3
-
-    def test_extract_nickname_mentions(self):
-        """Test extracting nickname mentions (with exclamation)."""
-        content = "Hello <@!123456789> nice to meet you"
-
-        mentions = extract_mentions(content)
-
-        assert mentions == ["123456789"]
-
-    def test_extract_mixed_mentions(self):
-        """Test extracting mixed regular and nickname mentions."""
-        content = "Users <@123> and <@!456> are here"
-
-        mentions = extract_mentions(content)
-
-        assert set(mentions) == {"123", "456"}
-
-    def test_extract_no_mentions(self):
-        """Test text without mentions."""
-        content = "Just regular text without any mentions"
-
-        mentions = extract_mentions(content)
-
-        assert mentions == []
-
-    def test_extract_invalid_mentions(self):
-        """Test text with invalid mention formats."""
-        content = "Invalid <@abc> and <123> and @456"
-
-        mentions = extract_mentions(content)
-
-        assert mentions == []
-
-    def test_extract_mentions_edge_cases(self):
-        """Test mention extraction edge cases."""
-        content = "<@1><@!2><@333>"  # No spaces
-
-        mentions = extract_mentions(content)
-
-        assert set(mentions) == {"1", "2", "333"}
-
-
-class TestFormatUserContext:
-    """Test format_user_context function."""
-
-    def test_format_dm_context(self):
-        """Test formatting DM context."""
-        mock_user = Mock()
-        mock_user.name = "testuser"
-        mock_user.id = 123456789
-
-        result = format_user_context(mock_user, is_dm=True)
-
-        assert result == "DM from testuser (ID: 123456789)"
-
-    def test_format_channel_context(self):
-        """Test formatting channel context."""
-        mock_user = Mock()
-        mock_user.name = "channeluser"
-        mock_user.id = 987654321
-
-        result = format_user_context(mock_user, is_dm=False)
-
-        assert result == "channel message from channeluser (ID: 987654321)"
-
-    def test_format_with_special_characters(self):
-        """Test formatting with special characters in username."""
-        mock_user = Mock()
-        mock_user.name = "user_with-special.chars"
-        mock_user.id = 555
-
-        result = format_user_context(mock_user, is_dm=True)
-
-        assert "user_with-special.chars" in result
-        assert "555" in result
-
-
 class TestCountLinks:
     """Test count_links function."""
 
@@ -551,121 +451,25 @@ class TestSanitizeForDiscord:
         assert "config" in result
 
 
-class TestParseCommandArgs:
-    """Test parse_command_args function."""
-
-    def test_parse_simple_command(self):
-        """Test parsing simple command."""
-        content = "!help"
-
-        command, _args = parse_command_args(content, prefix="!")
-
-        assert command == "help"
-        assert _args == []
-
-    def test_parse_command_with_args(self):
-        """Test parsing command with arguments."""
-        content = "!ban user123 spam"
-
-        command, _args = parse_command_args(content, prefix="!")
-
-        assert command == "ban"
-        assert _args == ["user123", "spam"]
-
-    def test_parse_command_multiple_spaces(self):
-        """Test parsing with multiple spaces."""
-        content = "!config   set    key    value"
-
-        command, _args = parse_command_args(content, prefix="!")
-
-        assert command == "config"
-        assert _args == ["set", "key", "value"]
-
-    def test_parse_no_command(self):
-        """Test text without command prefix."""
-        content = "Just regular text"
-
-        command, _args = parse_command_args(content, prefix="!")
-
-        assert command == ""
-        assert _args == []
-
-    def test_parse_custom_prefix(self):
-        """Test with custom command prefix."""
-        content = "/kick user reason"
-
-        command, args = parse_command_args(content, prefix="/")
-
-        assert command == "kick"
-        assert args == ["user", "reason"]
-
-    def test_parse_prefix_only(self):
-        """Test with just the prefix."""
-        content = "!"
-
-        command, _args = parse_command_args(content, prefix="!")
-
-        assert command == ""
-        assert _args == []
-
-    def test_parse_quoted_args(self):
-        """Test parsing arguments with quotes."""
-        content = '!say "hello world" test'
-
-        command, _args = parse_command_args(content, prefix="!")
-
-        assert command == "say"
-
-        # May need adjustment based on whether quotes are handled
-
-
 class TestMessageFormatter:
-    """Test MessageFormatter class."""
+    """Test message formatting helpers."""
 
     def test_format_error_message(self):
         """Test formatting error message."""
         mention = "<@123456789>"
         error = "Something went wrong"
 
-        result = MessageFormatter.error_message(mention, error)
+        result = error_message(mention, error)
 
         assert mention in result
         assert error in result
         assert len(result) > len(mention) + len(error)  # Should have formatting
 
-    def test_format_rate_limit_message(self):
-        """Test formatting rate limit message."""
-        mention = "<@123456789>"
-        reset_time = 30.5
-
-        result = MessageFormatter.rate_limit_message(mention, reset_time)
-
-        assert mention in result
-        assert "30.5" in result
-        assert "⏱️" in result
-
-    def test_format_service_unavailable(self):
-        """Test formatting service unavailable message."""
-        service = "OpenAI"
-
-        result = MessageFormatter.service_unavailable(service)
-
-        assert service in result
-        assert "unavailable" in result.lower()
-        assert "🔧" in result
-
-    def test_format_processing_message(self):
-        """Test formatting processing message."""
-        result = MessageFormatter.processing_message()
-
-        assert "processing" in result.lower()
-        assert "🤔" in result
-
     def test_format_truncation_notice(self):
         """Test formatting truncation notice."""
         original_length = 5000
 
-        result = MessageFormatter.truncation_notice(original_length)
+        result = truncation_notice(original_length)
 
         assert "5000" in result
         assert "truncated" in result.lower()

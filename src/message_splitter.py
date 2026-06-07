@@ -18,7 +18,6 @@ from .config import (
     EMBED_SAFE_LIMIT,
     LINK_PATTERN,
     MAX_SPLIT_RECURSION,
-    MENTION_PATTERN,
     MESSAGE_BUFFER,
     MESSAGE_LIMIT,
 )
@@ -40,6 +39,7 @@ async def send_split_message(  # noqa: PLR0913
 ) -> None:
     """Send messages with automatic splitting for Discord's message character limit."""
     logger = deps["logger"]
+    message = sanitize_for_discord(message)
     prefix_text = mention_prefix or ""
     prefix_length = len(prefix_text)
 
@@ -55,7 +55,7 @@ async def send_split_message(  # noqa: PLR0913
     max_first_chunk = max(1, MESSAGE_LIMIT - prefix_length)
 
     # Recursion safety
-    if _recursion_depth > MAX_SPLIT_RECURSION:
+    if _recursion_depth >= MAX_SPLIT_RECURSION:
         logger.error(
             "Max split recursion reached (%d) for message length %d",
             MAX_SPLIT_RECURSION,
@@ -85,6 +85,8 @@ async def send_split_message(  # noqa: PLR0913
     # Fits in one message
     if len(message) <= max_first_chunk:
         content = f"{prefix_text}{message}" if prefix_text else message
+        if len(content) > MESSAGE_LIMIT:
+            content = content[: MESSAGE_LIMIT - 3] + "..."
         if original_message:
             await original_message.reply(
                 content,
@@ -150,8 +152,43 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
     citations: dict[str, str] | None = None,
     original_message: discord.Message | None = None,
     mention_prefix: str | None = None,
+    _recursion_depth: int = 0,
 ) -> None:
-    """Send a long message with citation embeds, maintaining citations across parts."""
+    """Send a long message with citation embeds, maintaining citations across parts.
+
+    The provided embed is modified in place so the head chunk stays aligned with
+    the adjusted text.
+    """
+    logger = deps["logger"]
+    message = sanitize_for_discord(message)
+    prefix_text = mention_prefix or ""
+
+    if _recursion_depth >= MAX_SPLIT_RECURSION:
+        logger.error(
+            "Max embed split recursion reached (%d) for message length %d",
+            MAX_SPLIT_RECURSION,
+            len(message),
+        )
+        trunc_notice = truncation_notice(len(message))
+        available = MESSAGE_LIMIT - len(prefix_text) - len(trunc_notice)
+        if available < 0:
+            prefix_text = ""
+            available = MESSAGE_LIMIT - len(trunc_notice)
+        truncated = message[: max(0, available)]
+        fallback_text = f"{prefix_text}{truncated}{trunc_notice}"
+        if original_message:
+            await original_message.reply(
+                fallback_text,
+                suppress_embeds=False,
+                mention_author=False,
+                allowed_mentions=discord.AllowedMentions(
+                    users=[original_message.author], replied_user=False
+                ),
+            )
+        else:
+            await channel.send(fallback_text, suppress_embeds=False)
+        return
+
     head_text = message
     after_split = ""
     if len(message) > EMBED_SAFE_LIMIT:
@@ -170,19 +207,17 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
     # Preserve existing footer unless empty; otherwise copy rebuilt footer
     if (not embed.footer or not embed.footer.text) and rebuilt_head.footer:
         embed.set_footer(text=rebuilt_head.footer.text)
-    head_embed = embed
-
     if original_message:
         await original_message.reply(
             mention_prefix or "",
-            embed=head_embed,
+            embed=embed,
             mention_author=False,
             allowed_mentions=discord.AllowedMentions(
                 users=[original_message.author], replied_user=False
             ),
         )
     else:
-        await channel.send("", embed=head_embed)
+        await channel.send("", embed=embed)
 
     if after_split.strip():
         message_part2 = after_split.strip()
@@ -203,6 +238,7 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
                         remaining_citations,
                         original_message,
                         None,
+                        _recursion_depth=_recursion_depth + 1,
                     )
                 elif original_message:
                     await original_message.reply(
@@ -222,6 +258,7 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
                     deps,
                     original_message=original_message,
                     mention_prefix=None,
+                    _recursion_depth=_recursion_depth + 1,
                 )
         else:
             await send_split_message(
@@ -230,6 +267,7 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
                 deps,
                 original_message=original_message,
                 mention_prefix=None,
+                _recursion_depth=_recursion_depth + 1,
             )
     elif citations and message and original_message:
         # Embed was truncated but clean text fit; send remaining text to avoid dropping tail
@@ -240,6 +278,7 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
             suppress_embeds=False,
             original_message=original_message,
             mention_prefix=None,
+            _recursion_depth=_recursion_depth + 1,
         )
 
 
@@ -254,6 +293,7 @@ async def send_formatted_message(  # noqa: PLR0913
 ) -> None:
     """Send formatted message to Discord, using extracted splitter logic."""
     logger = deps["logger"]
+    message = sanitize_for_discord(message)
 
     if embed_data and "embed" in embed_data:
         embed = embed_data["embed"]
@@ -399,17 +439,6 @@ def clean_message_content(content: str, max_length: int = 100) -> str:
     return cleaned
 
 
-def extract_mentions(content: str) -> list[str]:
-    """Extract user mentions from message content."""
-    return MENTION_PATTERN.findall(content)
-
-
-def format_user_context(user: Any, is_dm: bool) -> str:
-    """Format user context for logging and error messages."""
-    message_type = "DM" if is_dm else "channel message"
-    return f"{message_type} from {user.name} (ID: {user.id})"
-
-
 def count_links(text: str) -> int:
     """Count the number of links in text for embed suppression decisions."""
     # Count Discord hyperlinks [title](url)
@@ -431,53 +460,14 @@ def sanitize_for_discord(text: str) -> str:
     if not text:
         return ""
 
-    # Remove potential Discord markdown exploits
-    text = text.replace("@everyone", "@\u200beveryone")
-    text = text.replace("@here", "@\u200bhere")
-
-    # Ensure text isn't too long
-    if len(text) > MESSAGE_LIMIT:
-        text = text[: MESSAGE_LIMIT - 3] + "..."
-
-    return text
+    return text.replace("@everyone", "@\u200beveryone").replace("@here", "@\u200bhere")
 
 
-def parse_command_args(content: str, prefix: str = "!") -> tuple[str, list[str]]:
-    """Parse command and arguments from message content."""
-    if not content.startswith(prefix):
-        return "", []
-
-    parts = content[len(prefix) :].split()
-    if not parts:
-        return "", []
-
-    return parts[0].lower(), parts[1:]
+def error_message(user_mention: str, error_text: str) -> str:
+    """Format error message with user mention."""
+    return f"{user_mention} {error_text}"
 
 
-class MessageFormatter:
-    """Utility class for consistent message formatting."""
-
-    @staticmethod
-    def error_message(user_mention: str, error_text: str) -> str:
-        """Format error message with user mention."""
-        return f"{user_mention} {error_text}"
-
-    @staticmethod
-    def rate_limit_message(user_mention: str, reset_time: float) -> str:
-        """Format rate limit message."""
-        return f"{user_mention} ⏱️ Please wait {reset_time:.1f}s before sending another message."
-
-    @staticmethod
-    def service_unavailable(service_name: str) -> str:
-        """Format service unavailable message."""
-        return f"🔧 {service_name} is temporarily unavailable. Please try again later."
-
-    @staticmethod
-    def processing_message() -> str:
-        """Format processing indicator."""
-        return "🤔 Processing your request..."
-
-    @staticmethod
-    def truncation_notice(original_length: int) -> str:
-        """Format message truncation notice."""
-        return f"\n\n[Message truncated from {original_length} characters for Discord limits]"
+def truncation_notice(original_length: int) -> str:
+    """Format message truncation notice."""
+    return f"\n\n[Message truncated from {original_length} characters for Discord limits]"

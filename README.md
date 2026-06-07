@@ -91,6 +91,12 @@ The launcher resolves Python in this order: pyenv → project-local `.venv` → 
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | How many prior turns to inspect when enforcing AI service consistency.
 | `OPENAI_MAX_CONNECTIONS` / `PERPLEXITY_MAX_CONNECTIONS` | HTTP/2 pooling limits for each API client.
 
+### Channel Targeting
+
+- `ALLOWED_CHANNELS` matches channel names.
+- `ALLOWED_CHANNEL_IDS` matches channel IDs and takes precedence when set.
+- Prefer IDs for stable targeting across servers; names are handy for local testing.
+
 ### Minimal hybrid config
 
 ```ini
@@ -127,7 +133,7 @@ RATE_LIMIT_PER=60
 ### Reliability & Ops
 - `connection_pool.py` exposes tuned HTTP/2 clients (50/10 connections for OpenAI, 30/5 for Perplexity).
 - `health_checks.py` verifies API reachability and validates GPT-5/Sonar configurations at startup.
-- `api_validation.py` + `api_utils.py` guard against unsupported model strings and capture structured error metadata.
+- `api_validation.py` guards against unsupported model strings; structured error metadata and classification is centralized in `error_handling.py`.
 
 ## Documentation Map
 
@@ -170,6 +176,7 @@ Use `tox` for the CI matrix (`tox`, `tox -e py312`, `tox --parallel auto`, `tox 
 - Prefer environment variables in production (`export DISCORD_TOKEN=...`).
 - Rotate OpenAI (`sk-...`) and Perplexity (`pplx-...`) keys regularly; validators will reject malformed prefixes.
 - Limit Discord bot permissions to the channels where it operates.
+- Prefer `ALLOWED_CHANNEL_IDS` for precise channel targeting in shared or multi-server deployments.
 - Monitor logs for rate-limit bursts or scraping failures and adjust `RATE_LIMIT` / `RATE_LIMIT_PER` accordingly.
 
 ## Support & License

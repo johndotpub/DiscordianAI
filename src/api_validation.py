@@ -395,22 +395,3 @@ def log_validation_results(config: dict, logger: logging.Logger | None = None) -
         return True
     logger.info("Configuration validation passed successfully")
     return True
-
-
-def get_api_recommendations() -> dict[str, str]:
-    """Get recommended API configuration values.
-
-    Returns:
-        Dict[str, str]: Dictionary of recommended configuration values
-    """
-    return {
-        "GPT_MODEL": "gpt-5-mini",  # Cost-effective default
-        "OUTPUT_TOKENS": "8000",  # Conservative limit
-        "INPUT_TOKENS": "120000",  # Safe context window
-        "RATE_LIMIT": "10",  # Reasonable default
-        "RATE_LIMIT_PER": "60",  # Per minute
-        "ACTIVITY_TYPE": "listening",  # Non-intrusive
-        "BOT_PRESENCE": "online",  # Available but not attention-seeking
-        "OPENAI_API_URL": "https://api.openai.com/v1/",
-        "PERPLEXITY_API_URL": "https://api.perplexity.ai",
-    }

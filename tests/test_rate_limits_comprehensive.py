@@ -11,8 +11,7 @@ This test suite covers:
 
 import asyncio
 import threading
-import time
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -140,21 +139,19 @@ class TestRateLimiterCheckRateLimit:
         logger = Mock()
         user_id = 12345
 
-        # Use up the rate limit
-        for _i in range(3):
-            rate_limiter.check_rate_limit(user_id, 3, 1, logger)  # 1 second window
+        with patch("src.rate_limits.time.time", side_effect=[0.0, 0.1, 0.2, 0.3, 1.5]):
+            # Use up the rate limit
+            for _i in range(3):
+                rate_limiter.check_rate_limit(user_id, 3, 1, logger)
 
-        # Should fail initially
-        result = rate_limiter.check_rate_limit(user_id, 3, 1, logger)
-        assert result is False
+            # Should fail initially
+            result = rate_limiter.check_rate_limit(user_id, 3, 1, logger)
+            assert result is False
 
-        # Wait for window to expire
-        time.sleep(1.1)
-
-        # Should pass after window expiry
-        logger.reset_mock()
-        result = rate_limiter.check_rate_limit(user_id, 3, 1, logger)
-        assert result is True
+            # Should pass after window expiry
+            logger.reset_mock()
+            result = rate_limiter.check_rate_limit(user_id, 3, 1, logger)
+            assert result is True
         assert rate_limiter.last_command_count[user_id] == 1  # Reset to 1
 
         # Verify info logging for rate limit reset
@@ -257,14 +254,12 @@ class TestRateLimiterGetUserStatus:
         logger = Mock()
         user_id = 12345
 
-        # Make requests with a short window
-        for _i in range(3):
-            rate_limiter.check_rate_limit(user_id, 5, 1, logger)
+        with patch("src.rate_limits.time.time", side_effect=[0.0, 0.1, 0.2, 1.5]):
+            # Make requests with a short window
+            for _i in range(3):
+                rate_limiter.check_rate_limit(user_id, 5, 1, logger)
 
-        # Wait for window to expire
-        time.sleep(1.1)
-
-        status = rate_limiter.get_user_status(user_id, 5, 1)
+            status = rate_limiter.get_user_status(user_id, 5, 1)
 
         assert status["user_id"] == user_id
         assert status["current_count"] == 0
@@ -389,8 +384,9 @@ class TestAsyncCheckRateLimit:
 
     async def test_async_check_rate_limit_exception_handling(self):
         """Test async rate limit check with exception handling."""
-        rate_limiter = Mock()
-        rate_limiter.check_rate_limit.side_effect = ValueError("Test error")
+        rate_limiter = RateLimiter()
+        rate_limiter.check_rate_limit = Mock(side_effect=ValueError("Test error"))
+        rate_limiter.record_fail_open_error = Mock(return_value=(1, False, False))
 
         mock_user = Mock()
         mock_user.id = 12345

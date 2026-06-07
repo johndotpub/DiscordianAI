@@ -14,7 +14,7 @@ def deps():
         bot=MagicMock(),
         logger=MagicMock(),
         config={"GPT_MODEL": "gpt-5-mini"},
-        allowed_channels=[123456789],
+        allowed_channels=["general"],
     )
 
 
@@ -43,13 +43,13 @@ def test_to_dict_roundtrip(deps):
     assert isinstance(d, dict)
     assert "logger" in d
     assert "GPT_MODEL" in d
-    assert d["ALLOWED_CHANNELS"] == [123456789]
+    assert d["ALLOWED_CHANNELS"] == ["general"]
 
 
 def test_attribute_access(deps):
     """BotDependencies supports attribute access."""
     assert deps.gpt_model == "gpt-5-mini"
-    assert deps.allowed_channels == [123456789]
+    assert deps.allowed_channels == ["general"]
 
 
 def test_health_task_default_none():

@@ -14,7 +14,9 @@ from dataclasses import dataclass
 from enum import Enum
 import functools
 import logging
+import re
 import secrets
+import threading
 import time
 from typing import Any
 
@@ -40,6 +42,46 @@ class ErrorType(Enum):
     CONFIG_ERROR = "config_error"
     VALIDATION_ERROR = "validation_error"
     UNKNOWN = "unknown"
+
+
+ERROR_CLASSIFICATION_PATTERNS = {
+    "quota": ("insufficient_quota", "exceeded your current quota"),
+    "rate_limit": ("rate limit", "429"),
+    "timeout": ("timeout", "timed out"),
+    "auth": ("401", "unauthorized"),
+    "server": ("500", "502", "503", "504"),
+    "network": ("connection", "network", "dns"),
+    "discord": ("discord", "websocket", "gateway"),
+    "config": ("config", "missing", "invalid"),
+}
+
+
+def classify_error_message(error_msg: str) -> dict[str, bool]:
+    """Classify a raw error message using shared string-matching rules."""
+    lowered = error_msg.lower()
+    return {
+        "is_quota_exhausted": any(
+            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["quota"]
+        ),
+        "is_rate_limit": any(
+            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["rate_limit"]
+        ),
+        "is_timeout": any(term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["timeout"]),
+        "is_auth_error": any(term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["auth"]),
+        "is_server_error": any(
+            re.search(rf"(?<!\d){code}(?!\d)", error_msg)
+            for code in ERROR_CLASSIFICATION_PATTERNS["server"]
+        ),
+        "is_network_error": any(
+            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["network"]
+        ),
+        "is_discord_error": any(
+            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["discord"]
+        ),
+        "is_config_error": any(
+            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["config"]
+        ),
+    }
 
 
 @dataclass
@@ -74,9 +116,24 @@ class CircuitBreaker:
         self.timeout = timeout
         self.expected_exception = expected_exception
         self.failure_count = 0
-        self.last_failure_time = 0
+        self.last_failure_time = 0.0
+        self.last_success_time = 0.0
         self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
         self._lock = asyncio.Lock()
+
+    def _should_attempt_reset(self) -> bool:
+        elapsed = self._seconds_since_last_failure()
+        return elapsed > self.timeout
+
+    def _seconds_since_last_failure(self) -> float:
+        if self.last_failure_time == 0:
+            return 0
+
+        now_monotonic = time.monotonic()
+        if self.last_failure_time > now_monotonic:
+            return self.timeout + 1  # force reset on clock jump
+
+        return now_monotonic - self.last_failure_time
 
     def __call__(self, func):
         """Decorator to wrap a function with circuit breaker logic."""
@@ -85,7 +142,7 @@ class CircuitBreaker:
         async def wrapper(*args, **kwargs):
             async with self._lock:
                 if self.state == "OPEN":
-                    if time.time() - self.last_failure_time > self.timeout:
+                    if self._should_attempt_reset():
                         self.state = "HALF_OPEN"
                     else:
                         open_msg = f"Circuit breaker OPEN for {func.__name__}"
@@ -95,8 +152,12 @@ class CircuitBreaker:
                 result = await func(*args, **kwargs)
             except self.expected_exception:
                 async with self._lock:
+                    if self.state == "CLOSED" and (
+                        self._seconds_since_last_failure() > self.timeout
+                    ):
+                        self.failure_count = 0
                     self.failure_count += 1
-                    self.last_failure_time = time.time()
+                    self.last_failure_time = time.monotonic()
 
                     # If in HALF_OPEN state, any failure should open the circuit
                     if self.state == "HALF_OPEN" or self.failure_count >= self.failure_threshold:
@@ -108,6 +169,7 @@ class CircuitBreaker:
                     if self.state == "HALF_OPEN":
                         self.state = "CLOSED"
                         self.failure_count = 0
+                    self.last_success_time = time.monotonic()
                 # In CLOSED state, don't reset failure_count on success
                 # (only reset in HALF_OPEN to CLOSED transition)
                 return result
@@ -132,6 +194,15 @@ class RetryConfig:
         self.max_delay = max_delay
         self.exponential_base = exponential_base
         self.jitter = jitter
+
+
+DEFAULT_API_RETRY_CONFIG = RetryConfig(
+    max_attempts=2,
+    base_delay=4.0,
+    max_delay=4.0,
+    exponential_base=1.0,
+    jitter=True,
+)
 
 
 async def retry_with_backoff(
@@ -254,7 +325,9 @@ def classify_error(exception: Exception) -> ErrorDetails:
         severity = ErrorSeverity.HIGH
         user_message = "🔐 Authentication issue. Please contact administrator."
 
-    elif "5" in error_msg and any(code in error_msg for code in ["500", "502", "503", "504"]):
+    elif any(
+        re.search(rf"(?<!\d){code}(?!\d)", error_msg) for code in ["500", "502", "503", "504"]
+    ):
         error_type = ErrorType.API_SERVER_ERROR
         severity = ErrorSeverity.HIGH
         user_message = "🔧 Service temporarily unavailable. Please try again later."
@@ -299,50 +372,53 @@ class ErrorTracker:
         self.error_counts: dict[str, int] = {}
         self.error_history: list[dict[str, Any]] = []
         self.max_history = 1000
+        self._lock = threading.Lock()
 
     def record_error(self, error_details: ErrorDetails, context: dict | None = None):
         """Record error occurrence for tracking and analysis."""
-        error_key = f"{error_details.error_type.value}_{error_details.severity.value}"
-        self.error_counts[error_key] = self.error_counts.get(error_key, 0) + 1
+        with self._lock:
+            error_key = f"{error_details.error_type.value}_{error_details.severity.value}"
+            self.error_counts[error_key] = self.error_counts.get(error_key, 0) + 1
 
-        error_record = {
-            "timestamp": time.time(),
-            "error_type": error_details.error_type.value,
-            "severity": error_details.severity.value,
-            "message": error_details.message,
-            "context": context or {},
-        }
+            error_record = {
+                "timestamp": time.time(),
+                "error_type": error_details.error_type.value,
+                "severity": error_details.severity.value,
+                "message": error_details.message,
+                "context": context or {},
+            }
 
-        self.error_history.append(error_record)
+            self.error_history.append(error_record)
 
-        # Keep history bounded
-        if len(self.error_history) > self.max_history:
-            self.error_history = self.error_history[-self.max_history :]
+            # Keep history bounded
+            if len(self.error_history) > self.max_history:
+                self.error_history = self.error_history[-self.max_history :]
 
     def get_error_summary(self, time_window: int = 3600) -> dict[str, Any]:
         """Get error summary for the specified time window (seconds)."""
-        cutoff_time = time.time() - time_window
-        recent_errors = [e for e in self.error_history if e["timestamp"] > cutoff_time]
+        with self._lock:
+            cutoff_time = time.time() - time_window
+            recent_errors = [e for e in self.error_history if e["timestamp"] > cutoff_time]
 
-        summary = {
-            "total_errors": len(recent_errors),
-            "error_types": {},
-            "critical_count": 0,
-            "high_count": 0,
-        }
+            summary = {
+                "total_errors": len(recent_errors),
+                "error_types": {},
+                "critical_count": 0,
+                "high_count": 0,
+            }
 
-        for error in recent_errors:
-            error_type = error["error_type"]
-            severity = error["severity"]
+            for error in recent_errors:
+                error_type = error["error_type"]
+                severity = error["severity"]
 
-            summary["error_types"][error_type] = summary["error_types"].get(error_type, 0) + 1
+                summary["error_types"][error_type] = summary["error_types"].get(error_type, 0) + 1
 
-            if severity == "critical":
-                summary["critical_count"] += 1
-            elif severity == "high":
-                summary["high_count"] += 1
+                if severity == "critical":
+                    summary["critical_count"] += 1
+                elif severity == "high":
+                    summary["high_count"] += 1
 
-        return summary
+            return summary
 
 
 # Global error tracker instance
@@ -369,11 +445,19 @@ def handle_api_error(func):
             base_delay=0.1,
         )  # 3 attempts with short delay for tests
 
-        # Extract the original logger if it exists in kwargs to avoid conflicts
-        original_logger = kwargs.pop("logger", func_logger)
+        # Use the original logger if it exists in kwargs without removing it.
+        original_logger = kwargs.get("logger", func_logger)
+        func_kwargs = dict(kwargs)
+        func_kwargs.pop("logger", None)
 
         try:
-            return await retry_with_backoff(func, retry_config, original_logger, *args, **kwargs)
+            return await retry_with_backoff(
+                func,
+                retry_config,
+                original_logger,
+                *args,
+                **func_kwargs,
+            )
 
         except Exception as e:
             error_details = classify_error(e)

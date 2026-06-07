@@ -192,11 +192,9 @@ class TestCircuitBreaker:
                 await test_func()
         assert breaker.state == "OPEN"
 
-        # Wait for timeout
-        time.sleep(1.1)
-
-        # Next call should put it in HALF_OPEN, and success should close it
-        result = await test_func(should_succeed=True)
+        with patch.object(breaker, "_seconds_since_last_failure", return_value=1.1):
+            # Next call should put it in HALF_OPEN, and success should close it
+            result = await test_func(should_succeed=True)
         assert result == "success"
         assert breaker.state == "CLOSED"
         assert breaker.failure_count == 0
@@ -216,12 +214,10 @@ class TestCircuitBreaker:
             with pytest.raises(ValueError):
                 await test_func()
 
-        # Wait for timeout
-        time.sleep(1.1)
-
-        # Failure in half-open should reopen circuit
-        with pytest.raises(ValueError):
-            await test_func()
+        with patch.object(breaker, "_seconds_since_last_failure", return_value=1.1):
+            # Failure in half-open should reopen circuit
+            with pytest.raises(ValueError):
+                await test_func()
         assert breaker.state == "OPEN"
 
     @pytest.mark.asyncio
@@ -818,7 +814,7 @@ class TestCircuitBreakerStateTransitions:
         """Test that OPEN circuit breaker blocks requests immediately."""
         breaker = CircuitBreaker(failure_threshold=2, timeout=60)
         breaker.state = "OPEN"
-        breaker.last_failure_time = time.time()
+        breaker.last_failure_time = time.monotonic()
 
         @breaker
         async def any_function():
@@ -833,7 +829,7 @@ class TestCircuitBreakerStateTransitions:
         """Test circuit breaker transitions from OPEN to HALF_OPEN after timeout."""
         breaker = CircuitBreaker(failure_threshold=2, timeout=1)  # 1 second timeout
         breaker.state = "OPEN"
-        breaker.last_failure_time = time.time() - 2  # 2 seconds ago
+        breaker.last_failure_time = time.monotonic() - 2  # 2 seconds ago
 
         @breaker
         async def test_function():
@@ -866,7 +862,7 @@ class TestCircuitBreakerStateTransitions:
         """Test circuit breaker transitions from HALF_OPEN to OPEN on failure."""
         breaker = CircuitBreaker(failure_threshold=2, timeout=1)
         breaker.state = "HALF_OPEN"
-        breaker.last_failure_time = time.time() - 2
+        breaker.last_failure_time = time.monotonic() - 2
 
         @breaker
         async def failing_function():

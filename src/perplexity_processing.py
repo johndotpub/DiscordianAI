@@ -1,25 +1,22 @@
 """Perplexity API processing with web search capabilities and citation handling.
 
-This module handles Perplexity API interactions for web-enabled responses,
-including citation extraction, Discord formatting, and thread-safe
-conversation management.
+This module handles Perplexity API interactions through the OpenAI-compatible
+client, with ``httpx`` used for transport-related exception handling and URL
+scraping helpers. It also covers citation extraction, Discord formatting, and
+thread-safe conversation management.
 """
 
 import logging
 import re
 from typing import Any
 
-import requests
+import httpx
 
 from .api_context import api_call
-from .config import (
-    BARE_URL_PATTERN,
-    CITATION_PATTERN,
-    LINK_PATTERN,
-    URL_PATTERN,
-)
+from .config import CITATION_PATTERN, URL_PATTERN
 from .discord_embeds import citation_embed_formatter
-from .error_handling import RetryConfig, retry_with_backoff
+from .error_handling import DEFAULT_API_RETRY_CONFIG, retry_with_backoff
+from .message_splitter import should_suppress_embeds
 from .models import AIRequest, PerplexityConfig
 from .web_scraper import is_scrapable_url, scrape_url_content
 
@@ -80,7 +77,8 @@ def _map_from_metadata(unique: list[str], metadata: list[Any], target: dict[str,
     for num in unique:
         idx = int(num) - 1
         if 0 <= idx < len(metadata):
-            target[num] = metadata[idx]
+            citation = metadata[idx]
+            target[num] = getattr(citation, "url", citation)
 
 
 def _map_from_search_results(
@@ -184,26 +182,6 @@ def format_citations_for_discord(
     return CITATION_PATTERN.sub(replace_citation, text)
 
 
-def should_suppress_embeds(text: str) -> bool:
-    """Decide whether to suppress embed rendering for a message.
-
-    The function counts distinct links/markdown links present in `text`
-    and returns True when the total exceeds a configured threshold, which
-    helps avoid large embed-heavy messages in Discord.
-
-    Args:
-        text: The message text to analyze for links.
-
-    Returns:
-        True when embeds should be suppressed, False otherwise.
-    """
-    links = LINK_PATTERN.findall(text)
-    urls = BARE_URL_PATTERN.findall(text)
-    total_links = len(links) + len(urls)
-
-    return total_links >= LINK_THRESHOLD
-
-
 async def process_perplexity_message(
     request: AIRequest,
     perplexity_client: Any,
@@ -213,7 +191,7 @@ async def process_perplexity_message(
 
     This function builds the Perplexity API parameters, optionally enhances the
     prompt with scraped URL content, calls the Perplexity API, extracts
-    and formats citations, and persists the conversation history on success.
+    and formats citations.
     It returns `None` when the API call fails or times out.
 
     Args:
@@ -240,18 +218,12 @@ async def process_perplexity_message(
 
             response = await retry_with_backoff(
                 lambda: perplexity_client.chat.completions.create(**api_params),
-                RetryConfig(
-                    max_attempts=2,
-                    base_delay=4.0,
-                    max_delay=4.0,
-                    exponential_base=1.0,
-                    jitter=True,
-                ),
+                DEFAULT_API_RETRY_CONFIG,
                 request.logger,
             )
             ctx.set_result(response)
 
-            return _handle_api_response(response, request, urls_in_message, api_params, config)
+            return _handle_api_response(response, request, urls_in_message, api_params)
 
     except Exception:
         request.logger.exception("Perplexity API call failed for user %s", request.user.id)
@@ -275,7 +247,6 @@ def _handle_api_response(
     request: AIRequest,
     urls_in_message: list[str],
     api_params: dict[str, Any],
-    config: PerplexityConfig,
 ) -> tuple[str, bool, dict | None] | None:
     """Process and format the API response."""
     if not (response.choices and response.choices[0].message.content):
@@ -307,22 +278,13 @@ def _handle_api_response(
         )
 
     final_text = format_citations_for_discord(fmt_text, cit_map, linkify=False)
-    suppress_embeds = should_suppress_embeds(final_text)
+    suppress_embeds = should_suppress_embeds(final_text, threshold=LINK_THRESHOLD)
 
     embed_data = None
     if cit_map:
         embed, meta = citation_embed_formatter.create_citation_embed(final_text, cit_map)
         embed_data = {"embed": embed, "citations": cit_map, "clean_text": final_text, "meta": meta}
 
-    # Persist
-    # Persist both user and assistant messages (only after a successful response)
-    request.conversation_manager.add_message(request.user.id, "user", request.message)
-    request.conversation_manager.add_message(
-        request.user.id,
-        "assistant",
-        final_text,
-        metadata={"ai_service": "perplexity", "model": config.model},
-    )
     return final_text, suppress_embeds, embed_data
 
 
@@ -339,7 +301,7 @@ async def _enhance_message_with_urls(message: str, urls: list[str], logger: logg
                 if content:
                     scraped_contents.append(f"Content from {url}:\n{content}")
                     successful_scrapes.append(url)
-            except (TimeoutError, requests.RequestException):
+            except (TimeoutError, httpx.HTTPError):
                 logger.exception("Web scraping failed for %s", url)
 
     if scraped_contents:

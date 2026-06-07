@@ -58,13 +58,7 @@ class TestProcessOpenAIMessageBasic:
         )
 
         assert result == "Test response from OpenAI"
-        conversation_manager.add_message.assert_any_call(12345, "user", "Hello OpenAI")
-        conversation_manager.add_message.assert_any_call(
-            12345,
-            "assistant",
-            "Test response from OpenAI",
-            metadata={"ai_service": "openai", "model": "gpt-5-mini"},
-        )
+        conversation_manager.add_message.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_basic_gpt5_processing(self):
@@ -110,9 +104,8 @@ class TestProcessOpenAIMessageBasic:
 
     @pytest.mark.asyncio
     async def test_empty_response(self):
-        from src.caching import conversation_cache, response_cache
+        from src.caching import response_cache
 
-        conversation_cache.clear()
         response_cache.cache.clear()
 
         user = MagicMock()
@@ -155,9 +148,8 @@ class TestProcessOpenAIMessageBasic:
 
     @pytest.mark.asyncio
     async def test_timeout_error(self):
-        from src.caching import conversation_cache, response_cache
+        from src.caching import response_cache
 
-        conversation_cache.clear()
         response_cache.cache.clear()
 
         user = MagicMock()
@@ -198,9 +190,8 @@ class TestProcessOpenAIMessageBasic:
 
     @pytest.mark.asyncio
     async def test_generic_error(self):
-        from src.caching import conversation_cache, response_cache
+        from src.caching import response_cache
 
-        conversation_cache.clear()
         response_cache.cache.clear()
 
         user = MagicMock()
@@ -439,7 +430,7 @@ class TestProcessOpenAIMessageAdditionalCoverage:
                 config=config,
             )
             assert result == "A" * 300
-            assert conversation_manager.add_message.call_count == 2
+            conversation_manager.add_message.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_invalid_response_structure(self):

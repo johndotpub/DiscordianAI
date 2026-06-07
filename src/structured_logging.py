@@ -3,7 +3,8 @@
 Configures structlog with a hybrid renderer that outputs human-readable
 logs to the console (for development) and JSON-structured logs when
 environment variable ``DISCORDIANAI_LOG_JSON=1`` is set (for production
-observability).
+observability). Console color output is enabled by default and can be
+disabled with ``DISCORDIANAI_LOG_COLOR``.
 
 All existing ``logging.getLogger()`` calls are automatically enriched
 with structlog processors via the stdlib integration layer. No changes
@@ -24,6 +25,7 @@ Usage::
 
 import logging
 import os
+import sys
 from typing import Any
 
 import structlog
@@ -54,10 +56,25 @@ def _drop_record(
     return event_dict
 
 
+def _env_flag(name: str) -> bool | None:
+    """Parse a tri-state boolean environment variable."""
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return None
+
+    normalized = raw_value.strip().lower()
+    if normalized in ("1", "true", "yes"):
+        return True
+    if normalized in ("0", "false", "no"):
+        return False
+    return None
+
+
 def configure_structlog(
     *,
     json_logs: bool | None = None,
     log_level: str | None = None,
+    stream: Any | None = None,
 ) -> None:
     """Configure structlog with stdlib integration.
 
@@ -67,36 +84,33 @@ def configure_structlog(
             ``False``).
         log_level: Set the root logger level. If ``None``, reads
             ``DISCORDIANAI_LOG_LEVEL`` (defaults to ``INFO``).
+        stream: Optional stream for the root handler, used by tests and
+            as the output target for the root logging handler.
     """
     if json_logs is None:
-        json_logs = os.environ.get("DISCORDIANAI_LOG_JSON", "").strip().lower() in (
-            "1",
-            "true",
-            "yes",
-        )
+        json_logs = _env_flag("DISCORDIANAI_LOG_JSON") is True
     if log_level is None:
         log_level = os.environ.get("DISCORDIANAI_LOG_LEVEL", "INFO").upper()
+    force_colors = _env_flag("DISCORDIANAI_LOG_COLOR")
 
     level = getattr(logging, log_level, logging.INFO)
-    logging.basicConfig(
-        format="%(message)s",
-        level=level,
-        force=True,
-    )
-
     shared_processors: list[Any] = [
-        structlog.contextvars.merge_contextvars,
-        structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
         _add_logger_name,
+        structlog.stdlib.ExtraAdder(),
         _drop_record,
     ]
 
     if json_logs:
         renderer = structlog.processors.JSONRenderer()
     else:
-        renderer = structlog.dev.ConsoleRenderer()
+        if stream is None:
+            stream = sys.stderr
+        if force_colors is False:
+            renderer = structlog.dev.ConsoleRenderer(colors=False, pad_event_to=0)
+        else:
+            renderer = structlog.dev.ConsoleRenderer(colors=True, pad_event_to=0)
 
     structlog.configure(
         processors=[
@@ -119,7 +133,7 @@ def configure_structlog(
         ],
     )
 
-    handler = logging.StreamHandler()
+    handler = logging.StreamHandler(stream)
     handler.setFormatter(formatter)
 
     root_logger = logging.getLogger()

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.api_context import APICallResult, api_call, call_with_retry
+from src.api_context import api_call
 from src.error_handling import error_tracker
 
 _TEST_RUNTIME_ERROR = RuntimeError("boom")
@@ -88,47 +88,6 @@ async def test_api_call_with_request(logger):
         user_info = " for user 42"
         found = any(user_info in str(c) for c in all_calls)
         assert found, f"user info not found in log calls: {all_calls}"
-
-
-@pytest.mark.asyncio
-async def test_call_with_retry_success(logger):
-    """call_with_retry returns APICallResult on success."""
-
-    async def factory():
-        return {"data": "response"}
-
-    result = await call_with_retry(factory, "openai", logger)
-    assert isinstance(result, APICallResult)
-    assert result.success is True
-    assert result.value == {"data": "response"}
-    assert result.error is None
-    assert result.elapsed_seconds > 0
-
-
-@pytest.mark.asyncio
-async def test_call_with_retry_failure(logger):
-    """call_with_retry returns APICallResult on failure."""
-
-    async def factory():
-        raise _TEST_API_ERROR
-
-    result = await call_with_retry(factory, "openai", logger, max_attempts=1)
-    assert result.success is False
-    assert result.error is not None
-    assert "API error" in str(result.error)
-
-
-@pytest.mark.asyncio
-async def test_call_with_retry_with_request(logger):
-    """call_with_retry passes request context."""
-    request = MagicMock()
-    request.user.id = 99
-
-    async def factory():
-        return "ok"
-
-    result = await call_with_retry(factory, "perplexity", logger, request=request)
-    assert result.success is True
 
 
 @pytest.mark.asyncio

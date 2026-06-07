@@ -26,6 +26,7 @@ DiscordianAI API Reference
    message_processor
    message_router
    message_splitter
+   conversation_manager
 
 .. toctree::
    :maxdepth: 2
@@ -53,7 +54,6 @@ DiscordianAI API Reference
    :maxdepth: 2
    :caption: Utilities
 
-   api_utils
    web_scraper
    discord_bot
    discord_embeds

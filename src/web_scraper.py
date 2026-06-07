@@ -1,22 +1,21 @@
 """Generic web scraping utilities for URL content extraction.
 
 This module provides robust, production-ready web scraping functionality
-using requests + BeautifulSoup. Designed for Docker environments and
+using httpx + BeautifulSoup. Designed for Docker environments and
 production deployment with comprehensive error handling and logging.
 """
 
 import asyncio
 import ipaddress
 import logging
-import random
 import re
+import secrets
 import socket
-import time
 from typing import Any
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
-import requests
+import httpx
 
 # Configuration constants
 DEFAULT_TIMEOUT = 15  # Generous timeout for slow sites
@@ -58,15 +57,18 @@ class WebScrapingError(Exception):
     """Base exception for web scraping errors."""
 
 
-class ContentExtractionError(WebScrapingError):
-    """Exception raised when content extraction fails."""
+class _StopRetry:
+    """Sentinel indicating the retry loop should stop immediately."""
 
 
-def _add_respectful_delay():
+_STOP_RETRY = _StopRetry()
+
+
+async def _add_respectful_delay():
     """Add a respectful delay between requests to avoid overwhelming servers."""
-    # Using random for non-cryptographic purposes (rate limiting)
-    delay = random.uniform(MIN_DELAY_BETWEEN_REQUESTS, MAX_DELAY_BETWEEN_REQUESTS)  # noqa: S311
-    time.sleep(delay)
+    # Using SystemRandom to stay consistent with the jitter helpers.
+    delay = secrets.SystemRandom().uniform(MIN_DELAY_BETWEEN_REQUESTS, MAX_DELAY_BETWEEN_REQUESTS)
+    await asyncio.sleep(delay)
 
 
 def _clean_text(text: str) -> str:
@@ -174,9 +176,6 @@ def _extract_content(soup: BeautifulSoup) -> str:
         "#main-content",
         ".article-content",
         ".story-content",
-        ".post",
-        ".entry",
-        ".article",
         ".story",
         ".markdown-body",
     ]
@@ -244,7 +243,7 @@ async def scrape_url_content(
     request_timeout: int = DEFAULT_TIMEOUT,
     max_content_length: int = MAX_CONTENT_LENGTH,
 ) -> str | None:
-    """Scrape content from a URL using production-ready requests + BeautifulSoup.
+    """Scrape content from a URL using production-ready httpx + BeautifulSoup.
 
     This function implements production best practices including:
     - Proper error handling and retries
@@ -271,14 +270,12 @@ async def scrape_url_content(
         if not _validate_url(url, logger):
             return None
 
-        _add_respectful_delay()
+        await _add_respectful_delay()
 
         # Execute request asynchronously, enforcing an overall asyncio timeout
         try:
             async with asyncio.timeout(request_timeout):
-                html_content = await asyncio.to_thread(
-                    _fetch_content_with_retries, url, request_timeout, logger
-                )
+                html_content = await _fetch_content_with_retries(url, request_timeout, logger)
         except TimeoutError:
             logger.warning("Scrape timed out for URL: %s", url)
             return None
@@ -307,48 +304,52 @@ def _validate_url(url: str, logger: logging.Logger) -> bool:
     return True
 
 
-_STOP_RETRY = object()
-
-
-def _fetch_content_with_retries(url: str, timeout: int, logger: logging.Logger) -> str | None:
+async def _fetch_content_with_retries(
+    url: str, request_timeout: int, logger: logging.Logger
+) -> str | None:
     """Perform HTTP request with retries."""
-    session = requests.Session()
-    session.headers.update(DEFAULT_HEADERS)
-    try:
+    async with httpx.AsyncClient(headers=DEFAULT_HEADERS, follow_redirects=True) as client:
         for attempt in range(REQUEST_RETRIES + 1):
-            result = _fetch_attempt_with_retry_logic(session, url, attempt, timeout, logger)
+            result = await _fetch_attempt_with_retry_logic(
+                client, url, attempt, request_timeout, logger
+            )
             if result is _STOP_RETRY:
                 return None
             if result is not None:
                 return result
             if attempt < REQUEST_RETRIES:
-                time.sleep(2**attempt)
-    finally:
-        session.close()
+                await asyncio.sleep(2**attempt)
     return None
 
 
-def _fetch_attempt_with_retry_logic(
-    session: requests.Session, url: str, attempt: int, timeout: int, logger: logging.Logger
-) -> str | None:
+async def _fetch_attempt_with_retry_logic(
+    client: httpx.AsyncClient,
+    url: str,
+    attempt: int,
+    request_timeout: int,
+    logger: logging.Logger,
+) -> str | _StopRetry | None:
     """Perform a single fetch attempt with error handling for the retry loop."""
     try:
-        return _fetch_attempt(session, url, attempt, timeout, logger)
-    except requests.exceptions.RequestException as e:
-        if attempt == REQUEST_RETRIES or isinstance(e, requests.exceptions.HTTPError):
+        return await _fetch_attempt(client, url, attempt, request_timeout, logger)
+    except httpx.HTTPError as e:
+        if attempt == REQUEST_RETRIES or isinstance(e, httpx.HTTPStatusError):
             _log_fetch_error(e, url, attempt, logger)
             return _STOP_RETRY
         # Let the loop handle the sleep for non-fatal errors
         return None
 
 
-def _fetch_attempt(
-    session: requests.Session, url: str, attempt: int, timeout: int, logger: logging.Logger
-) -> str | None:
+async def _fetch_attempt(
+    client: httpx.AsyncClient,
+    url: str,
+    attempt: int,
+    request_timeout: int,
+    logger: logging.Logger,
+) -> str | _StopRetry:
     """Perform a single fetch attempt."""
     logger.debug("HTTP attempt %d for: %s", attempt + 1, url)
-    response = session.get(url, timeout=timeout, allow_redirects=True, stream=True)
-    try:
+    async with client.stream("GET", url, timeout=request_timeout) as response:
         response.raise_for_status()
 
         if "text/html" not in response.headers.get("content-type", "").lower():
@@ -358,21 +359,23 @@ def _fetch_attempt(
             if int(response.headers.get("content-length", 0)) > MAX_DOWNLOAD_SIZE:
                 return _STOP_RETRY
         except (TypeError, ValueError):
-            return _STOP_RETRY
+            pass
 
         content = bytearray()
-        for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
-            content.extend(chunk)
-            if len(content) > MAX_DOWNLOAD_SIZE:
+        async for chunk in response.aiter_bytes(chunk_size=CHUNK_SIZE):
+            remaining = MAX_DOWNLOAD_SIZE - len(content)
+            if remaining <= 0:
                 break
+            if len(chunk) > remaining:
+                content.extend(chunk[:remaining])
+                break
+            content.extend(chunk)
         return bytes(content).decode("utf-8", errors="ignore")
-    finally:
-        response.close()
 
 
 def _log_fetch_error(e: Exception, url: str, attempt: int, logger: logging.Logger) -> None:
     """Log fetch errors with appropriate detail."""
-    if isinstance(e, requests.exceptions.HTTPError):
+    if isinstance(e, httpx.HTTPStatusError):
         status = e.response.status_code if e.response else "unknown"
         logger.error("HTTP %s for %s", status, url)
     else:

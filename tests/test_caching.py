@@ -10,6 +10,7 @@ This test suite covers:
 
 import asyncio
 import time
+from unittest.mock import patch
 
 import pytest
 
@@ -109,33 +110,30 @@ class TestThreadSafeLRUCache:
 
     def test_cache_ttl_expiration(self):
         """Test TTL-based expiration."""
-        # Put entry with short TTL
-        self.cache.put("expire_key", "expire_value", ttl=0.1)
+        with patch("src.caching.time.time", side_effect=[100.0, 100.0, 100.25]):
+            # Put entry with short TTL
+            self.cache.put("expire_key", "expire_value", ttl=0.1)
 
-        # Should be available immediately
-        assert self.cache.get("expire_key") == "expire_value"
+            # Should be available immediately
+            assert self.cache.get("expire_key") == "expire_value"
 
-        # Wait for expiration
-        time.sleep(0.2)
-
-        # Should be expired now
-        assert self.cache.get("expire_key") is None
+            # Should be expired now
+            assert self.cache.get("expire_key") is None
 
     def test_cache_cleanup_expired(self):
         """Test cleanup of expired entries."""
-        # Add entries with different TTLs
-        self.cache.put("short", "value1", ttl=0.1)
-        self.cache.put("long", "value2", ttl=300.0)
+        with patch("src.caching.time.time", side_effect=[200.0, 200.0, 200.25, 200.25]):
+            # Add entries with different TTLs
+            self.cache.put("short", "value1", ttl=0.1)
+            self.cache.put("long", "value2", ttl=300.0)
 
-        # Wait for short TTL to expire
-        time.sleep(0.2)
+            # Cleanup expired entries
+            expired_count = self.cache.cleanup_expired()
 
-        # Cleanup expired entries
-        expired_count = self.cache.cleanup_expired()
-
-        assert expired_count == 1
-        assert self.cache.get("short") is None
-        assert self.cache.get("long") == "value2"
+        with patch("src.caching.time.time", return_value=200.25):
+            assert expired_count == 1
+            assert self.cache.get("short") is None
+            assert self.cache.get("long") == "value2"
 
     def test_cache_clear(self):
         """Test clearing all cache entries."""
@@ -433,14 +431,11 @@ class TestCacheIntegration:
     @pytest.mark.asyncio
     async def test_cleanup_caches(self):
         """Test cache cleanup functionality."""
-        from src.caching import conversation_cache, response_cache
+        from src.caching import response_cache
 
         # Add some entries that will expire quickly
         response_cache.cache.put("test1", "response1", ttl=0.1)
         response_cache.cache.put("test2", "response2", ttl=300.0)
-
-        conversation_cache.put("conv1", "conversation1", ttl=0.1)
-        conversation_cache.put("conv2", "conversation2", ttl=300.0)
 
         # Wait for short TTL entries to expire
         await asyncio.sleep(0.2)
@@ -449,13 +444,11 @@ class TestCacheIntegration:
         expired_count = await cleanup_caches()
 
         # Should have cleaned up expired entries
-        assert expired_count == 2
+        assert expired_count == 1
 
         # Verify expired entries are gone
         assert response_cache.cache.get("test1") is None
         assert response_cache.cache.get("test2") == "response2"
-        assert conversation_cache.get("conv1") is None
-        assert conversation_cache.get("conv2") == "conversation2"
 
 
 if __name__ == "__main__":

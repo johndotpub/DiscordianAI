@@ -18,7 +18,7 @@ import logging
 import time
 from typing import Any
 
-from .error_handling import classify_error, error_tracker, retry_with_backoff
+from .error_handling import classify_error, error_tracker
 from .models import AIRequest
 
 
@@ -116,61 +116,6 @@ async def api_call(
                 elapsed,
                 user_info,
             )
-
-
-async def call_with_retry(  # noqa: PLR0913
-    coro_factory: Any,
-    service: str,
-    logger: logging.Logger,
-    *,
-    max_attempts: int = 2,
-    base_delay: float = 4.0,
-    max_delay: float = 4.0,
-    request: AIRequest | None = None,
-) -> APICallResult:
-    """Execute an API call with retry and comprehensive lifecycle tracking.
-
-    This is a convenience function that combines ``api_call`` context manager
-    with ``retry_with_backoff`` for callers that want retry support without
-    managing the context manager manually.
-
-    Args:
-        coro_factory: An async callable (zero-arg) that performs the API call.
-        service: Service name for logging/tracking.
-        logger: Logger instance.
-        max_attempts: Maximum number of retry attempts.
-        base_delay: Base delay for exponential backoff.
-        max_delay: Maximum delay between retries.
-        request: Optional ``AIRequest`` for user-level context.
-
-    Returns:
-        ``APICallResult`` with outcome details.
-    """
-    from .error_handling import RetryConfig  # noqa: PLC0415
-
-    retry_config = RetryConfig(
-        max_attempts=max_attempts,
-        base_delay=base_delay,
-        max_delay=max_delay,
-        exponential_base=1.0,
-        jitter=True,
-    )
-
-    start_time = time.monotonic()
-    api_result = APICallResult(service=service)
-
-    try:
-        async with api_call(service, logger, request) as ctx:
-            response = await retry_with_backoff(coro_factory, retry_config, logger)
-            ctx.set_result(response)
-            api_result.value = response
-            api_result.success = True
-    except Exception as exc:  # noqa: BLE001
-        api_result.error = exc
-        api_result.success = False
-
-    api_result.elapsed_seconds = time.monotonic() - start_time
-    return api_result
 
 
 def _severity_to_log_level(severity: Any) -> int:

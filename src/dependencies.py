@@ -18,12 +18,13 @@ Usage::
 
 from __future__ import annotations
 
-import asyncio  # noqa: TC003
 from dataclasses import dataclass, field
-import logging  # noqa: TC003
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    import asyncio
+    import logging
+
     from .connection_pool import ConnectionPoolManager
     from .conversation_manager import ThreadSafeConversationManager
     from .health_server import HealthServer
@@ -48,7 +49,8 @@ class BotDependencies:
         rate_limiter: Per-user rate limiter.
         conversation_manager: Thread-safe conversation history store.
         health_server: Health endpoint server (or ``None``).
-        allowed_channels: List of channel IDs the bot responds in.
+        allowed_channels: Channel names the bot responds in (used as fallback if no
+            IDs are configured).
         bot_presence: Discord presence status string.
         activity_type: Discord activity type string.
         activity_status: Discord activity status text.
@@ -74,7 +76,8 @@ class BotDependencies:
     health_server: HealthServer | None = None
 
     # Configuration scalars (extracted from config for convenience)
-    allowed_channels: list[int] = field(default_factory=list)
+    allowed_channels: list[str] = field(default_factory=list)
+    allowed_channel_ids: list[int] = field(default_factory=list)
     bot_presence: str = "online"
     activity_type: str = "watching"
     activity_status: str = ""
@@ -110,6 +113,7 @@ class BotDependencies:
             "conversation_manager": self.conversation_manager,
             "health_server": self.health_server,
             "ALLOWED_CHANNELS": self.allowed_channels,
+            "ALLOWED_CHANNEL_IDS": self.allowed_channel_ids,
             "BOT_PRESENCE": self.bot_presence,
             "ACTIVITY_TYPE": self.activity_type,
             "ACTIVITY_STATUS": self.activity_status,
@@ -127,6 +131,33 @@ class BotDependencies:
         """Support dict-style access for backward compatibility."""
         mapping = self.to_dict()
         return mapping[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        """Support dict-style writes for backward compatibility."""
+        field_name = {
+            "ALLOWED_CHANNELS": "allowed_channels",
+            "ALLOWED_CHANNEL_IDS": "allowed_channel_ids",
+            "BOT_PRESENCE": "bot_presence",
+            "ACTIVITY_TYPE": "activity_type",
+            "ACTIVITY_STATUS": "activity_status",
+            "DISCORD_TOKEN": "discord_token",
+            "RATE_LIMIT": "rate_limit",
+            "RATE_LIMIT_PER": "rate_limit_period",
+            "GPT_MODEL": "gpt_model",
+            "PERPLEXITY_MODEL": "perplexity_model",
+            "SYSTEM_MESSAGE": "system_message",
+            "OUTPUT_TOKENS": "output_tokens",
+            "_health_task": "health_task",
+        }.get(key)
+        if field_name:
+            setattr(self, field_name, value)
+            return
+
+        if hasattr(self, key):
+            setattr(self, key, value)
+            return
+
+        raise KeyError(key)
 
     def __contains__(self, key: str) -> bool:
         """Support ``key in deps`` for backward compatibility."""

@@ -5,61 +5,64 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 ## 📐 High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                              Discord                                     │
-│                          (Discord Gateway)                               │
-└─────────────────────────────────────────┬───────────────────────────────┘
-                                          │
-                                          ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           Discord Bot Layer                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │
-│  │   bot.py     │  │ discord_bot  │  │ discord_     │  │ message_     │ │
-│  │ (Event Loop) │  │   .py        │  │ embeds.py    │  │ processor.py │ │
-│  └──────┬───────┘  └──────────────┘  └──────────────┘  └──────┬───────┘ │
-│                                                       ┌───────▼───────┐ │
-│                                                       │ message_      │ │
-│                                                       │ splitter.py   │ │
-│                                                       └───────────────┘ │
-└─────────┼───────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         Orchestration Layer                              │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │                     smart_orchestrator.py                          │ │
-│  │   • Query Classification (time-sensitive, factual, conversational) │ │
-│  │   • AI Service Selection (OpenAI vs Perplexity)                    │ │
-│  │   • Follow-up Detection & Consistency                              │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-└─────────┬───────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           AI Service Layer                               │
-│  ┌─────────────────────┐              ┌─────────────────────┐          │
-│  │ openai_processing.py│              │perplexity_processing│          │
-│  │  • GPT-5 Models     │              │  • Sonar Models     │          │
-│  │  • Conversational   │              │  • Web Search       │          │
-│  │  • Creative Tasks   │              │  • Citations        │          │
-│  └──────────┬──────────┘              └──────────┬──────────┘          │
-└─────────────┼──────────────────────────────────────┼────────────────────┘
-              │                                      │
-              ▼                                      ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        Infrastructure Layer                              │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌──────────────────┐  │
-│  │connection_  │ │ caching.py  │ │error_       │ │ conversation_    │  │
-│  │pool.py      │ │ (LRU+TTL)   │ │handling.py  │ │ manager.py       │  │
-│  │ (HTTP/2)    │ │             │ │(Circuit     │ │ (Thread-safe)    │  │
-│  │ + metrics   │ │             │ │ Breaker)    │ │                  │  │
-│  └─────────────┘ └─────────────┘ └─────────────┘ └──────────────────┘  │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌──────────────────┐  │
-│  │health_      │ │api_context  │ │structured_  │ │dependencies.py   │  │
-│  │server.py    │ │  .py        │ │logging.py   │ │ (BotDependencies)│  │
-│  │ (HTTP /kube)│ │ (Lifecycle) │ │ (structlog) │ │                  │  │
-│  └─────────────┘ └─────────────┘ └─────────────┘ └──────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ Discord Gateway                                                                         │
+└────────────────────────────────────────────────┬───────────────────────────────────────┘
+                                                 │
+                                                 ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ Entry & Routing                                                                         │
+│ ┌──────────────────────────┬──────────────────────────┬──────────────────────────┐     │
+│ │ main.py                  │ bot.py                   │ bot_manager.py           │     │
+│ │ message_router.py        │ message_processor.py     │ discord_bot.py           │     │
+│ │ dependencies.py          │ logging_adapter.py       │ __init__.py              │     │
+│ │ models.py                │                          │                          │     │
+│ └──────────────────────────┴──────────────────────────┴──────────────────────────┘     │
+└────────────────────────────────────────────────┬───────────────────────────────────────┘
+                                                 │
+                                                 ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ Discord Presentation                                                                    │
+│ ┌──────────────────────────┬──────────────────────────┬──────────────────────────┐     │
+│ │ discord_embeds.py        │ message_splitter.py      │ web_scraper.py           │     │
+│ │ api_validation.py        │                          │                          │     │
+│ │                          │                          │                          │     │
+│ │                          │                          │                          │     │
+│ └──────────────────────────┴──────────────────────────┴──────────────────────────┘     │
+└────────────────────────────────────────────────┬───────────────────────────────────────┘
+                                                 │
+                                                 ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ Orchestration & AI Selection                                                            │
+│ ┌──────────────────────────┬──────────────────────────┬──────────────────────────┐     │
+│ │ smart_orchestrator.py    │ openai_processing.py     │ perplexity_processing.py │     │
+│ │                          │                          │                          │     │
+│ │                          │                          │                          │     │
+│ │                          │                          │                          │     │
+│ └──────────────────────────┴──────────────────────────┴──────────────────────────┘     │
+└────────────────────────────────────────────────┬───────────────────────────────────────┘
+                                                 │
+                                                 ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ Infrastructure & Resilience                                                             │
+│ ┌──────────────────────────┬──────────────────────────┬──────────────────────────┐     │
+│ │ connection_pool.py       │ caching.py               │ error_handling.py        │     │
+│ │ conversation_manager.py  │ rate_limits.py           │ health_checks.py         │     │
+│ │ health_server.py         │ api_context.py           │ structured_logging.py    │     │
+│ │ dependency_check.py      │                          │                          │     │
+│ └──────────────────────────┴──────────────────────────┴──────────────────────────┘     │
+└────────────────────────────────────────────────┬───────────────────────────────────────┘
+                                                 │
+                                                 ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ Shared Support & Packaging                                                              │
+│ ┌──────────────────────────┬──────────────────────────┬──────────────────────────┐     │
+│ │ config.py                │ py.typed                 │                          │     │
+│ │                          │                          │                          │     │
+│ │                          │                          │                          │     │
+│ │                          │                          │                          │     │
+│ └──────────────────────────┴──────────────────────────┴──────────────────────────┘     │
+└────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## 🧩 Component Overview
@@ -76,7 +79,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 | Component | File | Purpose |
 |-----------|------|---------|
 | **Smart Orchestrator** | `smart_orchestrator.py` | AI service selection logic based on message analysis |
-| **OpenAI Processing** | `openai_processing.py` | GPT-5 API interactions, conversation handling |
+| **OpenAI Processing** | `openai_processing.py` | GPT-5 API interactions, response formatting |
 | **Perplexity Processing** | `perplexity_processing.py` | Web search, citation extraction |
 | **Web Scraper** | `web_scraper.py` | URL content extraction for context enrichment |
 
@@ -156,7 +159,7 @@ sequenceDiagram
         end
     end
     O-->>MP: Response payload
-    MP->>CM: Update conversation history
+    O->>CM: Update conversation history
     MP->>MP: Split/format output
     MP-->>B: Final payload
     B->>D: Send response
@@ -219,6 +222,8 @@ async def process_openai_message(...):
     ...
 ```
 
+`_extract_message_context()` has been extracted as a shared helper, but the full decorator stack shown here is still aspirational; the codebase currently uses explicit caching and deduplication helpers.
+
 **Features:**
 - TTL-based expiration
 - Request deduplication (prevents duplicate API calls)
@@ -239,15 +244,15 @@ class ThreadSafeConversationManager:
 - Automatic history pruning
 - Deep copy returns to prevent external modification
 
-### 5. Retry with Exponential Backoff
+### 5. Retry with Flat Jittered Delay
 
 ```python
 @dataclass
 class RetryConfig:
-    max_attempts: int = 3
-    base_delay: float = 1.0
-    max_delay: float = 60.0
-    exponential_base: float = 2.0
+    max_attempts: int = 2
+    base_delay: float = 4.0
+    max_delay: float = 4.0
+    exponential_base: float = 1.0
     jitter: bool = True  # Prevents thundering herd
 ```
 
@@ -288,11 +293,10 @@ class RetryConfig:
 
 ### Connection Pooling
 ```python
-# HTTP/2 with connection reuse
-limits = httpx.Limits(
-    max_connections=50,
-    max_keepalive_connections=10,
-)
+from src.connection_pool import ConnectionPoolManager
+
+pool = ConnectionPoolManager()
+client = pool.get_openai_client()
 ```
 
 ### Caching Strategy
@@ -326,25 +330,35 @@ tests/
 ```
 DiscordianAI/
 ├── src/
-│   ├── __init__.py           # Package exports
-│   ├── py.typed              # PEP 561 type hints marker
-│   ├── main.py               # Entry point
-│   ├── bot.py                # Discord bot core
-│   ├── config.py             # Configuration (single source of truth)
-│   ├── smart_orchestrator.py # AI routing logic
-│   ├── openai_processing.py  # OpenAI integration
+│   ├── __init__.py              # Package exports
+│   ├── health_checks.py         # API monitoring
+│   ├── api_validation.py        # Configuration validation
+│   ├── message_processor.py     # Discord event normalization
+│   ├── rate_limits.py           # Rate limiting
+│   ├── bot.py                   # Discord bot core
+│   ├── web_scraper.py           # URL content extraction
+│   ├── smart_orchestrator.py    # AI routing logic
+│   ├── openai_processing.py     # OpenAI integration
+│   ├── structured_logging.py    # structlog configuration
+│   ├── caching.py               # Response caching
+│   ├── health_server.py         # HTTP liveness/readiness probes
+│   ├── dependency_check.py      # Dependency validation
+│   ├── api_context.py           # API call context managers
+│   ├── message_router.py        # Mention and DM routing
+│   ├── conversation_manager.py  # Thread-safe conversations
+│   ├── error_handling.py        # Resilience patterns
+│   ├── logging_adapter.py       # Structured logging adapter
 │   ├── perplexity_processing.py # Perplexity integration
-│   ├── connection_pool.py    # HTTP connection management
-│   ├── conversation_manager.py # Thread-safe conversations
-│   ├── error_handling.py     # Resilience patterns
-│   ├── caching.py            # Response caching
-│   ├── rate_limits.py        # Rate limiting
-│   ├── health_checks.py      # API monitoring
-│   ├── health_server.py      # HTTP liveness/readiness probes
-│   ├── api_context.py         # API call context managers
-│   ├── structured_logging.py  # structlog configuration
-│   ├── dependencies.py       # BotDependencies dataclass (DI)
-│   └── ...
+│   ├── main.py                  # Entry point
+│   ├── connection_pool.py       # HTTP connection management
+│   ├── discord_embeds.py        # Citation embed formatting
+│   ├── discord_bot.py           # Activity / presence management
+│   ├── models.py                # Shared data models
+│   ├── dependencies.py          # BotDependencies dataclass (DI)
+│   ├── config.py                # Configuration (single source of truth)
+│   ├── message_splitter.py      # Message splitting and formatting
+│   ├── py.typed                 # PEP 561 type hints marker
+│   └── bot_manager.py           # Lifecycle management
 ├── tests/                    # Test suite
 ├── docs/                     # Documentation
 ├── pyproject.toml            # Build & tool configuration
@@ -363,4 +377,3 @@ DiscordianAI/
 - Current: Single instance, in-memory state
 - Future: Redis for distributed caching/rate limiting
 - Future: Multiple bot instances with shared state
-

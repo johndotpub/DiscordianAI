@@ -7,7 +7,7 @@ conversation state management, and comprehensive error recovery.
 from .api_context import api_call
 from .caching import cached_response, deduplicated_request
 from .config import DEFAULT_CACHE_TTL
-from .error_handling import RetryConfig, retry_with_backoff
+from .error_handling import DEFAULT_API_RETRY_CONFIG, retry_with_backoff
 from .models import AIRequest, OpenAIConfig
 
 
@@ -35,14 +35,10 @@ async def _fetch_openai_response(
             "Making OpenAI API call with %d messages", len(api_params["messages"])
         )
 
-        retry_config = RetryConfig(
-            max_attempts=2, base_delay=4.0, max_delay=4.0, exponential_base=1.0, jitter=True
-        )
-
         try:
             response = await retry_with_backoff(
                 lambda: openai_client.chat.completions.create(**api_params),
-                retry_config,
+                DEFAULT_API_RETRY_CONFIG,
                 request.logger,
             )
         except Exception:
@@ -75,21 +71,12 @@ async def process_openai_message(
     openai_client,
     config: OpenAIConfig,
 ) -> str | None:
-    """Process message using OpenAI API and persist conversation history."""
+    """Process message using OpenAI API."""
     response_content = await _fetch_openai_response(
         request, conversation_summary, openai_client, config
     )
 
     if not response_content:
         return None
-
-    # Add both user and assistant messages to conversation history (thread-safe)
-    request.conversation_manager.add_message(request.user.id, "user", request.message)
-    request.conversation_manager.add_message(
-        request.user.id,
-        "assistant",
-        response_content,
-        metadata={"ai_service": "openai", "model": config.model},
-    )
 
     return response_content

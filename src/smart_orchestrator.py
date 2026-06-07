@@ -30,7 +30,22 @@ ERROR_MESSAGES = get_error_messages()
 
 # Constants for magic values
 DEFAULT_LOOKBACK = 6
-MAX_ORCHESTRATOR_RETURNS = 6
+
+
+def _record_conversation_turn(
+    request: AIRequest,
+    response_text: str,
+    ai_service: str,
+    model: str,
+) -> None:
+    """Record the user prompt and assistant response in conversation history."""
+    request.conversation_manager.add_message(request.user.id, "user", request.message)
+    request.conversation_manager.add_message(
+        request.user.id,
+        "assistant",
+        response_text,
+        metadata={"ai_service": ai_service, "model": model},
+    )
 
 
 def _sanitize_for_routing(message: str) -> str:
@@ -223,6 +238,7 @@ async def _process_perplexity_only_mode(
         result = await process_perplexity_message(request, perplexity_client, config.perplexity)
         if result:
             res_content, suppress, embed = result
+            _record_conversation_turn(request, res_content, "perplexity", config.perplexity.model)
             request.logger.info("Perplexity success (%d chars)", len(res_content))
             return res_content, suppress, embed
 
@@ -246,6 +262,7 @@ async def _process_openai_only_mode(
             request, conversation_summary, openai_client, config.openai
         )
         if response_content:
+            _record_conversation_turn(request, response_content, "openai", config.openai.model)
             request.logger.info("OpenAI success (%d chars)", len(response_content))
             return response_content, False, None
 
@@ -353,7 +370,9 @@ async def _process_hybrid_mode(
         request.logger.info("Routing to Perplexity")
         res = await process_perplexity_message(request, clients.perplexity, config.perplexity)
         if res:
-            return res
+            res_content, suppress, embed = res
+            _record_conversation_turn(request, res_content, "perplexity", config.perplexity.model)
+            return res_content, suppress, embed
         request.logger.warning("Perplexity failed, falling back to OpenAI")
 
     request.logger.info("Routing to OpenAI")
@@ -368,23 +387,31 @@ async def _process_hybrid_mode(
                 "OpenAI response indicates web-inability; rerouting to Perplexity"
             )
             per_res = await process_perplexity_message(
-                request, clients.perplexity, config.perplexity
+                request,
+                clients.perplexity,
+                config.perplexity,
             )
             if per_res:
-                return per_res
+                per_text, per_suppress, per_embed = per_res
+                _record_conversation_turn(request, per_text, "perplexity", config.perplexity.model)
+                return per_text, per_suppress, per_embed
             # Degraded fallback: return original OpenAI response if Perplexity also fails
             request.logger.warning(
                 "Perplexity failed after OpenAI reroute; returning original "
                 "OpenAI response as degraded fallback"
             )
+            _record_conversation_turn(request, res_content, "openai", config.openai.model)
             return res_content, False, None
+        _record_conversation_turn(request, res_content, "openai", config.openai.model)
         return res_content, False, None
 
     # If OpenAI returned no response (None/empty), attempt Perplexity as a fallback
     request.logger.info("OpenAI returned no response; attempting Perplexity fallback")
     per_res = await process_perplexity_message(request, clients.perplexity, config.perplexity)
     if per_res:
-        return per_res
+        per_text, per_suppress, per_embed = per_res
+        _record_conversation_turn(request, per_text, "perplexity", config.perplexity.model)
+        return per_text, per_suppress, per_embed
 
     request.logger.error("Both services failed or returned no response")
     return ERROR_MESSAGES["both_services_unavailable"], False, None

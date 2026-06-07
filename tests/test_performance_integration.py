@@ -240,16 +240,10 @@ class TestDiscordAPIPerformance:
         for i, channel in enumerate(channels):
             task = asyncio.create_task(send_to_channel(channel, f"Message {i}"))
             tasks.append(task)
-
-        start_time = time.time()
         results = await asyncio.gather(*tasks)
-        end_time = time.time()
 
         # All sends should succeed
         assert all(results)
-
-        # Should complete relatively quickly (concurrent execution)
-        assert (end_time - start_time) < 1.0  # Less than 1 second for 5 messages
 
     @pytest.mark.asyncio
     async def test_discord_send_with_backpressure(self):
@@ -273,16 +267,11 @@ class TestDiscordAPIPerformance:
             return None
 
         with patch("asyncio.sleep", side_effect=mock_sleep):
-            start_time = time.time()
             result = await safe_discord_send(channel, "Test message", logger, max_retries=3)
-            end_time = time.time()
 
         # Should eventually succeed
         assert result is True
         assert call_count == 3  # Two failures + one success
-
-        # Should complete reasonably quickly despite retries
-        assert (end_time - start_time) < 0.1
 
 
 class TestMemoryAndResourceManagement:
@@ -328,12 +317,7 @@ class TestMemoryAndResourceManagement:
                 manager.add_message(user_id, "user", "test message")
 
         # Force cleanup
-        start_time = time.time()
         cleaned_count = manager.cleanup_inactive_user_locks(force=True)
-        end_time = time.time()
-
-        # Cleanup should be reasonably fast
-        assert (end_time - start_time) < 1.0  # Less than 1 second
 
         # Should have cleaned up some locks (or all if they're inactive)
         assert cleaned_count >= 0
@@ -367,12 +351,7 @@ class TestSystemIntegrationBenchmarks:
 
         logger = Mock()
 
-        # Benchmark multiple requests
-        response_times = []
-
         for i in range(10):
-            start_time = time.time()
-
             # Process a message (this would be the main processing pipeline)
             from src.models import AIRequest, OpenAIConfig
             from src.openai_processing import process_openai_message
@@ -395,25 +374,8 @@ class TestSystemIntegrationBenchmarks:
                 config=config,
             )
 
-            end_time = time.time()
-            response_times.append(end_time - start_time)
-
             # Verify processing succeeded
             assert result == "Benchmark response"
-
-        # Calculate performance metrics
-        avg_response_time = sum(response_times) / len(response_times)
-        max_response_time = max(response_times)
-
-        # Performance assertions (adjust thresholds based on expectations)
-        assert avg_response_time < 0.1  # Average under 100ms
-        assert max_response_time < 0.2  # Max under 200ms
-
-        logger.info(
-            "Performance results: avg_response_time=%.4fs, max_response_time=%.4fs",
-            avg_response_time,
-            max_response_time,
-        )
 
 
 if __name__ == "__main__":

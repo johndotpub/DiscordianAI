@@ -79,6 +79,7 @@ async def test_process_perplexity_message_success():
     res_text, _, embed = result
     assert "Test response from Perplexity" in res_text
     assert embed is None
+    assert manager.get_conversation(1) == []
 
 
 @pytest.mark.asyncio
@@ -179,6 +180,7 @@ async def test_process_perplexity_message_with_citations():
     assert embed_data is not None
     assert "embed" in embed_data
     assert "[[1]](https://example.com)" in embed_data["embed"].description
+    assert manager.get_conversation(3) == []
 
 
 @pytest.mark.asyncio
@@ -246,6 +248,7 @@ async def test_process_perplexity_strips_citation_url_footers():
     assert "https://example.com/source-two" not in res_text
     assert "[1]" in res_text
     assert "[2]" in res_text
+    assert manager.get_conversation(5) == []
 
 
 def test_should_suppress_embeds_mixed_links():

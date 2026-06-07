@@ -50,6 +50,7 @@ Advanced configuration for intelligent AI service routing.
   
 - **`MAX_HISTORY_PER_USER`**: Maximum conversation history per user *(default: 50)*
 - **`USER_LOCK_CLEANUP_INTERVAL`**: Memory cleanup interval in seconds *(default: 3600)*
+- **`ENTITY_DETECTION_MIN_WORDS`**: Minimum message length intended for entity detection *(default: 10)*. Note: this setting is parsed into config but not yet wired into the current routing implementation; changing it has no runtime effect in this release.
 
 ### Logging
 
@@ -57,6 +58,15 @@ Production-ready logging configuration.
 
 - **`LOG_FILE`**: Log file path *(default: "bot.log")*
 - **`LOG_LEVEL`**: Logging verbosity ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL") *(default: "INFO")*
+- **`DISCORDIANAI_LOG_COLOR`**: Colored console logging is on by default. Set to `1`/`true`/`yes` to keep colors on, or `0`/`false`/`no` to disable them.
+
+### Health
+
+Lightweight HTTP health checks for Docker and Kubernetes deployments.
+
+- **`HEALTH_ENABLED`**: Enable or disable the health server *(default: `true`)*
+- **`HEALTH_HOST`**: Bind address for the health server *(default: `127.0.0.1`)*
+- **`HEALTH_PORT`**: Port for readiness/liveness probes *(default: `8080`)*
 
 ## Operation Modes
 
@@ -164,6 +174,7 @@ export MAX_HISTORY_PER_USER=100
 
 # Logging
 export LOG_LEVEL="DEBUG"
+export DISCORDIANAI_LOG_COLOR="1"
 ```
 
 Environment variables take precedence over `config.ini` values, allowing for flexible deployment configurations.

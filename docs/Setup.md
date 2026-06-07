@@ -121,7 +121,7 @@ python -m src.main --folder /opt/discordianai --conf bot.ini
 The included `discordian.sh` script provides additional process management:
 ```bash
 # Start the bot
-./discordian.sh
+./discordian.sh -c config.ini
 
 # The script handles:
 # - Process cleanup
