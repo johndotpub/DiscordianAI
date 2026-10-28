@@ -28,7 +28,8 @@ from .discord_embeds import citation_embed_formatter
 # ============================================================================
 
 
-async def send_split_message(  # noqa: PLR0913
+# Preserve the existing positional API for current callers.
+async def send_split_message(  # noqa: PLR0913, PLR0917
     channel: discord.TextChannel | discord.DMChannel,
     message: str,
     deps: dict[str, Any],
@@ -144,7 +145,8 @@ async def send_split_message(  # noqa: PLR0913
         )
 
 
-async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
+# Preserve the existing positional API for current callers.
+async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913, PLR0917
     channel: discord.TextChannel | discord.DMChannel,
     message: str,
     deps: dict[str, Any],
@@ -282,7 +284,8 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913
         )
 
 
-async def send_formatted_message(  # noqa: PLR0913
+# Preserve the existing positional API for current callers.
+async def send_formatted_message(  # noqa: PLR0913, PLR0917
     channel: discord.TextChannel | discord.DMChannel,
     message: str,
     deps: dict[str, Any],
