@@ -55,8 +55,8 @@ DiscordianAI validates API key formats before use:
 
 | Service | Expected Format | Example |
 |---------|-----------------|---------|
-| OpenAI | `sk-` + 32+ alphanumeric chars | `sk-abc123...` |
-| Perplexity | `pplx-` + 32+ alphanumeric chars | `pplx-xyz789...` |
+| OpenAI | `sk-` + at least 20 letters, digits, `-` or `_` | `sk-abc123...` |
+| Perplexity | `pplx-` + at least 20 letters, digits, `-` or `_` | `pplx-xyz789...` |
 
 Invalid formats will produce clear error messages with links to the respective API key management pages.
 
@@ -108,18 +108,26 @@ RATE_LIMIT_PER=60    # Time window in seconds
 
 The bot handles upstream API rate limits gracefully:
 
-1. **Flat Jittered Retry**: Automatic retry with a randomized 2.0-4.0 second delay
-2. **Limited Attempts**: Up to 2 attempts total
-3. **Circuit Breaker**: Stops requests after repeated failures
+1. **Retry with Backoff**: `DEFAULT_API_RETRY_CONFIG` allows 2 attempts total
+   (one initial request plus one retry). The delay is full-jitter exponential
+   backoff, and 429 responses honour `Retry-After` up to 30 seconds. A
+   90-second deadline stops retries even when attempts remain.
+2. **Transient Failures Only**: 429, 5xx, connection errors, and connect
+   timeouts are retried. Authentication errors, read timeouts, and exhausted
+   quotas fail immediately.
+3. **Circuit Breaker**: A shared per-provider breaker opens after 5 failed
+   logical calls (all retries for one call count as one failure) and allows a
+   single probe after 60 seconds.
 
 ```python
 # Example retry configuration (matches DEFAULT_API_RETRY_CONFIG)
 RetryConfig(
     max_attempts=2,
-    base_delay=4.0,
-    max_delay=4.0,
-    exponential_base=1.0,
-    jitter=True
+    base_delay=1.0,
+    max_delay=30.0,
+    exponential_base=2.0,
+    jitter=True,
+    max_elapsed=90.0,
 )
 ```
 
@@ -137,12 +145,21 @@ All user input is processed through sanitization:
 
 On startup, DiscordianAI validates:
 
-- API key formats
-- URL patterns (must match expected API endpoints)
-- Numeric ranges (rate limits, token counts)
-- Required fields (Discord token)
+- API key presence and format for every configured provider
+- Provider base URLs (malformed or non-absolute URLs are fatal; well-formed
+  non-standard URLs are warnings)
+- Numeric ranges (rate limits and input, output, and context token caps)
+- Required fields (Discord token and at least one provider credential)
+- Discord presence and activity-type names
 
-Invalid configurations produce clear error messages and prevent startup.
+Not every invalid configuration prevents startup. Fatal errors are logged and
+abort startup with a non-zero exit: missing Discord or provider credentials,
+invalid API-key formats, malformed or non-absolute base URLs, non-integer or
+non-positive rate/input/context limits, output-token caps outside 1..128,000,
+and invalid presence or activity values. Warnings are logged and startup
+continues: unknown model names, well-formed non-standard provider URLs,
+unusually small or large token values, high rate limits, and a missing channel
+allowlist.
 
 ## 🌐 Network Security
 
@@ -150,8 +167,10 @@ Invalid configurations produce clear error messages and prevent startup.
 
 HTTP connections use secure defaults:
 
-- **HTTP/2**: Enabled for better performance and security
-- **TLS**: All API connections use HTTPS
+- **HTTP/2**: Enabled when the `h2` package is installed, with HTTP/1.1 fallback
+- **TLS**: The default OpenAI and Perplexity endpoints use HTTPS. A custom
+  `http://` base URL is accepted with a warning, so use an `https://` endpoint
+  when TLS is required.
 - **Timeouts**: Configured to prevent hanging connections
   - Connect: 10 seconds
   - Read: 45s (OpenAI) / 60s (Perplexity)
@@ -166,9 +185,10 @@ for at most three hops, and the initial URL and every `Location` are resolved
 and checked before use. A redirect to a non-global address is refused without
 reading its body.
 
-A URL is accepted only when every address returned for its hostname is a
-routable public address. The following are rejected, including IPv4-mapped
-IPv6 forms and NAT64 encodings:
+A URL is accepted only when every address returned for its hostname passes
+Python's `ipaddress.is_global()` check and is not multicast. IPv4-mapped IPv6
+and NAT64 addresses are unwrapped before that check, so a blocked IPv4 target
+cannot slip through inside an IPv6 form. The main rejected classes are:
 
 | Class | Range or address |
 | --- | --- |
@@ -180,8 +200,8 @@ IPv6 forms and NAT64 encodings:
 | IPv6 loopback | `::1` |
 | IPv6 link-local | `fe80::/10` |
 | IPv6 unique-local | `fc00::/7` |
-| Other non-global | multicast, reserved and documentation ranges |
-| NAT64-encoded IPv4 | `64:ff9b::/96` |
+| Other non-global | multicast, documentation ranges, and anything else `ipaddress` reports as non-global |
+| NAT64-encoded blocked IPv4 | `64:ff9b::/96` wrapping a non-global IPv4 address |
 
 If a hostname resolves to a mix of global and non-global addresses, the URL
 is refused.
@@ -198,14 +218,16 @@ in exchange for correct TLS verification.
 
 ### API Endpoints
 
-Only these endpoints are allowed:
+These are the default endpoints:
 
-| Service | Allowed URL Pattern |
+| Service | Default URL Pattern |
 |---------|---------------------|
 | OpenAI | `https://api.openai.com/v1/` |
 | Perplexity | `https://api.perplexity.ai/` |
 
-Custom API URLs are validated against these patterns.
+A custom base URL must be an absolute `http(s)` URL; a malformed or
+non-absolute value aborts startup. A well-formed URL outside these default
+patterns is accepted with a warning, so compatible gateways can be used.
 
 ## 🐳 Docker Security
 
@@ -230,7 +252,7 @@ The shipped `docker-compose.yml` includes these properties:
 ```yaml
 services:
   discordianai:
-    # Secrets and settings come from .env, not the compose file
+    # Secrets come from .env; compose adds the non-secret settings below
     env_file:
       - .env
 

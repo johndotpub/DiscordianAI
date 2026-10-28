@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
 README = ROOT / "README.md"
 CONFIGURATION = DOCS / "Configuration.md"
+CONNECTION_POOLING = DOCS / "ConnectionPooling.md"
 CONFIG_EXAMPLE = ROOT / "config.ini.example"
 ENV_EXAMPLE = ROOT / ".env.example"
 CONFIG_SOURCE = ROOT / "src" / "config.py"
@@ -28,7 +29,14 @@ CONFIG_KEY_PATTERN = re.compile(r"\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b")
 DEFAULT_MARKER_PATTERN = re.compile(r"\*\*`([A-Z][A-Z0-9_]+)`\*\*.*?\*\(default:\s*(.+?)\)\*")
 AUTOMODULE_PATTERN = re.compile(r"\.\.\s+automodule::\s+(src\.[A-Za-z0-9_.]+)")
 SOURCE_PATH_PATTERN = re.compile(r"src/([A-Za-z_][A-Za-z0-9_]*)\.py")
+BARE_PYTHON_FILE_PATTERN = re.compile(r"(?<![\w./-])([A-Za-z_][A-Za-z0-9_]*\.py)\b")
 DOTTED_PATTERN = re.compile(r"(?<![\w.])((?:[A-Za-z_]\w*\.)+[A-Za-z_]\w*)\b")
+MEMORY_FIGURE_PATTERN = re.compile(
+    r"\b\d+(?:\.\d+)?\s*(?:[KMGT]i?B|B)\b",
+    re.IGNORECASE,
+)
+STARTUP_CLAIM_PATTERN = re.compile(r"\bprevents?\s+startup\b", re.IGNORECASE)
+EXTERNAL_PYTHON_FILES = {"discord.py"}
 COMMAND_ROOTS = ("python", "pytest", "ruff", "black", "discordian.sh", "docker compose")
 NON_MODULE_SUFFIXES = {
     ".cfg",
@@ -49,6 +57,21 @@ NON_MODULE_SUFFIXES = {
     ".yml",
 }
 SOURCE_MODULES = {path.stem for path in (ROOT / "src").glob("*.py") if path.stem != "__init__"}
+
+
+def _documented_python_file_exists(filename: str) -> bool:
+    """Return True when a bare ``*.py`` reference names a file in this repository."""
+    if filename.lower() in EXTERNAL_PYTHON_FILES:
+        return True
+    candidates = (
+        ROOT / filename,
+        ROOT / "src" / filename,
+        ROOT / "tests" / filename,
+        ROOT / "scripts" / filename,
+        DOCS / filename,
+        DOCS / "api" / filename,
+    )
+    return any(candidate.is_file() for candidate in candidates)
 
 
 def _allowlist_entries() -> list[dict[str, str]]:
@@ -399,6 +422,12 @@ def test_b4_no_dead_documentation_references() -> None:  # noqa: PLR0912
             if not _module_target_exists(module) and not _allowed("B4", target):
                 failures.append(f"{relative}: {target} has no matching src/{module}.py")
         for line_number, line in enumerate(text.splitlines(), 1):
+            for match in BARE_PYTHON_FILE_PATTERN.finditer(line):
+                filename = match.group(1)
+                if not _documented_python_file_exists(filename) and not _allowed("B4", filename):
+                    failures.append(
+                        f"{relative}:{line_number}: {filename} does not exist in this repository"
+                    )
             for match in DOTTED_PATTERN.finditer(line):
                 chain = match.group(1)
                 if chain.endswith(tuple(NON_MODULE_SUFFIXES)):
@@ -586,3 +615,39 @@ def test_b8_sphinx_coverage() -> None:
     ]
     assert not failures, "\n".join(failures)
     assert (ROOT / "tests" / "test_docs.py").exists(), "Sphinx -W build test is missing"
+
+
+def test_b9_connection_pooling_has_no_unmeasured_memory_figure() -> None:
+    """ConnectionPooling.md must not quote a memory total that no test measures."""
+    text = CONNECTION_POOLING.read_text(encoding="utf-8")
+    offenders = [
+        f"line {line_number}: {line.strip()}"
+        for line_number, line in enumerate(text.splitlines(), 1)
+        if MEMORY_FIGURE_PATTERN.search(line)
+    ]
+    assert not offenders, (
+        "docs/ConnectionPooling.md states a memory figure without a benchmark; "
+        "remove it or add a measured test:\n" + "\n".join(offenders)
+    )
+
+
+def test_b10_startup_claims_name_the_abort_split() -> None:
+    """A 'prevents startup' claim must sit beside both abort and warning behaviour."""
+    failures: list[str] = []
+    for path in _doc_files():
+        text = path.read_text(encoding="utf-8")
+        paragraphs = re.split(r"\n\s*\n", text)
+        for index, paragraph in enumerate(paragraphs):
+            if not STARTUP_CLAIM_PATTERN.search(paragraph):
+                continue
+            window = " ".join(paragraphs[max(0, index - 1) : index + 2]).lower()
+            has_abort = any(
+                phrase in window
+                for phrase in ("abort", "exit", "stop the process", "stops the process")
+            )
+            if not (has_abort and "warning" in window):
+                failures.append(
+                    f"{path.relative_to(ROOT)}: 'prevents startup' is not adjacent to "
+                    "the abort/warning split"
+                )
+    assert not failures, "\n".join(failures)

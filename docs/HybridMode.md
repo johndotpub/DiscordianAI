@@ -10,13 +10,21 @@ DiscordianAI features a sophisticated AI orchestration system with intelligent r
 
 ## AI Service Consistency System 🔄
 
-DiscordianAI features an advanced **conversation consistency system** that ensures follow-up questions are routed to the same AI service that handled the initial query, maintaining context and coherence.
+DiscordianAI reuses the previous AI service only for genuine anaphora within the
+same conversation. A follow-up pattern must match, and a recent assistant turn
+must exist in that conversation's history; the router then reuses that turn's
+service. A matched follow-up with no recent assistant turn is routed to OpenAI
+rather than being treated as a web-search query.
 
 ### How It Works
 
-1. **Metadata Tracking**: Every AI response includes metadata about which service generated it
-2. **Follow-up Detection**: Automatically detects when users ask follow-up questions using advanced pattern matching
-3. **Consistent Routing**: Routes follow-ups to the same AI service for conversational continuity
+1. **Metadata Tracking**: Every AI response records the service and model that generated it
+2. **Conversation Scope**: History is keyed per DM user or per guild channel/thread, so another channel or user cannot supply the previous service
+3. **Follow-up Detection**: Only genuine anaphora match: whole-message continuations (bare "more", "continue", "go on", or "keep going"), "tell/show/give me more", "what/how about", ordinal references such as "the second one", whole-message "and then", "then what", or "what now", a bare pronoun ("it", "that", "they", ...), or a bare "yes", "no", "ok", or "okay"
+4. **Consistent Routing**: If the lookback window contains a recent assistant turn, the router reuses its service; otherwise the message falls through to the normal routing heuristics
+
+A word such as "also" or "more" inside a fresh question does not turn that
+question into a follow-up.
 
 ### Example Flow
 ```
@@ -24,18 +32,11 @@ User: "What's the weather in Tokyo today?"
 → 🌐 Routed to Perplexity (time-sensitive, current data needed)
 → Response: "Tokyo is currently 22°C with light rain..." + metadata
 
-User: "Tell me more about the forecast"  
-→ 🔄 Detected as follow-up, checks recent AI service used
+User: "Tell me more"
+→ 🔄 Detected as anaphora in the same conversation, checks recent AI service used
 → 🌐 Routed to Perplexity for consistency
-→ User gets detailed forecast from same service with full context
+→ User gets a detailed forecast from the same service with full context
 ```
-
-### Follow-up Detection Patterns
-The system recognizes these follow-up indicators:
-- **Continuation**: "continue", "more", "tell me more", "also", "furthermore"
-- **References**: "what about", "how about", "regarding that"
-- **Connectors**: "and", "but", "however" + question mark
-- **Responses**: "yes, but...", "okay, and...", "no, what about..."
 
 ## Message Flow Architecture
 
@@ -261,12 +262,14 @@ The hybrid orchestrator (`smart_orchestrator.py`) provides bidirectional fallbac
 - **OpenAI failure → Perplexity**: When OpenAI returns no response (quota exhaustion, auth errors, timeouts), the orchestrator automatically retries with Perplexity for web-enabled fallback.
 - **Perplexity failure → OpenAI**: When Perplexity fails (network errors, timeouts), the orchestrator falls back to OpenAI for standard completion.
 - **Web-inability reroute**: If OpenAI responds but indicates it cannot browse the web (e.g., "I can't browse the internet"), the orchestrator detects this and reroutes to Perplexity.
-- **Both unavailable**: Returns a user-friendly error message (`"All AI services are temporarily unavailable"`).
+- **Both unavailable**: Returns the `both_services_unavailable` message
+  (`"🔧 All AI services are temporarily unavailable. Please try again later."`).
 
 Both services share identical retry policy via `retry_with_backoff`:
-- 2 attempts max (1 initial + 1 retry) for transient errors (network blips, 429, 5xx)
-- `insufficient_quota` and `API_TIMEOUT` errors bail immediately — no wasted retries
-- 2.0–4.0s jittered wait between retries to avoid thundering herd
+- 2 attempts max (1 initial + 1 retry) for transient errors (network/connection errors, connect timeouts, 429, 5xx)
+- `insufficient_quota`, authentication errors, and read timeouts bail immediately — no wasted retries
+- The single retry waits a random 0–1s (full jitter over the base delay); a 429 can instead honour `Retry-After` up to 30s
+- A 90s `max_elapsed` deadline stops retries even when an attempt remains
 - SDK-level `max_retries=0` prevents nested retry multiplication
 
 ## Cost Considerations
@@ -289,7 +292,7 @@ INFO: Perplexity response generated successfully (245 chars)
 
 ### Consistency System Logs  
 ```
-INFO: Smart orchestrator processing message from user 123456789: Tell me more...
+INFO: Smart orchestrator processing message from user 123456789: Tell me more
 INFO: Running in hybrid mode - analyzing message for optimal routing
 DEBUG: Follow-up detected, using recent AI service: perplexity
 INFO: Message analysis suggests web search would be beneficial - trying Perplexity first
@@ -331,14 +334,21 @@ DiscordianAI uses a robust thread-safe architecture that handles concurrent user
 Adjust the AI service selection patterns in `src/config.py`:
 
 ```python
-# Time-sensitive patterns (compiled in config.py)
+# Time-sensitive patterns (raw patterns from config.py; one representative entry)
 TIME_SENSITIVITY_PATTERNS = [
-    re.compile(r"\b(today|yesterday|this week|recently|latest|current)\b", re.IGNORECASE),
+    r"\b(today|yesterday|this week|this month|this year|recently|latest|current)\b",
 ]
 
-# Follow-up detection patterns (compiled in config.py)
+# Follow-up detection patterns (raw patterns from config.py)
 FOLLOW_UP_PATTERNS = [
-    re.compile(r"\b(continue|more|tell me more|also|furthermore)\b", re.IGNORECASE),
+    r"^\s*(more|continue|go on|keep going)(\s+please)?\s*[.!?]*\s*$",
+    r"^\s*(tell|show|give)\s+me\s+more\s*[.!?]*\s*$",
+    r"\b(what|how)\s+about\b",
+    r"\b(and|what about|how about)\s+(the\s+)?(first|second|third|last|next|other)\s+one\b",
+    r"^\s*(and|so|but)?\s*(the\s+)?(first|second|third|last|next|other)\s+one\s*[.!?]*\s*$",
+    r"^\s*(it|that|this|those|these|they|them|he|she|him|her)\s*[.!?]*\s*$",
+    r"^\s*(yes|no|ok|okay)\s*[.!?]*\s*$",
+    r"^\s*(and then|then what|what now)\s*\??\s*$",
 ]
 ```
 

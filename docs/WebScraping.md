@@ -70,19 +70,30 @@ The web scraper uses intelligent content extraction:
 The web scraping feature requires additional Python packages:
 
 ```txt
-requests>=2.31.0
-beautifulsoup4>=4.12.2
+beautifulsoup4>=4.14.3
+httpx[http2]>=0.28.1
 ```
 
 These are automatically included in `requirements.txt` and installed with the bot.
 
 ### Scraping Settings
 
-Web scraping behavior is controlled by constants in `src/web_scraper.py`:
+Batch limits come from `src/config.py`, and per-page limits from
+`src/web_scraper.py`:
+
+```ini
+[Default]
+MAX_URLS_PER_MESSAGE=3              # URLs beyond this are ignored
+MAX_TOTAL_SCRAPED_CHARS=60000       # Combined text injected into one prompt
+SCRAPE_DEADLINE_SECONDS=20          # Deadline for the whole scrape phase
+```
 
 ```python
-DEFAULT_TIMEOUT = 15  # Request timeout in seconds
-MAX_CONTENT_LENGTH = 50000  # Maximum content to extract (~12-15k tokens)
+# Per-request and per-page limits in src/web_scraper.py
+DEFAULT_TIMEOUT = 15  # Per-URL fetch timeout in seconds, including retries
+MAX_CONTENT_LENGTH = 50000  # Maximum extracted text per page (~12-15k tokens)
+MAX_DOWNLOAD_SIZE = 1000000  # Raw HTML download cap (1MB)
+REQUEST_RETRIES = 2  # Two retries after the first attempt
 ```
 
 ### Browser Headers
@@ -145,6 +156,15 @@ The web scraper implements comprehensive error handling:
 3. **Content Errors** - Malformed HTML, empty responses
 4. **Size Limits** - Content too large for processing
 
+### Retry Policy
+
+Each URL is attempted up to three times (`REQUEST_RETRIES=2`). Only transient
+failures are retried: HTTP 429 and 5xx responses, connect timeouts, and other
+transport errors. Other 4xx responses and non-connect timeouts stop
+immediately. Retry waits are 1s, then 2s; a 429 may instead honour
+`Retry-After` up to 30s. The per-URL 15-second fetch timeout and the 20-second
+batch deadline still apply.
+
 ### Fallback Strategy
 
 When web scraping fails, the bot:
@@ -158,22 +178,22 @@ When web scraping fails, the bot:
 
 ### Asynchronous Processing
 
-- Web scraping runs in thread pools to avoid blocking
-- Multiple URLs are processed concurrently
-- Timeout limits prevent hanging requests
+- Scraping uses asynchronous HTTP and DNS-offload APIs, so it does not block the bot's event loop
+- Distinct hosts are scraped concurrently under a two-host semaphore; requests to the same host are serialized with a 1–3 second politeness delay
+- A 15-second per-URL fetch timeout and a 20-second batch deadline prevent hanging requests
 
 ### Content Limits
 
-- **50KB maximum** raw content extraction (~12-15k tokens)
-- **Automatic truncation** with clear indicators
-- **Size checks** before downloading large files
+- **3 URLs per message** by default; extras are ignored
+- **60,000-character aggregate budget** for scraped page text injected into one prompt by default
+- **50,000 characters per page** of extracted text (~12-15k tokens)
+- **1MB raw HTML** download cap with automatic truncation indicators
 
 ### Caching
 
-Web scraping integrates with the existing caching system:
-- Scraped content can be cached to avoid repeated requests
-- Cache keys include URL and processing parameters
-- TTL-based expiration for time-sensitive content
+The scraper does not cache pages, and Perplexity requests are not
+response-cached, so a repeated URL message is scraped again. The response cache
+with TTL-based expiry applies to OpenAI responses only.
 
 ## Usage Examples
 
@@ -234,7 +254,8 @@ Response: "I searched for information about this document...
 - Rate limiting by the target website
 
 **Large content handling:**
-- Content over 50KB is automatically truncated
+- Extracted text over 50,000 characters per page is automatically truncated
+- Total injected scraped text is capped at `MAX_TOTAL_SCRAPED_CHARS` (default 60,000)
 - Truncation notices are added to responses
 - Token limits prevent API overload
 

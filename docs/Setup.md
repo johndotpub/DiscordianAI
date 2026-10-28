@@ -20,7 +20,10 @@ Create and configure your Discord bot:
 2. **Configure Bot Settings**
    - Click "Add Bot" to create the bot user
    - **Copy the bot token** - you'll need this for configuration
-   - Enable "Message Content Intent" under Privileged Gateway Intents (required for message processing)
+   - The bot requests `discord.Intents.default()` with typing and presences
+     disabled, so the privileged Message Content intent is not required. Discord
+     still sends content for messages that mention the bot and for DMs; a guild
+     message that does not mention it is ignored.
 
 3. **Set Bot Permissions**
    - Go to the "OAuth2" > "URL Generator" section
@@ -139,7 +142,7 @@ Send these messages to your bot to verify it's working:
 2. **Web Search**: `What's the latest AI news?` (should use Perplexity if available)
 3. **Follow-up Consistency**: 
    - First: `What's the weather today?` (→ Perplexity)
-   - Then: `Tell me more about that` (→ Should stay with Perplexity)
+   - Then: `Tell me more` (→ Should stay with Perplexity)
 
 ### Check Logs
 

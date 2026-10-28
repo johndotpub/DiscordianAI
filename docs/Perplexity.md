@@ -254,7 +254,8 @@ export PERPLEXITY_MODEL="sonar-pro"
 
 ### Context-Aware Search
 - The bot maintains conversation context across queries
-- Follow-up questions automatically use the same AI service
+- A genuine follow-up (anaphora such as "tell me more" or "and the second one?"),
+  with a recent assistant turn in the same conversation, reuses that service
 - Conversation summary helps provide relevant context to searches
 
 ### Metadata Tracking
@@ -263,6 +264,11 @@ export PERPLEXITY_MODEL="sonar-pro"
 - API usage is logged for monitoring and optimization
 
 ### Error Handling
-- Graceful fallback to OpenAI when Perplexity is unavailable
-- Retry logic with flat jittered retry for transient failures
-- Circuit breaker pattern prevents cascade failures
+- In hybrid mode, falls back to OpenAI when Perplexity returns no response
+- `retry_with_backoff` allows 2 attempts total and retries only transient
+  failures (429, 5xx, connection errors, and connect timeouts); authentication
+  errors, read timeouts, and exhausted quotas fail immediately. Delays use
+  capped exponential backoff with full jitter.
+- A shared per-provider circuit breaker opens after 5 failed logical calls,
+  counting the whole retry sequence for one call as one failure, and admits one
+  probe after 60 seconds.

@@ -56,9 +56,14 @@ PERPLEXITY_MAX_KEEPALIVE=5
 - **HTTP/2 multiplexing**: Multiple requests over single connections
 
 ### Memory Efficiency
-- **10k users**: ~100MB total conversation memory
+- **Conversation history**: Memory scales with the number of active conversations and
+  `MAX_HISTORY_PER_USER`; no fixed per-user or ten-thousand-user total is claimed here
+  because it has not been measured.
 - **Connection overhead**: Minimal with shared pools
-- **Scalable**: Supports large user bases efficiently
+- **Scalable**: Supports large user bases efficiently, subject to the history limits above
+
+Measure conversation memory against your own message sizes and history limits before
+sizing a deployment; add a benchmark before publishing a total.
 
 ## Monitoring and Tuning
 
