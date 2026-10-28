@@ -18,6 +18,17 @@ ALLOWED_CHANNELS=general,bot-testing
 # Example: ALLOWED_CHANNEL_IDS=123456789012345678,987654321098765432
 ALLOWED_CHANNEL_IDS=
 
+# Optional: scope channel names to specific guilds. Without this, names are
+# resolved only in the first guild the bot joins. Names or IDs are accepted.
+# Example: ALLOWED_GUILDS=My Server
+#          ALLOWED_GUILD_IDS=123456789012345678
+ALLOWED_GUILDS=
+ALLOWED_GUILD_IDS=
+
+# Optional: bot user IDs allowed to talk to this bot. Empty ignores all bots.
+# Example: TRUSTED_BOT_IDS=123456789012345678
+TRUSTED_BOT_IDS=
+
 # Bot presence settings
 BOT_PRESENCE=online
 ACTIVITY_TYPE=watching

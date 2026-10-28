@@ -11,6 +11,8 @@ Controls Discord bot behavior and connectivity.
 - **`DISCORD_TOKEN`** *(required)*: Your Discord bot token from the Discord Developer Portal
 - **`ALLOWED_CHANNELS`**: Comma-separated list of channel names the bot responds in (e.g., "general,bot-testing")
 - **`ALLOWED_CHANNEL_IDS`**: Comma-separated list of channel IDs the bot responds in; when set, IDs take precedence over `ALLOWED_CHANNELS` names
+- **`ALLOWED_GUILDS`** / **`ALLOWED_GUILD_IDS`**: Optional guild names or IDs used to scope channel-name matching; without them, names resolve only in the first guild the bot joins
+- **`TRUSTED_BOT_IDS`**: Optional comma-separated bot user IDs that may interact with this bot; empty by default
 - **`BOT_PRESENCE`**: Bot's online status ("online", "offline", "idle", "dnd", "invisible") *(default: "online")*
 - **`ACTIVITY_TYPE`**: Activity type displayed ("playing", "streaming", "listening", "watching", "custom", "competing") *(default: "watching")*
 - **`ACTIVITY_STATUS`**: Status message displayed with activity *(default: "Humans")*
@@ -119,6 +121,13 @@ DISCORD_TOKEN=your_discord_bot_token_here
 
 # Channels where the bot responds (comma-separated)
 ALLOWED_CHANNELS=general,bot-testing
+
+# Optional: scope channel names to specific guilds (names or IDs)
+ALLOWED_GUILDS=
+ALLOWED_GUILD_IDS=
+
+# Optional: bot user IDs allowed to interact with this bot
+TRUSTED_BOT_IDS=
 
 # Bot presence settings  
 BOT_PRESENCE=online

@@ -93,8 +93,11 @@ The launcher resolves Python in this order: pyenv → project-local `.venv` → 
 
 ### Channel Targeting
 
-- `ALLOWED_CHANNELS` matches channel names.
+- `ALLOWED_CHANNELS` matches channel names case-insensitively (a leading `#` is ignored).
 - `ALLOWED_CHANNEL_IDS` matches channel IDs and takes precedence when set.
+- `ALLOWED_GUILDS` / `ALLOWED_GUILD_IDS` scope name matching to configured servers; without them, names resolve only in the first guild the bot joins.
+- Threads inherit the allowlist from their parent channel.
+- Other bots are ignored unless their user ID is listed in `TRUSTED_BOT_IDS`.
 - Prefer IDs for stable targeting across servers; names are handy for local testing.
 
 ### Minimal hybrid config
