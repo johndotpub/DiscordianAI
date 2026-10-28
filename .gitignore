@@ -1,5 +1,4 @@
 # Test Bot Files
-bender.ini*
 nohup.out
 bot.log
 test.log
@@ -142,7 +141,10 @@ dmypy.json
 cython_debug/
 
 # Discord Bot specific
-config.ini
+# Local config files can contain API keys and must never be committed.
+*.ini
+!config.ini.example
+!tox.ini
 *.db
 *.sqlite3
 

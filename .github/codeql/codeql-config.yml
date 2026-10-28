@@ -16,13 +16,6 @@ paths-ignore:
   - docs
   - scripts
 
-# Query filters to suppress known false positives
-query-filters:
-  # Suppress clear-text-logging-sensitive-data for api_validation.py
-  # The validation error messages don't contain actual API key values,
-  # only format requirements like "should start with 'sk-'"
-  # The _sanitize_log_message function provides additional protection
-  - exclude:
-      id: py/clear-text-logging-sensitive-data
-      tags contain: security
+# No repository-wide query exclusions. Validation logging is sanitised at the
+# call site in src/api_validation.py, so the query stays enabled everywhere.
 
