@@ -14,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
 import hashlib
+import json
 import logging
 import re
 import threading
@@ -66,6 +67,107 @@ def _extract_message_context(
         system_message = kwargs.get("system_message", "")
 
     return message, model, system_message
+
+
+def _extract_user_identity(user: Any) -> str | None:
+    """Return a stable identity for a request owner, if one is available."""
+    if user is None:
+        return None
+
+    if isinstance(user, dict):
+        candidate = user.get("id")
+    elif isinstance(user, (str, int)):
+        candidate = user
+    else:
+        candidate = getattr(user, "id", None)
+
+    if candidate is None:
+        return None
+
+    return str(candidate)
+
+
+def _extract_conversation_summary(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    """Extract ordered conversation history from decorated calls."""
+    if len(args) > 1 and isinstance(args[1], (list, tuple, dict)):
+        return args[1]
+
+    for key in ("conversation_summary", "conversation_history", "history"):
+        if key in kwargs:
+            return kwargs[key]
+
+    return []
+
+
+def _conversation_digest(conversation_summary: Any) -> str:
+    """Hash ordered conversation history without losing message order."""
+    if not conversation_summary:
+        payload = "[]"
+    else:
+        try:
+            payload = json.dumps(
+                conversation_summary,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            )
+        except (TypeError, ValueError):
+            payload = repr(conversation_summary)
+
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _extract_request_scope(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Extract owner and conversation identity for cache and dedup keys."""
+    request = args[0] if args and hasattr(args[0], "message") else kwargs.get("request")
+
+    user = getattr(request, "user", None) if request is not None else None
+    user_id = _extract_user_identity(user)
+
+    if user_id is None and "user_id" in kwargs:
+        user_id = _extract_user_identity(kwargs["user_id"])
+    if user_id is None and "user" in kwargs:
+        user_id = _extract_user_identity(kwargs["user"])
+
+    conversation_summary = _extract_conversation_summary(args, kwargs)
+
+    return {
+        "user_id": user_id,
+        "conversation_digest": _conversation_digest(conversation_summary),
+        "has_conversation": bool(conversation_summary),
+    }
+
+
+def _generate_scoped_key(message: str, context: dict[str, Any]) -> str | None:
+    """Build a key scoped to the request owner and ordered conversation."""
+    user_id = context.get("user_id")
+    conversation_digest = context.get("conversation_digest")
+    has_conversation = bool(context.get("has_conversation"))
+
+    if conversation_digest is None:
+        conversation_summary = context.get("conversation_summary")
+        if conversation_summary is None:
+            conversation_summary = context.get("history", [])
+        conversation_digest = _conversation_digest(conversation_summary)
+        has_conversation = has_conversation or bool(conversation_summary)
+
+    if has_conversation and user_id is None:
+        return None
+
+    normalized_message = str(message).strip().lower()
+
+    context_key = {
+        "model": context.get("model", "unknown"),
+        "system_message_hash": hashlib.sha256(
+            str(context.get("system_message") or "").encode(),
+        ).hexdigest()[:8],
+        "user_id": "" if user_id is None else str(user_id),
+        "conversation_digest": conversation_digest,
+    }
+
+    key_data = (normalized_message, context_key)
+    return hashlib.sha256(str(key_data).encode()).hexdigest()
 
 
 @dataclass
@@ -222,27 +324,17 @@ class ResponseCache:
 
         return not any(re.search(pattern, response_lower) for pattern in time_indicators)
 
-    def _generate_cache_key(self, message: str, context: dict[str, Any]) -> str:
-        """Generate cache key for message and context."""
-        # Normalize message for better cache hits
-        normalized_message = message.strip().lower()
-
-        # Include relevant context in key
-        context_key = {
-            "model": context.get("model", "unknown"),
-            "system_message_hash": hashlib.sha256(
-                context.get("system_message", "").encode(),
-            ).hexdigest()[:8],
-            # Don't include conversation history in key for broader cache hits
-        }
-
-        key_data = (normalized_message, context_key)
-        return hashlib.sha256(str(key_data).encode()).hexdigest()
+    def _generate_cache_key(self, message: str, context: dict[str, Any]) -> str | None:
+        """Generate cache key scoped to the request identity and context."""
+        return _generate_scoped_key(message, context)
 
     def get_cached_response(self, message: str, context: dict[str, Any]) -> str | None:
         """Get cached response if available."""
         try:
             cache_key = self._generate_cache_key(message, context)
+            if cache_key is None:
+                return None
+
             cached_response = self.cache.get(cache_key)
 
             if cached_response:
@@ -268,6 +360,8 @@ class ResponseCache:
                 return
 
             cache_key = self._generate_cache_key(message, context)
+            if cache_key is None:
+                return
 
             # Use shorter TTL for potentially time-sensitive content
             if ttl is None:
@@ -302,7 +396,7 @@ class RequestDeduplicator:
     def __init__(self):
         """Initialize deduplicator state and locks."""
         self._pending_requests: dict[str, asyncio.Future] = {}
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
         self.logger = logging.getLogger(__name__)
 
     async def deduplicate_request(self, request_key: str, request_func: Callable) -> Any:
@@ -315,32 +409,36 @@ class RequestDeduplicator:
         Returns:
             Result from the request function
         """
-        async with self._lock:
-            # Check if request is already pending
-            if request_key in self._pending_requests:
+        with self._lock:
+            future = self._pending_requests.get(request_key)
+            if future is not None:
                 self.logger.debug("Deduplicating request: %s...", request_key[:20])
-                future = self._pending_requests[request_key]
-                # Wait for the existing request to complete
-                return await future
+                is_leader = False
+            else:
+                future = asyncio.get_running_loop().create_future()
+                self._pending_requests[request_key] = future
+                is_leader = True
 
-            # Create new future for this request
-            future = asyncio.Future()
-            self._pending_requests[request_key] = future
+        if not is_leader:
+            return await asyncio.shield(future)
 
         try:
-            # Execute the request
             result = await request_func()
+        except asyncio.CancelledError:
+            if not future.done():
+                future.cancel()
+            raise
         except Exception as e:
-            future.set_exception(e)
+            if not future.done():
+                future.set_exception(e)
             raise
         else:
-            future.set_result(result)
+            if not future.done():
+                future.set_result(result)
             return result
-
         finally:
-            # Clean up the pending request
-            async with self._lock:
-                if request_key in self._pending_requests:
+            with self._lock:
+                if self._pending_requests.get(request_key) is future:
                     del self._pending_requests[request_key]
 
 
@@ -371,6 +469,7 @@ def cached_response(ttl: float = 300.0, cache_instance: ResponseCache | None = N
                 "function": func_name,
                 "model": model,
                 "system_message": system_message,
+                **_extract_request_scope(args, kwargs),
             }
 
             # Try to get cached response
@@ -408,9 +507,20 @@ def deduplicated_request(key_func: Callable | None = None):
                 request_key = key_func(*args, **kwargs)
             else:
                 # Default key generation
-                message, model, _ = _extract_message_context(args, kwargs)
+                message, model, system_message = _extract_message_context(args, kwargs)
+                scope = _extract_request_scope(args, kwargs)
+                scoped_key = _generate_scoped_key(
+                    message,
+                    {
+                        "model": model,
+                        "system_message": system_message,
+                        **scope,
+                    },
+                )
+                if scoped_key is None:
+                    return await func(*args, **kwargs)
 
-                request_key = f"{func.__name__}:{model}:{hash(repr(message))}"
+                request_key = f"{func.__name__}:{scoped_key}"
 
             # Execute with deduplication
             async def request_func():
