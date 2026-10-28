@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   discordianai:
     # Primary: Use GHCR image (GitHub Container Registry)
@@ -10,23 +8,45 @@ services:
     # build: .
     container_name: discordianai
     restart: unless-stopped
-    
-    # Mount configuration and logs
+
+    # Inject the secrets and settings documented in .env.example. Compose's own
+    # .env is only used for variable substitution, so it must be loaded here.
+    env_file:
+      - .env
+
+    # The bot only reads config.ini; logs go to stdout.
     volumes:
       - ./config.ini:/app/config.ini:ro
-      - ./logs:/app/logs
-      - ./data:/app/data
-    
+
     # Environment variables
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=UTC
-    
-    # Health check
-    # Verifies bot can import modules and validate configuration
-    # Note: Full bot health (Discord connection) is monitored via logs
+      # Bind all interfaces inside the container so the published port works.
+      - HEALTH_HOST=0.0.0.0
+
+    # Publish the health endpoint on the host loopback only.
+    ports:
+      - "127.0.0.1:8080:8080"
+
+    # Ask the running bot itself, using only the standard library.
     healthcheck:
-      test: ["CMD", "python", "-c", "from src.config import load_config; from src.api_validation import validate_full_config; import sys; config = load_config('/app/config.ini'); warnings, errors = validate_full_config(config); sys.exit(1 if errors else 0)"]
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys
+          import urllib.error
+          import urllib.request
+
+          try:
+              with urllib.request.urlopen(
+                  "http://127.0.0.1:8080/health", timeout=5
+              ) as response:
+                  sys.exit(0 if response.status == 200 else 1)
+          except (OSError, urllib.error.URLError):
+              sys.exit(1)
       interval: 30s
       timeout: 10s
       retries: 3

@@ -14,6 +14,9 @@ This document outlines security considerations and best practices for deploying 
    export OPENAI_API_KEY="sk-..."
    export PERPLEXITY_API_KEY="pplx-..."
    ```
+   For containers, the shipped `docker-compose.yml` loads these from `.env` with
+   `env_file: [.env]`. Compose's own `.env` file is only used for variable
+   substitution, which is why the compose file injects it explicitly.
 
 2. **Config File** (Development only)
    ```ini
@@ -31,11 +34,11 @@ This document outlines security considerations and best practices for deploying 
    chmod 600 config.ini
    ```
 
-3. **Docker Secrets** (Production containers)
+3. **Docker Secrets** (optional hardening; not enabled in the shipped compose file)
    ```yaml
-   # docker-compose.yml
+   # Optional hardening only; not enabled in the shipped docker-compose.yml.
    services:
-     bot:
+     discordianai:
        secrets:
          - discord_token
          - openai_key
@@ -208,39 +211,80 @@ Custom API URLs are validated against these patterns.
 
 ### Container Hardening
 
-The Dockerfile follows security best practices:
+The shipped Dockerfile includes these properties:
 
 ```dockerfile
-# Non-root user (recommended addition)
-RUN useradd -m -u 1000 appuser
-USER appuser
-
-# Read-only filesystem where possible
-# No unnecessary packages
 FROM python:3.12-slim-bookworm
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+USER appuser
 ```
 
+The container runs as the non-root `appuser` and installs no unnecessary packages.
+A read-only root filesystem is optional hardening and is not enabled in the shipped
+Dockerfile; adding it requires auditing every path the bot writes.
+
 ### Docker Compose Security
+
+The shipped `docker-compose.yml` includes these properties:
 
 ```yaml
 services:
   discordianai:
-    # Don't run as root
-    user: "1000:1000"
-    
-    # Read-only root filesystem
-    read_only: true
-    
-    # Limit capabilities
-    cap_drop:
-      - ALL
-    
+    # Secrets and settings come from .env, not the compose file
+    env_file:
+      - .env
+
+    # Health endpoint is available on host loopback only
+    ports:
+      - "127.0.0.1:8080:8080"
+
+    # Bind the health server to all container interfaces so the port works
+    environment:
+      - HEALTH_HOST=0.0.0.0
+
+    # Ask the running bot for its real health
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys
+          import urllib.error
+          import urllib.request
+
+          try:
+              with urllib.request.urlopen(
+                  "http://127.0.0.1:8080/health", timeout=5
+              ) as response:
+                  sys.exit(0 if response.status == 200 else 1)
+          except (OSError, urllib.error.URLError):
+              sys.exit(1)
+
     # Resource limits
     deploy:
       resources:
         limits:
           memory: 512M
-          cpus: '1.0'
+          cpus: '0.5'
+```
+
+The following compose hardening is optional and is **not enabled** in the shipped
+`docker-compose.yml`:
+
+```yaml
+# Optional hardening only; not enabled in the shipped docker-compose.yml.
+services:
+  discordianai:
+    # Explicit user override; the image already runs as non-root appuser
+    user: "1000:1000"
+
+    # Read-only root filesystem
+    read_only: true
+
+    # Limit capabilities
+    cap_drop:
+      - ALL
 ```
 
 ## 📊 Monitoring & Alerting
@@ -253,11 +297,20 @@ services:
 
 ### Health Checks
 
-The bot includes health check capabilities:
+The bot serves real health endpoints at `HEALTH_HOST:HEALTH_PORT` (default
+`127.0.0.1:8080`):
 
-- API connectivity monitoring
-- Model availability validation
-- Connection pool health metrics
+- `GET /health` returns 200 only when the bot and its configured providers are healthy,
+  and 503 otherwise;
+- `GET /health/live` reports process liveness;
+- `GET /health/ready` reports readiness, including the Discord connection and provider
+  health.
+
+The shipped `docker-compose.yml` and `Dockerfile` both define a `HEALTHCHECK` that calls
+`/health` with Python's standard-library `urllib.request`; the slim image has no curl.
+Compose publishes `127.0.0.1:8080:8080` on the host and sets `HEALTH_HOST=0.0.0.0` in the
+container. For `docker run`, add `-p 127.0.0.1:8080:8080 -e HEALTH_HOST=0.0.0.0` to probe
+the endpoint from the host.
 
 ### Recommended Monitoring
 
