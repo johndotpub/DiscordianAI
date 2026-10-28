@@ -18,7 +18,11 @@ from typing import Any
 import discord
 
 from .bot_manager import DiscordBotManager
-from .config import DEFAULT_CONTEXT_WINDOW, DEFAULT_INPUT_TOKENS
+from .config import (
+    DEFAULT_CONTEXT_WINDOW,
+    DEFAULT_CONVERSATION_TTL_SECONDS,
+    DEFAULT_INPUT_TOKENS,
+)
 from .connection_pool import get_connection_pool_manager
 from .conversation_manager import ThreadSafeConversationManager
 from .dependencies import BotDependencies
@@ -110,6 +114,10 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
 
     # Initialize thread-safe components
     max_history = config.get("MAX_HISTORY_PER_USER", 50)
+    conversation_ttl = config.get(
+        "CONVERSATION_TTL_SECONDS",
+        DEFAULT_CONVERSATION_TTL_SECONDS,
+    )
     cleanup_interval = config.get("USER_LOCK_CLEANUP_INTERVAL", 3600)
     logger.info("Health checks will run after bot startup")
 
@@ -138,6 +146,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
         conversation_manager=ThreadSafeConversationManager(
             max_history_per_user=max_history,
             cleanup_interval=cleanup_interval,
+            conversation_ttl_seconds=conversation_ttl,
         ),
     )
 

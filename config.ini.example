@@ -70,12 +70,15 @@ PERPLEXITY_MAX_KEEPALIVE=5
 
 [Orchestrator]
 # AI Orchestrator Configuration for advanced routing and optimization
-# How many recent messages to check for AI service consistency
+# How many recent messages to check for AI service consistency (0 disables)
 LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 
 
 # Maximum conversation entries per user before pruning
 MAX_HISTORY_PER_USER=50
+
+# How long a conversation may sit idle before its history and lock are dropped
+CONVERSATION_TTL_SECONDS=1800
 
 # How often to clean up inactive user locks (seconds) - default 1 hour
 USER_LOCK_CLEANUP_INTERVAL=3600

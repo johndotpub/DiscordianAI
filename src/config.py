@@ -109,6 +109,7 @@ DEFAULT_PERPLEXITY_MAX_KEEPALIVE = 5
 # Conversation Management
 DEFAULT_LOOKBACK_MESSAGES_FOR_CONSISTENCY = 6
 DEFAULT_MAX_HISTORY_PER_USER = 50
+DEFAULT_CONVERSATION_TTL_SECONDS = 1800  # 30 minutes
 DEFAULT_USER_LOCK_CLEANUP_INTERVAL = 3600  # 1 hour
 
 # Token and Context Limits
@@ -426,6 +427,7 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "PERPLEXITY_MAX_KEEPALIVE",
         "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
         "MAX_HISTORY_PER_USER",
+        "CONVERSATION_TTL_SECONDS",
         "USER_LOCK_CLEANUP_INTERVAL",
         "ENTITY_DETECTION_MIN_WORDS",
         "MAX_URLS_PER_MESSAGE",
@@ -457,6 +459,7 @@ def _apply_single_env_override(
         "PERPLEXITY_MAX_KEEPALIVE",
         "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
         "MAX_HISTORY_PER_USER",
+        "CONVERSATION_TTL_SECONDS",
         "USER_LOCK_CLEANUP_INTERVAL",
         "ENTITY_DETECTION_MIN_WORDS",
         "MAX_URLS_PER_MESSAGE",
@@ -511,6 +514,7 @@ def _apply_config_defaults(config_data: dict[str, Any]) -> None:
         "PERPLEXITY_MAX_KEEPALIVE": 5,
         "LOOKBACK_MESSAGES_FOR_CONSISTENCY": 6,
         "MAX_HISTORY_PER_USER": 50,
+        "CONVERSATION_TTL_SECONDS": 1800,
         "USER_LOCK_CLEANUP_INTERVAL": 3600,
         "ENTITY_DETECTION_MIN_WORDS": 10,
         "MAX_URLS_PER_MESSAGE": DEFAULT_MAX_URLS_PER_MESSAGE,
@@ -596,6 +600,13 @@ def _parse_orchestrator_config(
         config,
         "MAX_HISTORY_PER_USER",
         50,
+        logger,
+        section="Orchestrator",
+    )
+    config_data["CONVERSATION_TTL_SECONDS"] = _get_int_safe(
+        config,
+        "CONVERSATION_TTL_SECONDS",
+        1800,
         logger,
         section="Orchestrator",
     )

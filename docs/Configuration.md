@@ -59,9 +59,10 @@ Prevents spam and manages API costs.
 
 Advanced configuration for intelligent AI service routing.
 
-- **`LOOKBACK_MESSAGES_FOR_CONSISTENCY`**: Messages to check for follow-up consistency *(default: 6)*
+- **`LOOKBACK_MESSAGES_FOR_CONSISTENCY`**: Messages to check for follow-up consistency; `0` or a negative value disables the lookup *(default: 6)*
   
 - **`MAX_HISTORY_PER_USER`**: Maximum conversation history per user *(default: 50)*
+- **`CONVERSATION_TTL_SECONDS`**: Idle seconds before a conversation and its lock are evicted *(default: 1800)*
 - **`USER_LOCK_CLEANUP_INTERVAL`**: Memory cleanup interval in seconds *(default: 3600)*
 - **`ENTITY_DETECTION_MIN_WORDS`**: Minimum message length intended for entity detection *(default: 10)*. Note: this setting is parsed into config but not yet wired into the current routing implementation; changing it has no runtime effect in this release.
 
@@ -158,11 +159,14 @@ RATE_LIMIT_PER=60
 
 [Orchestrator]
 # AI Orchestrator Configuration for advanced routing and optimization
-# How many recent messages to check for AI service consistency
+# How many recent messages to check for AI service consistency (0 disables)
 LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 
 # Maximum conversation entries per user before pruning
 MAX_HISTORY_PER_USER=50
+
+# How long a conversation may sit idle before its history and lock are dropped
+CONVERSATION_TTL_SECONDS=1800
 
 # How often to clean up inactive user locks (seconds) - default 1 hour
 USER_LOCK_CLEANUP_INTERVAL=3600

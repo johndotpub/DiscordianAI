@@ -5,11 +5,14 @@ histories, preventing race conditions when multiple messages are processed
 concurrently from the same user.
 """
 
+from collections.abc import Callable
 import copy
 import logging
 import threading
 import time
 from typing import Any
+
+from .config import DEFAULT_CONVERSATION_TTL_SECONDS
 
 ConversationKey = int | str
 
@@ -67,21 +70,48 @@ class ThreadSafeConversationManager:
         - Returns deep copies to prevent external modification of internal state
     """
 
-    def __init__(self, max_history_per_user: int = 50, cleanup_interval: int = 3600):
+    def __init__(
+        self,
+        max_history_per_user: int = 50,
+        cleanup_interval: int = 3600,
+        conversation_ttl_seconds: int = DEFAULT_CONVERSATION_TTL_SECONDS,
+        clock: Callable[[], float] | None = None,
+        *,
+        ttl_seconds: int | None = None,
+    ):
         """Initialize the conversation manager with thread-safe data structures.
 
         Args:
             max_history_per_user (int): Maximum conversation entries per user.
                                       Older entries are automatically pruned.
             cleanup_interval (int): How often to clean up inactive user locks (seconds).
+            conversation_ttl_seconds (int): Idle seconds before a conversation and its
+                                         lock are evicted. Non-positive values disable expiry.
+            clock (Callable[[], float], optional): Time source used for TTL calculations.
+            ttl_seconds (int, optional): Alias for conversation_ttl_seconds.
         """
+        if ttl_seconds is not None:
+            conversation_ttl_seconds = ttl_seconds
+
         self._conversations: dict[ConversationKey, list[dict[str, str]]] = {}
         self._user_locks: dict[ConversationKey, threading.RLock] = {}
+        self._last_activity: dict[ConversationKey, float] = {}
         self._global_lock = threading.RLock()
         self._max_history = max_history_per_user
         self._cleanup_interval = cleanup_interval
+        self._conversation_ttl = conversation_ttl_seconds
+        self._clock = clock or time.time
         self._logger = logging.getLogger(f"{__name__}.ConversationManager")
-        self._last_cleanup = time.time()
+        now = self._clock()
+        self._last_cleanup = now
+        self._last_expiry_sweep = now
+        if conversation_ttl_seconds > 0:
+            self._expiry_sweep_interval = max(
+                0.001,
+                min(float(cleanup_interval), conversation_ttl_seconds / 2.0),
+            )
+        else:
+            self._expiry_sweep_interval = float("inf")
 
     @staticmethod
     def _resolve_key(
@@ -114,6 +144,104 @@ class ThreadSafeConversationManager:
         """Alias for :meth:`_get_user_lock` using conversation-key terminology."""
         return self._get_user_lock(conversation_key)
 
+    def _has_conversation_state(self, key: ConversationKey) -> bool:
+        """Return True when a conversation or its lock is still registered."""
+        with self._global_lock:
+            return key in self._conversations or key in self._user_locks
+
+    def _touch(self, key: ConversationKey) -> None:
+        """Record that a conversation was just used."""
+        with self._global_lock:
+            self._last_activity[key] = self._clock()
+
+    def _safe_cleanup(self) -> None:
+        """Run due maintenance without letting cleanup failures break the caller."""
+        try:
+            self.cleanup_inactive_user_locks(force=False)
+        except Exception as e:  # noqa: BLE001
+            self._logger.warning("Background cleanup failed: %s", e)
+
+    def _expire_stale_conversations(self, now: float) -> int:
+        """Evict conversations idle longer than the TTL and drop their locks.
+
+        The initial candidate scan takes the global lock only long enough to copy
+        timestamps. Each candidate is then checked and removed under its own lock,
+        so a large expired population does not hold up unrelated conversations.
+        """
+        if self._conversation_ttl <= 0:
+            return 0
+
+        cutoff = now - self._conversation_ttl
+        with self._global_lock:
+            candidates = [
+                (key, last_seen, self._user_locks.get(key))
+                for key, last_seen in self._last_activity.items()
+                if last_seen < cutoff and key in self._conversations
+            ]
+
+        expired_count = 0
+        removed_locks = 0
+        for key, last_seen, lock in candidates:
+            if lock is None:
+                with self._global_lock:
+                    if self._last_activity.get(key) != last_seen:
+                        continue
+                    if self._conversations.pop(key, None) is not None:
+                        self._last_activity.pop(key, None)
+                        expired_count += 1
+                continue
+
+            with lock, self._global_lock:
+                if self._last_activity.get(key) != last_seen:
+                    continue
+                if self._conversations.pop(key, None) is not None:
+                    self._last_activity.pop(key, None)
+                    expired_count += 1
+                if self._user_locks.get(key) is lock:
+                    del self._user_locks[key]
+                    removed_locks += 1
+
+        if expired_count:
+            self._logger.info(
+                "Expired %d idle conversations (ttl=%ss)",
+                expired_count,
+                self._conversation_ttl,
+            )
+
+        return removed_locks
+
+    def _remove_orphan_locks(self) -> int:
+        """Remove locks that no longer have conversation data."""
+        with self._global_lock:
+            candidates = [
+                (key, lock)
+                for key, lock in self._user_locks.items()
+                if key not in self._conversations
+            ]
+
+        removed_count = 0
+        for key, lock in candidates:
+            with lock, self._global_lock:
+                if key in self._conversations:
+                    continue
+                if self._user_locks.get(key) is lock:
+                    del self._user_locks[key]
+                    self._last_activity.pop(key, None)
+                    removed_count += 1
+
+        return removed_count
+
+    def cleanup_expired_conversations(self) -> int:
+        """Immediately remove every conversation that has exceeded the TTL.
+
+        Returns:
+            int: Number of conversation locks removed.
+        """
+        now = self._clock()
+        with self._global_lock:
+            self._last_expiry_sweep = now
+        return self._expire_stale_conversations(now)
+
     def get_conversation(
         self,
         user_id: ConversationKey | None = None,
@@ -135,16 +263,18 @@ class ThreadSafeConversationManager:
         """
         key = self._resolve_key(user_id, conversation_key)
 
-        # Periodic cleanup of inactive locks (non-blocking)
-        try:
-            self.cleanup_inactive_user_locks(force=False)
-        except Exception as e:  # noqa: BLE001
-            self._logger.warning("Background cleanup failed: %s", e)
+        # Periodic cleanup of expired conversations and inactive locks.
+        self._safe_cleanup()
+
+        if not self._has_conversation_state(key):
+            return []
 
         user_lock = self._get_user_lock(key)
         with user_lock:
             conversation = self._conversations.get(key, [])
             result = copy.deepcopy(conversation)
+            if key in self._conversations:
+                self._touch(key)
             self._logger.debug(
                 "Retrieved conversation for %s: %d messages",
                 key,
@@ -176,6 +306,7 @@ class ThreadSafeConversationManager:
             ValueError: If role is not one of the expected values.
         """
         key = self._resolve_key(user_id, conversation_key)
+        self._safe_cleanup()
         content = content or ""
 
         if role not in ["user", "assistant", "system"]:
@@ -218,6 +349,7 @@ class ThreadSafeConversationManager:
                     self._max_history,
                 )
 
+            self._touch(key)
             message_count = len(self._conversations[key])
             self._logger.debug(
                 "Added %s message for %s: %d chars, total history: %d messages",
@@ -248,6 +380,7 @@ class ThreadSafeConversationManager:
             ValueError: If any message in the conversation is invalid.
         """
         key = self._resolve_key(user_id, conversation_key)
+        self._safe_cleanup()
         conversation = conversation or []
 
         # Validate conversation format before acquiring lock
@@ -274,6 +407,7 @@ class ThreadSafeConversationManager:
                     removed_count,
                 )
 
+            self._touch(key)
             self._logger.debug(
                 "Updated full conversation for %s: %d messages",
                 key,
@@ -296,10 +430,16 @@ class ThreadSafeConversationManager:
             int: Number of messages that were cleared.
         """
         key = self._resolve_key(user_id, conversation_key)
+        self._safe_cleanup()
+        if not self._has_conversation_state(key):
+            return 0
+
         user_lock = self._get_user_lock(key)
         with user_lock:
             cleared_count = len(self._conversations.get(key, []))
             self._conversations.pop(key, None)
+            with self._global_lock:
+                self._last_activity.pop(key, None)
 
             self._logger.info(
                 "Cleared conversation for %s: %d messages removed",
@@ -325,9 +465,15 @@ class ThreadSafeConversationManager:
                 (message_count, last_user_message, last_assistant_message)
         """
         key = self._resolve_key(user_id, conversation_key)
+        self._safe_cleanup()
+        if not self._has_conversation_state(key):
+            return 0, None, None
+
         user_lock = self._get_user_lock(key)
         with user_lock:
             conversation = self._conversations.get(key, [])
+            if key in self._conversations:
+                self._touch(key)
             message_count = len(conversation)
 
             last_user_msg = None
@@ -356,16 +502,26 @@ class ThreadSafeConversationManager:
 
         Args:
             user_id (ConversationKey): Legacy user ID fallback.
-            lookback_messages (int): Number of recent messages to examine.
+            lookback_messages (int): Number of recent messages to examine. Values
+                less than one disable the lookup.
             conversation_key (ConversationKey): Explicit DM/channel conversation key.
 
         Returns:
             Optional[str]: The AI service ('openai' or 'perplexity') used recently, or None.
         """
         key = self._resolve_key(user_id, conversation_key)
+        self._safe_cleanup()
+        if not self._has_conversation_state(key):
+            return None
+
         user_lock = self._get_user_lock(key)
         with user_lock:
             conversation = self._conversations.get(key, [])
+
+            if lookback_messages <= 0:
+                if key in self._conversations:
+                    self._touch(key)
+                return None
 
             # Look at recent messages in reverse chronological order
             recent_messages = (
@@ -374,6 +530,7 @@ class ThreadSafeConversationManager:
                 else conversation
             )
 
+            service = None
             # Find the most recent assistant message with AI service metadata
             for msg in reversed(recent_messages):
                 if (
@@ -381,9 +538,12 @@ class ThreadSafeConversationManager:
                     and msg.get("metadata")
                     and msg["metadata"].get("ai_service")
                 ):
-                    return msg["metadata"]["ai_service"]
+                    service = msg["metadata"]["ai_service"]
+                    break
 
-            return None
+            if key in self._conversations:
+                self._touch(key)
+            return service
 
     def get_conversation_summary_formatted(
         self,
@@ -412,9 +572,15 @@ class ThreadSafeConversationManager:
             - This helps maintain conversational flow while reducing token usage
         """
         key = self._resolve_key(user_id, conversation_key)
+        self._safe_cleanup()
+        if not self._has_conversation_state(key):
+            return []
+
         user_lock = self._get_user_lock(key)
         with user_lock:
             conversation = self._conversations.get(key, [])
+            if key in self._conversations:
+                self._touch(key)
 
             if not conversation:
                 return []
@@ -446,6 +612,7 @@ class ThreadSafeConversationManager:
         Returns:
             List[ConversationKey]: Conversation keys that have history.
         """
+        self._safe_cleanup()
         with self._global_lock:
             return list(self._conversations.keys())
 
@@ -455,6 +622,7 @@ class ThreadSafeConversationManager:
         Returns:
             Dict[str, int]: Statistics including user count, total messages, etc.
         """
+        self._safe_cleanup()
         with self._global_lock:
             total_messages = sum(len(conv) for conv in self._conversations.values())
             return {
@@ -472,6 +640,7 @@ class ThreadSafeConversationManager:
         Returns:
             Dictionary with memory usage statistics
         """
+        self._safe_cleanup()
         with self._global_lock:
             total_messages = sum(len(conv) for conv in self._conversations.values())
             return {
@@ -485,39 +654,49 @@ class ThreadSafeConversationManager:
             }
 
     def cleanup_inactive_user_locks(self, force: bool = False) -> int:
-        """Clean up inactive user locks to prevent memory leaks.
+        """Clean up expired conversations and inactive user locks.
+
+        Expiry uses the conversation TTL and its own sweep cadence. Orphaned locks
+        keep using the configured cleanup interval.
 
         Args:
             force (bool): If True, runs cleanup regardless of timing. If False, only runs
-                         if enough time has passed since last cleanup.
+                         the parts that are due.
 
         Returns:
             int: Number of user locks that were cleaned up.
         """
-        current_time = time.time()
-
-        # Only run cleanup at configured interval unless forced
-        if not force and (current_time - self._last_cleanup) < self._cleanup_interval:
-            return 0
+        current_time = self._clock()
 
         with self._global_lock:
-            # Find user locks that have no corresponding conversation data
-            inactive_user_ids = [
-                user_id
-                for user_id in list(self._user_locks.keys())
-                if user_id not in self._conversations
-            ]
+            if force:
+                expire_due = True
+                cleanup_due = True
+            else:
+                expire_due = (
+                    self._expiry_sweep_interval != float("inf")
+                    and current_time - self._last_expiry_sweep >= self._expiry_sweep_interval
+                )
+                cleanup_due = (current_time - self._last_cleanup) >= self._cleanup_interval
 
-            # Remove inactive user locks
-            for user_id in inactive_user_ids:
-                del self._user_locks[user_id]
+            if not expire_due and not cleanup_due:
+                return 0
 
-            self._last_cleanup = current_time
+            if expire_due:
+                self._last_expiry_sweep = current_time
+            if cleanup_due:
+                self._last_cleanup = current_time
 
-            if inactive_user_ids:
+        removed_count = 0
+        if expire_due:
+            removed_count += self._expire_stale_conversations(current_time)
+        if cleanup_due:
+            orphan_count = self._remove_orphan_locks()
+            removed_count += orphan_count
+            if orphan_count:
                 self._logger.info(
                     "Cleaned up %d inactive user locks for memory optimization",
-                    len(inactive_user_ids),
+                    orphan_count,
                 )
 
-            return len(inactive_user_ids)
+        return removed_count
