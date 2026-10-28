@@ -1,7 +1,9 @@
 """Discord bot manager class for handling bot lifecycle and events."""
 
 import asyncio
+import os
 import signal
+import sys
 from typing import Any
 
 import discord
@@ -14,6 +16,8 @@ from .message_router import handle_incoming_message
 class DiscordBotManager:
     """Manages Discord bot lifecycle, event registration, and state."""
 
+    SHUTDOWN_TIMEOUT = 8.0
+
     def __init__(self, deps: dict[str, Any] | Any):
         """Initialize the bot manager with dependencies."""
         self.deps = deps
@@ -21,14 +25,53 @@ class DiscordBotManager:
         self.logger = deps["logger"]
         self.config = deps["config"]
         self._shutdown_requested = False
+        self._shutdown_task: asyncio.Task | None = None
         self._running = False
         self._bot_loop: asyncio.AbstractEventLoop | None = None
+
+    def _capture_loop(self):
+        """Capture the running event loop from an async context."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+
+        self._bot_loop = loop
+        if self._shutdown_requested and self._shutdown_task is None:
+            self._schedule_shutdown()
+
+    def _schedule_shutdown(self):
+        """Create the one shutdown task for this process."""
+        if self._shutdown_task is not None:
+            return
+        self._shutdown_task = asyncio.create_task(self._shutdown_with_timeout())
+
+    async def _shutdown_with_timeout(self):
+        """Run graceful shutdown with a hard upper bound."""
+        try:
+            await asyncio.wait_for(
+                self.graceful_shutdown(),
+                timeout=self.SHUTDOWN_TIMEOUT,
+            )
+        except TimeoutError:
+            self.logger.exception(
+                "Graceful shutdown timed out after %s seconds; forcing process exit",
+                self.SHUTDOWN_TIMEOUT,
+            )
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os._exit(0)
 
     def register_events(self):
         """Register all Discord event handlers."""
 
         @self.bot.event
+        async def setup_hook():
+            self._capture_loop()
+
+        @self.bot.event
         async def on_ready():
+            self._capture_loop()
             self.logger.info(
                 "Bot logged in as %s (ID: %s)",
                 self.bot.user.name,
@@ -85,10 +128,6 @@ class DiscordBotManager:
         if health_server:
             await health_server.stop()
 
-        if not self.bot.is_closed():
-            await self.bot.close()
-            self.logger.info("Discord connection closed")
-
         if "connection_pool_manager" in self.deps:
             pool_manager = self.deps["connection_pool_manager"]
             if hasattr(pool_manager, "close_all"):
@@ -109,8 +148,13 @@ class DiscordBotManager:
             else:
                 self.logger.info("Health monitoring task completed")
 
+        if not self.bot.is_closed():
+            await self.bot.close()
+            self.logger.info("Discord connection closed")
+
     def setup_signal_handlers(self):
         """Set up signal handlers for graceful shutdown."""
+        self._capture_loop()
 
         def signal_handler(signum, _frame):
             if self._shutdown_requested:
@@ -119,16 +163,23 @@ class DiscordBotManager:
             self._shutdown_requested = True
             self.logger.info("Received signal %s, shutting down", signum)
 
-            loop = getattr(self.bot, "loop", None) or self._bot_loop
-            if loop and not loop.is_closed():
+            loop = self._bot_loop
+            try:
+                running_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                running_loop = None
 
-                def schedule_shutdown(_=None):
-                    loop.create_task(self.graceful_shutdown())
+            if loop is None or loop.is_closed():
+                loop = running_loop
+            if loop is None or loop.is_closed():
+                self.logger.warning(
+                    "Bot loop unavailable; shutdown will run once the loop is captured"
+                )
+                return
 
-                loop.call_soon_threadsafe(schedule_shutdown, None)
-            else:
-                self.logger.warning("Bot loop unavailable; running graceful shutdown directly")
-                asyncio.run(self.graceful_shutdown())
+            if running_loop is loop:
+                self._schedule_shutdown()
+            loop.call_soon_threadsafe(self._schedule_shutdown)
 
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
@@ -143,32 +194,25 @@ class DiscordBotManager:
         self.setup_signal_handlers()
         try:
             self._running = True
-            try:
-                self._bot_loop = asyncio.get_running_loop()
-            except RuntimeError:
-                self._bot_loop = getattr(self.bot, "loop", None)
             self.bot.run(self.deps["DISCORD_TOKEN"], log_handler=None)
         except KeyboardInterrupt:
             if not self._shutdown_requested:
                 self.logger.info("Bot interrupted by user, shutting down")
-            try:
-                if self._bot_loop and not self._bot_loop.is_closed():
-                    if self._bot_loop.is_running():
-                        self.logger.warning("Bot loop still running; scheduling graceful shutdown")
-                        self._bot_loop.call_soon_threadsafe(
-                            self._bot_loop.create_task, self.graceful_shutdown()
-                        )
-                    else:
-                        self._bot_loop.run_until_complete(self.graceful_shutdown())
+            self._shutdown_requested = True
+            loop = self._bot_loop
+            if loop is not None and not loop.is_closed():
+                if loop.is_running():
+                    self.logger.warning("Bot loop still running; scheduling graceful shutdown")
+                    loop.call_soon_threadsafe(self._schedule_shutdown)
                 else:
-                    self.logger.warning("Bot loop unavailable; creating fallback shutdown loop")
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        loop.run_until_complete(self.graceful_shutdown())
-                    finally:
-                        loop.close()
-            finally:
-                self._running = False
+                    loop.run_until_complete(self._shutdown_with_timeout())
+            else:
+                self.logger.warning("Bot loop unavailable; creating fallback shutdown loop")
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(self._shutdown_with_timeout())
+                finally:
+                    loop.close()
         finally:
             self._running = False

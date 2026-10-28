@@ -161,7 +161,7 @@ def test_setup_signal_handlers(monkeypatch, base_deps):
 
 
 @pytest.mark.asyncio
-async def test_signal_handler_requests_graceful_shutdown(monkeypatch, base_deps):
+async def test_signal_handler_with_real_client_schedules_one_shutdown(monkeypatch, base_deps):
     captured_handlers = []
 
     def fake_signal(_sig, handler):
@@ -169,14 +169,11 @@ async def test_signal_handler_requests_graceful_shutdown(monkeypatch, base_deps)
 
     monkeypatch.setattr("signal.signal", fake_signal)
 
+    base_deps["bot"] = discord.Client(intents=discord.Intents.default())
     manager = DiscordBotManager(base_deps)
     manager.graceful_shutdown = AsyncMock()
-    loop = asyncio.get_running_loop()
-    manager.bot.loop = SimpleNamespace(
-        is_closed=lambda: False,
-        call_soon_threadsafe=lambda callback, coro: callback(coro),
-        create_task=loop.create_task,
-    )
+    manager.register_events()
+    await manager.bot.setup_hook()
     manager.setup_signal_handlers()
 
     assert len(captured_handlers) == 2
