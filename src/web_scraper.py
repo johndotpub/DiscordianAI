@@ -24,6 +24,11 @@ from .config import (
     DEFAULT_MAX_URLS_PER_MESSAGE,
     DEFAULT_SCRAPE_DEADLINE_SECONDS,
 )
+from .error_handling import (
+    HTTP_STATUS_TOO_MANY_REQUESTS,
+    is_retryable_status,
+    retry_after_seconds,
+)
 from .truncation import truncate_with_notice
 
 # Configuration constants
@@ -31,10 +36,6 @@ DEFAULT_TIMEOUT = 15  # Generous timeout for slow sites
 MAX_CONTENT_LENGTH = 50000  # ~12-15k tokens worth of content
 MAX_DOWNLOAD_SIZE = 1000000  # 1MB raw HTML download limit
 REQUEST_RETRIES = 2
-RATE_LIMIT_MAX_RETRY_AFTER = 30.0
-HTTP_STATUS_TOO_MANY_REQUESTS = 429
-HTTP_STATUS_SERVER_ERROR = 500
-HTTP_STATUS_SERVER_ERROR_MAX = 600
 MIN_DELAY_BETWEEN_REQUESTS = 1.0  # Respectful delay between requests
 MAX_DELAY_BETWEEN_REQUESTS = 3.0  # Maximum random delay
 MAX_CONCURRENT_HOSTS = 2  # Distinct hosts scraped at once
@@ -513,35 +514,6 @@ async def _fetch_content_with_retries(
     return None
 
 
-def _is_retryable_http_status(status_code: int | None) -> bool:
-    """Return whether an HTTP status represents a transient server-side failure."""
-    return status_code == HTTP_STATUS_TOO_MANY_REQUESTS or (
-        status_code is not None
-        and HTTP_STATUS_SERVER_ERROR <= status_code < HTTP_STATUS_SERVER_ERROR_MAX
-    )
-
-
-def _retry_after_delay(response) -> float | None:
-    headers = getattr(response, "headers", None)
-    if headers is None:
-        return None
-
-    try:
-        value = headers.get("Retry-After")
-    except (AttributeError, TypeError):
-        return None
-
-    if value is None:
-        return None
-
-    try:
-        delay = float(str(value).strip())
-    except (TypeError, ValueError):
-        return None
-
-    return min(max(delay, 0.0), RATE_LIMIT_MAX_RETRY_AFTER)
-
-
 async def _fetch_attempt_with_retry_logic(  # noqa: PLR0911
     client: httpx.AsyncClient,
     target: _ValidatedUrl,
@@ -556,11 +528,11 @@ async def _fetch_attempt_with_retry_logic(  # noqa: PLR0911
             result = await _fetch_attempt(client, target, attempt, request_timeout, logger)
         except httpx.HTTPStatusError as e:
             status_code = e.response.status_code if e.response is not None else None
-            if attempt == REQUEST_RETRIES or not _is_retryable_http_status(status_code):
+            if attempt == REQUEST_RETRIES or not is_retryable_status(status_code):
                 _log_fetch_error(e, target.url, attempt, logger)
                 return _STOP_RETRY
             if status_code == HTTP_STATUS_TOO_MANY_REQUESTS:
-                delay = _retry_after_delay(e.response)
+                delay = retry_after_seconds(getattr(e.response, "headers", None))
                 if delay is not None:
                     return _RetryAfter(delay)
             return None

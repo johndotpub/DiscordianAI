@@ -16,7 +16,6 @@ from email.utils import parsedate_to_datetime
 from enum import Enum
 import functools
 import logging
-import math
 import re
 import secrets
 import threading
@@ -77,7 +76,7 @@ class ErrorDetails:
     severity: ErrorSeverity
     message: str
     user_message: str
-    retry_after: int | None = None
+    retry_after: float | None = None
     context: dict[str, Any] | None = None
 
 
@@ -217,6 +216,10 @@ def get_circuit_breaker_states() -> dict[str, dict[str, Any]]:
     }
 
 
+RetryPredicate = Callable[[ErrorDetails, Exception], bool]
+RetryDelayPolicy = Callable[[int, "RetryConfig", ErrorDetails, Exception], float]
+
+
 class RetryConfig:
     """Configuration for retry behavior."""
 
@@ -228,6 +231,8 @@ class RetryConfig:
         exponential_base: float = 2.0,
         jitter: bool = True,
         max_elapsed: float | None = 90.0,
+        retry_if: RetryPredicate | None = None,
+        delay_for: RetryDelayPolicy | None = None,
     ):
         """Initialize retry configuration values."""
         self.max_attempts = max_attempts
@@ -236,6 +241,8 @@ class RetryConfig:
         self.exponential_base = exponential_base
         self.jitter = jitter
         self.max_elapsed = max_elapsed
+        self.retry_if = retry_if
+        self.delay_for = delay_for
 
 
 DEFAULT_API_RETRY_CONFIG = RetryConfig(
@@ -279,8 +286,9 @@ async def retry_with_backoff(
         except Exception as e:
             last_exception = e
             error_details = classify_error(e)
+            retry_if = retry_config.retry_if or _is_retryable_error
 
-            if not _is_retryable_error(error_details, e):
+            if not retry_if(error_details, e):
                 logger.exception("Non-retryable error in %s", func.__name__)
                 raise
 
@@ -301,7 +309,8 @@ async def retry_with_backoff(
                 )
                 break
 
-            delay = _retry_delay(attempt, retry_config, error_details, e)
+            delay_policy = retry_config.delay_for or _retry_delay
+            delay = delay_policy(attempt, retry_config, error_details, e)
             if remaining is not None and delay >= remaining:
                 logger.exception(
                     "Retry delay of %.1fs would exceed deadline of %.1fs for %s",
@@ -340,7 +349,7 @@ def calculate_backoff_delay(attempt: int, config: RetryConfig) -> float:
 
 _HTTP_STATUS_BAD_REQUEST = 400
 _HTTP_STATUS_REQUEST_TIMEOUT = 408
-_HTTP_STATUS_TOO_MANY_REQUESTS = 429
+HTTP_STATUS_TOO_MANY_REQUESTS = 429
 _HTTP_STATUS_SERVER_ERROR = 500
 
 _RATE_LIMIT_MAX_RETRY_AFTER = 30.0
@@ -369,20 +378,25 @@ def _status_code_from_exception(exception: Exception) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def is_retryable_status(status: int | None) -> bool:
+    """Return whether an HTTP status is a transient failure worth retrying."""
+    if status is None:
+        return False
+    return status == HTTP_STATUS_TOO_MANY_REQUESTS or status >= _HTTP_STATUS_SERVER_ERROR
+
+
 def _is_retryable_error(error_details: ErrorDetails, exception: Exception) -> bool:
     if isinstance(exception, CircuitBreakerOpenError):
         return False
 
     status_code = _status_code_from_exception(exception)
 
-    if status_code == _HTTP_STATUS_TOO_MANY_REQUESTS:
-        return True
     if (
         status_code is not None
         and _HTTP_STATUS_BAD_REQUEST <= status_code < _HTTP_STATUS_SERVER_ERROR
     ):
-        return False
-    if status_code is not None and status_code >= _HTTP_STATUS_SERVER_ERROR:
+        return is_retryable_status(status_code)
+    if is_retryable_status(status_code):
         return True
 
     if isinstance(exception, _HTTPX_CONNECT_TIMEOUT_ERRORS):
@@ -404,12 +418,14 @@ def _retry_delay(
 ) -> float:
     is_rate_limit = (
         error_details.error_type == ErrorType.API_RATE_LIMIT
-        or _status_code_from_exception(exception) == _HTTP_STATUS_TOO_MANY_REQUESTS
+        or _status_code_from_exception(exception) == HTTP_STATUS_TOO_MANY_REQUESTS
     )
     if is_rate_limit:
         retry_after = error_details.retry_after
         if retry_after is None:
-            retry_after = _retry_after_from_response(getattr(exception, "response", None))
+            retry_after = retry_after_seconds(
+                getattr(getattr(exception, "response", None), "headers", None)
+            )
         if retry_after is not None:
             return min(max(float(retry_after), 0.0), _RATE_LIMIT_MAX_RETRY_AFTER)
 
@@ -427,7 +443,7 @@ def _error_details(
     severity: ErrorSeverity,
     exception: Exception,
     user_message: str,
-    retry_after: int | None = None,
+    retry_after: float | None = None,
 ) -> ErrorDetails:
     return ErrorDetails(
         error_type=error_type,
@@ -439,8 +455,7 @@ def _error_details(
     )
 
 
-def _get_response_header(response: Any, name: str) -> Any:
-    headers = getattr(response, "headers", None)
+def _header_value(headers: Any, name: str) -> Any:
     if headers is None:
         return None
 
@@ -462,7 +477,9 @@ def _get_response_header(response: Any, name: str) -> Any:
     return None
 
 
-def _parse_retry_after(value: Any) -> int | None:
+def retry_after_seconds(headers: Any) -> float | None:
+    """Parse a Retry-After header and bound it to the retry policy maximum."""
+    value = _header_value(headers, "Retry-After")
     if value is None:
         return None
 
@@ -471,9 +488,11 @@ def _parse_retry_after(value: Any) -> int | None:
         return None
 
     try:
-        return max(0, math.ceil(float(text)))
+        delay = float(text)
     except (TypeError, ValueError, OverflowError):
         pass
+    else:
+        return min(max(delay, 0.0), _RATE_LIMIT_MAX_RETRY_AFTER)
 
     try:
         retry_at = parsedate_to_datetime(text)
@@ -483,18 +502,17 @@ def _parse_retry_after(value: Any) -> int | None:
     if retry_at.tzinfo is None:
         retry_at = retry_at.replace(tzinfo=UTC)
 
-    return max(0, math.ceil((retry_at - datetime.now(UTC)).total_seconds()))
-
-
-def _retry_after_from_response(response: Any) -> int | None:
-    return _parse_retry_after(_get_response_header(response, "Retry-After"))
+    return min(
+        max((retry_at - datetime.now(UTC)).total_seconds(), 0.0),
+        _RATE_LIMIT_MAX_RETRY_AFTER,
+    )
 
 
 def _classify_api_status_error(exception: openai.APIStatusError) -> ErrorDetails:
     status_code = exception.status_code
-    retry_after = _retry_after_from_response(exception.response)
+    retry_after = retry_after_seconds(getattr(exception.response, "headers", None))
 
-    if status_code == _HTTP_STATUS_TOO_MANY_REQUESTS:
+    if status_code == HTTP_STATUS_TOO_MANY_REQUESTS:
         return _error_details(
             ErrorType.API_RATE_LIMIT,
             ErrorSeverity.MEDIUM,
@@ -576,7 +594,7 @@ def _classify_typed_error(exception: Exception) -> ErrorDetails | None:
             ErrorSeverity.HIGH,
             exception,
             "🤖 Bot connection issue. Reconnecting...",
-            _retry_after_from_response(getattr(exception, "response", None)),
+            retry_after_seconds(getattr(getattr(exception, "response", None), "headers", None)),
         )
 
     return None
@@ -695,6 +713,47 @@ class ErrorTracker:
 error_tracker = ErrorTracker()
 
 
+def _is_retryable_discord_error(_error_details: ErrorDetails, exception: Exception) -> bool:
+    if isinstance(exception, CircuitBreakerOpenError):
+        return False
+    if isinstance(exception, discord.Forbidden):
+        return False
+
+    status_code = _status_code_from_exception(exception)
+    if status_code is not None:
+        return is_retryable_status(status_code)
+
+    return True
+
+
+def _discord_retry_delay(
+    attempt: int,
+    config: RetryConfig,
+    error_details: ErrorDetails,
+    exception: Exception,
+) -> float:
+    retry_after = getattr(exception, "retry_after", None)
+    if retry_after is None and isinstance(exception, discord.HTTPException):
+        retry_after = error_details.retry_after
+    if retry_after is not None:
+        return min(max(float(retry_after), 0.0), _RATE_LIMIT_MAX_RETRY_AFTER)
+
+    return calculate_backoff_delay(attempt, config)
+
+
+def _discord_retry_config(max_retries: int) -> RetryConfig:
+    return RetryConfig(
+        max_attempts=max_retries,
+        base_delay=1.0,
+        max_delay=float("inf"),
+        exponential_base=2.0,
+        jitter=False,
+        max_elapsed=None,
+        retry_if=_is_retryable_discord_error,
+        delay_for=_discord_retry_delay,
+    )
+
+
 async def safe_discord_send(
     channel,
     content: str,
@@ -712,33 +771,13 @@ async def safe_discord_send(
     Returns:
         bool: True if message sent successfully, False otherwise
     """
-    for attempt in range(max_retries):
-        try:
-            await channel.send(content)
-        except Exception as e:
-            error_details = classify_error(e)
 
-            if not _is_retryable_error(error_details, e):
-                logger.exception("Non-retryable Discord send error")
-                error_tracker.record_error(error_details, {"channel": str(channel)})
-                break
+    async def _send_once() -> None:
+        await channel.send(content)
 
-            if attempt >= max_retries - 1:
-                logger.exception("Failed to send Discord message after %s attempts", max_retries)
-                error_tracker.record_error(error_details, {"channel": str(channel)})
-                break
-
-            delay = 2**attempt
-            if isinstance(e, discord.HTTPException) and error_details.retry_after is not None:
-                delay = min(float(error_details.retry_after), _RATE_LIMIT_MAX_RETRY_AFTER)
-            logger.warning(
-                "Discord send failed (attempt %d/%d): %s. Retrying in %ds",
-                attempt + 1,
-                max_retries,
-                e,
-                delay,
-            )
-            await asyncio.sleep(delay)
-        else:
-            return True
-    return False
+    try:
+        await retry_with_backoff(_send_once, _discord_retry_config(max_retries), logger)
+    except Exception as exc:  # noqa: BLE001 — safe_discord_send must never raise
+        error_tracker.record_error(classify_error(exc), {"channel": str(channel)})
+        return False
+    return True
