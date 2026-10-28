@@ -16,6 +16,10 @@ from src.error_handling import (
 )
 from src.web_scraper import scrape_url_content
 
+_PUBLIC_ADDR_INFO = [
+    (2, 1, 6, "", ("93.184.216.34", 0)),
+]
+
 
 def _api_response(status_code: int, headers: dict[str, str] | None = None):
     return SimpleNamespace(
@@ -216,6 +220,7 @@ async def test_scraper_retries_503_but_not_other_4xx():
     with (
         patch("src.web_scraper.httpx.AsyncClient", client_class),
         patch("src.web_scraper.asyncio.sleep", new=AsyncMock()),
+        patch("src.web_scraper._resolve_hostname", new=AsyncMock(return_value=_PUBLIC_ADDR_INFO)),
     ):
         result = await scrape_url_content("https://example.com")
 
@@ -227,6 +232,7 @@ async def test_scraper_retries_503_but_not_other_4xx():
     with (
         patch("src.web_scraper.httpx.AsyncClient", client_class),
         patch("src.web_scraper.asyncio.sleep", new=AsyncMock()),
+        patch("src.web_scraper._resolve_hostname", new=AsyncMock(return_value=_PUBLIC_ADDR_INFO)),
     ):
         result = await scrape_url_content("https://example.com")
 

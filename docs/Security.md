@@ -156,9 +156,42 @@ HTTP connections use secure defaults:
 
 ### Web Scraper SSRF Protection
 
-The web scraper validates URLs before fetching them and rejects non-public
-targets. Hostnames are resolved first, and private, loopback, link-local, and
-other non-global IP ranges are blocked before any request is made.
+The web scraper validates the URL inside the fetch path itself, so a caller
+cannot bypass the check by forgetting to call `is_scrapable_url`. Automatic
+redirects are disabled on the scrape client: redirects are followed manually
+for at most three hops, and the initial URL and every `Location` are resolved
+and checked before use. A redirect to a non-global address is refused without
+reading its body.
+
+A URL is accepted only when every address returned for its hostname is a
+routable public address. The following are rejected, including IPv4-mapped
+IPv6 forms and NAT64 encodings:
+
+| Class | Range or address |
+| --- | --- |
+| IPv4 loopback | `127.0.0.0/8` |
+| IPv4 private | `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` |
+| IPv4 link-local | `169.254.0.0/16` |
+| IPv4 CGNAT | `100.64.0.0/10` |
+| IPv4 unspecified | `0.0.0.0` |
+| IPv6 loopback | `::1` |
+| IPv6 link-local | `fe80::/10` |
+| IPv6 unique-local | `fc00::/7` |
+| Other non-global | multicast, reserved and documentation ranges |
+| NAT64-encoded IPv4 | `64:ff9b::/96` |
+
+If a hostname resolves to a mix of global and non-global addresses, the URL
+is refused.
+
+For plain HTTP the connection is pinned to a vetted address: the request URL
+uses that IP and the original hostname is sent in the `Host` header, so a
+second DNS answer cannot redirect the connection. HTTPS is deliberately not
+pinned because connecting to a bare IP address would break SNI and certificate
+validation. Instead the hostname is resolved and checked immediately before
+the request, but httpx performs its own lookup when it connects. A
+DNS-rebinding attacker therefore has a small window between the validation
+lookup and the connection lookup. This residual risk is accepted deliberately
+in exchange for correct TLS verification.
 
 ### API Endpoints
 

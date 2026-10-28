@@ -6,13 +6,14 @@ production deployment with comprehensive error handling and logging.
 """
 
 import asyncio
+from dataclasses import dataclass
 import ipaddress
 import logging
 import re
 import secrets
 import socket
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import ParseResult, urljoin, urlparse, urlunsplit
 
 from bs4 import BeautifulSoup
 import httpx
@@ -35,6 +36,10 @@ MAX_HEADING_LENGTH = 200
 MIN_PARTS_FOR_KEY_SECTIONS = 2
 MIN_TOTAL_LENGTH_FOR_BODY = 200
 CHUNK_SIZE = 8192
+MAX_REDIRECTS = 3
+REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
+MAX_TCP_PORT = 65535
+NAT64_NETWORK = ipaddress.ip_network("64:ff9b::/96")
 
 # Production-ready headers to avoid blocking
 DEFAULT_HEADERS = {
@@ -70,6 +75,22 @@ class _RetryAfter:
 
     def __init__(self, delay: float):
         self.delay = delay
+
+
+@dataclass(frozen=True)
+class _Redirect:
+    """A validated redirect target waiting to be followed."""
+
+    url: str
+
+
+@dataclass(frozen=True)
+class _ValidatedUrl:
+    """A URL whose hostname resolved exclusively to global addresses."""
+
+    url: str
+    parsed: ParseResult
+    addresses: tuple[ipaddress.IPv4Address | ipaddress.IPv6Address, ...]
 
 
 _STOP_RETRY = _StopRetry()
@@ -278,7 +299,9 @@ async def scrape_url_content(
     logger.info("Starting web scraping for URL: %s", url)
 
     try:
-        if not _validate_url(url, logger):
+        target = await _resolve_safe_target(url, logger)
+        if target is None:
+            logger.warning("Refusing to scrape unsafe URL: %s", url)
             return None
 
         await _add_respectful_delay()
@@ -286,7 +309,7 @@ async def scrape_url_content(
         # Execute request asynchronously, enforcing an overall asyncio timeout
         try:
             async with asyncio.timeout(request_timeout):
-                html_content = await _fetch_content_with_retries(url, request_timeout, logger)
+                html_content = await _fetch_content_with_retries(target, request_timeout, logger)
         except TimeoutError:
             logger.warning("Scrape timed out for URL: %s", url)
             return None
@@ -306,23 +329,35 @@ async def scrape_url_content(
         return None
 
 
-def _validate_url(url: str, logger: logging.Logger) -> bool:
-    """Validate URL format."""
-    parsed_url = urlparse(url)
-    if not parsed_url.scheme or not parsed_url.netloc:
-        logger.error("Invalid URL format: %s", url)
-        return False
-    return True
+def _format_authority(host: str, port: int | None, scheme: str) -> str:
+    """Format a hostname and optional port for an HTTP Host header."""
+    if ":" in host:
+        host = f"[{host}]"
+    default_port = 443 if scheme == "https" else 80
+    if port is not None and port != default_port:
+        host = f"{host}:{port}"
+    return host
+
+
+def _pinned_request_url(target: _ValidatedUrl) -> tuple[str, str]:
+    """Build an HTTP request URL pinned to the first vetted address."""
+    parsed = target.parsed
+    ip = target.addresses[0]
+    ip_host = f"[{ip}]" if isinstance(ip, ipaddress.IPv6Address) else str(ip)
+    netloc = f"{ip_host}:{parsed.port}" if parsed.port is not None else ip_host
+    request_url = urlunsplit((parsed.scheme, netloc, parsed.path or "/", parsed.query, ""))
+    host_header = _format_authority(parsed.hostname or "", parsed.port, parsed.scheme)
+    return request_url, host_header
 
 
 async def _fetch_content_with_retries(
-    url: str, request_timeout: int, logger: logging.Logger
+    target: _ValidatedUrl, request_timeout: int, logger: logging.Logger
 ) -> str | None:
     """Perform HTTP request with retries."""
-    async with httpx.AsyncClient(headers=DEFAULT_HEADERS, follow_redirects=True) as client:
+    async with httpx.AsyncClient(headers=DEFAULT_HEADERS, follow_redirects=False) as client:
         for attempt in range(REQUEST_RETRIES + 1):
             result = await _fetch_attempt_with_retry_logic(
-                client, url, attempt, request_timeout, logger
+                client, target, attempt, request_timeout, logger
             )
             delay = 2**attempt
             if isinstance(result, _RetryAfter):
@@ -368,47 +403,91 @@ def _retry_after_delay(response) -> float | None:
 
 async def _fetch_attempt_with_retry_logic(  # noqa: PLR0911
     client: httpx.AsyncClient,
-    url: str,
+    target: _ValidatedUrl,
     attempt: int,
     request_timeout: int,
     logger: logging.Logger,
 ) -> str | _StopRetry | _RetryAfter | None:
-    """Perform a single fetch attempt with error handling for the retry loop."""
-    try:
-        return await _fetch_attempt(client, url, attempt, request_timeout, logger)
-    except httpx.HTTPStatusError as e:
-        status_code = e.response.status_code if e.response is not None else None
-        if attempt == REQUEST_RETRIES or not _is_retryable_http_status(status_code):
-            _log_fetch_error(e, url, attempt, logger)
+    """Perform a single fetch attempt, following only validated redirects."""
+    redirects_followed = 0
+    while True:
+        try:
+            result = await _fetch_attempt(client, target, attempt, request_timeout, logger)
+        except httpx.HTTPStatusError as e:
+            status_code = e.response.status_code if e.response is not None else None
+            if attempt == REQUEST_RETRIES or not _is_retryable_http_status(status_code):
+                _log_fetch_error(e, target.url, attempt, logger)
+                return _STOP_RETRY
+            if status_code == HTTP_STATUS_TOO_MANY_REQUESTS:
+                delay = _retry_after_delay(e.response)
+                if delay is not None:
+                    return _RetryAfter(delay)
+            return None
+        except httpx.TimeoutException as e:
+            if attempt == REQUEST_RETRIES or not isinstance(e, httpx.ConnectTimeout):
+                _log_fetch_error(e, target.url, attempt, logger)
+                return _STOP_RETRY
+            return None
+        except httpx.HTTPError as e:
+            if attempt == REQUEST_RETRIES:
+                _log_fetch_error(e, target.url, attempt, logger)
+                return _STOP_RETRY
+            # Let the loop handle the sleep for non-fatal errors
+            return None
+
+        if not isinstance(result, _Redirect):
+            return result
+
+        if redirects_followed >= MAX_REDIRECTS:
+            logger.warning(
+                "Refusing redirect chain longer than %d hops: %s", MAX_REDIRECTS, target.url
+            )
             return _STOP_RETRY
-        if status_code == HTTP_STATUS_TOO_MANY_REQUESTS:
-            delay = _retry_after_delay(e.response)
-            if delay is not None:
-                return _RetryAfter(delay)
-        return None
-    except httpx.TimeoutException as e:
-        if attempt == REQUEST_RETRIES or not isinstance(e, httpx.ConnectTimeout):
-            _log_fetch_error(e, url, attempt, logger)
+
+        redirect_target = await _resolve_safe_target(result.url, logger)
+        if redirect_target is None:
+            logger.warning("Refusing redirect to unsafe URL: %s", result.url)
             return _STOP_RETRY
-        return None
-    except httpx.HTTPError as e:
-        if attempt == REQUEST_RETRIES:
-            _log_fetch_error(e, url, attempt, logger)
-            return _STOP_RETRY
-        # Let the loop handle the sleep for non-fatal errors
-        return None
+
+        redirects_followed += 1
+        logger.info(
+            "Following redirect %d/%d to %s", redirects_followed, MAX_REDIRECTS, result.url
+        )
+        target = redirect_target
 
 
 async def _fetch_attempt(
     client: httpx.AsyncClient,
-    url: str,
+    target: _ValidatedUrl,
     attempt: int,
     request_timeout: int,
     logger: logging.Logger,
-) -> str | _StopRetry:
-    """Perform a single fetch attempt."""
-    logger.debug("HTTP attempt %d for: %s", attempt + 1, url)
-    async with client.stream("GET", url, timeout=request_timeout) as response:
+) -> str | _StopRetry | _Redirect:
+    """Perform a single request without following redirects."""
+    request_url = target.url
+    request_headers: dict[str, str] | None = None
+
+    # Plain HTTP is pinned to the vetted IP via the URL and Host header. HTTPS
+    # is deliberately not pinned: connecting to a bare address would break SNI
+    # and certificate validation. The hostname was resolved and every address
+    # checked immediately before this request, but httpx resolves it again when
+    # connecting, leaving a small DNS-rebinding window. That residual risk is
+    # documented in docs/Security.md.
+    if target.parsed.scheme == "http":
+        request_url, host_header = _pinned_request_url(target)
+        request_headers = {"Host": host_header}
+
+    logger.debug("HTTP attempt %d for: %s", attempt + 1, target.url)
+    async with client.stream(
+        "GET", request_url, timeout=request_timeout, headers=request_headers
+    ) as response:
+        if response.status_code in REDIRECT_STATUS_CODES:
+            location = response.headers.get("location")
+            if not location:
+                logger.warning("Redirect without Location header from %s", target.url)
+                return _STOP_RETRY
+            return _Redirect(urljoin(target.url, location))
+
         response.raise_for_status()
 
         if "text/html" not in response.headers.get("content-type", "").lower():
@@ -463,27 +542,71 @@ async def _resolve_hostname(hostname: str) -> list[tuple[Any, ...]]:
     )
 
 
-async def is_safe_url(url: str) -> bool:
-    """Check if a URL is safe to scrape (prevents SSRF)."""
+def _is_global_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Return True only for routable public addresses.
+
+    IPv4-mapped IPv6 addresses are unwrapped before checking so loopback,
+    private, link-local and CGNAT mappings cannot slip through. NAT64
+    addresses are unwrapped for the same reason, and multicast is never a
+    valid scrape target.
+    """
+    if isinstance(address, ipaddress.IPv6Address):
+        mapped = address.ipv4_mapped
+        if mapped is not None:
+            address = mapped
+        elif address in NAT64_NETWORK:
+            address = ipaddress.IPv4Address(int(address) & 0xFFFFFFFF)
+    return address.is_global and not address.is_multicast
+
+
+async def _resolve_safe_target(  # noqa: PLR0911
+    url: str, logger: logging.Logger
+) -> _ValidatedUrl | None:
+    """Resolve a URL once and accept it only if every address is global."""
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname
-        if not (parsed.scheme in ["http", "https"] and parsed.netloc and hostname):
-            return False
+        port = parsed.port
+        if port is not None and not 0 < port <= MAX_TCP_PORT:
+            logger.warning("Invalid port in URL: %s", url)
+            return None
+    except ValueError:
+        logger.warning("Invalid URL: %s", url)
+        return None
 
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or not hostname:
+        logger.warning("Invalid URL scheme or host: %s", url)
+        return None
+
+    try:
         addr_info = await _resolve_hostname(hostname)
-        if not addr_info:
-            return False
+    except (socket.gaierror, TypeError, OSError) as e:
+        logger.warning("Could not resolve %s: %s", hostname, e)
+        return None
 
-        for _family, _, _, _, sockaddr in addr_info:
-            ip_obj = ipaddress.ip_address(sockaddr[0])
-            # ip.is_global filters non-public ranges
-            if not ip_obj.is_global:
-                return False
-    except (ValueError, socket.gaierror, TypeError, OSError):
-        return False
-    else:
-        return True
+    if not addr_info:
+        logger.warning("No addresses resolved for %s", hostname)
+        return None
+
+    addresses = []
+    for _family, _, _, _, sockaddr in addr_info:
+        try:
+            ip_obj = ipaddress.ip_address(str(sockaddr[0]).split("%", 1)[0])
+        except (ValueError, TypeError, IndexError):
+            logger.warning("Invalid resolved address for %s", hostname)
+            return None
+        if not _is_global_address(ip_obj):
+            logger.warning("Refusing %s: %s is not a global address", url, ip_obj)
+            return None
+        addresses.append(ip_obj)
+
+    return _ValidatedUrl(url=url, parsed=parsed, addresses=tuple(addresses))
+
+
+async def is_safe_url(url: str) -> bool:
+    """Check if a URL is safe to scrape (prevents SSRF)."""
+    target = await _resolve_safe_target(url, logging.getLogger(__name__))
+    return target is not None
 
 
 async def is_scrapable_url(url: str) -> bool:

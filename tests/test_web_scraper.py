@@ -15,15 +15,23 @@ from src.web_scraper import (
     scrape_url_content,
 )
 
+_PUBLIC_ADDR_INFO = [
+    (2, 1, 6, "", ("93.184.216.34", 0)),
+]
+
 
 @pytest.fixture(autouse=True)
 def _patch_web_scraper_sleep():
-    """Patch asyncio.sleep in the web_scraper module so tests run instantly.
+    """Patch asyncio.sleep and DNS in the web_scraper module.
 
     scrape_url_content() always calls _add_respectful_delay() (1-3s) and may
     also hit retry backoff sleeps. This fixture eliminates all real delays.
+    DNS is stubbed with a public address so tests stay hermetic.
     """
-    with patch("src.web_scraper.asyncio.sleep", AsyncMock(return_value=None)):
+    with (
+        patch("src.web_scraper.asyncio.sleep", AsyncMock(return_value=None)),
+        patch("src.web_scraper._resolve_hostname", AsyncMock(return_value=_PUBLIC_ADDR_INFO)),
+    ):
         yield
 
 
