@@ -14,6 +14,50 @@
       ],
       "model": ""
     },
+    "e-history-one-turn": {
+      "max_tokens": 8000,
+      "messages": [
+        {
+          "content": "You are a helpful assistant with access to current web information.",
+          "role": "system"
+        },
+        {
+          "content": "Name two novels by Frank Herbert.",
+          "role": "user"
+        },
+        {
+          "content": "And what about the second one?",
+          "role": "user"
+        }
+      ],
+      "model": "sonar-pro"
+    },
+    "e-history-three-turns": {
+      "max_tokens": 2048,
+      "messages": [
+        {
+          "content": "You are a helpful assistant.",
+          "role": "system"
+        },
+        {
+          "content": "Name two novels by Frank Herbert.",
+          "role": "user"
+        },
+        {
+          "content": "Dune and Dune Messiah.",
+          "role": "assistant"
+        },
+        {
+          "content": "When was the first one published?",
+          "role": "user"
+        },
+        {
+          "content": "Who wrote it?",
+          "role": "user"
+        }
+      ],
+      "model": "sonar"
+    },
     "e-json-ish-content": {
       "max_tokens": 777,
       "messages": [

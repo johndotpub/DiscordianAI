@@ -16,6 +16,7 @@ from .api_context import api_call
 from .config import CITATION_PATTERN, URL_PATTERN
 from .discord_embeds import citation_embed_formatter
 from .error_handling import DEFAULT_API_RETRY_CONFIG, retry_with_backoff
+from .message_builder import build_messages
 from .message_splitter import should_suppress_embeds
 from .models import AIRequest, PerplexityConfig
 from .web_scraper import is_scrapable_url, scrape_url_content
@@ -186,6 +187,7 @@ async def process_perplexity_message(
     request: AIRequest,
     perplexity_client: Any,
     config: PerplexityConfig,
+    conversation_summary: list[dict] | None = None,
 ) -> tuple[str, bool, dict | None] | None:
     """Get a web-enabled response from Perplexity and format it for Discord.
 
@@ -199,6 +201,8 @@ async def process_perplexity_message(
             conversation manager.
         perplexity_client: The Perplexity client object used to make API calls.
         config: `PerplexityConfig` containing model and system message.
+        conversation_summary: Optional prior conversation turns to send between
+            the system message and the current user message.
 
     Returns:
         A tuple `(response_text, suppress_embeds, embed_metadata)` when a
@@ -208,11 +212,15 @@ async def process_perplexity_message(
         async with api_call("perplexity", request.logger, request) as ctx:
             urls_in_message = URL_PATTERN.findall(request.message)
             api_params = _build_api_params(
-                config.model, config.system_message, request.message, config.output_tokens
+                config.model,
+                config.system_message,
+                request.message,
+                config.output_tokens,
+                history=conversation_summary,
             )
 
             if urls_in_message:
-                api_params["messages"][1]["content"] = await _enhance_message_with_urls(
+                api_params["messages"][-1]["content"] = await _enhance_message_with_urls(
                     request.message, urls_in_message, request.logger
                 )
 
@@ -230,14 +238,17 @@ async def process_perplexity_message(
         return None
 
 
-def _build_api_params(model: str, system: str, user_msg: str, tokens: int) -> dict[str, Any]:
+def _build_api_params(
+    model: str,
+    system: str,
+    user_msg: str,
+    tokens: int,
+    history: list[dict] | None = None,
+) -> dict[str, Any]:
     """Prepare Perplexity API call parameters."""
     return {
         "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_msg},
-        ],
+        "messages": build_messages(system, user_msg, history),
         "max_tokens": tokens,
     }
 

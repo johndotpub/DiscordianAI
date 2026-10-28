@@ -246,11 +246,14 @@ async def _process_perplexity_only_mode(
     request: AIRequest,
     perplexity_client: Any,
     config: AIConfig,
+    conversation_summary: list[dict] | None = None,
 ) -> tuple[str, bool, dict | None]:
     """Process message using Perplexity-only mode."""
     request.logger.info("Running in Perplexity-only mode")
     try:
-        result = await process_perplexity_message(request, perplexity_client, config.perplexity)
+        result = await process_perplexity_message(
+            request, perplexity_client, config.perplexity, conversation_summary
+        )
         if result:
             res_content, suppress, embed = result
             _record_conversation_turn(request, res_content, "perplexity", config.perplexity.model)
@@ -328,7 +331,9 @@ async def get_smart_response(
 
         # Mode 1: Perplexity only
         if clients.perplexity and not clients.openai:
-            return await _process_perplexity_only_mode(request, clients.perplexity, config)
+            return await _process_perplexity_only_mode(
+                request, clients.perplexity, config, conversation_summary
+            )
 
         # Mode 2: OpenAI only
         if clients.openai and not clients.perplexity:
@@ -389,7 +394,9 @@ async def _process_hybrid_mode(
 
     if needs_web:
         request.logger.info("Routing to Perplexity")
-        res = await process_perplexity_message(request, clients.perplexity, config.perplexity)
+        res = await process_perplexity_message(
+            request, clients.perplexity, config.perplexity, conversation_summary
+        )
         if res:
             res_content, suppress, embed = res
             _record_conversation_turn(request, res_content, "perplexity", config.perplexity.model)
@@ -411,6 +418,7 @@ async def _process_hybrid_mode(
                 request,
                 clients.perplexity,
                 config.perplexity,
+                conversation_summary,
             )
             if per_res:
                 per_text, per_suppress, per_embed = per_res
@@ -428,7 +436,9 @@ async def _process_hybrid_mode(
 
     # If OpenAI returned no response (None/empty), attempt Perplexity as a fallback
     request.logger.info("OpenAI returned no response; attempting Perplexity fallback")
-    per_res = await process_perplexity_message(request, clients.perplexity, config.perplexity)
+    per_res = await process_perplexity_message(
+        request, clients.perplexity, config.perplexity, conversation_summary
+    )
     if per_res:
         per_text, per_suppress, per_embed = per_res
         _record_conversation_turn(request, per_text, "perplexity", config.perplexity.model)

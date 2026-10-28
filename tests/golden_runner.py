@@ -205,6 +205,7 @@ async def replay_case(case: dict[str, Any]) -> Replay:
             inputs["system"],
             inputs["user_msg"],
             inputs["tokens"],
+            history=inputs.get("history"),
         )
     else:  # pragma: no cover - guarded by the fixed surface list
         msg = f"Unknown golden surface: {surface}"

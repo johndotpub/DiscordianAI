@@ -140,22 +140,27 @@ def _citation_embed_case(
     }
 
 
-def _api_params_case(
+def _api_params_case(  # noqa: PLR0913
     case_id: str,
     model: str,
     system: str,
     user_msg: str,
     tokens: int,
+    *,
+    history: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    inputs: dict[str, Any] = {
+        "model": model,
+        "system": system,
+        "user_msg": user_msg,
+        "tokens": tokens,
+    }
+    if history is not None:
+        inputs["history"] = history
     return {
         "id": case_id,
         "surface": SURFACE_API_PARAMS,
-        "inputs": {
-            "model": model,
-            "system": system,
-            "user_msg": user_msg,
-            "tokens": tokens,
-        },
+        "inputs": inputs,
     }
 
 
@@ -733,6 +738,28 @@ API_PARAMS_CASES = [
         "System",
         "User",
         120000,
+    ),
+    _api_params_case(
+        "e-history-one-turn",
+        "sonar-pro",
+        "You are a helpful assistant with access to current web information.",
+        "And what about the second one?",
+        8000,
+        history=[
+            {"role": "user", "content": "Name two novels by Frank Herbert."},
+        ],
+    ),
+    _api_params_case(
+        "e-history-three-turns",
+        "sonar",
+        "You are a helpful assistant.",
+        "Who wrote it?",
+        2048,
+        history=[
+            {"role": "user", "content": "Name two novels by Frank Herbert."},
+            {"role": "assistant", "content": "Dune and Dune Messiah."},
+            {"role": "user", "content": "When was the first one published?"},
+        ],
     ),
 ]
 

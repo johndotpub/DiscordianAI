@@ -287,7 +287,7 @@ class TestRoutingFunctions:
         async def fake_openai(req, conv, client, cfg):
             return "Sorry, I can't access the internet to look that up."
 
-        async def fake_perp(req, client, cfg):
+        async def fake_perp(req, client, cfg, conversation_summary=None):
             return ("Perplexity result", False, None)
 
         with (
@@ -318,7 +318,7 @@ class TestRoutingFunctions:
         clients = AIClients(openai=object(), perplexity=object())
         cfg = AIConfig()
 
-        async def failing_perp(req, client, cfg):
+        async def failing_perp(req, client, cfg, conversation_summary=None):
             return None
 
         async def success_openai(req, conv, client, cfg):

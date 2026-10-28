@@ -8,7 +8,23 @@ from .api_context import api_call
 from .caching import cached_response, deduplicated_request
 from .config import DEFAULT_CACHE_TTL
 from .error_handling import DEFAULT_API_RETRY_CONFIG, retry_with_backoff
+from .message_builder import build_messages
 from .models import AIRequest, OpenAIConfig
+
+
+def _build_openai_api_params(
+    model: str,
+    system: str,
+    user_msg: str,
+    tokens: int,
+    history: list[dict] | None = None,
+) -> dict:
+    """Prepare OpenAI API call parameters."""
+    return {
+        "model": model,
+        "messages": build_messages(system, user_msg, history),
+        "max_completion_tokens": tokens,
+    }
 
 
 @cached_response(ttl=DEFAULT_CACHE_TTL)
@@ -21,15 +37,13 @@ async def _fetch_openai_response(
 ) -> str | None:
     """Fetch an OpenAI response (cached/deduped) without side effects."""
     async with api_call("openai", request.logger, request):
-        api_params = {
-            "model": config.model,
-            "messages": [
-                {"role": "system", "content": config.system_message},
-                *conversation_summary,
-                {"role": "user", "content": request.message},
-            ],
-            "max_completion_tokens": config.output_tokens,
-        }
+        api_params = _build_openai_api_params(
+            config.model,
+            config.system_message,
+            request.message,
+            config.output_tokens,
+            conversation_summary,
+        )
 
         request.logger.debug(
             "Making OpenAI API call with %d messages", len(api_params["messages"])
