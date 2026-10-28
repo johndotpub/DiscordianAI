@@ -136,6 +136,25 @@ async def test_retries_inside_one_logical_call_count_as_one_failure():
 
 
 @pytest.mark.asyncio
+async def test_provider_call_counts_one_failure_after_an_internal_retry():
+    breaker = get_circuit_breaker("openai")
+    client = _failing_client()
+
+    with patch("src.error_handling.asyncio.sleep", new=AsyncMock()):
+        result = await process_openai_message(
+            _request("one logical call with a retry"),
+            [],
+            client,
+            OpenAIConfig(),
+        )
+
+    assert result is None
+    assert client.chat.completions.create.await_count == 2
+    assert breaker.failure_count == 1
+    assert breaker.state == "CLOSED"
+
+
+@pytest.mark.asyncio
 async def test_half_open_admits_only_one_probe():
     breaker = CircuitBreaker(failure_threshold=1, timeout=60)
     breaker.state = "OPEN"
