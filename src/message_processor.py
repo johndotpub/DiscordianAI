@@ -9,6 +9,7 @@ from .config import (
     DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
     DEFAULT_MAX_URLS_PER_MESSAGE,
     DEFAULT_SCRAPE_DEADLINE_SECONDS,
+    get_error_messages,
 )
 from .conversation_manager import conversation_key_for_message
 from .error_handling import classify_error, safe_discord_send
@@ -29,7 +30,7 @@ async def _process_message_core(
     rate_limiter = deps["rate_limiter"]
     conversation_manager = deps["conversation_manager"]
     conversation_key = conversation_key_for_message(message, is_dm=is_dm)
-    clean_content = message.content
+    clean_content = (message.content or "").strip()
 
     # Prepare context-specific strings for logging and error messages
     if is_dm:
@@ -40,10 +41,10 @@ async def _process_message_core(
             "🔧 Sorry, I encountered an error while processing your message. "
             "Please try again in a moment."
         )
-        display_content = clean_message_content(message.content, 100)
+        display_content = clean_message_content(clean_content, 100)
     else:
         # Clean message content for logging (remove mentions)
-        clean_content = re.sub(r"<@\d+>", "", message.content).strip()
+        clean_content = re.sub(r"<@\d+>", "", clean_content).strip()
         logger.info(
             "Captured message for processing (ID: %s, length: %d)",
             message.id,
@@ -56,6 +57,15 @@ async def _process_message_core(
             "Please try again in a moment.",
         )
         display_content = clean_message_content(clean_content, 100)
+
+    # A mention-only or whitespace-only message has no body to answer. Reply
+    # with the generic fallback without calling the provider or writing history.
+    if not clean_content:
+        logger.info("Skipping empty message after cleaning")
+        fallback = get_error_messages()["no_response_generated"]
+        if not await safe_discord_send(message.channel, fallback, logger):
+            logger.error("Failed to send empty-message fallback")
+        return
 
     try:
         logger.info("Processing message: %s", display_content)
@@ -119,7 +129,7 @@ async def _process_message_core(
         }
 
         # Create the unified AIRequest object
-        request_message = message.content if is_dm else clean_content
+        request_message = clean_content
         ai_request = AIRequest(
             message=request_message,
             user=message.author,

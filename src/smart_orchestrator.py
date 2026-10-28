@@ -39,6 +39,10 @@ def _record_conversation_turn(
     model: str,
 ) -> None:
     """Record the user prompt and assistant response in conversation history."""
+    if not (request.message or "").strip() or not (response_text or "").strip():
+        request.logger.warning("Skipping incomplete conversation turn")
+        return
+
     conversation_key = getattr(request, "conversation_key", None)
     if conversation_key is None:
         conversation_key = request.user.id

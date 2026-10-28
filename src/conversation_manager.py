@@ -182,10 +182,13 @@ class ThreadSafeConversationManager:
             msg = f"Invalid role '{role}'. Must be 'user', 'assistant', or 'system'"
             raise ValueError(msg)
 
-        # Allow empty content only if we have meaningful metadata (e.g., embed data)
-        if not content.strip() and not metadata:
+        # Allow empty content only if we have meaningful metadata (e.g., embed data).
+        # Assistant turns are never valid without text: storing one creates an
+        # orphan response that can never be paired with a question.
+        if not content.strip() and (role == "assistant" or not metadata):
             self._logger.warning(
-                "Attempted to add empty message without metadata for %s",
+                "Attempted to add empty %s message for %s",
+                role,
                 key,
             )
             return
@@ -405,7 +408,7 @@ class ThreadSafeConversationManager:
 
         Note:
             - User messages without corresponding assistant responses are included
-            - Assistant messages without preceding user messages are filtered out
+            - Assistant messages without an immediately preceding user message are filtered out
             - This helps maintain conversational flow while reducing token usage
         """
         key = self._resolve_key(user_id, conversation_key)
@@ -418,26 +421,17 @@ class ThreadSafeConversationManager:
 
             summary = []
 
-            # Extract messages by role for pairing (strip metadata for AI context)
-            user_messages = [
-                {"role": msg["role"], "content": msg["content"]}
-                for msg in conversation
-                if msg["role"] == "user"
-            ]
-            assistant_responses = [
-                {"role": msg["role"], "content": msg["content"]}
-                for msg in conversation
-                if msg["role"] == "assistant"
-            ]
-
-            # Pair user messages with assistant responses chronologically
-            for user_msg, assistant_resp in zip(user_messages, assistant_responses, strict=False):
-                summary.append(user_msg)
-                summary.append(assistant_resp)
-
-            # Include any unpaired user messages at the end
-            if len(user_messages) > len(assistant_responses):
-                summary.extend(user_messages[len(assistant_responses) :])
+            # Walk the transcript in order. An assistant entry is only valid
+            # when the last entry emitted was a user entry, so an orphan
+            # response can never shift every later answer onto the wrong
+            # question. Consecutive user entries and a trailing unanswered
+            # question are preserved.
+            for msg in conversation:
+                role = msg["role"]
+                if role == "user":
+                    summary.append({"role": "user", "content": msg["content"]})
+                elif role == "assistant" and summary and summary[-1]["role"] == "user":
+                    summary.append({"role": "assistant", "content": msg["content"]})
 
             self._logger.debug(
                 "Generated conversation summary for %s: %d messages",
