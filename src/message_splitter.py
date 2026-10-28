@@ -31,6 +31,30 @@ _MARKDOWN_LINK_PATTERN = re.compile(r"!?\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)]+)\)
 # ============================================================================
 
 
+async def _deliver(
+    channel: discord.TextChannel | discord.DMChannel,
+    content: str,
+    *,
+    original_message: discord.Message | None = None,
+    embed: discord.Embed | None = None,
+    suppress_embeds: bool = False,
+) -> None:
+    """Reply to the invoking message or send to the channel under one policy."""
+    kwargs: dict[str, Any] = {}
+    if embed is not None:
+        kwargs["embed"] = embed
+    if embed is None or suppress_embeds:
+        kwargs["suppress_embeds"] = suppress_embeds
+    if original_message is not None:
+        kwargs["mention_author"] = False
+        kwargs["allowed_mentions"] = discord.AllowedMentions(
+            users=[original_message.author], replied_user=False
+        )
+        await original_message.reply(content, **kwargs)
+    else:
+        await channel.send(content, **kwargs)
+
+
 # Preserve the existing positional API for current callers.
 async def send_split_message(  # noqa: PLR0913, PLR0917
     channel: discord.TextChannel | discord.DMChannel,
@@ -66,24 +90,21 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
             len(message),
         )
         trunc_notice = "[Message truncated due to recursion limit]"
-
-        async def _reply_or_send(content: str, use_prefix: bool = False) -> None:
-            payload = f"{prefix_text}{content}" if use_prefix and prefix_text else content
-            if original_message:
-                await original_message.reply(
-                    payload,
-                    suppress_embeds=suppress_embeds,
-                    mention_author=False,
-                    allowed_mentions=discord.AllowedMentions(
-                        users=[original_message.author], replied_user=False
-                    ),
-                )
-            else:
-                await channel.send(payload, suppress_embeds=suppress_embeds)
-
         safe_recursion_length = max(1, max_first_chunk - 50)
-        await _reply_or_send(message[:safe_recursion_length], use_prefix=True)
-        await _reply_or_send(trunc_notice)
+        truncated = message[:safe_recursion_length]
+        truncated = f"{prefix_text}{truncated}" if prefix_text else truncated
+        await _deliver(
+            channel,
+            truncated,
+            original_message=original_message,
+            suppress_embeds=suppress_embeds,
+        )
+        await _deliver(
+            channel,
+            trunc_notice,
+            original_message=original_message,
+            suppress_embeds=suppress_embeds,
+        )
         return
 
     # Fits in one message
@@ -91,17 +112,12 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
         content = f"{prefix_text}{message}" if prefix_text else message
         if len(content) > MESSAGE_LIMIT:
             content = content[: MESSAGE_LIMIT - 3] + "..."
-        if original_message:
-            await original_message.reply(
-                content,
-                suppress_embeds=suppress_embeds,
-                mention_author=False,
-                allowed_mentions=discord.AllowedMentions(
-                    users=[original_message.author], replied_user=False
-                ),
-            )
-        else:
-            await channel.send(content, suppress_embeds=suppress_embeds)
+        await _deliver(
+            channel,
+            content,
+            original_message=original_message,
+            suppress_embeds=suppress_embeds,
+        )
         return
 
     # Logical split: aim near the Discord limit to minimize message count
@@ -124,17 +140,12 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
     # Send parts
     content_first = f"{prefix_text}{before_split}" if prefix_text else before_split
 
-    if original_message:
-        await original_message.reply(
-            content_first,
-            suppress_embeds=suppress_embeds,
-            mention_author=False,
-            allowed_mentions=discord.AllowedMentions(
-                users=[original_message.author], replied_user=False
-            ),
-        )
-    else:
-        await channel.send(content_first, suppress_embeds=suppress_embeds)
+    await _deliver(
+        channel,
+        content_first,
+        original_message=original_message,
+        suppress_embeds=suppress_embeds,
+    )
 
     if after_split:
         await send_split_message(
@@ -149,7 +160,7 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
 
 
 # Preserve the existing positional API for current callers.
-async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913, PLR0917
+async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
     channel: discord.TextChannel | discord.DMChannel,
     message: str,
     deps: dict[str, Any],
@@ -181,17 +192,12 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913, PLR0917
             available = MESSAGE_LIMIT - len(trunc_notice)
         truncated = message[: max(0, available)]
         fallback_text = f"{prefix_text}{truncated}{trunc_notice}"
-        if original_message:
-            await original_message.reply(
-                fallback_text,
-                suppress_embeds=False,
-                mention_author=False,
-                allowed_mentions=discord.AllowedMentions(
-                    users=[original_message.author], replied_user=False
-                ),
-            )
-        else:
-            await channel.send(fallback_text, suppress_embeds=False)
+        await _deliver(
+            channel,
+            fallback_text,
+            original_message=original_message,
+            suppress_embeds=False,
+        )
         return
 
     head_text = message
@@ -212,58 +218,41 @@ async def send_split_message_with_embed(  # noqa: PLR0912, PLR0913, PLR0917
     # Preserve existing footer unless empty; otherwise copy rebuilt footer
     if (not embed.footer or not embed.footer.text) and rebuilt_head.footer:
         embed.set_footer(text=rebuilt_head.footer.text)
-    if original_message:
-        await original_message.reply(
-            mention_prefix or "",
-            embed=embed,
-            mention_author=False,
-            allowed_mentions=discord.AllowedMentions(
-                users=[original_message.author], replied_user=False
-            ),
-        )
-    else:
-        await channel.send("", embed=embed)
+    await _deliver(
+        channel,
+        mention_prefix or "",
+        original_message=original_message,
+        embed=embed,
+    )
 
     if after_split.strip():
         message_part2 = after_split.strip()
-        if citations:
-            remaining_citations = {c: u for c, u in citations.items() if f"[{c}]" in message_part2}
-            if remaining_citations:
-                cont_embed, _ = citation_embed_formatter.create_citation_embed(
-                    message_part2,
-                    remaining_citations,
-                    footer_text="🌐 Web search results (continued)",
-                )
-                if len(message_part2) > EMBED_LIMIT:
-                    await send_split_message_with_embed(
-                        channel,
-                        message_part2,
-                        deps,
-                        cont_embed,
-                        remaining_citations,
-                        original_message,
-                        None,
-                        _recursion_depth=_recursion_depth + 1,
-                    )
-                elif original_message:
-                    await original_message.reply(
-                        "",
-                        embed=cont_embed,
-                        mention_author=False,
-                        allowed_mentions=discord.AllowedMentions(
-                            users=[original_message.author], replied_user=False
-                        ),
-                    )
-                else:
-                    await channel.send("", embed=cont_embed)
-            else:
-                await send_split_message(
+        remaining_citations = (
+            {c: u for c, u in citations.items() if f"[{c}]" in message_part2} if citations else {}
+        )
+        if remaining_citations:
+            cont_embed, _ = citation_embed_formatter.create_citation_embed(
+                message_part2,
+                remaining_citations,
+                footer_text="🌐 Web search results (continued)",
+            )
+            if len(message_part2) > EMBED_LIMIT:
+                await send_split_message_with_embed(
                     channel,
                     message_part2,
                     deps,
-                    original_message=original_message,
-                    mention_prefix=None,
+                    cont_embed,
+                    remaining_citations,
+                    original_message,
+                    None,
                     _recursion_depth=_recursion_depth + 1,
+                )
+            else:
+                await _deliver(
+                    channel,
+                    "",
+                    original_message=original_message,
+                    embed=cont_embed,
                 )
         else:
             await send_split_message(
@@ -321,17 +310,12 @@ async def send_formatted_message(  # noqa: PLR0913, PLR0917
             return
 
         try:
-            if original_message:
-                await original_message.reply(
-                    mention_prefix or "",
-                    embed=embed,
-                    mention_author=False,
-                    allowed_mentions=discord.AllowedMentions(
-                        users=[original_message.author], replied_user=False
-                    ),
-                )
-            else:
-                await channel.send("", embed=embed)
+            await _deliver(
+                channel,
+                mention_prefix or "",
+                original_message=original_message,
+                embed=embed,
+            )
         except discord.HTTPException:
             logger.exception("Failed to send embed, falling back to split text")
             await send_split_message(
