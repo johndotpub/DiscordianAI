@@ -23,6 +23,9 @@ from .config import (
 )
 from .discord_embeds import citation_embed_formatter
 
+_RAW_MENTION_PATTERN = re.compile(r"<(@[!&]?|#)(\d+)>")
+_MARKDOWN_LINK_PATTERN = re.compile(r"!?\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)]+)\)")
+
 # ============================================================================
 # CORE MESSAGE SENDING & SPLITTING
 # ============================================================================
@@ -458,12 +461,33 @@ def should_suppress_embeds(text: str, threshold: int = 2) -> bool:
     return count_links(text) >= threshold
 
 
-def sanitize_for_discord(text: str) -> str:
-    """Sanitize text for safe Discord sending."""
+def sanitize_model_output(text: str, citations: dict[str, str] | None = None) -> str:
+    """Neutralise mentions and non-citation markdown links in model output."""
     if not text:
         return ""
 
+    allowed_urls = {str(url).strip() for url in (citations or {}).values() if str(url).strip()}
+
+    def replace_link(match: re.Match[str]) -> str:
+        label = match.group(1)
+        target = match.group(2).strip()
+        if target.startswith("<") and target.endswith(">"):
+            target = target[1:-1].strip()
+        if target in allowed_urls:
+            return match.group(0)
+        return label
+
+    text = _MARKDOWN_LINK_PATTERN.sub(replace_link, text)
+    text = _RAW_MENTION_PATTERN.sub(
+        lambda match: f"<{match.group(1)}\u200b{match.group(2)}>",
+        text,
+    )
     return text.replace("@everyone", "@\u200beveryone").replace("@here", "@\u200bhere")
+
+
+def sanitize_for_discord(text: str, citations: dict[str, str] | None = None) -> str:
+    """Sanitize text for safe Discord sending."""
+    return sanitize_model_output(text, citations)
 
 
 def error_message(user_mention: str, error_text: str) -> str:
