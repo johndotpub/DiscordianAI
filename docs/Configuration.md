@@ -71,9 +71,9 @@ Advanced configuration for intelligent AI service routing.
 
 ### Logging
 
-Production-ready logging configuration.
+Logs are emitted to stdout as structured lines. The process supervisor or a shell redirect decides where they are stored.
 
-- **`LOG_FILE`**: Log file path *(default: "bot.log")*
+- **`LOG_FILE`**: Deprecated and ignored. It is still parsed for backwards compatibility, and startup logs an INFO line naming the configured value. Redirect stdout or configure the supervisor's output capture instead.
 - **`LOG_LEVEL`**: Logging verbosity ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL") *(default: "INFO")*
 - **`DISCORDIANAI_LOG_COLOR`**: Colored console logging is on by default. Set to `1`/`true`/`yes` to keep colors on, or `0`/`false`/`no` to disable them. Can be set in the `[Logging]` section or as an environment variable; the environment wins.
 
@@ -182,7 +182,6 @@ CONVERSATION_TTL_SECONDS=1800
 USER_LOCK_CLEANUP_INTERVAL=3600
 
 [Logging]
-LOG_FILE=bot.log
 LOG_LEVEL=INFO
 ```
 
@@ -214,7 +213,7 @@ Environment variables take precedence over `config.ini` values, allowing for fle
 ## CLI Arguments
 
 - **`--conf`**: Path to the configuration file (relative to base folder if --folder is used)
-- **`--folder`**: (Optional) Base folder for config and logs. If provided, config and log file paths are resolved relative to this folder unless absolute
+- **`--folder`**: (Optional) Base folder for configuration. If provided, config paths (and the deprecated `LOG_FILE` value) are resolved relative to this folder unless absolute
 
 ### Usage Examples
 ```bash

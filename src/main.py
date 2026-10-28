@@ -58,12 +58,12 @@ def setup_early_logging() -> logging.Logger:
 def setup_production_logging(config: dict, logger: logging.Logger) -> None:
     """Configure production logging based on loaded configuration.
 
-    Reconfigures logging to use the settings from the config file,
-    including log file location and verbosity level. Uses structlog
-    for structured, machine-readable output.
+    Reconfigures logging to use the verbosity level from the config file.
+    Uses structlog for structured, machine-readable output.
 
     Args:
-        config (dict): Configuration dictionary with LOG_FILE and LOG_LEVEL
+        config (dict): Configuration dictionary with LOG_LEVEL, plus the
+            deprecated LOG_FILE key for backwards compatibility
         logger (logging.Logger): Early logger to log the transition
 
     Raises:
@@ -87,6 +87,13 @@ def setup_production_logging(config: dict, logger: logging.Logger) -> None:
 
         # The process supervisor or launcher owns bot.log redirection.
         # Keep a single structured stream here to avoid duplicate lines.
+        configured_log_file = config.get("LOG_FILE")
+        if configured_log_file:
+            logger.info(
+                "LOG_FILE is ignored (configured as %r); logs go to stdout. "
+                "Redirect stdout or let the process supervisor capture the output.",
+                configured_log_file,
+            )
 
         logger.info("Production logging configured with level %s", log_level)
 

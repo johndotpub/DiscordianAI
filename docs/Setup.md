@@ -142,7 +142,18 @@ Send these messages to your bot to verify it's working:
    - Then: `Tell me more about that` (→ Should stay with Perplexity)
 
 ### Check Logs
-Monitor `bot.log` for these messages:
+
+The bot writes logs to stdout. Where they end up depends on how you started it:
+
+- `./discordian.sh -d ...` redirects output to `bot.log` in the project directory.
+- The systemd unit redirects stdout and stderr to `bot.log` (see [Daemon.md](Daemon.md)).
+- Running `python -m src.main` directly prints to the terminal. To keep a file, redirect it yourself:
+
+  ```bash
+  python -m src.main --conf config.ini >> bot.log 2>&1
+  ```
+
+When `bot.log` is being written by the supervisor or your redirect, monitor it for these messages:
 ```
 INFO: Bot logged in successfully as YourBotName
 INFO: Running in HYBRID mode (OpenAI + Perplexity) - Smart AI orchestration enabled
@@ -169,7 +180,7 @@ INFO: Message analysis suggests web search would be beneficial - trying Perplexi
 - **Consider Docker deployment** for isolation and scalability
 
 ### Monitoring & Maintenance
-- **Log rotation**: Ensure log files don't grow too large
+- **Log rotation**: Ensure supervisor-managed or redirected log files don't grow too large
 - **API usage tracking**: Monitor token consumption and costs
 - **Error monitoring**: Set up alerts for critical errors
 - **Regular updates**: Keep dependencies updated for security
@@ -197,7 +208,7 @@ INFO: Message analysis suggests web search would be beneficial - trying Perplexi
 - Adjust `LOOKBACK_MESSAGES_FOR_CONSISTENCY` based on usage patterns
 
 ### Getting Help
-- Check the logs first: `tail -f bot.log`
+- Check the logs first. If output is redirected to `bot.log`, use `tail -f bot.log`; under systemd, use `journalctl --user -u discordian-bot@bot -f`
 - Review configuration examples in `config.ini.example`
 - Consult the [Configuration Guide](Configuration.md) for detailed parameter explanations
 - See [HybridMode.md](HybridMode.md) for advanced AI orchestration features

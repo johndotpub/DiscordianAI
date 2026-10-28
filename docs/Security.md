@@ -247,7 +247,7 @@ services:
 
 ### Logging
 
-- Logs are written to configurable file location
+- Logs are written to stdout; the supervisor or shell redirect decides where they are stored
 - Sensitive data (API keys, tokens) is never logged
 - Log levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
 

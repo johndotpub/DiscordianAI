@@ -56,7 +56,8 @@ python -m src.main --conf config.ini --folder /path/to/base/folder
 ```
 
 - `--conf` points at the config file.
-- `--folder` (optional) makes config/log paths relative to a base directory (useful for Docker or systemd units).
+- `--folder` (optional) makes config paths relative to a base directory (useful for Docker or systemd units).
+- Logs go to stdout. Redirect them if you want a file, for example `python -m src.main --conf config.ini >> bot.log 2>&1`.
 
 ### Running with the launcher script
 
