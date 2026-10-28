@@ -124,24 +124,29 @@ def _extract_request_scope(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dic
 
     user = getattr(request, "user", None) if request is not None else None
     user_id = _extract_user_identity(user)
+    conversation_key = getattr(request, "conversation_key", None) if request is not None else None
 
     if user_id is None and "user_id" in kwargs:
         user_id = _extract_user_identity(kwargs["user_id"])
     if user_id is None and "user" in kwargs:
         user_id = _extract_user_identity(kwargs["user"])
+    if conversation_key is None and "conversation_key" in kwargs:
+        conversation_key = kwargs["conversation_key"]
 
     conversation_summary = _extract_conversation_summary(args, kwargs)
 
     return {
         "user_id": user_id,
+        "conversation_key": conversation_key,
         "conversation_digest": _conversation_digest(conversation_summary),
         "has_conversation": bool(conversation_summary),
     }
 
 
 def _generate_scoped_key(message: str, context: dict[str, Any]) -> str | None:
-    """Build a key scoped to the request owner and ordered conversation."""
+    """Build a key scoped to the conversation (or legacy owner) and history."""
     user_id = context.get("user_id")
+    conversation_key = context.get("conversation_key")
     conversation_digest = context.get("conversation_digest")
     has_conversation = bool(context.get("has_conversation"))
 
@@ -152,7 +157,8 @@ def _generate_scoped_key(message: str, context: dict[str, Any]) -> str | None:
         conversation_digest = _conversation_digest(conversation_summary)
         has_conversation = has_conversation or bool(conversation_summary)
 
-    if has_conversation and user_id is None:
+    scope_id = conversation_key if conversation_key is not None else user_id
+    if has_conversation and scope_id is None:
         return None
 
     normalized_message = str(message).strip().lower()
@@ -162,7 +168,7 @@ def _generate_scoped_key(message: str, context: dict[str, Any]) -> str | None:
         "system_message_hash": hashlib.sha256(
             str(context.get("system_message") or "").encode(),
         ).hexdigest()[:8],
-        "user_id": "" if user_id is None else str(user_id),
+        "conversation_scope": "" if scope_id is None else str(scope_id),
         "conversation_digest": conversation_digest,
     }
 

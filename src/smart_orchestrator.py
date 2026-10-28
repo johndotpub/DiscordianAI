@@ -39,9 +39,13 @@ def _record_conversation_turn(
     model: str,
 ) -> None:
     """Record the user prompt and assistant response in conversation history."""
-    request.conversation_manager.add_message(request.user.id, "user", request.message)
+    conversation_key = getattr(request, "conversation_key", None)
+    if conversation_key is None:
+        conversation_key = request.user.id
+
+    request.conversation_manager.add_message(conversation_key, "user", request.message)
     request.conversation_manager.add_message(
-        request.user.id,
+        conversation_key,
         "assistant",
         response_text,
         metadata={"ai_service": ai_service, "model": model},
@@ -114,6 +118,7 @@ def should_use_web_search(
     conversation_manager: ThreadSafeConversationManager | None = None,
     user_id: int | None = None,
     lookback_messages: int = DEFAULT_LOOKBACK,
+    conversation_key: str | None = None,
 ) -> bool:
     """Intelligently determine if a message needs a web-enabled model.
 
@@ -126,9 +131,12 @@ def should_use_web_search(
         message: The raw message text to evaluate.
         conversation_manager: Optional `ThreadSafeConversationManager` used
             to consult recent AI service usage for consistency-based routing.
-        user_id: Optional user id used with `conversation_manager`.
+        user_id: Optional user id used with `conversation_manager` when no
+            conversation key is available.
         lookback_messages: How many recent messages to inspect for
             consistency checks.
+        conversation_key: Optional DM/channel conversation key used to look up
+            recent service usage in the correct conversation.
 
     Returns:
         True if the message should be routed to a web-enabled model,
@@ -142,7 +150,11 @@ def should_use_web_search(
     # catching broad exceptions. If it fails, fall back to an empty list.
     try:
         triggers = _identify_routing_triggers(
-            message, conversation_manager, user_id, lookback_messages
+            message,
+            conversation_manager,
+            user_id,
+            lookback_messages,
+            conversation_key,
         )
     except Exception as exc:  # pragma: no cover - defensive fallback  # noqa: BLE001
         logger.debug("should_use_web_search: trigger identification failed: %s", exc)
@@ -157,11 +169,12 @@ def should_use_web_search(
         return True
 
     # Check conversation context
-    if conversation_manager and user_id:
+    scope_key = conversation_key if conversation_key is not None else user_id
+    if conversation_manager and scope_key:
         has_follow_up = any(pattern.search(message) for pattern in COMPILED_FOLLOW_UP_PATTERNS)
         if has_follow_up:
             recent_ai_service = conversation_manager.get_recent_ai_service(
-                user_id,
+                scope_key,
                 lookback_messages=lookback_messages,
             )
             if recent_ai_service:
@@ -184,6 +197,7 @@ def _identify_routing_triggers(
     conversation_manager: ThreadSafeConversationManager | None = None,
     user_id: int | None = None,
     lookback_messages: int = DEFAULT_LOOKBACK,
+    conversation_key: str | None = None,
 ) -> list[str]:
     """Return human-readable list of routing trigger reasons for telemetry.
 
@@ -193,6 +207,7 @@ def _identify_routing_triggers(
     and must be cheap to compute.
     """
     triggers: list[str] = []
+    scope_key = conversation_key if conversation_key is not None else user_id
 
     if any(p.search(message) for p in COMPILED_URL_DETECTION_PATTERNS):
         triggers.append("url")
@@ -202,10 +217,10 @@ def _identify_routing_triggers(
 
     if (
         conversation_manager
-        and user_id
+        and scope_key
         and any(p.search(message) for p in COMPILED_FOLLOW_UP_PATTERNS)
     ):
-        recent = conversation_manager.get_recent_ai_service(user_id, lookback_messages)
+        recent = conversation_manager.get_recent_ai_service(scope_key, lookback_messages)
         if recent:
             triggers.append(f"consistency:{recent}")
 
@@ -348,16 +363,22 @@ async def _process_hybrid_mode(
         lookback = orchestrator_config.get("LOOKBACK_MESSAGES_FOR_CONSISTENCY", DEFAULT_LOOKBACK)
 
     sanitized = _sanitize_for_routing(request.message)
+    conversation_key = getattr(request, "conversation_key", None)
     needs_web = should_use_web_search(
         sanitized,
         request.conversation_manager,
         request.user.id,
         lookback_messages=lookback,
+        conversation_key=conversation_key,
     )
 
     # Routing telemetry: identify and log the reasons that influenced routing
     triggers = _identify_routing_triggers(
-        sanitized, request.conversation_manager, request.user.id, lookback
+        sanitized,
+        request.conversation_manager,
+        request.user.id,
+        lookback,
+        conversation_key,
     )
     request.logger.info(
         "Routing decision: needs_web=%s; triggers=%s; sanitized=%s",

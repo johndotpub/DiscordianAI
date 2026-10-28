@@ -11,6 +11,47 @@ import threading
 import time
 from typing import Any
 
+ConversationKey = int | str
+
+
+def make_conversation_key(
+    user_id: int | str,
+    guild_id: int | str | None = None,
+    channel_id: int | str | None = None,
+) -> str:
+    """Build a namespaced conversation key for a DM or guild channel/thread.
+
+    Guild keys and DM keys use different prefixes, so they can never collide.
+    Passing the channel id is enough to keep threads separate: a thread's own
+    channel id is not its parent channel's id.
+    """
+    if guild_id is not None and channel_id is not None:
+        return f"g:{guild_id}:c:{channel_id}"
+    return f"dm:{user_id}"
+
+
+def conversation_key_for_message(message: Any, *, is_dm: bool) -> str:
+    """Return the conversation key for a Discord message."""
+    author = getattr(message, "author", None)
+    author_id = getattr(author, "id", None)
+
+    if is_dm:
+        return make_conversation_key(author_id)
+
+    guild = getattr(message, "guild", None)
+    guild_id = getattr(guild, "id", None)
+    channel = getattr(message, "channel", None)
+    channel_id = getattr(channel, "id", None)
+
+    # Keep non-DM messages in the guild namespace even if a test double omits
+    # guild context, so they still cannot collide with a DM conversation.
+    if guild_id is None:
+        guild_id = 0
+    if channel_id is None:
+        channel_id = 0
+
+    return make_conversation_key(author_id, guild_id=guild_id, channel_id=channel_id)
+
 
 class ThreadSafeConversationManager:
     """Thread-safe manager for user conversation histories.
@@ -34,78 +75,109 @@ class ThreadSafeConversationManager:
                                       Older entries are automatically pruned.
             cleanup_interval (int): How often to clean up inactive user locks (seconds).
         """
-        self._conversations: dict[int, list[dict[str, str]]] = {}
-        self._user_locks: dict[int, threading.RLock] = {}
+        self._conversations: dict[ConversationKey, list[dict[str, str]]] = {}
+        self._user_locks: dict[ConversationKey, threading.RLock] = {}
         self._global_lock = threading.RLock()
         self._max_history = max_history_per_user
         self._cleanup_interval = cleanup_interval
         self._logger = logging.getLogger(f"{__name__}.ConversationManager")
         self._last_cleanup = time.time()
 
-    def _get_user_lock(self, user_id: int) -> threading.RLock:
-        """Get or create a per-user lock for fine-grained concurrency control.
+    @staticmethod
+    def _resolve_key(
+        user_id: ConversationKey | None,
+        conversation_key: ConversationKey | None,
+    ) -> ConversationKey:
+        """Return the explicit conversation key, falling back to the legacy user id."""
+        if conversation_key is not None:
+            return conversation_key
+        if user_id is None:
+            msg = "Either user_id or conversation_key must be provided"
+            raise ValueError(msg)
+        return user_id
+
+    def _get_user_lock(self, user_id: ConversationKey) -> threading.RLock:
+        """Get or create a per-conversation lock for fine-grained concurrency control.
 
         Args:
-            user_id (int): The user ID to get a lock for.
+            user_id (ConversationKey): The conversation key to get a lock for.
 
         Returns:
-            threading.RLock: A reentrant lock specific to this user.
+            threading.RLock: A reentrant lock specific to this conversation.
         """
         with self._global_lock:
             if user_id not in self._user_locks:
                 self._user_locks[user_id] = threading.RLock()
             return self._user_locks[user_id]
 
-    def get_conversation(self, user_id: int) -> list[dict[str, str]]:
-        """Get a deep copy of the conversation history for a user.
+    def _get_conversation_lock(self, conversation_key: ConversationKey) -> threading.RLock:
+        """Alias for :meth:`_get_user_lock` using conversation-key terminology."""
+        return self._get_user_lock(conversation_key)
+
+    def get_conversation(
+        self,
+        user_id: ConversationKey | None = None,
+        *,
+        conversation_key: ConversationKey | None = None,
+    ) -> list[dict[str, str]]:
+        """Get a deep copy of the conversation history for a conversation key.
 
         Returns a copy to prevent external code from accidentally modifying
         the internal conversation state, which could cause race conditions.
 
         Args:
-            user_id (int): The Discord user ID.
+            user_id (ConversationKey): Legacy user ID fallback.
+            conversation_key (ConversationKey): Explicit DM/channel conversation key.
 
         Returns:
-            List[Dict[str, str]]: Deep copy of the user's conversation history.
+            List[Dict[str, str]]: Deep copy of the conversation history.
                                  Each dict has 'role' and 'content' keys.
         """
+        key = self._resolve_key(user_id, conversation_key)
+
         # Periodic cleanup of inactive locks (non-blocking)
         try:
             self.cleanup_inactive_user_locks(force=False)
         except Exception as e:  # noqa: BLE001
             self._logger.warning("Background cleanup failed: %s", e)
 
-        user_lock = self._get_user_lock(user_id)
+        user_lock = self._get_user_lock(key)
         with user_lock:
-            conversation = self._conversations.get(user_id, [])
+            conversation = self._conversations.get(key, [])
             result = copy.deepcopy(conversation)
             self._logger.debug(
-                "Retrieved conversation for user %s: %d messages",
-                user_id,
+                "Retrieved conversation for %s: %d messages",
+                key,
                 len(result),
             )
             return result
 
     def add_message(
         self,
-        user_id: int,
-        role: str,
-        content: str,
+        user_id: ConversationKey | None = None,
+        role: str | None = None,
+        content: str | None = None,
         metadata: dict[str, Any] | None = None,
+        *,
+        conversation_key: ConversationKey | None = None,
     ) -> None:
-        """Add a message to the user's conversation history in a thread-safe manner.
+        """Add a message to a conversation history in a thread-safe manner.
 
         Automatically prunes old messages if the history exceeds max_history_per_user.
 
         Args:
-            user_id (int): The Discord user ID.
+            user_id (ConversationKey): Legacy user ID fallback.
             role (str): The message role ('user', 'assistant', or 'system').
             content (str): The message content.
             metadata (Dict[str, Any], optional): Additional metadata (e.g., AI service used).
+            conversation_key (ConversationKey): Explicit DM/channel conversation key.
 
         Raises:
             ValueError: If role is not one of the expected values.
         """
+        key = self._resolve_key(user_id, conversation_key)
+        content = content or ""
+
         if role not in ["user", "assistant", "system"]:
             msg = f"Invalid role '{role}'. Must be 'user', 'assistant', or 'system'"
             raise ValueError(msg)
@@ -113,15 +185,15 @@ class ThreadSafeConversationManager:
         # Allow empty content only if we have meaningful metadata (e.g., embed data)
         if not content.strip() and not metadata:
             self._logger.warning(
-                "Attempted to add empty message without metadata for user %s",
-                user_id,
+                "Attempted to add empty message without metadata for %s",
+                key,
             )
             return
 
-        user_lock = self._get_user_lock(user_id)
+        user_lock = self._get_user_lock(key)
         with user_lock:
-            if user_id not in self._conversations:
-                self._conversations[user_id] = []
+            if key not in self._conversations:
+                self._conversations[key] = []
 
             # Add the new message with metadata
             message_entry = {"role": role, "content": content.strip()}
@@ -130,41 +202,51 @@ class ThreadSafeConversationManager:
             if metadata:
                 message_entry["metadata"] = metadata
 
-            self._conversations[user_id].append(message_entry)
+            self._conversations[key].append(message_entry)
 
             # Prune old messages if history is too long
-            if len(self._conversations[user_id]) > self._max_history:
-                removed_count = len(self._conversations[user_id]) - self._max_history
-                self._conversations[user_id] = self._conversations[user_id][-self._max_history :]
+            if len(self._conversations[key]) > self._max_history:
+                removed_count = len(self._conversations[key]) - self._max_history
+                self._conversations[key] = self._conversations[key][-self._max_history :]
                 self._logger.info(
-                    "Pruned %d old messages for user %s (keeping latest %d)",
+                    "Pruned %d old messages for %s (keeping latest %d)",
                     removed_count,
-                    user_id,
+                    key,
                     self._max_history,
                 )
 
-            message_count = len(self._conversations[user_id])
+            message_count = len(self._conversations[key])
             self._logger.debug(
-                "Added %s message for user %s: %d chars, total history: %d messages",
+                "Added %s message for %s: %d chars, total history: %d messages",
                 role,
-                user_id,
+                key,
                 len(content),
                 message_count,
             )
 
-    def update_conversation(self, user_id: int, conversation: list[dict[str, str]]) -> None:
-        """Replace the entire conversation history for a user in a thread-safe manner.
+    def update_conversation(
+        self,
+        user_id: ConversationKey | None = None,
+        conversation: list[dict[str, str]] | None = None,
+        *,
+        conversation_key: ConversationKey | None = None,
+    ) -> None:
+        """Replace the entire conversation history for a conversation key.
 
         This method validates all messages in the conversation before updating.
 
         Args:
-            user_id (int): The Discord user ID.
+            user_id (ConversationKey): Legacy user ID fallback.
             conversation (List[Dict[str, str]]): The new conversation history.
                                                Each dict must have 'role' and 'content' keys.
+            conversation_key (ConversationKey): Explicit DM/channel conversation key.
 
         Raises:
             ValueError: If any message in the conversation is invalid.
         """
+        key = self._resolve_key(user_id, conversation_key)
+        conversation = conversation or []
+
         # Validate conversation format before acquiring lock
         for i, msg in enumerate(conversation):
             if not isinstance(msg, dict) or "role" not in msg or "content" not in msg:
@@ -174,61 +256,75 @@ class ThreadSafeConversationManager:
                 role_err = f"Invalid role at index {i}: '{msg['role']}'"
                 raise ValueError(role_err)
 
-        user_lock = self._get_user_lock(user_id)
+        user_lock = self._get_user_lock(key)
         with user_lock:
             # Deep copy to prevent external modifications
-            self._conversations[user_id] = copy.deepcopy(conversation)
+            self._conversations[key] = copy.deepcopy(conversation)
 
             # Apply length limit
-            if len(self._conversations[user_id]) > self._max_history:
-                removed_count = len(self._conversations[user_id]) - self._max_history
-                self._conversations[user_id] = self._conversations[user_id][-self._max_history :]
+            if len(self._conversations[key]) > self._max_history:
+                removed_count = len(self._conversations[key]) - self._max_history
+                self._conversations[key] = self._conversations[key][-self._max_history :]
                 self._logger.info(
-                    "Truncated conversation for user %s: removed %d old messages",
-                    user_id,
+                    "Truncated conversation for %s: removed %d old messages",
+                    key,
                     removed_count,
                 )
 
             self._logger.debug(
-                "Updated full conversation for user %s: %d messages",
-                user_id,
-                len(self._conversations[user_id]),
+                "Updated full conversation for %s: %d messages",
+                key,
+                len(self._conversations[key]),
             )
 
-    def clear_conversation(self, user_id: int) -> int:
-        """Clear the conversation history for a user.
+    def clear_conversation(
+        self,
+        user_id: ConversationKey | None = None,
+        *,
+        conversation_key: ConversationKey | None = None,
+    ) -> int:
+        """Clear the conversation history for a conversation key.
 
         Args:
-            user_id (int): The Discord user ID.
+            user_id (ConversationKey): Legacy user ID fallback.
+            conversation_key (ConversationKey): Explicit DM/channel conversation key.
 
         Returns:
             int: Number of messages that were cleared.
         """
-        user_lock = self._get_user_lock(user_id)
+        key = self._resolve_key(user_id, conversation_key)
+        user_lock = self._get_user_lock(key)
         with user_lock:
-            cleared_count = len(self._conversations.get(user_id, []))
-            self._conversations.pop(user_id, None)
+            cleared_count = len(self._conversations.get(key, []))
+            self._conversations.pop(key, None)
 
             self._logger.info(
-                "Cleared conversation for user %s: %d messages removed",
-                user_id,
+                "Cleared conversation for %s: %d messages removed",
+                key,
                 cleared_count,
             )
             return cleared_count
 
-    def get_conversation_summary(self, user_id: int) -> tuple[int, str | None, str | None]:
-        """Get a summary of the user's conversation state.
+    def get_conversation_summary(
+        self,
+        user_id: ConversationKey | None = None,
+        *,
+        conversation_key: ConversationKey | None = None,
+    ) -> tuple[int, str | None, str | None]:
+        """Get a summary of the conversation state.
 
         Args:
-            user_id (int): The Discord user ID.
+            user_id (ConversationKey): Legacy user ID fallback.
+            conversation_key (ConversationKey): Explicit DM/channel conversation key.
 
         Returns:
             Tuple[int, Optional[str], Optional[str]]:
                 (message_count, last_user_message, last_assistant_message)
         """
-        user_lock = self._get_user_lock(user_id)
+        key = self._resolve_key(user_id, conversation_key)
+        user_lock = self._get_user_lock(key)
         with user_lock:
-            conversation = self._conversations.get(user_id, [])
+            conversation = self._conversations.get(key, [])
             message_count = len(conversation)
 
             last_user_msg = None
@@ -246,19 +342,27 @@ class ThreadSafeConversationManager:
 
             return message_count, last_user_msg, last_assistant_msg
 
-    def get_recent_ai_service(self, user_id: int, lookback_messages: int = 6) -> str | None:
+    def get_recent_ai_service(
+        self,
+        user_id: ConversationKey | None = None,
+        lookback_messages: int = 6,
+        *,
+        conversation_key: ConversationKey | None = None,
+    ) -> str | None:
         """Get the AI service used in recent assistant messages for consistency routing.
 
         Args:
-            user_id (int): The Discord user ID.
+            user_id (ConversationKey): Legacy user ID fallback.
             lookback_messages (int): Number of recent messages to examine.
+            conversation_key (ConversationKey): Explicit DM/channel conversation key.
 
         Returns:
             Optional[str]: The AI service ('openai' or 'perplexity') used recently, or None.
         """
-        user_lock = self._get_user_lock(user_id)
+        key = self._resolve_key(user_id, conversation_key)
+        user_lock = self._get_user_lock(key)
         with user_lock:
-            conversation = self._conversations.get(user_id, [])
+            conversation = self._conversations.get(key, [])
 
             # Look at recent messages in reverse chronological order
             recent_messages = (
@@ -278,7 +382,12 @@ class ThreadSafeConversationManager:
 
             return None
 
-    def get_conversation_summary_formatted(self, user_id: int) -> list[dict[str, str]]:
+    def get_conversation_summary_formatted(
+        self,
+        user_id: ConversationKey | None = None,
+        *,
+        conversation_key: ConversationKey | None = None,
+    ) -> list[dict[str, str]]:
         """Generate a conversation summary by pairing user and assistant messages.
 
         Creates a structured summary of the conversation by pairing user messages
@@ -286,7 +395,8 @@ class ThreadSafeConversationManager:
         This helps provide relevant context to AI models while managing token usage.
 
         Args:
-            user_id (int): The Discord user ID.
+            user_id (ConversationKey): Legacy user ID fallback.
+            conversation_key (ConversationKey): Explicit DM/channel conversation key.
 
         Returns:
             List[Dict[str, str]]: Summarized conversation with paired messages.
@@ -298,9 +408,10 @@ class ThreadSafeConversationManager:
             - Assistant messages without preceding user messages are filtered out
             - This helps maintain conversational flow while reducing token usage
         """
-        user_lock = self._get_user_lock(user_id)
+        key = self._resolve_key(user_id, conversation_key)
+        user_lock = self._get_user_lock(key)
         with user_lock:
-            conversation = self._conversations.get(user_id, [])
+            conversation = self._conversations.get(key, [])
 
             if not conversation:
                 return []
@@ -329,17 +440,17 @@ class ThreadSafeConversationManager:
                 summary.extend(user_messages[len(assistant_responses) :])
 
             self._logger.debug(
-                "Generated conversation summary for user %s: %d messages",
-                user_id,
+                "Generated conversation summary for %s: %d messages",
+                key,
                 len(summary),
             )
             return summary
 
-    def get_all_user_ids(self) -> list[int]:
-        """Get a list of all user IDs with conversation history.
+    def get_all_user_ids(self) -> list[ConversationKey]:
+        """Get a list of all conversation keys with history.
 
         Returns:
-            List[int]: List of user IDs that have conversation history.
+            List[ConversationKey]: Conversation keys that have history.
         """
         with self._global_lock:
             return list(self._conversations.keys())

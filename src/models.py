@@ -13,6 +13,7 @@ class AIRequest:
     user: Any
     conversation_manager: Any
     logger: logging.Logger
+    conversation_key: str | None = None
 
 
 @dataclass(frozen=True)

@@ -5,6 +5,7 @@ from typing import Any
 
 import discord
 
+from .conversation_manager import conversation_key_for_message
 from .error_handling import classify_error, safe_discord_send
 from .logging_adapter import get_logger_with_context
 from .message_splitter import clean_message_content, error_message, send_formatted_message
@@ -22,6 +23,7 @@ async def _process_message_core(
     logger = get_logger_with_context(deps["logger"], message)
     rate_limiter = deps["rate_limiter"]
     conversation_manager = deps["conversation_manager"]
+    conversation_key = conversation_key_for_message(message, is_dm=is_dm)
     clean_content = message.content
 
     # Prepare context-specific strings for logging and error messages
@@ -67,9 +69,9 @@ async def _process_message_core(
             logger.warning("Rate limit exceeded")
             return
 
-        # Get conversation summary using consolidated thread-safe manager
+        # Get conversation summary for this DM/channel/thread conversation
         conversation_summary = conversation_manager.get_conversation_summary_formatted(
-            message.author.id,
+            conversation_key,
         )
 
         # Initialize config objects
@@ -108,6 +110,7 @@ async def _process_message_core(
             user=message.author,
             conversation_manager=conversation_manager,
             logger=logger,
+            conversation_key=conversation_key,
         )
 
         clients = AIClients(openai=deps.get("client"), perplexity=deps.get("perplexity_client"))
