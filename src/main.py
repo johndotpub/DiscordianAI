@@ -19,9 +19,13 @@ if sys.version_info < (3, 12):  # noqa: UP036
 import logging
 from typing import NoReturn
 
+import discord
+
 from .api_validation import log_validation_results
 from .bot import run_bot
 from .config import (
+    DEFAULT_ACTIVITY_TYPE,
+    DEFAULT_BOT_PRESENCE,
     DEFAULT_RATE_LIMIT,
     DEFAULT_RATE_LIMIT_PER,
     MAX_OUTPUT_TOKENS_THRESHOLD,
@@ -75,7 +79,11 @@ def setup_production_logging(config: dict, logger: logging.Logger) -> None:
             log_level = "INFO"
 
         # Configure structlog for production
-        configure_structlog(json_logs=False, log_level=log_level)
+        configure_structlog(
+            json_logs=False,
+            log_level=log_level,
+            log_colors=config.get("DISCORDIANAI_LOG_COLOR"),
+        )
 
         # The process supervisor or launcher owns bot.log redirection.
         # Keep a single structured stream here to avoid duplicate lines.
@@ -138,10 +146,32 @@ def validate_critical_config(config: dict, logger: logging.Logger) -> None:
     except (ValueError, TypeError):
         errors.append("OUTPUT_TOKENS must be a valid integer")
 
-    # Check allowed channels
+    # Validate Discord presence and activity types against discord.py's enums.
+    # These are operator typos: reject them now instead of failing inside on_ready.
+    valid_presence = [status.name for status in discord.Status]
+    bot_presence = config.get("BOT_PRESENCE", DEFAULT_BOT_PRESENCE)
+    if bot_presence not in valid_presence:
+        presence_values = ", ".join(valid_presence)
+        errors.append(f"BOT_PRESENCE must be one of: {presence_values} (got {bot_presence!r})")
+
+    valid_activity_types = [
+        activity.name
+        for activity in discord.ActivityType
+        if activity is not discord.ActivityType.unknown
+    ]
+    activity_type = config.get("ACTIVITY_TYPE", DEFAULT_ACTIVITY_TYPE)
+    if activity_type not in valid_activity_types:
+        activity_values = ", ".join(valid_activity_types)
+        errors.append(f"ACTIVITY_TYPE must be one of: {activity_values} (got {activity_type!r})")
+
+    # Check allowed channels; ID-based targeting is just as valid as names.
     allowed_channels = config.get("ALLOWED_CHANNELS", [])
-    if not allowed_channels:
-        warnings.append("No ALLOWED_CHANNELS configured - bot will not respond in any channels")
+    allowed_channel_ids = config.get("ALLOWED_CHANNEL_IDS", [])
+    if not allowed_channels and not allowed_channel_ids:
+        warnings.append(
+            "No ALLOWED_CHANNELS or ALLOWED_CHANNEL_IDS configured - "
+            "bot will not respond in any channels"
+        )
 
     # Log warnings
     for warning in warnings:

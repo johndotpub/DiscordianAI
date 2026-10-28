@@ -74,6 +74,9 @@ DEFAULT_PERPLEXITY_API_URL = "https://api.perplexity.ai"
 
 # Discord Activity Types
 DISCORD_ACTIVITY_TYPES = ["playing", "streaming", "listening", "watching", "custom", "competing"]
+DEFAULT_ACTIVITY_TYPE = "watching"
+DEFAULT_BOT_PRESENCE = "online"
+DEFAULT_ACTIVITY_STATUS = "Humans"
 
 # Discord Message Constants
 MESSAGE_LIMIT = 2000  # Discord's hard limit for regular messages
@@ -386,9 +389,10 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
             _parse_limits_config(config, config_data, logger)
             _parse_connection_pool_config(config, config_data, logger)
             _parse_orchestrator_config(config, config_data, logger)
-            _parse_logging_config(config, config_data, base_folder)
+            _parse_logging_config(config, config_data, base_folder, logger)
             _parse_health_config(config, config_data, logger)
-        except (configparser.Error, OSError):
+        except (configparser.Error, OSError, ValueError):
+            config_data.clear()
             logger.warning("Failed to parse config file %s, using defaults", config_file)
 
     # 2. Override with environment variables
@@ -435,6 +439,10 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "SCRAPE_DEADLINE_SECONDS",
         "LOG_FILE",
         "LOG_LEVEL",
+        "DISCORDIANAI_LOG_COLOR",
+        "HEALTH_ENABLED",
+        "HEALTH_HOST",
+        "HEALTH_PORT",
     ]
 
     for key in env_keys:
@@ -464,8 +472,10 @@ def _apply_single_env_override(
         "ENTITY_DETECTION_MIN_WORDS",
         "MAX_URLS_PER_MESSAGE",
         "MAX_TOTAL_SCRAPED_CHARS",
+        "HEALTH_PORT",
     }
     float_keys = {"SCRAPE_DEADLINE_SECONDS"}
+    bool_keys = {"HEALTH_ENABLED", "DISCORDIANAI_LOG_COLOR"}
 
     if key == "ALLOWED_CHANNELS":
         config_data[key] = (
@@ -483,6 +493,18 @@ def _apply_single_env_override(
             config_data[key] = float(value)
         except (ValueError, TypeError):
             logger.warning("Invalid number for %s: %s", key, value)
+    elif key in bool_keys:
+        parsed = _parse_bool(value)
+        if parsed is None:
+            logger.warning(
+                "Invalid boolean for environment variable %s=%r; accepted values are %s; "
+                "ignoring override",
+                key,
+                value,
+                _BOOLEAN_ACCEPTED_FORMS,
+            )
+        else:
+            config_data[key] = parsed
     else:
         config_data[key] = value
 
@@ -493,9 +515,9 @@ def _apply_config_defaults(config_data: dict[str, Any]) -> None:
         "DISCORD_TOKEN": None,
         "ALLOWED_CHANNELS": [],
         "ALLOWED_CHANNEL_IDS": [],
-        "BOT_PRESENCE": "online",
-        "ACTIVITY_TYPE": "listening",
-        "ACTIVITY_STATUS": "Humans",
+        "BOT_PRESENCE": DEFAULT_BOT_PRESENCE,
+        "ACTIVITY_TYPE": DEFAULT_ACTIVITY_TYPE,
+        "ACTIVITY_STATUS": DEFAULT_ACTIVITY_STATUS,
         "OPENAI_API_KEY": None,
         "OPENAI_API_URL": "https://api.openai.com/v1/",
         "PERPLEXITY_API_KEY": None,
@@ -522,6 +544,7 @@ def _apply_config_defaults(config_data: dict[str, Any]) -> None:
         "SCRAPE_DEADLINE_SECONDS": DEFAULT_SCRAPE_DEADLINE_SECONDS,
         "LOG_FILE": "bot.log",
         "LOG_LEVEL": "INFO",
+        "DISCORDIANAI_LOG_COLOR": True,
         "HEALTH_ENABLED": True,
         "HEALTH_HOST": "127.0.0.1",
         "HEALTH_PORT": 8080,
@@ -627,13 +650,23 @@ def _parse_orchestrator_config(
 
 
 def _parse_logging_config(
-    config: configparser.ConfigParser, config_data: dict[str, Any], base_folder: str | None
+    config: configparser.ConfigParser,
+    config_data: dict[str, Any],
+    base_folder: str | None,
+    logger: logging.Logger,
 ) -> None:
     """Parse Logging section of configuration."""
     config_data["LOG_FILE"] = config.get("Logging", "LOG_FILE", fallback="bot.log")
     if base_folder and not Path(config_data["LOG_FILE"]).is_absolute():
         config_data["LOG_FILE"] = str(Path(base_folder) / config_data["LOG_FILE"])
     config_data["LOG_LEVEL"] = config.get("Logging", "LOG_LEVEL", fallback="INFO")
+    config_data["DISCORDIANAI_LOG_COLOR"] = _get_bool_safe(
+        config,
+        "DISCORDIANAI_LOG_COLOR",
+        True,
+        logger,
+        section="Logging",
+    )
 
 
 def _parse_health_config(
@@ -642,7 +675,13 @@ def _parse_health_config(
     logger: logging.Logger,
 ) -> None:
     """Parse Health section of configuration."""
-    config_data["HEALTH_ENABLED"] = config.getboolean("Health", "HEALTH_ENABLED", fallback=True)
+    config_data["HEALTH_ENABLED"] = _get_bool_safe(
+        config,
+        "HEALTH_ENABLED",
+        True,
+        logger,
+        section="Health",
+    )
     config_data["HEALTH_HOST"] = config.get("Health", "HEALTH_HOST", fallback="127.0.0.1")
     config_data["HEALTH_PORT"] = _get_int_safe(
         config,
@@ -666,9 +705,15 @@ def _parse_discord_config(
         logger,
         source="Discord.ALLOWED_CHANNEL_IDS",
     )
-    config_data["BOT_PRESENCE"] = config.get("Discord", "BOT_PRESENCE", fallback="online")
-    config_data["ACTIVITY_TYPE"] = config.get("Discord", "ACTIVITY_TYPE", fallback="listening")
-    config_data["ACTIVITY_STATUS"] = config.get("Discord", "ACTIVITY_STATUS", fallback="Humans")
+    config_data["BOT_PRESENCE"] = config.get(
+        "Discord", "BOT_PRESENCE", fallback=DEFAULT_BOT_PRESENCE
+    )
+    config_data["ACTIVITY_TYPE"] = config.get(
+        "Discord", "ACTIVITY_TYPE", fallback=DEFAULT_ACTIVITY_TYPE
+    )
+    config_data["ACTIVITY_STATUS"] = config.get(
+        "Discord", "ACTIVITY_STATUS", fallback=DEFAULT_ACTIVITY_STATUS
+    )
 
 
 def _parse_default_config(
@@ -739,6 +784,47 @@ def _get_int_safe(
         return config.getint(section, key, fallback=default)
     except ValueError:
         logger.warning("Invalid %s value, using default %d", key, default)
+        return default
+
+
+_BOOLEAN_TRUE_VALUES = {"1", "true", "yes", "on"}
+_BOOLEAN_FALSE_VALUES = {"0", "false", "no", "off"}
+_BOOLEAN_ACCEPTED_FORMS = "1/yes/true/on or 0/no/false/off"
+
+
+def _parse_bool(value: str) -> bool | None:
+    """Parse a boolean string, returning None when the value is not accepted."""
+    normalized = value.strip().lower()
+    if normalized in _BOOLEAN_TRUE_VALUES:
+        return True
+    if normalized in _BOOLEAN_FALSE_VALUES:
+        return False
+    return None
+
+
+def _get_bool_safe(
+    config: configparser.ConfigParser,
+    key: str,
+    default: bool,
+    logger: logging.Logger,
+    section: str = "Default",
+) -> bool:
+    """Safely get a boolean from configuration with fallback."""
+    raw_value = config.get(section, key, fallback=None)
+    if raw_value is None:
+        return default
+
+    try:
+        return config.getboolean(section, key, fallback=default)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid boolean for [%s] %s=%r; accepted values are %s; using default %s",
+            section,
+            key,
+            raw_value,
+            _BOOLEAN_ACCEPTED_FORMS,
+            default,
+        )
         return default
 
 

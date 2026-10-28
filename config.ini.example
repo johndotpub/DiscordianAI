@@ -13,6 +13,11 @@ DISCORD_TOKEN=your_discord_bot_token_here
 # Channels where the bot responds (comma-separated)
 ALLOWED_CHANNELS=general,bot-testing
 
+# Optional: channel IDs where the bot responds (comma-separated).
+# When set, these IDs take precedence over ALLOWED_CHANNELS names.
+# Example: ALLOWED_CHANNEL_IDS=123456789012345678,987654321098765432
+ALLOWED_CHANNEL_IDS=
+
 # Bot presence settings
 BOT_PRESENCE=online
 ACTIVITY_TYPE=watching
@@ -89,6 +94,8 @@ ENTITY_DETECTION_MIN_WORDS=10
 [Logging]
 LOG_FILE=bot.log
 LOG_LEVEL=INFO
+# Console colors for logs. Also settable via the DISCORDIANAI_LOG_COLOR env var.
+DISCORDIANAI_LOG_COLOR=true
 
 [Health]
 # HTTP health endpoint for Kubernetes / load balancer probes

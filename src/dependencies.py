@@ -21,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from .config import DEFAULT_CONTEXT_WINDOW, DEFAULT_INPUT_TOKENS
+from .config import DEFAULT_ACTIVITY_TYPE, DEFAULT_CONTEXT_WINDOW, DEFAULT_INPUT_TOKENS
 
 if TYPE_CHECKING:
     import asyncio
@@ -85,7 +85,7 @@ class BotDependencies:
     allowed_channels: list[str] = field(default_factory=list)
     allowed_channel_ids: list[int] = field(default_factory=list)
     bot_presence: str = "online"
-    activity_type: str = "watching"
+    activity_type: str = DEFAULT_ACTIVITY_TYPE
     activity_status: str = ""
     discord_token: str = ""
     rate_limit: int = 10

@@ -7,6 +7,8 @@ against current API specifications to ensure compatibility and optimal performan
 import logging
 import re
 
+import discord
+
 # Import constants from config.py (single source of truth)
 from .config import (
     DISCORD_ACTIVITY_TYPES,
@@ -207,27 +209,35 @@ def validate_discord_config(config: dict) -> list[str]:
     """
     issues = []
 
-    # Validate activity type
+    # Validate activity type against the activity enum
+    valid_activity_types = [
+        activity.name
+        for activity in discord.ActivityType
+        if activity is not discord.ActivityType.unknown
+    ]
     activity_type = config.get("ACTIVITY_TYPE", "")
-    if activity_type and activity_type not in DISCORD_ACTIVITY_TYPES:
+    if activity_type and activity_type not in valid_activity_types:
         issues.append(
-            f"Invalid activity type: {activity_type}. "
-            f"Valid types: {', '.join(DISCORD_ACTIVITY_TYPES)}",
+            f"ERROR: Invalid ACTIVITY_TYPE: {activity_type}. "
+            f"Valid values: {', '.join(valid_activity_types)}",
         )
 
-    # Validate bot presence
+    # Validate bot presence against the status enum
+    valid_presence = [status.name for status in discord.Status]
     bot_presence = config.get("BOT_PRESENCE", "")
-    valid_presence = ["online", "idle", "dnd", "invisible"]
     if bot_presence and bot_presence not in valid_presence:
         issues.append(
-            f"Invalid bot presence: {bot_presence}. Valid values: {', '.join(valid_presence)}",
+            f"ERROR: Invalid BOT_PRESENCE: {bot_presence}. "
+            f"Valid values: {', '.join(valid_presence)}",
         )
 
-    # Validate channels configuration
+    # Validate channels configuration; IDs are an alternative to names.
     allowed_channels = config.get("ALLOWED_CHANNELS", [])
-    if not allowed_channels:
+    allowed_channel_ids = config.get("ALLOWED_CHANNEL_IDS", [])
+    if not allowed_channels and not allowed_channel_ids:
         issues.append(
-            "WARNING: No ALLOWED_CHANNELS configured. Bot will not respond in any channels.",
+            "WARNING: No ALLOWED_CHANNELS or ALLOWED_CHANNEL_IDS configured. "
+            "Bot will not respond in any channels.",
         )
 
     return issues

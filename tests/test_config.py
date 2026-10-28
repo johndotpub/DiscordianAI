@@ -37,8 +37,15 @@ def isolate_config_env(monkeypatch):
         "MAX_HISTORY_PER_USER",
         "USER_LOCK_CLEANUP_INTERVAL",
         "ENTITY_DETECTION_MIN_WORDS",
+        "MAX_URLS_PER_MESSAGE",
+        "MAX_TOTAL_SCRAPED_CHARS",
+        "SCRAPE_DEADLINE_SECONDS",
         "LOG_FILE",
         "LOG_LEVEL",
+        "DISCORDIANAI_LOG_COLOR",
+        "HEALTH_ENABLED",
+        "HEALTH_HOST",
+        "HEALTH_PORT",
     ]
     for k in keys:
         monkeypatch.delenv(k, raising=False)
@@ -87,7 +94,7 @@ class TestLoadConfig:
         assert config["DISCORD_TOKEN"] is None
         assert config["ALLOWED_CHANNELS"] == []
         assert config["BOT_PRESENCE"] == "online"
-        assert config["ACTIVITY_TYPE"] == "listening"
+        assert config["ACTIVITY_TYPE"] == "watching"
         assert config["ACTIVITY_STATUS"] == "Humans"
         assert config["OPENAI_API_KEY"] is None
         assert config["OPENAI_API_URL"] == "https://api.openai.com/v1/"

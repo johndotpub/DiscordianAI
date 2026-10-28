@@ -56,24 +56,29 @@ def _drop_record(
     return event_dict
 
 
-def _env_flag(name: str) -> bool | None:
-    """Parse a tri-state boolean environment variable."""
-    raw_value = os.environ.get(name)
+def _parse_flag(raw_value: str | None) -> bool | None:
+    """Parse a tri-state boolean flag value."""
     if raw_value is None:
         return None
 
     normalized = raw_value.strip().lower()
-    if normalized in ("1", "true", "yes"):
+    if normalized in ("1", "true", "yes", "on"):
         return True
-    if normalized in ("0", "false", "no"):
+    if normalized in ("0", "false", "no", "off"):
         return False
     return None
+
+
+def _env_flag(name: str) -> bool | None:
+    """Parse a tri-state boolean environment variable."""
+    return _parse_flag(os.environ.get(name))
 
 
 def configure_structlog(
     *,
     json_logs: bool | None = None,
     log_level: str | None = None,
+    log_colors: bool | None = None,
     stream: Any | None = None,
 ) -> None:
     """Configure structlog with stdlib integration.
@@ -84,6 +89,9 @@ def configure_structlog(
             ``False``).
         log_level: Set the root logger level. If ``None``, reads
             ``DISCORDIANAI_LOG_LEVEL`` (defaults to ``INFO``).
+        log_colors: Force console colors on or off. If ``None``, reads the
+            ``DISCORDIANAI_LOG_COLOR`` environment variable; colors are on
+            by default.
         stream: Optional stream for the root handler, used by tests and
             as the output target for the root logging handler.
     """
@@ -91,7 +99,11 @@ def configure_structlog(
         json_logs = _env_flag("DISCORDIANAI_LOG_JSON") is True
     if log_level is None:
         log_level = os.environ.get("DISCORDIANAI_LOG_LEVEL", "INFO").upper()
-    force_colors = _env_flag("DISCORDIANAI_LOG_COLOR")
+    force_colors = log_colors
+    if isinstance(force_colors, str):
+        force_colors = _parse_flag(force_colors)
+    if force_colors is None:
+        force_colors = _env_flag("DISCORDIANAI_LOG_COLOR")
 
     level = getattr(logging, log_level, logging.INFO)
     shared_processors: list[Any] = [

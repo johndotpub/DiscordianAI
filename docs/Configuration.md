@@ -10,8 +10,9 @@ Controls Discord bot behavior and connectivity.
 
 - **`DISCORD_TOKEN`** *(required)*: Your Discord bot token from the Discord Developer Portal
 - **`ALLOWED_CHANNELS`**: Comma-separated list of channel names the bot responds in (e.g., "general,bot-testing")
-- **`BOT_PRESENCE`**: Bot's online status ("online", "offline", "idle", "dnd") *(default: "online")*
-- **`ACTIVITY_TYPE`**: Activity type displayed ("playing", "streaming", "listening", "watching", "custom", "competing") *(default: "listening")*
+- **`ALLOWED_CHANNEL_IDS`**: Comma-separated list of channel IDs the bot responds in; when set, IDs take precedence over `ALLOWED_CHANNELS` names
+- **`BOT_PRESENCE`**: Bot's online status ("online", "offline", "idle", "dnd", "invisible") *(default: "online")*
+- **`ACTIVITY_TYPE`**: Activity type displayed ("playing", "streaming", "listening", "watching", "custom", "competing") *(default: "watching")*
 - **`ACTIVITY_STATUS`**: Status message displayed with activity *(default: "Humans")*
 
 ### AI Service Configuration
@@ -72,7 +73,7 @@ Production-ready logging configuration.
 
 - **`LOG_FILE`**: Log file path *(default: "bot.log")*
 - **`LOG_LEVEL`**: Logging verbosity ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL") *(default: "INFO")*
-- **`DISCORDIANAI_LOG_COLOR`**: Colored console logging is on by default. Set to `1`/`true`/`yes` to keep colors on, or `0`/`false`/`no` to disable them.
+- **`DISCORDIANAI_LOG_COLOR`**: Colored console logging is on by default. Set to `1`/`true`/`yes` to keep colors on, or `0`/`false`/`no` to disable them. Can be set in the `[Logging]` section or as an environment variable; the environment wins.
 
 ### Health
 

@@ -31,7 +31,7 @@ def set_activity_status(activity_type: str, activity_status: str) -> discord.Act
         >>> # Bot will show "Playing chess"
 
     Note:
-        If an invalid activity_type is provided, defaults to 'listening'.
+        If an invalid activity_type is provided, defaults to 'watching'.
         This ensures the bot always has a valid activity status.
     """
     # Map string activity types to Discord enums
@@ -44,8 +44,8 @@ def set_activity_status(activity_type: str, activity_status: str) -> discord.Act
         "competing": discord.ActivityType.competing,
     }
 
-    # Get the activity type, defaulting to 'listening' if invalid
-    selected_type = activity_types.get(activity_type.lower(), discord.ActivityType.listening)
+    # Get the activity type, defaulting to 'watching' if invalid
+    selected_type = activity_types.get(activity_type.lower(), discord.ActivityType.watching)
 
     return discord.Activity(
         type=selected_type,
