@@ -22,6 +22,7 @@ from .config import (
     MESSAGE_LIMIT,
 )
 from .discord_embeds import citation_embed_formatter
+from .truncation import truncate_with_notice
 
 _RAW_MENTION_PATTERN = re.compile(r"<(@[!&]?|#)(\d+)>")
 _MARKDOWN_LINK_PATTERN = re.compile(r"!?\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)]+)\)")
@@ -91,7 +92,7 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
         )
         trunc_notice = "[Message truncated due to recursion limit]"
         safe_recursion_length = max(1, max_first_chunk - 50)
-        truncated = message[:safe_recursion_length]
+        truncated, _ = truncate_with_notice(message, safe_recursion_length, "")
         truncated = f"{prefix_text}{truncated}" if prefix_text else truncated
         await _deliver(
             channel,
@@ -111,7 +112,7 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
     if len(message) <= max_first_chunk:
         content = f"{prefix_text}{message}" if prefix_text else message
         if len(content) > MESSAGE_LIMIT:
-            content = content[: MESSAGE_LIMIT - 3] + "..."
+            content, _ = truncate_with_notice(content, MESSAGE_LIMIT - 3, "...")
         await _deliver(
             channel,
             content,
@@ -190,8 +191,8 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
         if available < 0:
             prefix_text = ""
             available = MESSAGE_LIMIT - len(trunc_notice)
-        truncated = message[: max(0, available)]
-        fallback_text = f"{prefix_text}{truncated}{trunc_notice}"
+        truncated, _ = truncate_with_notice(message, max(0, available), trunc_notice)
+        fallback_text = f"{prefix_text}{truncated}"
         await _deliver(
             channel,
             fallback_text,
@@ -422,9 +423,7 @@ def clean_message_content(content: str, max_length: int = 100) -> str:
     # Remove extra whitespace and newlines
     cleaned = re.sub(r"\s+", " ", content.strip())
 
-    # Truncate if needed
-    if len(cleaned) > max_length:
-        cleaned = cleaned[:max_length] + "..."
+    cleaned, _ = truncate_with_notice(cleaned, max_length, "...")
 
     return cleaned
 

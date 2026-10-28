@@ -24,6 +24,7 @@ CONFIG_EXAMPLE = ROOT / "config.ini.example"
 ENV_EXAMPLE = ROOT / ".env.example"
 CONFIG_SOURCE = ROOT / "src" / "config.py"
 ALLOWLIST = DOCS / ".doc-truth-allowlist.toml"
+ARCHITECTURE = DOCS / "Architecture.md"
 
 CONFIG_KEY_PATTERN = re.compile(r"\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b")
 DEFAULT_MARKER_PATTERN = re.compile(r"\*\*`([A-Z][A-Z0-9_]+)`\*\*.*?\*\(default:\s*(.+?)\)\*")
@@ -36,6 +37,10 @@ MEMORY_FIGURE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 STARTUP_CLAIM_PATTERN = re.compile(r"\bprevents?\s+startup\b", re.IGNORECASE)
+STALE_ARCHITECTURE_PHRASES = (
+    re.compile(r"\bThread-safe per-user transcripts\b", re.IGNORECASE),
+    re.compile(r"\bSeparate file and console handlers\b", re.IGNORECASE),
+)
 EXTERNAL_PYTHON_FILES = {"discord.py"}
 COMMAND_ROOTS = ("python", "pytest", "ruff", "black", "discordian.sh", "docker compose")
 NON_MODULE_SUFFIXES = {
@@ -651,3 +656,17 @@ def test_b10_startup_claims_name_the_abort_split() -> None:
                     "the abort/warning split"
                 )
     assert not failures, "\n".join(failures)
+
+
+def test_b11_architecture_prose_matches_current_design() -> None:
+    """Architecture.md must not describe per-user history or split file/console logging."""
+    text = ARCHITECTURE.read_text(encoding="utf-8")
+    offenders = [
+        f"line {line_number}: {line.strip()}"
+        for line_number, line in enumerate(text.splitlines(), 1)
+        if any(pattern.search(line) for pattern in STALE_ARCHITECTURE_PHRASES)
+    ]
+    assert not offenders, (
+        "docs/Architecture.md describes a design this code no longer has; history is keyed "
+        "per conversation and the supervisor owns the only log file:\n" + "\n".join(offenders)
+    )

@@ -301,6 +301,46 @@ class TestRoutingFunctions:
         assert any("rerouting to Perplexity" in m or "Routing to Perplexity" in m for m in msgs)
 
     @pytest.mark.asyncio
+    async def test_reroute_log_does_not_dump_the_discarded_answer(self, caplog):
+        """A reroute logs the answer length and a short excerpt, never the whole answer."""
+        caplog.set_level(logging.DEBUG)
+
+        cm = MagicMock()
+        user = MagicMock()
+        user.id = 7
+        logger = logging.getLogger("src.smart_orchestrator.test")
+        request = AIRequest("What is the latest news about X?", user, cm, logger)
+
+        clients = AIClients(openai=object(), perplexity=object())
+        cfg = AIConfig()
+        marker = "UNIQUE_REROUTE_MARKER_" + ("x" * 1980)
+        answer = f"I can't access the internet. {marker}"
+
+        async def fake_openai(req, conv, client, cfg):
+            return answer
+
+        async def fake_perp(req, client, cfg, conversation_summary=None):
+            return ("Perplexity result", False, None)
+
+        with (
+            patch("src.smart_orchestrator.should_use_web_search", return_value=False),
+            patch("src.smart_orchestrator.process_openai_message", fake_openai),
+            patch("src.smart_orchestrator.process_perplexity_message", fake_perp),
+        ):
+            await _process_hybrid_mode(request, [], clients, cfg, orchestrator_config=None)
+
+        reroute_records = [
+            record
+            for record in caplog.records
+            if "Discarding OpenAI answer" in record.getMessage()
+        ]
+        assert reroute_records, "Expected a debug line for the discarded answer"
+        logged = reroute_records[0].getMessage()
+        assert marker not in logged
+        assert len(logged) < 300
+        assert str(len(answer)) in logged
+
+    @pytest.mark.asyncio
     async def test_perplexity_fallback_logs(self, caplog):
         """If Perplexity fails initially, hybrid mode logs fallback to OpenAI."""
         import logging

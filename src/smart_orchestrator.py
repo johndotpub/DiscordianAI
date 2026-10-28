@@ -552,8 +552,9 @@ async def _process_hybrid_mode(
         # detect that and reroute to Perplexity (persona-agnostic detection).
         if _detect_openai_web_inability(res_content, request.message):
             request.logger.debug(
-                "Discarding OpenAI answer after web-inability reroute: %s",
-                res_content,
+                "Discarding OpenAI answer after web-inability reroute: length=%d excerpt=%r",
+                len(res_content),
+                res_content[:80],
             )
             request.logger.warning(
                 "OpenAI response indicates web-inability; rerouting to Perplexity"

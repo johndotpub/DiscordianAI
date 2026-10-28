@@ -84,6 +84,7 @@ class ConnectionPoolManager:
         self._clients: dict[str, httpx.AsyncClient] = {}
         self._creation_times: dict[str, float] = {}
         self._lock = threading.Lock()
+        self._closed = False
 
     def _register_client(self, api_type: str, client: httpx.AsyncClient) -> None:
         """Track a newly created HTTP client for lifecycle management."""
@@ -322,12 +323,21 @@ class ConnectionPoolManager:
         return metrics
 
     async def close_all(self) -> None:
-        """Close all HTTP clients managed by this pool manager."""
-        self._logger.info("Connection pool manager shutdown requested")
+        """Close all HTTP clients managed by this pool manager.
+
+        Safe to call more than once: only the first call closes clients and
+        logs the shutdown line.
+        """
         with self._lock:
+            if self._closed:
+                return
+            self._closed = True
             clients_to_close = list(self._clients.items())
 
+        self._logger.info("Connection pool manager shutdown requested")
         for api_type, client in clients_to_close:
+            if client is None:
+                continue
             try:
                 await client.aclose()
                 self._logger.info("Closed %s HTTP client", api_type)

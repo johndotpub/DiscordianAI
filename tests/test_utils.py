@@ -8,13 +8,30 @@ multiple test files to eliminate duplication and maintain DRY principles.
 from unittest.mock import AsyncMock
 
 
+def _search_results_for(citations: list[str]) -> list[dict[str, str]]:
+    """Build live-shaped search results for fake Perplexity responses."""
+    return [
+        {
+            "title": f"Source {index}",
+            "url": url,
+            "date": "2026-10-27",
+            "last_updated": "2026-10-28",
+            "snippet": f"Snippet for source {index}",
+            "source": "web",
+        }
+        for index, url in enumerate(citations, 1)
+    ]
+
+
 class FakeResponse:
     """Fake response object for API testing."""
 
-    def __init__(self, content="Test response", citations=None):
+    def __init__(self, content="Test response", citations=None, search_results=None):
         self.choices = [FakeChoice(content)]
         if citations is not None:
             self.citations = citations
+        if search_results is not None:
+            self.search_results = search_results
 
 
 class FakeChoice:
@@ -61,9 +78,12 @@ class FakeOpenAIClient:
 class FakePerplexityClient:
     """Fake Perplexity client for testing."""
 
-    def __init__(self, response_text="Test response", citations=None):
+    def __init__(self, response_text="Test response", citations=None, search_results=None):
         self.response_text = response_text
         self.citations = citations or []
+        if search_results is None:
+            search_results = _search_results_for(self.citations)
+        self.search_results = search_results
         self.chat = self.Chat(self)
 
     class Chat:
@@ -76,7 +96,11 @@ class FakePerplexityClient:
                 self.client = client
 
             async def create(self, *_args, **_kwargs):
-                return FakeResponse(self.client.response_text, citations=self.client.citations)
+                return FakeResponse(
+                    self.client.response_text,
+                    citations=self.client.citations,
+                    search_results=self.client.search_results,
+                )
 
 
 def create_mock_user(user_id=12345, username="testuser", display_name="Test User"):
@@ -139,7 +163,9 @@ def create_openai_response(content="Test response from OpenAI", finish_reason="s
     return mock_response
 
 
-def create_perplexity_response(content="Test response from Perplexity", citations=None):
+def create_perplexity_response(
+    content="Test response from Perplexity", citations=None, search_results=None
+):
     """Create a mock Perplexity API response."""
     from unittest.mock import Mock
 
@@ -155,6 +181,9 @@ def create_perplexity_response(content="Test response from Perplexity", citation
 
     if citations:
         mock_response.citations = citations
+    if search_results is None:
+        search_results = _search_results_for(citations or [])
+    mock_response.search_results = search_results
 
     return mock_response
 

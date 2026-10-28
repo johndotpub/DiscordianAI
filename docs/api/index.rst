@@ -59,3 +59,4 @@ DiscordianAI API Reference
    discord_bot
    discord_embeds
    citation_formatting
+   truncation

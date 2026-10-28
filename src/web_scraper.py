@@ -24,6 +24,7 @@ from .config import (
     DEFAULT_MAX_URLS_PER_MESSAGE,
     DEFAULT_SCRAPE_DEADLINE_SECONDS,
 )
+from .truncation import truncate_with_notice
 
 # Configuration constants
 DEFAULT_TIMEOUT = 15  # Generous timeout for slow sites
@@ -231,8 +232,7 @@ def _extract_body_fallback(soup: BeautifulSoup, content_parts: list[str]) -> Non
     if body:
         text = body.get_text(strip=True, separator=" ")
         if text:
-            if len(text) > TRUNCATION_LIMIT:
-                text = text[:TRUNCATION_LIMIT] + "... [content truncated]"
+            text, _ = truncate_with_notice(text, TRUNCATION_LIMIT, "... [content truncated]")
             content_parts.append(f"Page content: {text}")
 
 
@@ -665,8 +665,7 @@ def _process_final_content(content: str, max_length: int, url: str, logger: logg
     """Clean and truncate extracted content."""
     clean = re.sub(r"\s+", " ", content).strip()
     original_len = len(clean)
-    if original_len > max_length:
-        clean = clean[:max_length] + "\n\n[Content truncated due to length]"
+    clean, _ = truncate_with_notice(clean, max_length, "\n\n[Content truncated due to length]")
     logger.info("Scraped %d chars from %s", original_len, url)
     return clean
 

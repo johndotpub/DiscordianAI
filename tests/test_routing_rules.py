@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src import message_router
-from src.config import COMPILED_FOLLOW_UP_PATTERNS
+from src.config import COMPILED_FOLLOW_UP_PATTERNS, FOLLOW_UP_PATTERNS
 from src.conversation_manager import ThreadSafeConversationManager
 from src.models import AIClients, AIConfig, AIRequest
 from src.smart_orchestrator import (
@@ -300,6 +300,14 @@ async def test_bot_author_is_ignored_and_cannot_start_a_reply_loop(monkeypatch, 
     reasons = _debug_reasons(caplog)
     assert len(reasons) == 1
     assert "other_bot" in reasons[0]
+
+
+def test_follow_up_patterns_have_no_duplicate_sources():
+    """Every follow-up regex source is compiled exactly once."""
+    sources = [pattern.pattern for pattern in COMPILED_FOLLOW_UP_PATTERNS]
+
+    assert len(sources) == len(FOLLOW_UP_PATTERNS)
+    assert len(sources) == len(set(sources))
 
 
 def test_incidental_also_without_prior_turn_is_not_a_follow_up():

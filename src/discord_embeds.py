@@ -13,6 +13,7 @@ from .config import (
     EMBED_LIMIT,
     EMBED_SAFE_LIMIT,
 )
+from .truncation import truncate_with_notice
 
 
 class CitationEmbedFormatter:
@@ -63,8 +64,7 @@ class CitationEmbedFormatter:
         # Discord embed description has a character limit
         was_truncated = original_formatted_length > EMBED_LIMIT
         if was_truncated:
-            # Truncate and add notice
-            formatted_content = formatted_content[:EMBED_SAFE_LIMIT] + "..."
+            formatted_content, _ = truncate_with_notice(formatted_content, EMBED_SAFE_LIMIT, "...")
             self.logger.warning(
                 "Embed description truncated from %d to %d chars",
                 original_formatted_length,

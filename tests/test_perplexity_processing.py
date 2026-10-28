@@ -12,7 +12,7 @@ from src.perplexity_processing import (
     process_perplexity_message,
     should_suppress_embeds,
 )
-from tests.test_utils import FakePerplexityClient
+from tests.test_utils import FakePerplexityClient, FakeResponse
 
 
 def test_extract_citations_from_response():
@@ -181,6 +181,91 @@ async def test_process_perplexity_message_with_citations():
     assert "embed" in embed_data
     assert "[[1]](https://example.com)" in embed_data["embed"].description
     assert manager.get_conversation(3) == []
+
+
+@pytest.mark.asyncio
+async def test_process_perplexity_message_with_citations_and_search_results():
+    """A live-shaped response carries both fields; citations win the mapping."""
+    mock_user = MagicMock()
+    mock_user.id = 6
+    logger = MagicMock()
+
+    client = FakePerplexityClient(
+        "AI is advancing [1] and GPT-5 shows promise [2].",
+        citations=["https://citation.example/one", "https://citation.example/two"],
+        search_results=[
+            {
+                "title": "Search result one",
+                "url": "https://search.example/one",
+                "date": "2026-10-27",
+                "last_updated": "2026-10-28",
+                "snippet": "Search snippet one",
+                "source": "web",
+            },
+            {
+                "title": "Search result two",
+                "url": "https://search.example/two",
+                "date": "2026-10-27",
+                "last_updated": "2026-10-28",
+                "snippet": "Search snippet two",
+                "source": "web",
+            },
+        ],
+    )
+    assert set(client.search_results[0]) == {
+        "title",
+        "url",
+        "date",
+        "last_updated",
+        "snippet",
+        "source",
+    }
+
+    request = AIRequest(
+        message="AI?",
+        user=mock_user,
+        conversation_manager=MagicMock(),
+        logger=logger,
+    )
+
+    result = await process_perplexity_message(request, client, PerplexityConfig())
+
+    assert result is not None
+    _, _, embed_data = result
+    assert embed_data["citations"] == {
+        "1": "https://citation.example/one",
+        "2": "https://citation.example/two",
+    }
+
+
+@pytest.mark.asyncio
+async def test_process_perplexity_message_with_citations_only():
+    """A response without search_results still maps its citations."""
+    mock_user = MagicMock()
+    mock_user.id = 7
+    logger = MagicMock()
+
+    response = FakeResponse(
+        "AI is advancing [1].",
+        citations=["https://citation.example/only"],
+    )
+    assert not hasattr(response, "search_results")
+
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(return_value=response)
+
+    request = AIRequest(
+        message="AI?",
+        user=mock_user,
+        conversation_manager=MagicMock(),
+        logger=logger,
+    )
+
+    result = await process_perplexity_message(request, client, PerplexityConfig())
+
+    assert result is not None
+    _, _, embed_data = result
+    assert embed_data["citations"] == {"1": "https://citation.example/only"}
 
 
 @pytest.mark.asyncio
