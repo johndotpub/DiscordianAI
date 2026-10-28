@@ -20,11 +20,19 @@ from .config import (
     URL_PATTERN,
 )
 from .discord_embeds import citation_embed_formatter
-from .error_handling import DEFAULT_API_RETRY_CONFIG, retry_with_backoff
+from .error_handling import (
+    DEFAULT_API_RETRY_CONFIG,
+    get_circuit_breaker,
+    retry_with_backoff,
+)
 from .message_builder import build_messages, resolve_completion_budget
 from .message_splitter import should_suppress_embeds
 from .models import AIRequest, PerplexityConfig
 from .web_scraper import is_scrapable_url, scrape_url_content, scrape_urls
+
+perplexity_circuit_breaker = get_circuit_breaker("perplexity")
+PERPLEXITY_CIRCUIT_BREAKER = perplexity_circuit_breaker
+_perplexity_circuit_breaker = perplexity_circuit_breaker
 
 # Constants
 CITATION_SPLIT_PARTS = 2
@@ -249,7 +257,8 @@ async def process_perplexity_message(
                 logger=request.logger,
             )
 
-            response = await retry_with_backoff(
+            response = await perplexity_circuit_breaker.call(
+                retry_with_backoff,
                 lambda: perplexity_client.chat.completions.create(**api_params),
                 DEFAULT_API_RETRY_CONFIG,
                 request.logger,

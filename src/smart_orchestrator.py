@@ -21,6 +21,7 @@ from .config import (
     get_error_messages,
 )
 from .conversation_manager import ThreadSafeConversationManager
+from .error_handling import get_circuit_breaker
 from .models import AIClients, AIConfig, AIRequest
 from .openai_processing import process_openai_message
 from .perplexity_processing import process_perplexity_message
@@ -289,6 +290,8 @@ async def _process_openai_only_mode(
             return response_content, False, None
 
         request.logger.error("OpenAI returned no response")
+        if get_circuit_breaker("openai").state == "OPEN":
+            return ERROR_MESSAGES["ai_service_unavailable"], False, None
         return ERROR_MESSAGES["no_response_generated"], False, None
     except Exception:
         request.logger.exception("OpenAI processing failed")

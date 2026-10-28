@@ -27,6 +27,8 @@ import discord
 import httpx
 import openai
 
+from .config import ERROR_MESSAGES
+
 try:
     import httpx2
 except ImportError:  # pragma: no cover
@@ -56,6 +58,17 @@ class ErrorType(Enum):
     UNKNOWN = "unknown"
 
 
+class CircuitBreakerOpenError(RuntimeError):
+    """Raised when a request is rejected because the circuit is open."""
+
+    def __init__(self, provider: str, operation: str | None = None):
+        """Build a typed fast-fail error for the provider circuit."""
+        self.provider = provider
+        self.operation = operation
+        detail = f" for {operation}" if operation else ""
+        super().__init__(f"Circuit breaker OPEN for {provider}{detail}")
+
+
 @dataclass
 class ErrorDetails:
     """Structured error information for better handling and logging."""
@@ -82,8 +95,10 @@ class CircuitBreaker:
         failure_threshold: int = 5,
         timeout: int = 60,
         expected_exception: type[Exception] = Exception,
+        name: str = "provider",
     ):
         """Initialize circuit breaker parameters."""
+        self.name = name
         self.failure_threshold = failure_threshold
         self.timeout = timeout
         self.expected_exception = expected_exception
@@ -91,6 +106,7 @@ class CircuitBreaker:
         self.last_failure_time = 0.0
         self.last_success_time = 0.0
         self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
+        self._probe_in_flight = False
         self._lock = asyncio.Lock()
 
     def _should_attempt_reset(self) -> bool:
@@ -107,46 +123,123 @@ class CircuitBreaker:
 
         return now_monotonic - self.last_failure_time
 
+    async def _acquire(self, operation: str | None = None) -> None:
+        async with self._lock:
+            if self.state == "OPEN":
+                if not self._should_attempt_reset():
+                    raise CircuitBreakerOpenError(self.name, operation)
+                self.state = "HALF_OPEN"
+
+            if self.state == "HALF_OPEN":
+                if self._probe_in_flight:
+                    raise CircuitBreakerOpenError(self.name, operation)
+                self._probe_in_flight = True
+
+    async def _record_failure(self) -> None:
+        async with self._lock:
+            if self.state == "CLOSED" and self._seconds_since_last_failure() > self.timeout:
+                self.failure_count = 0
+            self.failure_count += 1
+            self.last_failure_time = time.monotonic()
+            self._probe_in_flight = False
+
+            if self.state == "HALF_OPEN" or self.failure_count >= self.failure_threshold:
+                self.state = "OPEN"
+
+    async def _record_success(self) -> None:
+        async with self._lock:
+            if self.state == "HALF_OPEN":
+                self.state = "CLOSED"
+                self.failure_count = 0
+            self._probe_in_flight = False
+            self.last_success_time = time.monotonic()
+
+    async def _release_probe(self) -> None:
+        async with self._lock:
+            self._probe_in_flight = False
+
+    async def call(self, func, *args, **kwargs):
+        """Run one logical operation through the breaker."""
+        operation = getattr(func, "__name__", None)
+        await self._acquire(operation)
+
+        try:
+            result = await func(*args, **kwargs)
+        except self.expected_exception:
+            await self._record_failure()
+            raise
+        except BaseException:
+            await self._release_probe()
+            raise
+        else:
+            await self._record_success()
+            return result
+
     def __call__(self, func):
         """Decorator to wrap a function with circuit breaker logic."""
 
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
-            async with self._lock:
-                if self.state == "OPEN":
-                    if self._should_attempt_reset():
-                        self.state = "HALF_OPEN"
-                    else:
-                        open_msg = f"Circuit breaker OPEN for {func.__name__}"
-                        raise RuntimeError(open_msg)
+            return await self.call(func, *args, **kwargs)
 
-            try:
-                result = await func(*args, **kwargs)
-            except self.expected_exception:
-                async with self._lock:
-                    if self.state == "CLOSED" and (
-                        self._seconds_since_last_failure() > self.timeout
-                    ):
-                        self.failure_count = 0
-                    self.failure_count += 1
-                    self.last_failure_time = time.monotonic()
-
-                    # If in HALF_OPEN state, any failure should open the circuit
-                    if self.state == "HALF_OPEN" or self.failure_count >= self.failure_threshold:
-                        self.state = "OPEN"
-
-                raise
-            else:
-                async with self._lock:
-                    if self.state == "HALF_OPEN":
-                        self.state = "CLOSED"
-                        self.failure_count = 0
-                    self.last_success_time = time.monotonic()
-                # In CLOSED state, don't reset failure_count on success
-                # (only reset in HALF_OPEN to CLOSED transition)
-                return result
-
+        wrapper.__circuit_breaker__ = self
         return wrapper
+
+    def snapshot(self) -> dict[str, Any]:
+        """Return the breaker state for status and health reporting."""
+        return {
+            "provider": self.name,
+            "state": self.state,
+            "failure_count": self.failure_count,
+            "consecutive_failures": self.failure_count,
+            "last_failure_time": self.last_failure_time,
+            "last_success_time": self.last_success_time,
+        }
+
+    def reset(self) -> None:
+        """Reset the breaker to its initial CLOSED state."""
+        self.failure_count = 0
+        self.last_failure_time = 0.0
+        self.last_success_time = 0.0
+        self.state = "CLOSED"
+        self._probe_in_flight = False
+        self._lock = asyncio.Lock()
+
+
+PROVIDER_CIRCUIT_BREAKERS: dict[str, CircuitBreaker] = {
+    provider: CircuitBreaker(name=provider) for provider in ("openai", "perplexity")
+}
+CIRCUIT_BREAKERS = PROVIDER_CIRCUIT_BREAKERS
+circuit_breakers = PROVIDER_CIRCUIT_BREAKERS
+provider_circuit_breakers = PROVIDER_CIRCUIT_BREAKERS
+CircuitBreakerError = CircuitBreakerOpenError
+
+
+def get_circuit_breaker(provider: str) -> CircuitBreaker:
+    """Return the shared breaker for a provider, creating it once on first use."""
+    breaker = PROVIDER_CIRCUIT_BREAKERS.get(provider)
+    if breaker is None:
+        breaker = CircuitBreaker(name=provider)
+        PROVIDER_CIRCUIT_BREAKERS[provider] = breaker
+    return breaker
+
+
+def get_circuit_breaker_states() -> dict[str, dict[str, Any]]:
+    """Return per-provider breaker state for the health endpoint."""
+    return {
+        provider: breaker.snapshot() for provider, breaker in PROVIDER_CIRCUIT_BREAKERS.items()
+    }
+
+
+def get_circuit_breaker_status() -> dict[str, dict[str, Any]]:
+    """Alias for get_circuit_breaker_states()."""
+    return get_circuit_breaker_states()
+
+
+def reset_circuit_breakers() -> None:
+    """Reset all provider breakers to CLOSED."""
+    for breaker in PROVIDER_CIRCUIT_BREAKERS.values():
+        breaker.reset()
 
 
 class RetryConfig:
@@ -302,6 +395,9 @@ def _status_code_from_exception(exception: Exception) -> int | None:
 
 
 def _is_retryable_error(error_details: ErrorDetails, exception: Exception) -> bool:
+    if isinstance(exception, CircuitBreakerOpenError):
+        return False
+
     status_code = _status_code_from_exception(exception)
 
     if status_code == _HTTP_STATUS_TOO_MANY_REQUESTS:
@@ -469,6 +565,15 @@ def _classify_api_status_error(exception: openai.APIStatusError) -> ErrorDetails
 
 
 def _classify_typed_error(exception: Exception) -> ErrorDetails | None:
+    if isinstance(exception, CircuitBreakerOpenError):
+        return _error_details(
+            ErrorType.API_SERVER_ERROR,
+            ErrorSeverity.HIGH,
+            exception,
+            ERROR_MESSAGES["ai_service_unavailable"],
+            60,
+        )
+
     if isinstance(exception, (openai.APITimeoutError, *_HTTPX_TIMEOUT_ERRORS)):
         return _error_details(
             ErrorType.API_TIMEOUT,

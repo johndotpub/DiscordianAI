@@ -17,6 +17,16 @@ warnings.filterwarnings(
 )
 
 
+@pytest.fixture(autouse=True)
+def reset_provider_circuit_breakers():
+    """Keep provider breaker state isolated between tests."""
+    from src.error_handling import reset_circuit_breakers
+
+    reset_circuit_breakers()
+    yield
+    reset_circuit_breakers()
+
+
 @pytest.fixture
 def mock_logger():
     """Return a MagicMock logger suitable for injection into deps."""

@@ -51,6 +51,7 @@ class BotDependencies:
         rate_limiter: Per-user rate limiter.
         conversation_manager: Thread-safe conversation history store.
         health_server: Health endpoint server (or ``None``).
+        circuit_breakers: Per-provider circuit breakers for health reporting.
         allowed_channels: Channel names the bot responds in (used as fallback if no
             IDs are configured).
         bot_presence: Discord presence status string.
@@ -78,6 +79,7 @@ class BotDependencies:
     rate_limiter: RateLimiter | None = None
     conversation_manager: ThreadSafeConversationManager | None = None
     health_server: HealthServer | None = None
+    circuit_breakers: dict[str, Any] = field(default_factory=dict)
 
     # Configuration scalars (extracted from config for convenience)
     allowed_channels: list[str] = field(default_factory=list)
@@ -118,6 +120,7 @@ class BotDependencies:
             "rate_limiter": self.rate_limiter,
             "conversation_manager": self.conversation_manager,
             "health_server": self.health_server,
+            "circuit_breakers": self.circuit_breakers,
             "ALLOWED_CHANNELS": self.allowed_channels,
             "ALLOWED_CHANNEL_IDS": self.allowed_channel_ids,
             "BOT_PRESENCE": self.bot_presence,

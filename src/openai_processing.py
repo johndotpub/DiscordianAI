@@ -7,9 +7,15 @@ conversation state management, and comprehensive error recovery.
 from .api_context import api_call
 from .caching import cached_response, deduplicated_request
 from .config import DEFAULT_CACHE_TTL, DEFAULT_CONTEXT_WINDOW, DEFAULT_INPUT_TOKENS
-from .error_handling import DEFAULT_API_RETRY_CONFIG, retry_with_backoff
+from .error_handling import (
+    DEFAULT_API_RETRY_CONFIG,
+    get_circuit_breaker,
+    retry_with_backoff,
+)
 from .message_builder import build_messages, resolve_completion_budget
 from .models import AIRequest, OpenAIConfig
+
+openai_circuit_breaker = get_circuit_breaker("openai")
 
 
 def _build_openai_api_params(  # noqa: PLR0913
@@ -70,7 +76,8 @@ async def _fetch_openai_response(
                 "Making OpenAI API call with %d messages", len(api_params["messages"])
             )
 
-            response = await retry_with_backoff(
+            response = await openai_circuit_breaker.call(
+                retry_with_backoff,
                 lambda: openai_client.chat.completions.create(**api_params),
                 DEFAULT_API_RETRY_CONFIG,
                 request.logger,

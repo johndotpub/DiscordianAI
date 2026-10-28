@@ -19,6 +19,8 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from .error_handling import get_circuit_breaker_states
+
 DEFAULT_HEALTH_HOST = "127.0.0.1"
 DEFAULT_HEALTH_PORT = 8080
 
@@ -84,12 +86,15 @@ async def _collect_health_data(app: Starlette) -> dict[str, Any]:
     if not openai_client and not perplexity_client:
         overall = "unhealthy"
 
+    services["circuit_breakers"] = get_circuit_breaker_states()
+
     return {
         "status": overall,
         "mode": _detect_mode(config),
         "model": config.get("GPT_MODEL", "unknown"),
         "perplexity_model": config.get("PERPLEXITY_MODEL", "unknown"),
         "services": services,
+        "circuit_breakers": get_circuit_breaker_states(),
     }
 
 

@@ -26,6 +26,7 @@ from .config import (
 from .connection_pool import get_connection_pool_manager
 from .conversation_manager import ThreadSafeConversationManager
 from .dependencies import BotDependencies
+from .error_handling import get_circuit_breaker
 from .health_server import HealthServer
 from .rate_limits import RateLimiter
 
@@ -121,6 +122,10 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
     cleanup_interval = config.get("USER_LOCK_CLEANUP_INTERVAL", 3600)
     logger.info("Health checks will run after bot startup")
 
+    circuit_breakers = {
+        provider: get_circuit_breaker(provider) for provider in ("openai", "perplexity")
+    }
+
     deps = BotDependencies(
         bot=discord.Client(intents=intents),
         logger=logger,
@@ -128,6 +133,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
         client=client,
         perplexity_client=perplexity_client,
         connection_pool_manager=pool_manager,
+        circuit_breakers=circuit_breakers,
         allowed_channels=config["ALLOWED_CHANNELS"],
         allowed_channel_ids=config.get("ALLOWED_CHANNEL_IDS", []),
         bot_presence=config["BOT_PRESENCE"],
