@@ -2,6 +2,13 @@
 
 Thank you for your interest in contributing! This project follows modern Python best practices for code quality, testing, and documentation.
 
+## Engineering Standards
+
+[`AGENTS.md`](AGENTS.md) is the engineering contract for this repository: invariants, testing,
+documentation parity, security, commit format, and the verification gates. It wins where it
+disagrees with this file on engineering standards; this file covers the community process.
+Read it before making a change.
+
 ## Development Setup
 
 ### Prerequisites
