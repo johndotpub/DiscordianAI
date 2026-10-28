@@ -1,0 +1,26 @@
+{
+  "cases": {
+    "c-format-adjacent-markers": "Adjacent [1](https://example.com/source/1)[2](https://example.com/source/2) markers.",
+    "c-format-bare-url": "See https://example.com/raw and source [1](https://example.com/source/1).",
+    "c-format-duplicate-markers": "First [1](https://example.com/source/1), second [1](https://example.com/source/1), third [1](https://example.com/source/1).",
+    "c-format-empty-citations": "No mapping [1].",
+    "c-format-linkify-basic": "Answer with a source [1](https://example.com/source/1).",
+    "c-format-mixed-markdown": "**Bold** [link](https://example.com/doc) and [1](https://example.com/source/1) and `[2](https://example.com/source/2)`.",
+    "c-format-multiple-markers": "Sources [1](https://example.com/source/1), [2](https://example.com/source/2), [3](https://example.com/source/3).",
+    "c-format-no-markers": "There are no citation markers here.",
+    "c-format-none-citations": "No mapping [1].",
+    "c-format-numbered-list": "1. [1](https://example.com/source/1)\n2. [2](https://example.com/source/2)\n3. [3](https://example.com/source/3)",
+    "c-format-out-of-range": "Known [1](https://example.com/source/1), unknown [3].",
+    "c-format-plain-basic": "Answer with a source [1].",
+    "c-normalize-bare-url": "See  for details.",
+    "c-normalize-empty-citations": "Keep [1] and trim.",
+    "c-normalize-inline-marker-url": "Result [1]:",
+    "c-normalize-markdown-matching": "Source [1] here.",
+    "c-normalize-markdown-nonmatching": "Source [1](https://different.example/doc) here.",
+    "c-normalize-multiple-lines": "[1] One\n[2] Two",
+    "c-normalize-no-citations-mapping": "Nothing to clean [4].",
+    "c-normalize-preserve-spacing": "indented text [1]  \n\n  next line",
+    "c-normalize-url-only-line": "First line\n\nLast line"
+  },
+  "surface": "format_citations_for_discord"
+}
