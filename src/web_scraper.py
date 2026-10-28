@@ -70,10 +70,6 @@ DEFAULT_HEADERS = {
 }
 
 
-class WebScrapingError(Exception):
-    """Base exception for web scraping errors."""
-
-
 class _StopRetry:
     """Sentinel indicating the retry loop should stop immediately."""
 
@@ -109,43 +105,6 @@ async def _add_respectful_delay():
     # Using SystemRandom to stay consistent with the jitter helpers.
     delay = secrets.SystemRandom().uniform(MIN_DELAY_BETWEEN_REQUESTS, MAX_DELAY_BETWEEN_REQUESTS)
     await asyncio.sleep(delay)
-
-
-def _clean_text(text: str) -> str:
-    """Clean and normalize scraped text content.
-
-    Args:
-        text: Raw text content from web scraping
-
-    Returns:
-        Cleaned and normalized text
-    """
-    if not text:
-        return ""
-
-    # First normalize multiple newlines to max 2
-    text = re.sub(r"\n\s*\n", "\n\n", text)
-    # Then convert remaining single newlines to spaces (but not double newlines)
-    text = re.sub(r"(?<!\n)\n(?!\n)", " ", text)
-    # Finally normalize spaces
-    text = re.sub(r"[ \t]+", " ", text)
-
-    # Remove common web artifacts and navigation text
-    artifacts = [
-        r"Skip to content|Skip to main content|Skip navigation",
-        r"Cookie|Privacy Policy|Terms of Service|Accept Cookies",
-        r"Subscribe|Newsletter|Sign up|Log in|Login|Register",
-        r"Share this|Follow us|Social media|Advertisement",
-        r"Back to top|Scroll to top|Go to top",
-    ]
-
-    for artifact_pattern in artifacts:
-        text = re.sub(artifact_pattern, "", text, flags=re.IGNORECASE)
-
-    # Clean up any remaining double spaces from artifact removal
-    text = re.sub(r"  +", " ", text)
-
-    return text.strip()
 
 
 def _remove_noise_elements(soup: BeautifulSoup) -> None:

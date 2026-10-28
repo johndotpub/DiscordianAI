@@ -8,8 +8,6 @@ import pytest
 
 from src.web_scraper import (
     MAX_DOWNLOAD_SIZE,
-    WebScrapingError,
-    _clean_text,
     _extract_content,
     is_scrapable_url,
     scrape_url_content,
@@ -87,28 +85,6 @@ class TestWebScrapingValidation:
         assert not await is_scrapable_url("https://example.com/document.doc")
         assert not await is_scrapable_url("https://example.com/archive.zip")
         assert not await is_scrapable_url("https://example.com/data.xlsx")
-
-
-class TestTextCleaning:
-    """Test text cleaning functionality."""
-
-    def test_clean_text_whitespace(self):
-        """Test whitespace normalization."""
-        text = "  Multiple   spaces    and\n\n\n\nmultiple\nlines  "
-        expected = "Multiple spaces and\n\nmultiple lines"
-        assert _clean_text(text) == expected
-
-    def test_clean_text_web_artifacts(self):
-        """Test removal of common web artifacts."""
-        text = "Skip to content Main content here Cookie policy"
-        expected = "Main content here policy"
-        assert _clean_text(text) == expected
-
-    def test_clean_text_empty(self):
-        """Test handling of empty text."""
-        assert _clean_text("") == ""
-        assert _clean_text("   ") == ""
-        assert _clean_text(None) == ""
 
 
 class TestContentExtraction:
@@ -399,10 +375,6 @@ class TestWebScraping:
 
 class TestWebScrapingIntegration:
     """Test integration of web scraping with existing systems."""
-
-    def test_web_scraping_error_inheritance(self):
-        """Test that web scraping exceptions inherit correctly."""
-        assert issubclass(WebScrapingError, Exception)
 
     @pytest.mark.asyncio
     async def test_scrape_url_content_empty_response(self):

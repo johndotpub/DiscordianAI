@@ -5,7 +5,6 @@ This module provides:
 - LRU cache for conversation contexts
 - Request deduplication for identical API calls
 - Connection pooling optimizations
-- Performance monitoring and metrics
 """
 
 import asyncio
@@ -182,16 +181,11 @@ class CacheEntry:
 
     value: Any
     timestamp: float
-    access_count: int = 0
     ttl: float = 300.0  # 5 minutes default
 
     def is_expired(self) -> bool:
         """Check if cache entry has expired."""
         return time.time() - self.timestamp > self.ttl
-
-    def touch(self):
-        """Update access count and timestamp."""
-        self.access_count += 1
 
 
 class ThreadSafeLRUCache:
@@ -236,7 +230,6 @@ class ThreadSafeLRUCache:
 
             # Move to end (most recently used)
             self._cache.move_to_end(key)
-            entry.touch()
             self._stats["hits"] += 1
 
             return entry.value
@@ -266,17 +259,6 @@ class ThreadSafeLRUCache:
         """Clear all cache entries."""
         with self._lock:
             self._cache.clear()
-
-    def cleanup_expired(self) -> int:
-        """Remove expired entries and return count removed."""
-        with self._lock:
-            expired_keys = [key for key, entry in self._cache.items() if entry.is_expired()]
-
-            for key in expired_keys:
-                del self._cache[key]
-
-            self._stats["expired"] += len(expired_keys)
-            return len(expired_keys)
 
     def get_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
@@ -386,10 +368,6 @@ class ResponseCache:
     def get_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         return self.cache.get_stats()
-
-    def cleanup(self) -> int:
-        """Clean up expired entries."""
-        return self.cache.cleanup_expired()
 
 
 class RequestDeduplicator:
@@ -537,106 +515,3 @@ def deduplicated_request(key_func: Callable | None = None):
         return wrapper
 
     return decorator
-
-
-class PerformanceMonitor:
-    """Monitor and report performance metrics."""
-
-    def __init__(self):
-        """Initialize metrics and synchronization primitives."""
-        self.metrics = {
-            "api_calls": 0,
-            "cache_hits": 0,
-            "cache_misses": 0,
-            "total_response_time": 0.0,
-            "deduplicated_requests": 0,
-        }
-        self._lock = threading.Lock()
-
-    def record_api_call(self, response_time: float, cache_hit: bool = False):
-        """Record API call metrics."""
-        with self._lock:
-            self.metrics["api_calls"] += 1
-            self.metrics["total_response_time"] += response_time
-
-            if cache_hit:
-                self.metrics["cache_hits"] += 1
-            else:
-                self.metrics["cache_misses"] += 1
-
-    def record_deduplication(self):
-        """Record request deduplication event."""
-        with self._lock:
-            self.metrics["deduplicated_requests"] += 1
-
-    def get_stats(self) -> dict[str, Any]:
-        """Get performance statistics."""
-        with self._lock:
-            total_requests = self.metrics["api_calls"]
-            avg_response_time = (
-                self.metrics["total_response_time"] / total_requests if total_requests > 0 else 0
-            )
-
-            cache_hit_rate = (
-                self.metrics["cache_hits"]
-                / (self.metrics["cache_hits"] + self.metrics["cache_misses"])
-                * 100
-                if (self.metrics["cache_hits"] + self.metrics["cache_misses"]) > 0
-                else 0
-            )
-
-            return {
-                "total_api_calls": total_requests,
-                "average_response_time_ms": round(avg_response_time * 1000, 2),
-                "cache_hit_rate": round(cache_hit_rate, 2),
-                "deduplicated_requests": self.metrics["deduplicated_requests"],
-                **self.metrics,
-            }
-
-    def reset_stats(self):
-        """Reset all performance statistics."""
-        with self._lock:
-            self.metrics = {
-                "api_calls": 0,
-                "cache_hits": 0,
-                "cache_misses": 0,
-                "total_response_time": 0.0,
-                "deduplicated_requests": 0,
-            }
-
-
-async def cleanup_caches():
-    """Clean up expired cache entries."""
-    try:
-        response_expired = response_cache.cleanup()
-
-        if response_expired > 0:
-            logger.info("Cleaned up %d expired response cache entries", response_expired)
-
-    except Exception:
-        logger.exception("Cache cleanup failed")
-        return 0
-    else:
-        return response_expired
-
-
-async def _cache_cleanup_tick(interval: int, logger: logging.Logger) -> None:
-    """Execute a single cleanup tick with error handling."""
-    try:
-        await asyncio.sleep(interval)
-        await cleanup_caches()
-    except asyncio.CancelledError:
-        logger.info("Cache cleanup task cancelled")
-        raise
-    except Exception:
-        logger.exception("Error in cache cleanup task")
-        await asyncio.sleep(60)  # Wait 1 minute before retrying
-
-
-# Background cache cleanup task
-async def start_cache_cleanup_task(interval: int = 300):  # 5 minutes
-    """Start background cache cleanup task."""
-    logger.info("Starting cache cleanup background task")
-
-    while True:
-        await _cache_cleanup_tick(interval, logger)

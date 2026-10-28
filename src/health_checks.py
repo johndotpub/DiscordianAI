@@ -3,27 +3,19 @@
 This module provides:
 - Health checks for OpenAI, Perplexity, and Discord APIs
 - Parameter validation against current API specifications
-- Proactive monitoring and alerting for API issues
 - Health status reporting and metrics collection
 """
 
-import asyncio
-import contextlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import logging
 import time
 from typing import Any
 
-from .api_validation import (
-    validate_full_config,
-)
 from .config import OPENAI_VALID_MODELS, PERPLEXITY_MODELS, is_supported_openai_model
 from .error_handling import ErrorTracker, classify_error
 
 # Health check thresholds
-CONSECUTIVE_FAILURE_THRESHOLD = 3
-UPTIME_DEGRADED_THRESHOLD = 90
 OPENAI_RESPONSE_DEGRADED_THRESHOLD_MS = 5000
 OPENAI_RESPONSE_UNHEALTHY_THRESHOLD_MS = 10000
 PERPLEXITY_RESPONSE_DEGRADED_THRESHOLD_MS = 8000
@@ -75,8 +67,6 @@ class APIHealthMonitor:
         self.max_recent_results = 1000
         self.logger = logging.getLogger(__name__)
         self.error_tracker = ErrorTracker()
-        self._monitoring_active = False
-        self._monitor_task: asyncio.Task | None = None
 
     async def check_openai_health(
         self,
@@ -236,53 +226,6 @@ class APIHealthMonitor:
                 },
             )
 
-    async def check_connection_pool_health(
-        self,
-        pool_manager,
-        openai_client,
-        perplexity_client,
-    ) -> dict[str, HealthCheckResult]:
-        """Check health of connection pools.
-
-        Args:
-            pool_manager: Connection pool manager instance
-            openai_client: OpenAI client (optional)
-            perplexity_client: Perplexity client (optional)
-
-        Returns:
-            Dictionary mapping service names to health check results
-        """
-        results = {}
-
-        # Check OpenAI connection pool if client exists (accessing internal attrs is intentional)
-        if openai_client and hasattr(openai_client, "_client"):
-            http_client = getattr(openai_client._client, "_client", None)  # noqa: SLF001
-            if http_client:
-                pool_health = pool_manager.check_pool_health(http_client)
-                results["openai_pool"] = HealthCheckResult(
-                    service="openai_connection_pool",
-                    status=pool_health.get("status", "unknown"),
-                    response_time_ms=0.0,
-                    timestamp=datetime.now(UTC),
-                    details=pool_health,
-                )
-
-        # Check Perplexity connection pool if client exists
-        # (accessing internal attrs is intentional for health monitoring)
-        if perplexity_client and hasattr(perplexity_client, "_client"):
-            http_client = getattr(perplexity_client._client, "_client", None)  # noqa: SLF001
-            if http_client:
-                pool_health = pool_manager.check_pool_health(http_client)
-                results["perplexity_pool"] = HealthCheckResult(
-                    service="perplexity_connection_pool",
-                    status=pool_health.get("status", "unknown"),
-                    response_time_ms=0.0,
-                    timestamp=datetime.now(UTC),
-                    details=pool_health,
-                )
-
-        return results
-
     async def check_discord_health(self, bot_client) -> HealthCheckResult:
         """Perform health check of Discord API connectivity.
 
@@ -441,153 +384,3 @@ class APIHealthMonitor:
                 self.logger.exception("Failed to check Discord health")
 
         return results
-
-    def get_health_summary(self) -> dict[str, Any]:
-        """Get comprehensive health summary for all services."""
-        summary = {
-            "timestamp": datetime.now(UTC).isoformat(),
-            "services": {},
-            "overall_status": "healthy",
-        }
-
-        unhealthy_count = 0
-        degraded_count = 0
-
-        for service, metrics in self.metrics.items():
-            service_summary = {
-                "status": self._determine_service_status(metrics),
-                "uptime_percentage": round(metrics.uptime_percentage, 2),
-                "average_response_time_ms": round(metrics.average_response_time_ms, 2),
-                "total_checks": metrics.total_checks,
-                "consecutive_failures": metrics.consecutive_failures,
-                "last_check": (
-                    metrics.last_check_time.isoformat() if metrics.last_check_time else None
-                ),
-                "last_success": (
-                    metrics.last_success_time.isoformat() if metrics.last_success_time else None
-                ),
-            }
-
-            summary["services"][service] = service_summary
-
-            if service_summary["status"] == "unhealthy":
-                unhealthy_count += 1
-            elif service_summary["status"] == "degraded":
-                degraded_count += 1
-
-        # Determine overall status
-        if unhealthy_count > 0:
-            summary["overall_status"] = "unhealthy"
-        elif degraded_count > 0:
-            summary["overall_status"] = "degraded"
-
-        return summary
-
-    def _determine_service_status(self, metrics: APIHealthMetrics) -> str:
-        """Determine service status based on metrics."""
-        if metrics.consecutive_failures >= CONSECUTIVE_FAILURE_THRESHOLD:
-            return "unhealthy"
-        if (
-            metrics.consecutive_failures > 0
-            or metrics.uptime_percentage < UPTIME_DEGRADED_THRESHOLD
-        ):
-            return "degraded"
-        return "healthy"
-
-    async def start_monitoring(self, clients: dict[str, Any], config: dict[str, Any]):
-        """Start background health monitoring."""
-        if self._monitoring_active:
-            return
-
-        self._monitoring_active = True
-        self.logger.info("Starting API health monitoring")
-
-        async def _monitor_tick() -> None:
-            results = await self.run_all_health_checks(clients, config)
-
-            # Log critical issues
-            for service, result in results.items():
-                if result.status == "unhealthy":
-                    self.logger.error("Service %s is unhealthy: %s", service, result.error)
-                elif result.status == "degraded":
-                    self.logger.warning(
-                        "Service %s is degraded: response time %.1fms",
-                        service,
-                        result.response_time_ms,
-                    )
-
-        async def monitor_loop():
-            while self._monitoring_active:
-                try:
-                    await _monitor_tick()
-                except Exception:
-                    self.logger.exception("Error in health monitoring loop")
-                    await asyncio.sleep(60)
-                else:
-                    await asyncio.sleep(self.check_interval)
-
-        self._monitor_task = asyncio.create_task(monitor_loop())
-
-    async def stop_monitoring(self):
-        """Stop background health monitoring."""
-        if not self._monitoring_active:
-            return
-
-        self._monitoring_active = False
-        if self._monitor_task:
-            self._monitor_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._monitor_task
-
-        self.logger.info("Stopped API health monitoring")
-
-
-def validate_api_configuration(config: dict[str, Any]) -> tuple[list[str], list[str]]:
-    """Validate API configuration against current specifications.
-
-    Returns:
-        Tuple of (warnings, errors) lists
-    """
-    return validate_full_config(config)
-
-
-# Global health monitor instance
-health_monitor = APIHealthMonitor()
-
-
-async def run_startup_health_checks(clients: dict[str, Any], config: dict[str, Any]) -> bool:
-    """Run health checks during application startup.
-
-    Returns:
-        bool: True if all critical services are healthy
-    """
-    logger = logging.getLogger(__name__)
-    logger.info("Running startup health checks...")
-
-    try:
-        results = await health_monitor.run_all_health_checks(clients, config)
-
-        critical_services_healthy = True
-
-        for service, result in results.items():
-            if result.status == "unhealthy":
-                logger.error("STARTUP: %s service is unhealthy: %s", service, result.error)
-                critical_services_healthy = False
-            elif result.status == "degraded":
-                logger.warning(
-                    "STARTUP: %s service is degraded (response time: %.1fms)",
-                    service,
-                    result.response_time_ms,
-                )
-            else:
-                logger.info(
-                    "STARTUP: %s service is healthy (response time: %.1fms)",
-                    service,
-                    result.response_time_ms,
-                )
-
-    except Exception:
-        logger.exception("Failed to run startup health checks")
-        return False
-    else:
-        return critical_services_healthy

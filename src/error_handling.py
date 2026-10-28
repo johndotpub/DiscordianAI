@@ -182,7 +182,6 @@ class CircuitBreaker:
         async def wrapper(*args, **kwargs):
             return await self.call(func, *args, **kwargs)
 
-        wrapper.__circuit_breaker__ = self
         return wrapper
 
     def snapshot(self) -> dict[str, Any]:
@@ -196,23 +195,10 @@ class CircuitBreaker:
             "last_success_time": self.last_success_time,
         }
 
-    def reset(self) -> None:
-        """Reset the breaker to its initial CLOSED state."""
-        self.failure_count = 0
-        self.last_failure_time = 0.0
-        self.last_success_time = 0.0
-        self.state = "CLOSED"
-        self._probe_in_flight = False
-        self._lock = asyncio.Lock()
-
 
 PROVIDER_CIRCUIT_BREAKERS: dict[str, CircuitBreaker] = {
     provider: CircuitBreaker(name=provider) for provider in ("openai", "perplexity")
 }
-CIRCUIT_BREAKERS = PROVIDER_CIRCUIT_BREAKERS
-circuit_breakers = PROVIDER_CIRCUIT_BREAKERS
-provider_circuit_breakers = PROVIDER_CIRCUIT_BREAKERS
-CircuitBreakerError = CircuitBreakerOpenError
 
 
 def get_circuit_breaker(provider: str) -> CircuitBreaker:
@@ -229,17 +215,6 @@ def get_circuit_breaker_states() -> dict[str, dict[str, Any]]:
     return {
         provider: breaker.snapshot() for provider, breaker in PROVIDER_CIRCUIT_BREAKERS.items()
     }
-
-
-def get_circuit_breaker_status() -> dict[str, dict[str, Any]]:
-    """Alias for get_circuit_breaker_states()."""
-    return get_circuit_breaker_states()
-
-
-def reset_circuit_breakers() -> None:
-    """Reset all provider breakers to CLOSED."""
-    for breaker in PROVIDER_CIRCUIT_BREAKERS.values():
-        breaker.reset()
 
 
 class RetryConfig:
@@ -715,132 +690,9 @@ class ErrorTracker:
             if len(self.error_history) > self.max_history:
                 self.error_history = self.error_history[-self.max_history :]
 
-    def get_error_summary(self, time_window: int = 3600) -> dict[str, Any]:
-        """Get error summary for the specified time window (seconds)."""
-        with self._lock:
-            cutoff_time = time.time() - time_window
-            recent_errors = [e for e in self.error_history if e["timestamp"] > cutoff_time]
-
-            summary = {
-                "total_errors": len(recent_errors),
-                "error_types": {},
-                "critical_count": 0,
-                "high_count": 0,
-            }
-
-            for error in recent_errors:
-                error_type = error["error_type"]
-                severity = error["severity"]
-
-                summary["error_types"][error_type] = summary["error_types"].get(error_type, 0) + 1
-
-                if severity == "critical":
-                    summary["critical_count"] += 1
-                elif severity == "high":
-                    summary["high_count"] += 1
-
-            return summary
-
 
 # Global error tracker instance
 error_tracker = ErrorTracker()
-
-
-def handle_api_error(func):
-    """Decorator for enhanced API error handling with retries and circuit breaking.
-
-    Example::
-
-        @handle_api_error
-        async def my_api_call():
-            # API call code
-            pass
-    """
-
-    @CircuitBreaker(failure_threshold=3, timeout=30)
-    @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
-        func_logger = logging.getLogger(func.__module__)
-        retry_config = RetryConfig(
-            max_attempts=3,
-            base_delay=0.1,
-        )  # 3 attempts with short delay for tests
-
-        # Use the original logger if it exists in kwargs without removing it.
-        original_logger = kwargs.get("logger", func_logger)
-        func_kwargs = dict(kwargs)
-        func_kwargs.pop("logger", None)
-
-        try:
-            return await retry_with_backoff(
-                func,
-                retry_config,
-                original_logger,
-                *args,
-                **func_kwargs,
-            )
-
-        except Exception as e:
-            error_details = classify_error(e)
-            error_tracker.record_error(error_details, {"function": func.__name__})
-
-            # Log with appropriate level based on severity
-            log_level = {
-                ErrorSeverity.LOW: logging.INFO,
-                ErrorSeverity.MEDIUM: logging.WARNING,
-                ErrorSeverity.HIGH: logging.ERROR,
-                ErrorSeverity.CRITICAL: logging.CRITICAL,
-            }[error_details.severity]
-
-            original_logger.log(
-                log_level,
-                "API error in %s: %s (Type: %s, Severity: %s)",
-                func.__name__,
-                error_details.message,
-                error_details.error_type.value,
-                error_details.severity.value,
-                exc_info=error_details.severity in [ErrorSeverity.HIGH, ErrorSeverity.CRITICAL],
-            )
-
-            raise
-
-    return wrapper
-
-
-def create_graceful_fallback(
-    fallback_func: Callable,
-    fallback_message: str = "Service temporarily unavailable",
-):
-    """Create a decorator that provides graceful fallback when main function fails.
-
-    Args:
-        fallback_func: Function to call if main function fails
-        fallback_message: Message to use if both main and fallback fail
-    """
-
-    def decorator(main_func):
-        @functools.wraps(main_func)
-        async def wrapper(*args, **kwargs):
-            logger = logging.getLogger(main_func.__module__)
-
-            try:
-                return await main_func(*args, **kwargs)
-            except Exception as e:  # noqa: BLE001
-                logger.warning(
-                    "Main function %s failed: %s, trying fallback",
-                    main_func.__name__,
-                    e,
-                )
-
-                try:
-                    return await fallback_func(*args, **kwargs)
-                except Exception:
-                    logger.exception("Both main and fallback failed for %s", main_func.__name__)
-                    return fallback_message
-
-        return wrapper
-
-    return decorator
 
 
 async def safe_discord_send(

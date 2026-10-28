@@ -4,7 +4,6 @@ This test suite covers:
 - ThreadSafeLRUCache functionality
 - ResponseCache behavior and key generation
 - Request deduplication logic
-- Performance monitoring metrics
 - Cache decorators and integration
 """
 
@@ -16,12 +15,10 @@ import pytest
 
 from src.caching import (
     CacheEntry,
-    PerformanceMonitor,
     RequestDeduplicator,
     ResponseCache,
     ThreadSafeLRUCache,
     cached_response,
-    cleanup_caches,
     deduplicated_request,
 )
 
@@ -34,7 +31,6 @@ class TestCacheEntry:
         entry = CacheEntry(value="test response", timestamp=time.time(), ttl=300.0)
 
         assert entry.value == "test response"
-        assert entry.access_count == 0
         assert not entry.is_expired()
 
     def test_cache_entry_expiration(self):
@@ -48,15 +44,6 @@ class TestCacheEntry:
         )
 
         assert entry.is_expired()
-
-    def test_cache_entry_touch(self):
-        """Test cache entry touch functionality."""
-        entry = CacheEntry(value="test", timestamp=time.time())
-
-        initial_count = entry.access_count
-        entry.touch()
-
-        assert entry.access_count == initial_count + 1
 
 
 class TestThreadSafeLRUCache:
@@ -119,21 +106,6 @@ class TestThreadSafeLRUCache:
 
             # Should be expired now
             assert self.cache.get("expire_key") is None
-
-    def test_cache_cleanup_expired(self):
-        """Test cleanup of expired entries."""
-        with patch("src.caching.time.time", side_effect=[200.0, 200.0, 200.25, 200.25]):
-            # Add entries with different TTLs
-            self.cache.put("short", "value1", ttl=0.1)
-            self.cache.put("long", "value2", ttl=300.0)
-
-            # Cleanup expired entries
-            expired_count = self.cache.cleanup_expired()
-
-        with patch("src.caching.time.time", return_value=200.25):
-            assert expired_count == 1
-            assert self.cache.get("short") is None
-            assert self.cache.get("long") == "value2"
 
     def test_cache_clear(self):
         """Test clearing all cache entries."""
@@ -328,51 +300,6 @@ class TestRequestDeduplicator:
         assert call_count >= 1
 
 
-class TestPerformanceMonitor:
-    """Test PerformanceMonitor functionality."""
-
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.monitor = PerformanceMonitor()
-
-    def test_record_api_call_stats(self):
-        """Test recording API call statistics."""
-        # Record some API calls
-        self.monitor.record_api_call(0.150, cache_hit=False)  # 150ms, cache miss
-        self.monitor.record_api_call(0.080, cache_hit=True)  # 80ms, cache hit
-        self.monitor.record_api_call(0.200, cache_hit=False)  # 200ms, cache miss
-
-        stats = self.monitor.get_stats()
-
-        assert stats["total_api_calls"] == 3
-        assert stats["cache_hits"] == 1
-        assert stats["cache_misses"] == 2
-        assert stats["cache_hit_rate"] == pytest.approx(33.33, rel=0.1)
-        assert stats["average_response_time_ms"] == pytest.approx(143.33, rel=0.1)
-
-    def test_record_deduplication(self):
-        """Test recording deduplication events."""
-        self.monitor.record_deduplication()
-        self.monitor.record_deduplication()
-
-        stats = self.monitor.get_stats()
-        assert stats["deduplicated_requests"] == 2
-
-    def test_reset_stats(self):
-        """Test resetting performance statistics."""
-        # Record some data
-        self.monitor.record_api_call(0.100)
-        self.monitor.record_deduplication()
-
-        # Reset
-        self.monitor.reset_stats()
-
-        stats = self.monitor.get_stats()
-        assert stats["total_api_calls"] == 0
-        assert stats["deduplicated_requests"] == 0
-        assert stats["cache_hits"] == 0
-
-
 class TestCachingDecorators:
     """Test caching decorators."""
 
@@ -423,32 +350,6 @@ class TestCachingDecorators:
 
         # All results should be identical
         assert all(result == results[0] for result in results)
-
-
-class TestCacheIntegration:
-    """Test cache integration and cleanup."""
-
-    @pytest.mark.asyncio
-    async def test_cleanup_caches(self):
-        """Test cache cleanup functionality."""
-        from src.caching import response_cache
-
-        # Add some entries that will expire quickly
-        response_cache.cache.put("test1", "response1", ttl=0.1)
-        response_cache.cache.put("test2", "response2", ttl=300.0)
-
-        # Wait for short TTL entries to expire
-        await asyncio.sleep(0.2)
-
-        # Run cleanup
-        expired_count = await cleanup_caches()
-
-        # Should have cleaned up expired entries
-        assert expired_count == 1
-
-        # Verify expired entries are gone
-        assert response_cache.cache.get("test1") is None
-        assert response_cache.cache.get("test2") == "response2"
 
 
 if __name__ == "__main__":

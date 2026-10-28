@@ -212,16 +212,3 @@ class TestCitationIntegration:
 
         # Verify metadata shows truncation
         assert metadata["was_truncated"] is True
-
-    def test_no_citations_no_embed_decision(self):
-        """Test that responses without citations don't trigger embed creation."""
-        formatter = CitationEmbedFormatter()
-
-        citations = {}
-
-        should_use_embed = formatter.should_use_embed_for_response(citations)
-        assert should_use_embed is False
-
-        # Test with None citations
-        should_use_embed = formatter.should_use_embed_for_response(None)
-        assert should_use_embed is False

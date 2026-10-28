@@ -212,18 +212,6 @@ class ConnectionPoolManager:
         )
         return client
 
-    async def close_http_client(self, client: httpx.AsyncClient) -> None:
-        """Close an HTTP client to free resources.
-
-        Args:
-            client: HTTP client to close
-        """
-        try:
-            await client.aclose()
-            self._logger.debug("HTTP client closed successfully")
-        except (httpx.HTTPError, OSError) as e:
-            self._logger.warning("Error closing HTTP client: %s", e)
-
     def check_pool_health(self, client: httpx.AsyncClient | None) -> dict[str, Any]:
         """Check health of connection pool.
 

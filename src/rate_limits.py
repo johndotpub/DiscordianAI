@@ -67,14 +67,6 @@ class RateLimiter:
         current_time = time.monotonic() if now is None else now
         self.cleanup_stale_entries(current_time, rate_limit_window_seconds)
 
-    def maintenance(
-        self,
-        rate_limit_window_seconds: int | None = None,
-        now: float | None = None,
-    ) -> None:
-        """Alias for :meth:`run_maintenance`."""
-        self.run_maintenance(rate_limit_window_seconds, now)
-
     def record_fail_open_error(self, now: float) -> tuple[int, bool, bool]:
         """Record a fail-open error and update cooldown state atomically."""
         with self._lock:
@@ -196,48 +188,6 @@ class RateLimiter:
             log_method(log_message, *log_args)
 
         return result
-
-    def get_user_status(
-        self,
-        user_id: int,
-        rate_limit: int,
-        rate_limit_window_seconds: int,
-    ) -> dict:
-        """Get detailed rate limit status for a user (for debugging/monitoring).
-
-        Args:
-            self: Rate limiter instance.
-            user_id: The Discord user ID to check.
-            rate_limit: Maximum allowed commands per time period.
-            rate_limit_window_seconds: Time period in seconds.
-
-        Returns:
-            Status information including current count, remaining, and reset time.
-        """
-        current_time = time.monotonic()
-        with self._lock:
-            last_timestamp = self.last_command_timestamps.get(user_id, 0)
-            current_count = self.last_command_count.get(user_id, 0)
-
-            if current_time - last_timestamp > rate_limit_window_seconds:
-                # Window expired
-                return {
-                    "user_id": user_id,
-                    "current_count": 0,
-                    "remaining": rate_limit,
-                    "window_reset_in": 0,
-                    "window_expired": True,
-                }
-            return {
-                "user_id": user_id,
-                "current_count": current_count,
-                "remaining": max(0, rate_limit - current_count),
-                "window_reset_in": max(
-                    0,
-                    rate_limit_window_seconds - (current_time - last_timestamp),
-                ),
-                "window_expired": False,
-            }
 
 
 async def check_rate_limit(

@@ -17,14 +17,27 @@ warnings.filterwarnings(
 )
 
 
+def _reset_provider_circuit_breakers() -> None:
+    """Reset the shared provider breakers in place between tests."""
+    import asyncio
+
+    from src.error_handling import PROVIDER_CIRCUIT_BREAKERS
+
+    for breaker in PROVIDER_CIRCUIT_BREAKERS.values():
+        breaker.failure_count = 0
+        breaker.last_failure_time = 0.0
+        breaker.last_success_time = 0.0
+        breaker.state = "CLOSED"
+        breaker._probe_in_flight = False
+        breaker._lock = asyncio.Lock()
+
+
 @pytest.fixture(autouse=True)
 def reset_provider_circuit_breakers():
     """Keep provider breaker state isolated between tests."""
-    from src.error_handling import reset_circuit_breakers
-
-    reset_circuit_breakers()
+    _reset_provider_circuit_breakers()
     yield
-    reset_circuit_breakers()
+    _reset_provider_circuit_breakers()
 
 
 @pytest.fixture

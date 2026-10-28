@@ -331,23 +331,6 @@ class TestPoolMetrics:
         assert result["status"] == "unknown"
 
     @pytest.mark.asyncio
-    async def test_close_http_client_success(self):
-        """close_http_client closes a client successfully."""
-        mock_client = AsyncMock()
-        mock_client.aclose = AsyncMock()
-        manager = ConnectionPoolManager()
-        await manager.close_http_client(mock_client)
-        mock_client.aclose.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_close_http_client_error(self):
-        """close_http_client logs warning on close error."""
-        mock_client = AsyncMock()
-        mock_client.aclose.side_effect = OSError("connection reset")
-        manager = ConnectionPoolManager()
-        await manager.close_http_client(mock_client)
-
-    @pytest.mark.asyncio
     async def test_close_all(self):
         """close_all closes all tracked HTTP clients."""
         mock_client1 = AsyncMock()

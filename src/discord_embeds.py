@@ -120,42 +120,6 @@ class CitationEmbedFormatter:
         self.logger.debug("Formatted %d citations for embed description", len(citations))
         return formatted_text
 
-    def should_use_embed_for_response(
-        self,
-        citations: dict[str, str] | None = None,
-        force_embed: bool = False,
-    ) -> bool:
-        """Determine if a response should be formatted as an embed.
-
-        Args:
-            citations: Optional citation dictionary
-            force_embed: Force embed usage regardless of other factors
-
-        Returns:
-            bool: True if response should use embed formatting
-        """
-        if force_embed:
-            return True
-
-        # Use embed if citations are present (primary use case)
-        return bool(citations)
-
-    def create_error_embed(self, error_message: str, title: str = "Error") -> discord.Embed:
-        """Create an error embed for consistent error messaging.
-
-        Args:
-            error_message: Error description
-            title: Error title
-
-        Returns:
-            discord.Embed: Formatted error embed
-        """
-        return discord.Embed(
-            title=f"🔧 {title}",
-            description=error_message,
-            color=0xED4245,  # Discord red
-        )
-
 
 # Global instance for easy access
 citation_embed_formatter = CitationEmbedFormatter()

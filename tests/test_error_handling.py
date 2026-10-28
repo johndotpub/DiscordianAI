@@ -25,9 +25,7 @@ from src.error_handling import (
     RetryConfig,
     calculate_backoff_delay,
     classify_error,
-    create_graceful_fallback,
     error_tracker,
-    handle_api_error,
     retry_with_backoff,
     safe_discord_send,
 )
@@ -548,55 +546,6 @@ class TestSafeDiscordSend:
         mock_sleep.assert_called_once_with(1)  # 2^0 = 1 for first retry
 
 
-@pytest.mark.asyncio
-class TestHandleAPIError:
-    """Test handle_api_error decorator functionality."""
-
-    async def test_handle_api_error_decorator(self):
-        """Test handle_api_error decorator with successful function."""
-
-        @handle_api_error
-        async def test_func():
-            return "success"
-
-        result = await test_func()
-        assert result == "success"
-
-    async def test_handle_api_error_decorator_with_retries(self):
-        """Test handle_api_error decorator with retries."""
-        call_count = 0
-
-        @handle_api_error
-        async def test_func():
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                msg = "Temporary failure"
-                raise Exception(msg)
-            return "success"
-
-        result = await test_func()
-        assert result == "success"
-        assert call_count == 2
-
-    async def test_handle_api_error_decorator_failure(self):
-        """Test handle_api_error decorator with persistent failure."""
-        call_count = 0
-
-        @handle_api_error
-        async def test_func():
-            nonlocal call_count
-            call_count += 1
-            msg = "Persistent failure"
-            raise Exception(msg)
-
-        with pytest.raises(Exception, match="Persistent failure"):
-            await test_func()
-
-        # Should have attempted retries
-        assert call_count >= 2
-
-
 class TestErrorTracker:
     """Test ErrorTracker functionality."""
 
@@ -617,26 +566,6 @@ class TestErrorTracker:
         assert len(tracker.error_history) == 1
         assert tracker.error_counts["api_rate_limit_high"] == 1
 
-    def test_error_tracker_summary(self):
-        """Test getting error summary."""
-        tracker = ErrorTracker()
-
-        # Add some test errors
-        for i in range(3):
-            error_details = ErrorDetails(
-                error_type=ErrorType.API_TIMEOUT,
-                severity=ErrorSeverity.HIGH,
-                message=f"Timeout {i}",
-                user_message="Timeout occurred",
-            )
-            tracker.record_error(error_details)
-
-        summary = tracker.get_error_summary()
-
-        assert summary["total_errors"] == 3
-        assert summary["error_types"]["api_timeout"] == 3
-        assert summary["high_count"] == 3
-
     def test_error_tracker_history_limit(self):
         """Test error history size limit."""
         tracker = ErrorTracker()
@@ -654,55 +583,6 @@ class TestErrorTracker:
 
         # Should only keep the last max_history items
         assert len(tracker.error_history) == 5
-
-
-class TestCreateGracefulFallback:
-    """Test create_graceful_fallback decorator."""
-
-    @pytest.mark.asyncio
-    async def test_graceful_fallback_success(self):
-        """Test fallback when main function succeeds."""
-
-        async def fallback_func():
-            return "fallback"
-
-        @create_graceful_fallback(fallback_func)
-        async def main_func():
-            return "success"
-
-        result = await main_func()
-        assert result == "success"
-
-    @pytest.mark.asyncio
-    async def test_graceful_fallback_main_fails(self):
-        """Test fallback when main function fails."""
-
-        async def fallback_func():
-            return "fallback"
-
-        @create_graceful_fallback(fallback_func)
-        async def main_func():
-            msg = "Main failed"
-            raise Exception(msg)
-
-        result = await main_func()
-        assert result == "fallback"
-
-    @pytest.mark.asyncio
-    async def test_graceful_fallback_both_fail(self):
-        """Test fallback when both functions fail."""
-
-        async def fallback_func():
-            msg = "Fallback failed"
-            raise Exception(msg)
-
-        @create_graceful_fallback(fallback_func, "Default message")
-        async def main_func():
-            msg = "Main failed"
-            raise Exception(msg)
-
-        result = await main_func()
-        assert result == "Default message"
 
 
 class TestCalculateBackoffDelay:
@@ -1035,26 +915,6 @@ class TestRetryLogicScenarios:
 
 class TestErrorRecoveryIntegration:
     """Test error recovery in integrated scenarios."""
-
-    @pytest.mark.asyncio
-    async def test_handle_api_error_with_circuit_breaker_and_retry(self):
-        """Test handle_api_error decorator with both circuit breaker and retry."""
-        call_count = 0
-
-        @handle_api_error
-        async def flaky_api_call():
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                msg = "Temporary failure"
-                raise ConnectionError(msg)
-            return "success"
-
-        logger = Mock()
-        result = await flaky_api_call(logger=logger)
-
-        assert result == "success"
-        assert call_count == 3  # Retried until success
 
     @pytest.mark.asyncio
     async def test_circuit_breaker_with_multiple_concurrent_requests(self):

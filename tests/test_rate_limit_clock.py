@@ -76,11 +76,12 @@ def test_window_arithmetic_and_retry_time_are_unchanged(monkeypatch):
     assert limiter.check_rate_limit(1, 10, 60, logger) is True
 
     clock.monotonic = 76.0
-    status = limiter.get_user_status(1, 10, 60)
-    assert status["current_count"] == 1
-    assert status["remaining"] == 9
-    assert status["window_reset_in"] == pytest.approx(45.0)
-    assert status["window_expired"] is False
+    assert limiter.check_rate_limit(1, 10, 60, logger) is True
+    assert limiter.last_command_count[1] == 2
+
+    clock.monotonic = 121.1
+    assert limiter.check_rate_limit(1, 10, 60, logger) is True
+    assert limiter.last_command_count[1] == 1
 
 
 def test_requests_never_sweep_but_maintenance_does(monkeypatch):

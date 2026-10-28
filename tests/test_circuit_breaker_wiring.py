@@ -22,7 +22,6 @@ from src.error_handling import (
     classify_error,
     get_circuit_breaker,
     get_circuit_breaker_states,
-    reset_circuit_breakers,
     retry_with_backoff,
 )
 from src.models import AIClients, AIConfig, AIRequest, OpenAIConfig
@@ -78,9 +77,6 @@ def _perplexity_client(text: str) -> MagicMock:
 def _reset_state():
     response_cache.cache.clear()
     request_deduplicator._pending_requests.clear()
-    reset_circuit_breakers()
-    yield
-    reset_circuit_breakers()
 
 
 @pytest.mark.asyncio

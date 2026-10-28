@@ -140,10 +140,6 @@ class ThreadSafeConversationManager:
                 self._user_locks[user_id] = threading.RLock()
             return self._user_locks[user_id]
 
-    def _get_conversation_lock(self, conversation_key: ConversationKey) -> threading.RLock:
-        """Alias for :meth:`_get_user_lock` using conversation-key terminology."""
-        return self._get_user_lock(conversation_key)
-
     def _has_conversation_state(self, key: ConversationKey) -> bool:
         """Return True when a conversation or its lock is still registered."""
         with self._global_lock:
