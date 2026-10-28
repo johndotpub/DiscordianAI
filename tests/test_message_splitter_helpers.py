@@ -1,18 +1,11 @@
-"""Comprehensive tests for src/message_utils.py - Message processing utilities.
+"""Tests for the helper functions in src.message_splitter.
 
-This test suite covers:
-- Message splitting and optimal split point finding
-- Code block detection and handling
-- Message content cleaning and formatting
-- User mention extraction
-- Link counting and embed suppression logic
-- Discord message sanitization
-- Command parsing
-- MessageFormatter class
+This suite covers split-point selection, code-block detection, content
+cleaning, link counting, embed suppression, sanitisation, and formatting
+helpers that are not already exercised by ``test_message_splitting.py``.
 """
 
 from src.message_splitter import (
-    adjust_split_for_code_blocks,
     clean_message_content,
     count_links,
     detect_code_blocks,
@@ -38,66 +31,6 @@ class TestFindOptimalSplitPoint:
         # Should split at a newline boundary near the target
         assert message[split_point - 1] == "\n"
         assert abs(split_point - target) <= 5
-
-    def test_split_at_sentence_boundary(self):
-        """Test splitting at sentence boundary when no newlines."""
-        message = "First sentence. Second sentence! Third sentence? Fourth."
-        target = 30  # Middle of third sentence
-
-        split_point = find_optimal_split_point(message, target)
-
-        # Should find a reasonable split point
-        assert split_point > 0
-        assert split_point <= len(message)
-
-    def test_split_at_word_boundary(self):
-        """Test splitting at word boundary when no sentences."""
-        message = "word1 word2 word3 word4 word5"
-        target = 12  # Middle of word3
-
-        split_point = find_optimal_split_point(message, target)
-
-        # Should split at a space
-        assert message[split_point - 1] == " " or split_point == target
-
-    def test_split_fallback_to_target(self):
-        """Test fallback to target index when no good boundaries."""
-        message = "verylongwordwithoutspacesorpunctuation"
-        target = 15
-
-        split_point = find_optimal_split_point(message, target)
-
-        assert split_point == target
-
-    def test_split_near_start(self):
-        """Test splitting near the beginning of message."""
-        message = "Short\nLonger line here"
-        target = 3
-
-        split_point = find_optimal_split_point(message, target)
-
-        # Should still work correctly
-        assert split_point >= 0
-        assert split_point <= len(message)
-
-    def test_split_near_end(self):
-        """Test splitting near the end of message."""
-        message = "Some text\nNear the end"
-        target = len(message) - 5
-
-        split_point = find_optimal_split_point(message, target)
-
-        assert split_point >= 0
-        assert split_point <= len(message)
-
-    def test_empty_message(self):
-        """Test with empty message."""
-        message = ""
-        target = 0
-
-        split_point = find_optimal_split_point(message, target)
-
-        assert split_point == 0
 
     def test_target_beyond_message(self):
         """Test with target beyond message length."""
@@ -177,62 +110,6 @@ class TestCodeBlockDetection:
     def test_is_inside_empty_code_blocks(self):
         """Test with empty code blocks list."""
         assert is_inside_code_block(15, []) is False
-
-
-class TestAdjustSplitForCodeBlocks:
-    """Test adjust_split_for_code_blocks function."""
-
-    def test_split_outside_code_block(self):
-        """Test splitting outside code blocks."""
-        message = "Text before ```code``` text after"
-        split_point = 5  # In "Text before"
-
-        before, after = adjust_split_for_code_blocks(message, split_point)
-
-        assert before == "Text "
-        assert after == "before ```code``` text after"
-
-    def test_split_inside_code_block_near_start(self):
-        """Test splitting inside code block near start."""
-        message = "Text ```very long code block here``` more text"
-        split_point = 10  # Inside code block, closer to start
-
-        before, after = adjust_split_for_code_blocks(message, split_point)
-
-        # Should split before code block
-        assert before == "Text "
-        assert after.startswith("```")
-
-    def test_split_inside_code_block_near_end(self):
-        """Test splitting inside code block near end."""
-        message = "Text ```code block``` more text"
-        split_point = 16  # Inside code block, closer to end
-
-        before, after = adjust_split_for_code_blocks(message, split_point)
-
-        # Should split after code block
-        assert before.endswith("```")
-        assert after == " more text"
-
-    def test_split_multiple_code_blocks(self):
-        """Test with multiple code blocks."""
-        message = "Text ```code1``` middle ```code2``` end"
-        split_point = 25  # Inside second code block
-
-        before, after = adjust_split_for_code_blocks(message, split_point)
-
-        # Should handle correctly
-        assert "```" in before or "```" in after
-
-    def test_split_no_code_blocks(self):
-        """Test with no code blocks present."""
-        message = "Just regular text without code blocks"
-        split_point = 10
-
-        before, after = adjust_split_for_code_blocks(message, split_point)
-
-        assert before == message[:split_point]
-        assert after == message[split_point:]
 
 
 class TestCleanMessageContent:

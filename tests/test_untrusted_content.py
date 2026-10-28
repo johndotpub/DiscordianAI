@@ -7,7 +7,7 @@ import pytest
 from src.conversation_manager import ThreadSafeConversationManager
 from src.models import AIRequest, PerplexityConfig
 from src.perplexity_processing import _build_scraped_message, process_perplexity_message
-from tests.test_utils import FakePerplexityClient
+from tests.helpers import FakePerplexityClient
 
 UNTRUSTED_START = "<untrusted_webpage_content>"
 UNTRUSTED_END = "</untrusted_webpage_content>"

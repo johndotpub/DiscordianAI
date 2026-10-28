@@ -13,7 +13,7 @@ from src.config import EMBED_LIMIT
 from src.conversation_manager import ThreadSafeConversationManager
 from src.discord_embeds import CitationEmbedFormatter
 from src.perplexity_processing import process_perplexity_message
-from tests.test_utils import FakePerplexityClient
+from tests.helpers import FakePerplexityClient
 
 
 class TestCitationIntegration:

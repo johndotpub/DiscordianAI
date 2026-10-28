@@ -13,36 +13,17 @@ from src.message_processor import (
     process_channel_message,
     process_dm_message,
 )
-from src.message_splitter import (
-    find_optimal_split_point,
-    send_formatted_message,
-    send_split_message,
-)
+from src.message_splitter import find_optimal_split_point, send_split_message
 
 
 # Test bot initialization and dependency injection
 class TestBotInitialization:
-    def test_initialize_with_openai_only(self):
+    def test_initialize_with_openai_only(self, config_dict):
         """Test bot initialization with only OpenAI API key."""
-        config = {
-            "LOG_LEVEL": "INFO",
-            "OPENAI_API_KEY": "test-openai-key",
-            "OPENAI_API_URL": "https://api.openai.com/v1/",
-            "PERPLEXITY_API_KEY": None,
-            "PERPLEXITY_API_URL": "https://api.perplexity.ai",
-            "MAX_HISTORY_PER_USER": 50,
-            "USER_LOCK_CLEANUP_INTERVAL": 3600,
-            "ALLOWED_CHANNELS": ["general"],
-            "BOT_PRESENCE": "online",
-            "ACTIVITY_TYPE": "listening",
-            "ACTIVITY_STATUS": "for messages",
-            "DISCORD_TOKEN": "test-token",
-            "RATE_LIMIT": 10,
-            "RATE_LIMIT_PER": 60,
-            "GPT_MODEL": "gpt-5-mini",
-            "SYSTEM_MESSAGE": "Test assistant",
-            "OUTPUT_TOKENS": 1000,
-        }
+        config = config_dict(
+            OPENAI_API_KEY="test-openai-key",
+            PERPLEXITY_API_KEY=None,
+        )
 
         with patch("src.bot.get_connection_pool_manager") as mock_pool_manager:
             # Mock the connection pool manager methods
@@ -62,27 +43,12 @@ class TestBotInitialization:
             assert "conversation_manager" in deps
             mock_pool.create_openai_client.assert_called_once()
 
-    def test_initialize_with_perplexity_only(self):
+    def test_initialize_with_perplexity_only(self, config_dict):
         """Test bot initialization with only Perplexity API key."""
-        config = {
-            "LOG_LEVEL": "INFO",
-            "OPENAI_API_KEY": None,
-            "OPENAI_API_URL": "https://api.openai.com/v1/",
-            "PERPLEXITY_API_KEY": "test-perplexity-key",
-            "PERPLEXITY_API_URL": "https://api.perplexity.ai",
-            "MAX_HISTORY_PER_USER": 50,
-            "USER_LOCK_CLEANUP_INTERVAL": 3600,
-            "ALLOWED_CHANNELS": ["general"],
-            "BOT_PRESENCE": "online",
-            "ACTIVITY_TYPE": "listening",
-            "ACTIVITY_STATUS": "for messages",
-            "DISCORD_TOKEN": "test-token",
-            "RATE_LIMIT": 10,
-            "RATE_LIMIT_PER": 60,
-            "GPT_MODEL": "gpt-5-mini",
-            "SYSTEM_MESSAGE": "Test assistant",
-            "OUTPUT_TOKENS": 1000,
-        }
+        config = config_dict(
+            OPENAI_API_KEY=None,
+            PERPLEXITY_API_KEY="test-perplexity-key",
+        )
 
         with patch("src.bot.get_connection_pool_manager") as mock_pool_manager:
             # Mock the connection pool manager methods
@@ -96,27 +62,12 @@ class TestBotInitialization:
             assert deps["perplexity_client"] is not None
             mock_pool.create_perplexity_client.assert_called_once()
 
-    def test_initialize_hybrid_mode(self):
+    def test_initialize_hybrid_mode(self, config_dict):
         """Test bot initialization with both API keys."""
-        config = {
-            "LOG_LEVEL": "INFO",
-            "OPENAI_API_KEY": "test-openai-key",
-            "OPENAI_API_URL": "https://api.openai.com/v1/",
-            "PERPLEXITY_API_KEY": "test-perplexity-key",
-            "PERPLEXITY_API_URL": "https://api.perplexity.ai",
-            "MAX_HISTORY_PER_USER": 50,
-            "USER_LOCK_CLEANUP_INTERVAL": 3600,
-            "ALLOWED_CHANNELS": ["general"],
-            "BOT_PRESENCE": "online",
-            "ACTIVITY_TYPE": "listening",
-            "ACTIVITY_STATUS": "for messages",
-            "DISCORD_TOKEN": "test-token",
-            "RATE_LIMIT": 10,
-            "RATE_LIMIT_PER": 60,
-            "GPT_MODEL": "gpt-5-mini",
-            "SYSTEM_MESSAGE": "Test assistant",
-            "OUTPUT_TOKENS": 1000,
-        }
+        config = config_dict(
+            OPENAI_API_KEY="test-openai-key",
+            PERPLEXITY_API_KEY="test-perplexity-key",
+        )
 
         with patch("src.bot.get_connection_pool_manager") as mock_pool_manager:
             # Mock the connection pool manager methods
@@ -131,34 +82,18 @@ class TestBotInitialization:
             assert mock_pool.create_openai_client.call_count == 1
             assert mock_pool.create_perplexity_client.call_count == 1
 
-    def test_initialize_no_api_keys_raises_error(self):
+    def test_initialize_no_api_keys_raises_error(self, config_dict):
         """Test that missing both API keys raises ValueError."""
-        config = {
-            "LOG_LEVEL": "INFO",
-            "OPENAI_API_KEY": None,
-            "OPENAI_API_URL": "https://api.openai.com/v1/",
-            "PERPLEXITY_API_KEY": None,
-            "PERPLEXITY_API_URL": "https://api.perplexity.ai",
-            "MAX_HISTORY_PER_USER": 50,
-            "USER_LOCK_CLEANUP_INTERVAL": 3600,
-        }
+        config = config_dict(OPENAI_API_KEY=None, PERPLEXITY_API_KEY=None)
 
         with pytest.raises(ValueError) as exc_info:
             initialize_bot_and_dependencies(config)
 
         assert "No API keys provided" in str(exc_info.value)
 
-    def test_initialize_openai_client_failure(self):
+    def test_initialize_openai_client_failure(self, config_dict):
         """Test handling of OpenAI client initialization failure."""
-        config = {
-            "LOG_LEVEL": "INFO",
-            "OPENAI_API_KEY": "invalid-key",
-            "OPENAI_API_URL": "https://api.openai.com/v1/",
-            "PERPLEXITY_API_KEY": None,
-            "PERPLEXITY_API_URL": "https://api.perplexity.ai",
-            "MAX_HISTORY_PER_USER": 50,
-            "USER_LOCK_CLEANUP_INTERVAL": 3600,
-        }
+        config = config_dict(OPENAI_API_KEY="invalid-key", PERPLEXITY_API_KEY=None)
 
         with patch("src.bot.get_connection_pool_manager") as mock_pool_manager:
             # Mock the connection pool manager to raise an exception
@@ -174,7 +109,7 @@ class TestBotInitialization:
 # Test message processing core functionality
 class TestMessageProcessing:
     @pytest.mark.asyncio
-    async def test_process_message_core_dm(self):
+    async def test_process_message_core_dm(self, deps_factory):
         """Test core message processing for DMs."""
         # Create mock message
         message = MagicMock(spec=discord.Message)
@@ -185,20 +120,7 @@ class TestMessageProcessing:
         message.channel = MagicMock(spec=discord.DMChannel)
         message.channel.send = AsyncMock()
 
-        # Create mock dependencies
-        deps = {
-            "logger": logging.getLogger("test"),
-            "rate_limiter": MagicMock(),
-            "conversation_manager": MagicMock(),
-            "client": MagicMock(),
-            "perplexity_client": MagicMock(),
-            "RATE_LIMIT": 10,
-            "RATE_LIMIT_PER": 60,
-            "GPT_MODEL": "gpt-5-mini",
-            "SYSTEM_MESSAGE": "Test",
-            "OUTPUT_TOKENS": 1000,
-            "config": {},
-        }
+        deps = deps_factory()
 
         # Mock successful rate limit check and response generation
         with (
@@ -217,7 +139,7 @@ class TestMessageProcessing:
             assert mock_send.call_args[0][1] == "Test response"  # Check response content
 
     @pytest.mark.asyncio
-    async def test_process_message_core_rate_limited(self):
+    async def test_process_message_core_rate_limited(self, deps_factory):
         """Test message processing when rate limited."""
         message = MagicMock(spec=discord.Message)
         message.author.name = "TestUser"
@@ -227,13 +149,7 @@ class TestMessageProcessing:
         message.channel = MagicMock()
         message.channel.send = AsyncMock()
 
-        deps = {
-            "logger": logging.getLogger("test"),
-            "rate_limiter": MagicMock(),
-            "conversation_manager": MagicMock(),
-            "RATE_LIMIT": 10,
-            "RATE_LIMIT_PER": 60,
-        }
+        deps = deps_factory(RATE_LIMIT=10, RATE_LIMIT_PER=60)
 
         # Mock rate limit failure
         with patch("src.message_processor.check_rate_limit", return_value=False):
@@ -244,7 +160,7 @@ class TestMessageProcessing:
             assert "rate limit" in sent_message.lower()
 
     @pytest.mark.asyncio
-    async def test_process_message_core_channel(self):
+    async def test_process_message_core_channel(self, deps_factory):
         """Test core message processing for channel messages."""
         message = MagicMock(spec=discord.Message)
         message.author.name = "TestUser"
@@ -255,21 +171,7 @@ class TestMessageProcessing:
         message.channel.name = "general"
         message.channel.send = AsyncMock()
 
-        deps = {
-            "logger": logging.getLogger("test"),
-            "rate_limiter": MagicMock(),
-            "conversation_manager": MagicMock(),
-            "client": MagicMock(),
-            "perplexity_client": MagicMock(),
-            "RATE_LIMIT": 10,
-            "RATE_LIMIT_PER": 60,
-            "GPT_MODEL": "gpt-5-mini",
-            "SYSTEM_MESSAGE": "Test",
-            "OUTPUT_TOKENS": 1000,
-            "REASONING_EFFORT": None,
-            "VERBOSITY": None,
-            "config": {},
-        }
+        deps = deps_factory()
 
         with (
             patch("src.message_processor.check_rate_limit", return_value=True),
@@ -286,7 +188,7 @@ class TestMessageProcessing:
             mock_send.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_process_message_core_exception_handling(self):
+    async def test_process_message_core_exception_handling(self, deps_factory):
         """Test exception handling in message processing."""
         message = MagicMock(spec=discord.Message)
         message.author.name = "TestUser"
@@ -295,13 +197,7 @@ class TestMessageProcessing:
         message.channel = MagicMock()
         message.channel.send = AsyncMock()
 
-        deps = {
-            "logger": logging.getLogger("test"),
-            "rate_limiter": MagicMock(),
-            "conversation_manager": MagicMock(),
-            "RATE_LIMIT": 10,
-            "RATE_LIMIT_PER": 60,
-        }
+        deps = deps_factory(RATE_LIMIT=10, RATE_LIMIT_PER=60)
 
         # Mock rate limit check to raise exception
         with patch("src.message_processor.check_rate_limit", side_effect=Exception("Test error")):
@@ -333,7 +229,7 @@ class TestMessageProcessing:
             mock_core.assert_called_once_with(message, deps, is_dm=False)
 
     @pytest.mark.asyncio
-    async def test_process_message_core_strips_channel_mentions(self):
+    async def test_process_message_core_strips_channel_mentions(self, deps_factory):
         """Channel requests should use cleaned content without mentions."""
         author = MagicMock()
         author.mention = "@tester"
@@ -351,19 +247,14 @@ class TestMessageProcessing:
         convo_manager = MagicMock()
         convo_manager.get_conversation_summary_formatted.return_value = ""
 
-        deps = {
-            "logger": logging.getLogger("test"),
-            "rate_limiter": MagicMock(),
-            "conversation_manager": convo_manager,
-            "RATE_LIMIT": 10,
-            "RATE_LIMIT_PER": 60,
-            "GPT_MODEL": "gpt-5-mini",
-            "SYSTEM_MESSAGE": "You are a test bot",
-            "OUTPUT_TOKENS": 100,
-            "client": MagicMock(),
-            "perplexity_client": MagicMock(),
-            "config": {"PERPLEXITY_MODEL": "sonar-pro"},
-        }
+        deps = deps_factory(
+            conversation_manager=convo_manager,
+            RATE_LIMIT=10,
+            RATE_LIMIT_PER=60,
+            SYSTEM_MESSAGE="You are a test bot",
+            OUTPUT_TOKENS=100,
+            config={"PERPLEXITY_MODEL": "sonar-pro"},
+        )
 
         with (
             patch("src.message_processor.check_rate_limit", return_value=True),
@@ -448,18 +339,17 @@ class TestMessageSplitting:
 
 # Test event handler registration
 class TestEventHandlers:
-    def test_register_event_handlers_via_manager(self):
+    def test_register_event_handlers_via_manager(self, deps_factory):
         """Test that event handlers are properly registered via DiscordBotManager."""
         bot = MagicMock(spec=discord.Client)
-        deps = {
-            "logger": logging.getLogger("test"),
-            "bot": bot,
-            "BOT_PRESENCE": "online",
-            "ACTIVITY_TYPE": "listening",
-            "ACTIVITY_STATUS": "for messages",
-            "ALLOWED_CHANNELS": ["general"],
-            "config": {"LOG_LEVEL": "INFO"},
-        }
+        deps = deps_factory(
+            bot=bot,
+            BOT_PRESENCE="online",
+            ACTIVITY_TYPE="listening",
+            ACTIVITY_STATUS="for messages",
+            ALLOWED_CHANNELS=["general"],
+            config={"LOG_LEVEL": "INFO"},
+        )
 
         from src.bot_manager import DiscordBotManager
 
@@ -468,64 +358,3 @@ class TestEventHandlers:
 
         # Verify that bot.event was called to register handlers
         assert bot.event.call_count >= 4
-
-
-class TestBotMessageHandling:
-    """Test the bot's actual message handling to prevent duplication issues."""
-
-    @pytest.mark.asyncio
-    async def test_send_formatted_message_no_duplication_with_embed(self):
-        """Test that send_formatted_message prevents duplicate content when embed_data exists."""
-        # Mock channel
-        channel = MagicMock(spec=discord.TextChannel)
-        channel.send = AsyncMock()
-
-        # Mock embed data
-        embed = MagicMock(spec=discord.Embed)
-        embed.description = "Test embed content with citations"
-        embed_data = {
-            "embed": embed,
-            "citations": {"1": "https://example.com", "2": "https://test.com"},
-            "clean_text": "Content with [1] and [2] citations",
-            "embed_metadata": {
-                "was_truncated": False,
-                "original_length": 50,
-                "formatted_length": 50,
-            },
-        }
-
-        # This message text should NOT be sent - only the embed should be sent
-        message = "This raw text should not appear in Discord"
-        deps = {"logger": MagicMock()}
-
-        await send_formatted_message(channel, message, deps, embed_data=embed_data)
-
-        # Verify exactly one message is sent
-        assert channel.send.call_count == 1
-
-        # Verify it's sent with empty message text and embed
-        call_args = channel.send.call_args
-        assert call_args[0][0] == ""  # Empty message text
-        assert call_args[1]["embed"] == embed  # Embed is sent
-
-    @pytest.mark.asyncio
-    async def test_send_formatted_message_regular_message_without_embed(self):
-        """Test that send_formatted_message sends regular message when no embed_data is present."""
-        # Mock channel
-        channel = MagicMock(spec=discord.TextChannel)
-        channel.send = AsyncMock()
-
-        # No embed data
-        embed_data = None
-        message = "Hello! This is a regular message without citations."
-        deps = {"logger": MagicMock()}
-
-        await send_formatted_message(channel, message, deps, embed_data=embed_data)
-
-        # Verify exactly one message is sent
-        assert channel.send.call_count == 1
-
-        # Verify it's sent with the regular message text
-        call_args = channel.send.call_args
-        assert message in call_args[0][0]  # Message text is sent
-        assert "embed" not in call_args[1]  # No embed

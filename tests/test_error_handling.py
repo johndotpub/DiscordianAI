@@ -855,10 +855,11 @@ class TestRetryLogicScenarios:
     @pytest.mark.asyncio
     async def test_retry_exponential_backoff_delay(self):
         """Test that retry uses exponential backoff."""
-        attempt_times = []
+        attempt_count = 0
 
         async def failing_function():
-            attempt_times.append(time.time())
+            nonlocal attempt_count
+            attempt_count += 1
             msg = "Failure"
             raise ConnectionError(msg)
 
@@ -870,25 +871,24 @@ class TestRetryLogicScenarios:
         )
         logger = Mock()
 
-        with pytest.raises(ConnectionError):
+        with (
+            patch("src.error_handling.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+            pytest.raises(ConnectionError),
+        ):
             await retry_with_backoff(failing_function, retry_config, logger)
 
-        # Check that delays increase exponentially
-        assert len(attempt_times) == 3
-        delay1 = attempt_times[1] - attempt_times[0]
-        delay2 = attempt_times[2] - attempt_times[1]
-
-        # Allow some tolerance for async timing
-        assert 0.15 < delay1 < 0.25  # ~0.2s
-        assert 0.35 < delay2 < 0.45  # ~0.4s (0.2 * 2)
+        # The recorded sleep durations are the backoff, without waiting on the clock.
+        assert attempt_count == 3
+        assert [call.args[0] for call in mock_sleep.await_args_list] == [0.2, 0.4]
 
     @pytest.mark.asyncio
     async def test_retry_respects_max_delay(self):
         """Test that retry respects max_delay configuration."""
-        attempt_times = []
+        attempt_count = 0
 
         async def failing_function():
-            attempt_times.append(time.time())
+            nonlocal attempt_count
+            attempt_count += 1
             msg = "Failure"
             raise ConnectionError(msg)
 
@@ -901,16 +901,17 @@ class TestRetryLogicScenarios:
         )
         logger = Mock()
 
-        with pytest.raises(ConnectionError):
+        with (
+            patch("src.error_handling.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+            pytest.raises(ConnectionError),
+        ):
             await retry_with_backoff(failing_function, retry_config, logger)
 
-        # Check that delays are capped at max_delay
-        # Note: In parallel test execution, timing can vary significantly
-        # so we use a generous tolerance
-        assert len(attempt_times) >= 3
-        for i in range(1, len(attempt_times)):
-            delay = attempt_times[i] - attempt_times[i - 1]
-            assert delay <= 3.0  # Allow generous tolerance for parallel execution overhead
+        # Each computed delay is capped at max_delay; no wall clock is read.
+        assert attempt_count >= 3
+        delays = [call.args[0] for call in mock_sleep.await_args_list]
+        assert delays
+        assert all(delay <= 0.5 for delay in delays)
 
 
 class TestErrorRecoveryIntegration:

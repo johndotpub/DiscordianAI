@@ -8,7 +8,7 @@ from src.conversation_manager import ThreadSafeConversationManager
 from src.models import AIClients, AIConfig, AIRequest, PerplexityConfig
 from src.perplexity_processing import _build_api_params, process_perplexity_message
 from src.smart_orchestrator import get_smart_response
-from tests.test_utils import FakeResponse
+from tests.helpers import FakeResponse
 
 HISTORY = [
     {"role": "user", "content": "Name two novels by Frank Herbert."},

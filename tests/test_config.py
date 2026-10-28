@@ -13,7 +13,12 @@ def isolate_config_env(monkeypatch):
     """Scrub env vars that load_config reads so the host env never leaks into tests."""
     keys = [
         "DISCORD_TOKEN",
+        "ADDRESS",
         "ALLOWED_CHANNELS",
+        "ALLOWED_CHANNEL_IDS",
+        "ALLOWED_GUILDS",
+        "ALLOWED_GUILD_IDS",
+        "TRUSTED_BOT_IDS",
         "BOT_PRESENCE",
         "ACTIVITY_TYPE",
         "ACTIVITY_STATUS",
@@ -25,6 +30,7 @@ def isolate_config_env(monkeypatch):
         "GPT_MODEL",
         "INPUT_TOKENS",
         "OUTPUT_TOKENS",
+        "PERPLEXITY_OUTPUT_TOKENS",
         "CONTEXT_WINDOW",
         "SYSTEM_MESSAGE",
         "RATE_LIMIT",
@@ -35,6 +41,7 @@ def isolate_config_env(monkeypatch):
         "PERPLEXITY_MAX_KEEPALIVE",
         "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
         "MAX_HISTORY_PER_USER",
+        "CONVERSATION_TTL_SECONDS",
         "USER_LOCK_CLEANUP_INTERVAL",
         "ENTITY_DETECTION_MIN_WORDS",
         "MAX_URLS_PER_MESSAGE",

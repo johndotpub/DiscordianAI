@@ -23,7 +23,7 @@ from src.message_splitter import (
     send_split_message,
     send_split_message_with_embed,
 )
-from tests.test_utils import create_mock_channel, create_test_context
+from tests.helpers import create_mock_channel, create_test_context
 
 
 class TestMessageSplittingBasic:
@@ -118,6 +118,12 @@ class TestCodeBlockSplitting:
         assert before == "Normal text\n"
         assert after == "```\ncode block\n```\nMore text"
 
+        outside_before, outside_after = adjust_split_for_code_blocks(
+            "Text before ```code``` text after", 5
+        )
+        assert outside_before == "Text "
+        assert outside_after == "before ```code``` text after"
+
     def test_split_inside_code_block_near_start(self):
         """Test splitting inside code block near start."""
         message = "Text\n```\ncode line 1\ncode line 2\n```\nMore text"
@@ -128,6 +134,12 @@ class TestCodeBlockSplitting:
         assert before == "Text\n```\ncode line 1\ncode line 2\n```"
         assert after == "\nMore text"
 
+        near_start_before, near_start_after = adjust_split_for_code_blocks(
+            "Text ```very long code block here``` more text", 10
+        )
+        assert near_start_before == "Text "
+        assert near_start_after.startswith("```")
+
     def test_split_inside_code_block_near_end(self):
         """Test splitting inside code block near end."""
         message = "Text\n```\ncode line 1\ncode line 2\n```\nMore text"
@@ -137,6 +149,12 @@ class TestCodeBlockSplitting:
         # Should split after the code block (closer to end)
         assert before == "Text\n```\ncode line 1\ncode line 2\n```\nMore tex"
         assert after == "t"
+
+        inside_before, inside_after = adjust_split_for_code_blocks(
+            "Text ```code block``` more text", 16
+        )
+        assert inside_before.endswith("```")
+        assert inside_after == " more text"
 
     def test_split_multiple_code_blocks(self):
         """Test splitting with multiple code blocks."""
@@ -594,6 +612,7 @@ class TestMessageSplittingEdgeCases:
         channel.send.assert_called_once()
         sent_message = channel.send.call_args[0][0]
         assert sent_message == ""
+        assert find_optimal_split_point("", 0) == 0
 
     @pytest.mark.asyncio
     async def test_exactly_limit_length(self):

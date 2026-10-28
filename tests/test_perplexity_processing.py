@@ -12,7 +12,7 @@ from src.perplexity_processing import (
     process_perplexity_message,
     should_suppress_embeds,
 )
-from tests.test_utils import FakePerplexityClient, FakeResponse
+from tests.helpers import FakePerplexityClient, FakeResponse
 
 
 def test_extract_citations_from_response():

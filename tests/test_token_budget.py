@@ -13,7 +13,7 @@ from src.message_builder import (
 from src.models import AIRequest, OpenAIConfig, PerplexityConfig
 from src.openai_processing import process_openai_message
 from src.perplexity_processing import process_perplexity_message
-from tests.test_utils import FakeResponse
+from tests.helpers import FakeResponse
 
 CURRENT = "What did we decide in the latest turn?"
 
