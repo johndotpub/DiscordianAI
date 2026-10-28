@@ -241,10 +241,16 @@ class ConnectionPoolManager:
             if hasattr(client, "is_closed") and client.is_closed:
                 return {"status": "unhealthy", "reason": "Client is closed"}
 
-            # Get connection pool stats if available
+            # httpx stores the negotiated protocol configuration on the
+            # transport's connection pool, not on the client itself.
+            transport = getattr(client, "_transport", None)
+            pool = getattr(transport, "_pool", None)
+            http2_enabled = getattr(pool, "_http2", None)
+            if http2_enabled is None:
+                http2_enabled = getattr(client, "_http2", False)
             pool_info = {
                 "status": "healthy",
-                "http2_enabled": getattr(client, "_http2", False),
+                "http2_enabled": bool(http2_enabled),
             }
 
             # Try to get connection pool statistics (accessing internal attrs is intentional)
