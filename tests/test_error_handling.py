@@ -733,14 +733,12 @@ class TestCalculateBackoffDelay:
         assert delay2 == 15.0  # capped at max_delay (would be 90.0)
 
     def test_calculate_backoff_delay_with_jitter(self):
-        """Test backoff delay with jitter."""
+        """Test backoff delay with full jitter."""
         config = RetryConfig(base_delay=2.0, exponential_base=2.0, jitter=True)
 
-        # With jitter, delay should be between 50% and 100% of calculated value
-        delay = calculate_backoff_delay(1, config)  # Should be around 2.0 * 2^1 = 4.0
+        delay = calculate_backoff_delay(1, config)  # Upper bound is 2.0 * 2^1 = 4.0
 
-        # With jitter, should be between 2.0 and 4.0
-        assert 2.0 <= delay <= 4.0
+        assert 0.0 <= delay <= 4.0
 
     def test_calculate_backoff_delay_without_jitter(self):
         """Test backoff delay without jitter gives exact values."""

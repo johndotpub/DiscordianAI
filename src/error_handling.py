@@ -152,13 +152,14 @@ class CircuitBreaker:
 class RetryConfig:
     """Configuration for retry behavior."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913, PLR0917
         self,
         max_attempts: int = 3,
         base_delay: float = 1.0,
         max_delay: float = 60.0,
         exponential_base: float = 2.0,
         jitter: bool = True,
+        max_elapsed: float | None = 90.0,
     ):
         """Initialize retry configuration values."""
         self.max_attempts = max_attempts
@@ -166,14 +167,16 @@ class RetryConfig:
         self.max_delay = max_delay
         self.exponential_base = exponential_base
         self.jitter = jitter
+        self.max_elapsed = max_elapsed
 
 
 DEFAULT_API_RETRY_CONFIG = RetryConfig(
     max_attempts=2,
-    base_delay=4.0,
-    max_delay=4.0,
-    exponential_base=1.0,
+    base_delay=1.0,
+    max_delay=30.0,
+    exponential_base=2.0,
     jitter=True,
+    max_elapsed=90.0,
 )
 
 
@@ -200,6 +203,7 @@ async def retry_with_backoff(
         Last exception if all retries exhausted
     """
     last_exception = None
+    started_at = time.monotonic()
 
     for attempt in range(retry_config.max_attempts):
         try:
@@ -208,12 +212,7 @@ async def retry_with_backoff(
             last_exception = e
             error_details = classify_error(e)
 
-            # Don't retry certain error types
-            if error_details.error_type in [
-                ErrorType.API_AUTH_ERROR,
-                ErrorType.API_TIMEOUT,
-                ErrorType.CONFIG_ERROR,
-            ]:
+            if not _is_retryable_error(error_details, e):
                 logger.exception("Non-retryable error in %s", func.__name__)
                 raise
 
@@ -225,7 +224,25 @@ async def retry_with_backoff(
                 )
                 break
 
-            delay = calculate_backoff_delay(attempt, retry_config)
+            remaining = _remaining_time(started_at, retry_config)
+            if remaining is not None and remaining <= 0:
+                logger.exception(
+                    "Retry deadline of %.1fs exceeded for %s",
+                    retry_config.max_elapsed,
+                    func.__name__,
+                )
+                break
+
+            delay = _retry_delay(attempt, retry_config, error_details, e)
+            if remaining is not None and delay >= remaining:
+                logger.exception(
+                    "Retry delay of %.1fs would exceed deadline of %.1fs for %s",
+                    delay,
+                    retry_config.max_elapsed,
+                    func.__name__,
+                )
+                break
+
             logger.warning(
                 "Attempt %d/%d failed for %s: %s. Retrying in %.1fs",
                 attempt + 1,
@@ -244,27 +261,94 @@ async def retry_with_backoff(
 
 
 def calculate_backoff_delay(attempt: int, config: RetryConfig) -> float:
-    """Calculate delay with exponential backoff and jitter."""
+    """Calculate exponential backoff with full jitter."""
     delay = min(config.base_delay * (config.exponential_base**attempt), config.max_delay)
 
     if config.jitter:
-        # Add random jitter to prevent thundering herd
-        # Use cryptographically secure random for jitter
-        delay *= 0.5 + secrets.SystemRandom().random() * 0.5
+        delay = secrets.SystemRandom().uniform(0, delay)
 
     return delay
 
 
+_HTTP_STATUS_BAD_REQUEST = 400
 _HTTP_STATUS_REQUEST_TIMEOUT = 408
 _HTTP_STATUS_TOO_MANY_REQUESTS = 429
 _HTTP_STATUS_SERVER_ERROR = 500
 
+_RATE_LIMIT_MAX_RETRY_AFTER = 30.0
+_HTTP_4XX_IN_MESSAGE_PATTERN = re.compile(r"(?<!\d)(4\d{2})(?!\d)")
+
 _HTTPX_TIMEOUT_ERRORS: tuple[type[Exception], ...] = (httpx.TimeoutException,)
 _HTTPX_TRANSPORT_ERRORS: tuple[type[Exception], ...] = (httpx.TransportError,)
+_HTTPX_CONNECT_TIMEOUT_ERRORS: tuple[type[Exception], ...] = (httpx.ConnectTimeout,)
 
 if httpx2 is not None:
     _HTTPX_TIMEOUT_ERRORS += (httpx2.TimeoutException,)
     _HTTPX_TRANSPORT_ERRORS += (httpx2.TransportError,)
+    _HTTPX_CONNECT_TIMEOUT_ERRORS += (httpx2.ConnectTimeout,)
+
+
+def _status_code_from_exception(exception: Exception) -> int | None:
+    for source in (exception, getattr(exception, "response", None)):
+        if source is None:
+            continue
+        for attribute in ("status_code", "status"):
+            value = getattr(source, attribute, None)
+            if isinstance(value, int):
+                return value
+
+    match = _HTTP_4XX_IN_MESSAGE_PATTERN.search(str(exception))
+    return int(match.group(1)) if match else None
+
+
+def _is_retryable_error(error_details: ErrorDetails, exception: Exception) -> bool:
+    status_code = _status_code_from_exception(exception)
+
+    if status_code == _HTTP_STATUS_TOO_MANY_REQUESTS:
+        return True
+    if (
+        status_code is not None
+        and _HTTP_STATUS_BAD_REQUEST <= status_code < _HTTP_STATUS_SERVER_ERROR
+    ):
+        return False
+    if status_code is not None and status_code >= _HTTP_STATUS_SERVER_ERROR:
+        return True
+
+    if isinstance(exception, _HTTPX_CONNECT_TIMEOUT_ERRORS):
+        return True
+
+    return error_details.error_type not in {
+        ErrorType.API_AUTH_ERROR,
+        ErrorType.API_TIMEOUT,
+        ErrorType.CONFIG_ERROR,
+        ErrorType.VALIDATION_ERROR,
+    }
+
+
+def _retry_delay(
+    attempt: int,
+    config: RetryConfig,
+    error_details: ErrorDetails,
+    exception: Exception,
+) -> float:
+    is_rate_limit = (
+        error_details.error_type == ErrorType.API_RATE_LIMIT
+        or _status_code_from_exception(exception) == _HTTP_STATUS_TOO_MANY_REQUESTS
+    )
+    if is_rate_limit:
+        retry_after = error_details.retry_after
+        if retry_after is None:
+            retry_after = _retry_after_from_response(getattr(exception, "response", None))
+        if retry_after is not None:
+            return min(max(float(retry_after), 0.0), _RATE_LIMIT_MAX_RETRY_AFTER)
+
+    return calculate_backoff_delay(attempt, config)
+
+
+def _remaining_time(started_at: float, config: RetryConfig) -> float | None:
+    if config.max_elapsed is None:
+        return None
+    return config.max_elapsed - (time.monotonic() - started_at)
 
 
 def _error_details(
@@ -677,12 +761,19 @@ async def safe_discord_send(
         except Exception as e:
             error_details = classify_error(e)
 
+            if not _is_retryable_error(error_details, e):
+                logger.exception("Non-retryable Discord send error")
+                error_tracker.record_error(error_details, {"channel": str(channel)})
+                break
+
             if attempt >= max_retries - 1:
                 logger.exception("Failed to send Discord message after %s attempts", max_retries)
                 error_tracker.record_error(error_details, {"channel": str(channel)})
                 break
 
-            delay = 2**attempt  # Simple exponential backoff
+            delay = 2**attempt
+            if isinstance(e, discord.HTTPException) and error_details.retry_after is not None:
+                delay = min(float(error_details.retry_after), _RATE_LIMIT_MAX_RETRY_AFTER)
             logger.warning(
                 "Discord send failed (attempt %d/%d): %s. Retrying in %ds",
                 attempt + 1,
