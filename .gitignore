@@ -165,3 +165,12 @@ config.ini
 .DS_Store
 Thumbs.db
 tmp/
+
+# Repository hygiene: build, cache, and runtime artefacts
+*.egg-info/
+*.log
+.coverage*
+__pycache__/
+build/
+tmp/
+.ruff_cache/
