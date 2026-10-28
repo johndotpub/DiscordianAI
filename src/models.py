@@ -4,6 +4,12 @@ from dataclasses import dataclass, field
 import logging
 from typing import Any
 
+from .config import (
+    DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
+    DEFAULT_MAX_URLS_PER_MESSAGE,
+    DEFAULT_SCRAPE_DEADLINE_SECONDS,
+)
+
 
 @dataclass(frozen=True)
 class AIRequest:
@@ -35,6 +41,9 @@ class PerplexityConfig:
         "When providing citations, include source URLs when available."
     )
     output_tokens: int = 8000
+    max_urls_per_message: int = DEFAULT_MAX_URLS_PER_MESSAGE
+    max_total_scraped_chars: int = DEFAULT_MAX_TOTAL_SCRAPED_CHARS
+    scrape_deadline_seconds: float = DEFAULT_SCRAPE_DEADLINE_SECONDS
 
 
 @dataclass(frozen=True)

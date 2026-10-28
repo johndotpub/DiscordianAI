@@ -40,6 +40,14 @@ CONTEXT_WINDOW=128000
 # Customize your bot's personality
 SYSTEM_MESSAGE=You are Bender, a sarcastic robot from Futurama. You're crude, selfish, and love beer, but deep down you care about your friends. You automatically know when to search for current information and when to use your existing knowledge.
 
+# === WEB SCRAPING BUDGETS ===
+# Maximum number of URLs scraped from a single message (extras are ignored)
+MAX_URLS_PER_MESSAGE=3
+# Maximum combined characters of scraped page text injected into one prompt
+MAX_TOTAL_SCRAPED_CHARS=60000
+# Deadline in seconds for the entire scrape phase of one message
+SCRAPE_DEADLINE_SECONDS=20
+
 [Limits]
 # Rate limiting to prevent spam
 RATE_LIMIT=10

@@ -5,6 +5,11 @@ from typing import Any
 
 import discord
 
+from .config import (
+    DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
+    DEFAULT_MAX_URLS_PER_MESSAGE,
+    DEFAULT_SCRAPE_DEADLINE_SECONDS,
+)
 from .conversation_manager import conversation_key_for_message
 from .error_handling import classify_error, safe_discord_send
 from .logging_adapter import get_logger_with_context
@@ -80,18 +85,28 @@ async def _process_message_core(
             system_message=deps["SYSTEM_MESSAGE"],
             output_tokens=deps["OUTPUT_TOKENS"],
         )
+        config = deps.get("config") or {}
         perplexity_model = (
-            deps.get("PERPLEXITY_MODEL")
-            or (deps.get("config") or {}).get("PERPLEXITY_MODEL")
-            or "sonar-pro"
+            deps.get("PERPLEXITY_MODEL") or config.get("PERPLEXITY_MODEL") or "sonar-pro"
         )
         perplexity_config = PerplexityConfig(
             model=perplexity_model,
             system_message=deps["SYSTEM_MESSAGE"],
             output_tokens=deps["OUTPUT_TOKENS"],
+            max_urls_per_message=config.get(
+                "MAX_URLS_PER_MESSAGE",
+                deps.get("MAX_URLS_PER_MESSAGE", DEFAULT_MAX_URLS_PER_MESSAGE),
+            ),
+            max_total_scraped_chars=config.get(
+                "MAX_TOTAL_SCRAPED_CHARS",
+                deps.get("MAX_TOTAL_SCRAPED_CHARS", DEFAULT_MAX_TOTAL_SCRAPED_CHARS),
+            ),
+            scrape_deadline_seconds=config.get(
+                "SCRAPE_DEADLINE_SECONDS",
+                deps.get("SCRAPE_DEADLINE_SECONDS", DEFAULT_SCRAPE_DEADLINE_SECONDS),
+            ),
         )
         ai_config = AIConfig(openai=openai_config, perplexity=perplexity_config)
-        config = deps.get("config") or {}
         orchestrator_config = {
             key: config[key]
             for key in (

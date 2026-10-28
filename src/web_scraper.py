@@ -6,7 +6,8 @@ production deployment with comprehensive error handling and logging.
 """
 
 import asyncio
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 import ipaddress
 import logging
 import re
@@ -17,6 +18,12 @@ from urllib.parse import ParseResult, urljoin, urlparse, urlunsplit
 
 from bs4 import BeautifulSoup
 import httpx
+
+from .config import (
+    DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
+    DEFAULT_MAX_URLS_PER_MESSAGE,
+    DEFAULT_SCRAPE_DEADLINE_SECONDS,
+)
 
 # Configuration constants
 DEFAULT_TIMEOUT = 15  # Generous timeout for slow sites
@@ -29,6 +36,7 @@ HTTP_STATUS_SERVER_ERROR = 500
 HTTP_STATUS_SERVER_ERROR_MAX = 600
 MIN_DELAY_BETWEEN_REQUESTS = 1.0  # Respectful delay between requests
 MAX_DELAY_BETWEEN_REQUESTS = 3.0  # Maximum random delay
+MAX_CONCURRENT_HOSTS = 2  # Distinct hosts scraped at once
 TRUNCATION_LIMIT = 8000
 MIN_TEXT_LENGTH = 100
 MIN_PARA_LENGTH = 50
@@ -304,8 +312,6 @@ async def scrape_url_content(
             logger.warning("Refusing to scrape unsafe URL: %s", url)
             return None
 
-        await _add_respectful_delay()
-
         # Execute request asynchronously, enforcing an overall asyncio timeout
         try:
             async with asyncio.timeout(request_timeout):
@@ -327,6 +333,182 @@ async def scrape_url_content(
     except Exception:
         logger.exception("Unexpected error during scraping: %s", url)
         return None
+
+
+@dataclass
+class _HostState:
+    """Politeness state for one host during a batch scrape."""
+
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    requested: bool = False
+
+
+def _host_key(url: str) -> str:
+    """Return a normalized hostname used to group scrape requests."""
+    try:
+        hostname = urlparse(url).hostname
+    except ValueError:
+        return ""
+    return (hostname or "").lower()
+
+
+async def _scrape_host_worker(  # noqa: PLR0913, PLR0917
+    indices: list[int],
+    urls: list[str],
+    state: _HostState,
+    results: dict[int, str],
+    semaphore: asyncio.Semaphore,
+    logger: logging.Logger,
+    scrape_func: Callable[..., Awaitable[str | None]],
+    request_timeout: int,
+    max_content_length: int,
+) -> None:
+    """Scrape one host's URLs serially, delaying only between requests."""
+    for index in indices:
+        async with state.lock:
+            if state.requested:
+                await _add_respectful_delay()
+            state.requested = True
+
+            async with semaphore:
+                try:
+                    content = await scrape_func(
+                        urls[index],
+                        logger,
+                        request_timeout=request_timeout,
+                        max_content_length=max_content_length,
+                    )
+                except (TimeoutError, httpx.HTTPError):
+                    logger.exception("Web scraping failed for %s", urls[index])
+                    content = None
+
+            if content:
+                results[index] = content
+
+
+def _apply_total_content_budget(
+    contents: list[tuple[str, str]], max_total_chars: int, logger: logging.Logger
+) -> list[tuple[str, str]]:
+    """Trim collected page content so its combined length stays within budget."""
+    remaining = max(0, max_total_chars)
+    kept: list[tuple[str, str]] = []
+    affected = 0
+
+    for url, content in contents:
+        if remaining <= 0:
+            affected += 1
+            continue
+        trimmed = content
+        if len(content) > remaining:
+            trimmed = content[:remaining]
+            affected += 1
+        kept.append((url, trimmed))
+        remaining -= len(trimmed)
+
+    if affected:
+        logger.warning(
+            "Scraped content capped at %d characters "
+            "(MAX_TOTAL_SCRAPED_CHARS); truncated or omitted %d page(s)",
+            max_total_chars,
+            affected,
+        )
+    return kept
+
+
+async def scrape_urls(  # noqa: PLR0913
+    urls: list[str],
+    logger: logging.Logger | None = None,
+    *,
+    max_urls: int = DEFAULT_MAX_URLS_PER_MESSAGE,
+    max_total_chars: int = DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
+    deadline_seconds: float = DEFAULT_SCRAPE_DEADLINE_SECONDS,
+    request_timeout: int = DEFAULT_TIMEOUT,
+    max_content_length: int = MAX_CONTENT_LENGTH,
+    scrape_func: Callable[..., Awaitable[str | None]] | None = None,
+) -> list[tuple[str, str]]:
+    """Scrape a bounded batch of URLs with per-host politeness and one deadline.
+
+    URLs beyond ``max_urls`` are ignored. Distinct hosts are scraped
+    concurrently under a small semaphore, while requests to the same host stay
+    serialized and observe a politeness delay between requests. The combined
+    returned content never exceeds ``max_total_chars``.
+
+    Args:
+        urls: Candidate URLs to scrape.
+        logger: Optional logger for scrape diagnostics.
+        max_urls: Maximum number of URLs to process from this batch.
+        max_total_chars: Maximum combined characters returned across pages.
+        deadline_seconds: Deadline for the entire scrape phase.
+        request_timeout: Timeout for each individual HTTP request.
+        max_content_length: Per-page content length passed to the scraper.
+        scrape_func: Optional scraper override, primarily for testing.
+
+    Returns:
+        A list of ``(url, content)`` pairs in the original URL order.
+    """
+    if logger is None:
+        logger = logging.getLogger(__name__)
+
+    limit = max(0, max_urls)
+    selected = list(urls[:limit])
+    dropped = len(urls) - len(selected)
+    if dropped > 0:
+        logger.warning(
+            "Dropped %d URL(s) beyond MAX_URLS_PER_MESSAGE=%d (ignored)",
+            dropped,
+            max_urls,
+        )
+
+    if not selected:
+        return []
+
+    if deadline_seconds <= 0:
+        logger.warning(
+            "Scrape deadline of %ss reached; using 0 partial result(s)",
+            deadline_seconds,
+        )
+        return []
+
+    scraper = scrape_func or scrape_url_content
+    grouped: dict[str, list[int]] = {}
+    for index, url in enumerate(selected):
+        grouped.setdefault(_host_key(url), []).append(index)
+
+    results: dict[int, str] = {}
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_HOSTS)
+    states = {host: _HostState() for host in grouped}
+    tasks = [
+        asyncio.create_task(
+            _scrape_host_worker(
+                indices,
+                selected,
+                states[host],
+                results,
+                semaphore,
+                logger,
+                scraper,
+                request_timeout,
+                max_content_length,
+            )
+        )
+        for host, indices in grouped.items()
+    ]
+
+    try:
+        async with asyncio.timeout(deadline_seconds):
+            await asyncio.gather(*tasks)
+    except TimeoutError:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        logger.warning(
+            "Scrape deadline of %ss reached; using %d partial result(s)",
+            deadline_seconds,
+            len(results),
+        )
+
+    ordered = [(selected[index], results[index]) for index in sorted(results)]
+    return _apply_total_content_budget(ordered, max_total_chars, logger)
 
 
 def _format_authority(host: str, port: int | None, scheme: str) -> str:

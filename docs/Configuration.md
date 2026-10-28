@@ -35,6 +35,11 @@ Configure OpenAI and Perplexity APIs for intelligent hybrid operation.
 - **`CONTEXT_WINDOW`**: Total context window size *(default: 128000)*
 - **`SYSTEM_MESSAGE`**: System prompt for AI personality *(default: "You are a helpful assistant.")*
 
+#### Web Scraping Budgets
+- **`MAX_URLS_PER_MESSAGE`**: Maximum URLs scraped from one message; extras are ignored *(default: 3)*
+- **`MAX_TOTAL_SCRAPED_CHARS`**: Maximum combined scraped page text injected into one prompt *(default: 60000)*
+- **`SCRAPE_DEADLINE_SECONDS`**: Deadline for the entire scrape phase of one message, in seconds *(default: 20)*
+
 ### Rate Limiting
 
 Prevents spam and manages API costs.
@@ -130,6 +135,11 @@ CONTEXT_WINDOW=128000
 # === SYSTEM MESSAGE ===
 # Customize your bot's personality
 SYSTEM_MESSAGE=You are Bender, a sarcastic robot from Futurama. You're crude, selfish, and love beer, but deep down you care about your friends. You automatically know when to search for current information and when to use your existing knowledge.
+
+# === WEB SCRAPING BUDGETS ===
+MAX_URLS_PER_MESSAGE=3
+MAX_TOTAL_SCRAPED_CHARS=60000
+SCRAPE_DEADLINE_SECONDS=20
 
 # No GPT-5-specific parameters are supported by the public API; do not configure
 

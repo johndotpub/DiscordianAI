@@ -116,6 +116,11 @@ DEFAULT_INPUT_TOKENS = 120000
 DEFAULT_OUTPUT_TOKENS = 8000
 DEFAULT_CONTEXT_WINDOW = 128000
 
+# Web scraping budgets
+DEFAULT_MAX_URLS_PER_MESSAGE = 3
+DEFAULT_MAX_TOTAL_SCRAPED_CHARS = 60000
+DEFAULT_SCRAPE_DEADLINE_SECONDS = 20.0
+
 # ============================================================================
 # SMART ROUTING PATTERNS
 # ============================================================================
@@ -376,6 +381,7 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
             config.read(config_file)
             _parse_discord_config(config, config_data, logger)
             _parse_default_config(config, config_data, logger)
+            _parse_scraping_config(config, config_data, logger)
             _parse_limits_config(config, config_data, logger)
             _parse_connection_pool_config(config, config_data, logger)
             _parse_orchestrator_config(config, config_data, logger)
@@ -422,6 +428,9 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "MAX_HISTORY_PER_USER",
         "USER_LOCK_CLEANUP_INTERVAL",
         "ENTITY_DETECTION_MIN_WORDS",
+        "MAX_URLS_PER_MESSAGE",
+        "MAX_TOTAL_SCRAPED_CHARS",
+        "SCRAPE_DEADLINE_SECONDS",
         "LOG_FILE",
         "LOG_LEVEL",
     ]
@@ -450,7 +459,10 @@ def _apply_single_env_override(
         "MAX_HISTORY_PER_USER",
         "USER_LOCK_CLEANUP_INTERVAL",
         "ENTITY_DETECTION_MIN_WORDS",
+        "MAX_URLS_PER_MESSAGE",
+        "MAX_TOTAL_SCRAPED_CHARS",
     }
+    float_keys = {"SCRAPE_DEADLINE_SECONDS"}
 
     if key == "ALLOWED_CHANNELS":
         config_data[key] = (
@@ -463,6 +475,11 @@ def _apply_single_env_override(
             config_data[key] = int(value)
         except (ValueError, TypeError):
             logger.warning("Invalid integer for %s: %s", key, value)
+    elif key in float_keys:
+        try:
+            config_data[key] = float(value)
+        except (ValueError, TypeError):
+            logger.warning("Invalid number for %s: %s", key, value)
     else:
         config_data[key] = value
 
@@ -496,6 +513,9 @@ def _apply_config_defaults(config_data: dict[str, Any]) -> None:
         "MAX_HISTORY_PER_USER": 50,
         "USER_LOCK_CLEANUP_INTERVAL": 3600,
         "ENTITY_DETECTION_MIN_WORDS": 10,
+        "MAX_URLS_PER_MESSAGE": DEFAULT_MAX_URLS_PER_MESSAGE,
+        "MAX_TOTAL_SCRAPED_CHARS": DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
+        "SCRAPE_DEADLINE_SECONDS": DEFAULT_SCRAPE_DEADLINE_SECONDS,
         "LOG_FILE": "bot.log",
         "LOG_LEVEL": "INFO",
         "HEALTH_ENABLED": True,
@@ -672,6 +692,30 @@ def _parse_default_config(
     )
 
 
+def _parse_scraping_config(
+    config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger
+) -> None:
+    """Parse web scraping budget settings from configuration."""
+    config_data["MAX_URLS_PER_MESSAGE"] = _get_int_safe(
+        config,
+        "MAX_URLS_PER_MESSAGE",
+        DEFAULT_MAX_URLS_PER_MESSAGE,
+        logger,
+    )
+    config_data["MAX_TOTAL_SCRAPED_CHARS"] = _get_int_safe(
+        config,
+        "MAX_TOTAL_SCRAPED_CHARS",
+        DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
+        logger,
+    )
+    config_data["SCRAPE_DEADLINE_SECONDS"] = _get_float_safe(
+        config,
+        "SCRAPE_DEADLINE_SECONDS",
+        DEFAULT_SCRAPE_DEADLINE_SECONDS,
+        logger,
+    )
+
+
 def _get_int_safe(
     config: configparser.ConfigParser,
     key: str,
@@ -684,6 +728,21 @@ def _get_int_safe(
         return config.getint(section, key, fallback=default)
     except ValueError:
         logger.warning("Invalid %s value, using default %d", key, default)
+        return default
+
+
+def _get_float_safe(
+    config: configparser.ConfigParser,
+    key: str,
+    default: float,
+    logger: logging.Logger,
+    section: str = "Default",
+) -> float:
+    """Safely get a floating-point value from configuration with fallback."""
+    try:
+        return config.getfloat(section, key, fallback=default)
+    except ValueError:
+        logger.warning("Invalid %s value, using default %s", key, default)
         return default
 
 

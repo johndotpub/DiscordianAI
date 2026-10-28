@@ -1,29 +1,38 @@
 """Perplexity API processing with web search capabilities and citation handling.
 
 This module handles Perplexity API interactions through the OpenAI-compatible
-client, with ``httpx`` used for transport-related exception handling and URL
-scraping helpers. It also covers citation extraction, Discord formatting, and
-thread-safe conversation management.
+client and URL scraping helpers. It also covers citation extraction, Discord
+formatting, and thread-safe conversation management.
 """
 
 import logging
 import re
 from typing import Any
 
-import httpx
-
 from .api_context import api_call
-from .config import CITATION_PATTERN, URL_PATTERN
+from .config import (
+    CITATION_PATTERN,
+    DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
+    DEFAULT_MAX_URLS_PER_MESSAGE,
+    DEFAULT_SCRAPE_DEADLINE_SECONDS,
+    URL_PATTERN,
+)
 from .discord_embeds import citation_embed_formatter
 from .error_handling import DEFAULT_API_RETRY_CONFIG, retry_with_backoff
 from .message_builder import build_messages
 from .message_splitter import should_suppress_embeds
 from .models import AIRequest, PerplexityConfig
-from .web_scraper import is_scrapable_url, scrape_url_content
+from .web_scraper import is_scrapable_url, scrape_url_content, scrape_urls
 
 # Constants
 CITATION_SPLIT_PARTS = 2
 LINK_THRESHOLD = 2
+SCRAPED_SECTION_SEPARATOR = "\n\n---\n\n"
+SCRAPED_PROMPT_RESERVE = max(
+    len("Analyze the following webpage content:\n\n"),
+    len("Answer based on webpage content: ") + len("\n\nContent:\n"),
+    len("Answer based on these webpages: ") + len("\n\nContents:\n"),
+)
 
 
 def extract_citations_from_response(
@@ -221,7 +230,16 @@ async def process_perplexity_message(
 
             if urls_in_message:
                 api_params["messages"][-1]["content"] = await _enhance_message_with_urls(
-                    request.message, urls_in_message, request.logger
+                    request.message,
+                    urls_in_message,
+                    request.logger,
+                    max_urls=getattr(config, "max_urls_per_message", DEFAULT_MAX_URLS_PER_MESSAGE),
+                    max_total_chars=getattr(
+                        config, "max_total_scraped_chars", DEFAULT_MAX_TOTAL_SCRAPED_CHARS
+                    ),
+                    deadline_seconds=getattr(
+                        config, "scrape_deadline_seconds", DEFAULT_SCRAPE_DEADLINE_SECONDS
+                    ),
                 )
 
             response = await retry_with_backoff(
@@ -299,26 +317,82 @@ def _handle_api_response(
     return final_text, suppress_embeds, embed_data
 
 
-async def _enhance_message_with_urls(message: str, urls: list[str], logger: logging.Logger) -> str:
-    """Enhance prompt with scraped content from URLs."""
-    logger.info("Processing %d URL(s) for content extraction", len(urls))
-    scraped_contents = []
-    successful_scrapes = []
+async def _enhance_message_with_urls(  # noqa: PLR0913
+    message: str,
+    urls: list[str],
+    logger: logging.Logger,
+    *,
+    max_urls: int = DEFAULT_MAX_URLS_PER_MESSAGE,
+    max_total_chars: int = DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
+    deadline_seconds: float = DEFAULT_SCRAPE_DEADLINE_SECONDS,
+) -> str:
+    """Enhance prompt with bounded scraped content from URLs."""
+    selected_urls = urls[: max(0, max_urls)]
+    dropped = len(urls) - len(selected_urls)
+    if dropped > 0:
+        logger.warning(
+            "Dropped %d URL(s) beyond MAX_URLS_PER_MESSAGE=%d (ignored)",
+            dropped,
+            max_urls,
+        )
 
-    for url in urls:
-        if await is_scrapable_url(url):
-            try:
-                content = await scrape_url_content(url, logger)
-                if content:
-                    scraped_contents.append(f"Content from {url}:\n{content}")
-                    successful_scrapes.append(url)
-            except (TimeoutError, httpx.HTTPError):
-                logger.exception("Web scraping failed for %s", url)
+    logger.info("Processing %d URL(s) for content extraction", len(selected_urls))
+    scrapable_urls = [url for url in selected_urls if await is_scrapable_url(url)]
 
-    if scraped_contents:
-        return _build_scraped_message(message, urls, scraped_contents, successful_scrapes, logger)
+    scraped = await scrape_urls(
+        scrapable_urls,
+        logger,
+        max_urls=max_urls,
+        max_total_chars=max_total_chars,
+        deadline_seconds=deadline_seconds,
+        scrape_func=scrape_url_content,
+    )
+    section_budget = max(0, max_total_chars - SCRAPED_PROMPT_RESERVE)
+    sections = _assemble_scraped_sections(scraped, section_budget, logger)
 
-    return _build_fallback_message(message, urls, logger)
+    if sections:
+        return _build_scraped_message(
+            message,
+            selected_urls,
+            [section for _, section in sections],
+            [url for url, _ in sections],
+            logger,
+        )
+
+    return _build_fallback_message(message, selected_urls, logger)
+
+
+def _assemble_scraped_sections(
+    scraped: list[tuple[str, str]], max_total_chars: int, logger: logging.Logger
+) -> list[tuple[str, str]]:
+    """Build labelled page sections that fit inside the aggregate character budget."""
+    remaining = max(0, max_total_chars)
+    sections: list[tuple[str, str]] = []
+    affected = 0
+
+    for url, content in scraped:
+        prefix = f"Content from {url}:\n"
+        separator = SCRAPED_SECTION_SEPARATOR if sections else ""
+        if remaining <= len(prefix) + len(separator):
+            affected += 1
+            continue
+        allowed = remaining - len(prefix) - len(separator)
+        trimmed = content
+        if len(content) > allowed:
+            trimmed = content[:allowed]
+            affected += 1
+        section = prefix + trimmed
+        sections.append((url, section))
+        remaining -= len(separator) + len(section)
+
+    if affected:
+        logger.warning(
+            "Scraped prompt content capped at %d characters "
+            "(MAX_TOTAL_SCRAPED_CHARS); truncated or omitted %d page(s)",
+            max_total_chars,
+            affected,
+        )
+    return sections
 
 
 def _build_scraped_message(
@@ -336,7 +410,7 @@ def _build_scraped_message(
     if len(urls) == 1:
         return f"Answer based on webpage content: {message}\n\nContent:\n{scraped[0]}"
 
-    all_content = "\n\n---\n\n".join(scraped)
+    all_content = SCRAPED_SECTION_SEPARATOR.join(scraped)
     return f"Answer based on these webpages: {message}\n\nContents:\n{all_content}"
 
 
