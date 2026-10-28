@@ -41,6 +41,16 @@ STALE_ARCHITECTURE_PHRASES = (
     re.compile(r"\bThread-safe per-user transcripts\b", re.IGNORECASE),
     re.compile(r"\bSeparate file and console handlers\b", re.IGNORECASE),
 )
+README_REPOSITORY_ROOTS = ("docs/", "src/", "scripts/", "contrib/")
+MARKDOWN_TARGET_PATTERN = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
+ACTIONS_WORKFLOW_URL_PATTERN = re.compile(
+    r"https://github\.com/johndotpub/DiscordianAI/actions/workflows/([^/?#)\s]+)"
+)
+LOCAL_WORKFLOW_REFERENCE_PATTERN = re.compile(r"\.github/workflows/([A-Za-z0-9_.-]+)")
+FRONTIER_CLAIM_PATTERN = re.compile(
+    r"\b(?:frontier|state[\s-]+of[\s-]+the[\s-]+art)\b",
+    re.IGNORECASE,
+)
 EXTERNAL_PYTHON_FILES = {"discord.py"}
 COMMAND_ROOTS = ("python", "pytest", "ruff", "black", "discordian.sh", "docker compose")
 NON_MODULE_SUFFIXES = {
@@ -670,3 +680,70 @@ def test_b11_architecture_prose_matches_current_design() -> None:
         "docs/Architecture.md describes a design this code no longer has; history is keyed "
         "per conversation and the supervisor owns the only log file:\n" + "\n".join(offenders)
     )
+
+
+def _readme_links() -> list[str]:
+    """Return repository-relative link targets from the README."""
+    text = README.read_text(encoding="utf-8")
+    links: list[str] = []
+    for match in MARKDOWN_TARGET_PATTERN.finditer(text):
+        target = match.group(1).strip().strip("<>")
+        if target.startswith(("http://", "https://", "mailto:", "#")):
+            continue
+        links.append(target.split("#", 1)[0].split("?", 1)[0])
+    return links
+
+
+def test_b12_readme_repository_links_resolve() -> None:
+    """Every repository path linked from README exists and each source root is linked."""
+    links = _readme_links()
+    failures = [target for target in links if not (ROOT / target).exists()]
+    missing_roots = [
+        root
+        for root in README_REPOSITORY_ROOTS
+        if not any(target.startswith(root) for target in links)
+    ]
+    assert not failures, "README links missing repository paths:\n" + "\n".join(failures)
+    assert not missing_roots, "README does not link a repository path under: " + ", ".join(
+        missing_roots
+    )
+
+
+def _readme_workflow_files() -> set[str]:
+    """Return workflow file names referenced by README badges or links."""
+    text = README.read_text(encoding="utf-8")
+    workflows = set(ACTIONS_WORKFLOW_URL_PATTERN.findall(text))
+    workflows.update(LOCAL_WORKFLOW_REFERENCE_PATTERN.findall(text))
+    return workflows
+
+
+def test_b13_readme_workflow_links_resolve() -> None:
+    """Every workflow named by a README badge or link exists under .github/workflows."""
+    workflows = _readme_workflow_files()
+    assert workflows, "README names no GitHub Actions workflow"
+    workflow_dir = ROOT / ".github" / "workflows"
+    failures = [name for name in sorted(workflows) if not (workflow_dir / name).is_file()]
+    assert (
+        not failures
+    ), "README names workflow files that do not exist under .github/workflows:\n" + "\n".join(
+        failures
+    )
+
+
+def test_b14_readme_does_not_claim_a_frontier_model_generation() -> None:
+    """README must not call any model generation frontier or state of the art."""
+    text = README.read_text(encoding="utf-8")
+    matches = [match.group(0) for match in FRONTIER_CLAIM_PATTERN.finditer(text)]
+    assert not matches, (
+        "README claims a model generation is frontier or state of the art; the configured "
+        "default is gpt-5-mini, so the claim is not true: " + ", ".join(matches)
+    )
+
+
+def test_b15_documentation_map_names_the_contracts() -> None:
+    """The README documentation map links AGENTS.md and docs/API-CONTRACT.md."""
+    section = _markdown_section(README.read_text(encoding="utf-8"), "Documentation Map")
+    missing = [
+        target for target in ("AGENTS.md", "docs/API-CONTRACT.md") if f"]({target})" not in section
+    ]
+    assert not missing, "README Documentation Map is missing links: " + ", ".join(missing)
