@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added ✨
+- **Perplexity attribution**: the Perplexity client sends an `X-Pplx-Integration: discordian-ai` header when its base URL host is `api.perplexity.ai`; custom hosts are unchanged.
+
 ## [0.2.9.9] - 2026-06-06
 
 ### Fixed 🔧 — Reliability & Concurrency

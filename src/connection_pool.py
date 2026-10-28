@@ -9,9 +9,13 @@ import logging
 import threading
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from openai import AsyncOpenAI
+
+PERPLEXITY_API_HOST = "api.perplexity.ai"
+PERPLEXITY_INTEGRATION_HEADERS = {"X-Pplx-Integration": "discordian-ai"}
 
 
 class ConnectionPoolManager:
@@ -184,11 +188,17 @@ class ConnectionPoolManager:
         if http_client is None:
             http_client = self.create_http_client("perplexity")
 
+        client_kwargs: dict[str, Any] = {}
+        # Identify this bot to Perplexity only when targeting the public API host.
+        if urlparse(base_url).hostname == PERPLEXITY_API_HOST:
+            client_kwargs["default_headers"] = PERPLEXITY_INTEGRATION_HEADERS
+
         client = AsyncOpenAI(
             api_key=api_key,
             base_url=base_url,
             http_client=http_client,
             max_retries=0,
+            **client_kwargs,
         )
 
         self._logger.debug(

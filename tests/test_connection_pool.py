@@ -149,6 +149,33 @@ class TestConnectionPoolManager:
                 base_url="https://api.perplexity.ai",
                 http_client=mock_http_instance,
                 max_retries=0,
+                default_headers={"X-Pplx-Integration": "discordian-ai"},
+            )
+
+    @pytest.mark.parametrize(
+        "base_url",
+        [
+            "https://proxy.example.com/v1",
+            "https://api.perplexity.ai.example.com",
+        ],
+    )
+    @patch("src.connection_pool.httpx.AsyncClient")
+    def test_create_perplexity_client_custom_host_no_integration_header(
+        self, mock_http_client, base_url
+    ):
+        """Integration header is only sent to the public Perplexity API host."""
+        manager = ConnectionPoolManager()
+        mock_http_instance = Mock()
+        mock_http_client.return_value = mock_http_instance
+
+        with patch("src.connection_pool.AsyncOpenAI") as mock_openai:
+            manager.create_perplexity_client(api_key="test-key", base_url=base_url)
+
+            mock_openai.assert_called_once_with(
+                api_key="test-key",
+                base_url=base_url,
+                http_client=mock_http_instance,
+                max_retries=0,
             )
 
 
