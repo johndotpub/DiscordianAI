@@ -6,8 +6,10 @@ This module provides:
 - Health status reporting and metrics collection
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import partial, partialmethod
 import logging
 import time
 from typing import Any
@@ -52,6 +54,57 @@ class APIHealthMetrics:
     uptime_percentage: float = 100.0
 
 
+@dataclass(frozen=True)
+class ProviderHealthSpec:
+    """Describe one service's health-check inputs and thresholds."""
+
+    service: str
+    display_name: str
+    client_key: str
+    model_key: str | None = None
+    default_model: str | None = None
+    allowed_models: tuple[str, ...] = ()
+    model_validator: Callable[[str | None], bool] | None = None
+    degraded_threshold_ms: float = 0.0
+    unhealthy_threshold_ms: float = 0.0
+    deprecated_model_limit: int | None = None
+    kind: str = "api"
+
+
+PROVIDER_HEALTH_SPECS: dict[str, ProviderHealthSpec] = {
+    "openai": ProviderHealthSpec(
+        service="openai",
+        display_name="OpenAI",
+        client_key="openai",
+        model_key="GPT_MODEL",
+        default_model="gpt-5-mini",
+        allowed_models=tuple(OPENAI_VALID_MODELS),
+        model_validator=is_supported_openai_model,
+        degraded_threshold_ms=OPENAI_RESPONSE_DEGRADED_THRESHOLD_MS,
+        unhealthy_threshold_ms=OPENAI_RESPONSE_UNHEALTHY_THRESHOLD_MS,
+        deprecated_model_limit=5,
+    ),
+    "perplexity": ProviderHealthSpec(
+        service="perplexity",
+        display_name="Perplexity",
+        client_key="perplexity",
+        model_key="PERPLEXITY_MODEL",
+        default_model="sonar-pro",
+        allowed_models=tuple(PERPLEXITY_MODELS),
+        degraded_threshold_ms=PERPLEXITY_RESPONSE_DEGRADED_THRESHOLD_MS,
+        unhealthy_threshold_ms=PERPLEXITY_RESPONSE_UNHEALTHY_THRESHOLD_MS,
+    ),
+    "discord": ProviderHealthSpec(
+        service="discord",
+        display_name="Discord",
+        client_key="discord",
+        degraded_threshold_ms=DISCORD_LATENCY_DEGRADED_THRESHOLD_MS,
+        unhealthy_threshold_ms=DISCORD_LATENCY_UNHEALTHY_THRESHOLD_MS,
+        kind="latency",
+    ),
+}
+
+
 class APIHealthMonitor:
     """Comprehensive API health monitoring system.
 
@@ -68,36 +121,75 @@ class APIHealthMonitor:
         self.logger = logging.getLogger(__name__)
         self.error_tracker = ErrorTracker()
 
-    async def check_openai_health(
+    @staticmethod
+    def _model_is_supported(spec: ProviderHealthSpec, model: str | None) -> bool:
+        if spec.model_validator is not None:
+            return spec.model_validator(model)
+        return model in spec.allowed_models
+
+    @staticmethod
+    def _classify_status(
+        elapsed_ms: float | None,
+        spec: ProviderHealthSpec,
+    ) -> str:
+        if elapsed_ms is None:
+            return "healthy"
+        if elapsed_ms > spec.unhealthy_threshold_ms:
+            return "unhealthy"
+        if elapsed_ms > spec.degraded_threshold_ms:
+            return "degraded"
+        return "healthy"
+
+    def _exception_result(
         self,
-        openai_client,
+        service: str,
+        start_time: float,
+        error: Exception,
+    ) -> HealthCheckResult:
+        response_time_ms = (time.time() - start_time) * 1000
+        error_details = classify_error(error)
+
+        return HealthCheckResult(
+            service=service,
+            status="unhealthy",
+            response_time_ms=response_time_ms,
+            timestamp=datetime.now(UTC),
+            error=str(error),
+            details={
+                "error_type": error_details.error_type.value,
+                "error_severity": error_details.severity.value,
+            },
+        )
+
+    async def _check_api_health(
+        self,
+        spec: ProviderHealthSpec,
+        client: Any,
         config: dict[str, Any],
     ) -> HealthCheckResult:
-        """Perform comprehensive health check of OpenAI API.
-
-        Tests API connectivity, model availability, and parameter validation.
-        """
         start_time = time.time()
 
         try:
-            model = config.get("GPT_MODEL", "gpt-5-mini")
+            model = config.get(spec.model_key, spec.default_model)
 
-            # Validate model is still supported
-            if not is_supported_openai_model(model):
+            if not self._model_is_supported(spec, model):
+                limit = spec.deprecated_model_limit
+                available_models = list(
+                    spec.allowed_models[:limit] if limit is not None else spec.allowed_models
+                )
                 return HealthCheckResult(
-                    service="openai",
+                    service=spec.service,
                     status="degraded",
                     response_time_ms=0,
                     timestamp=datetime.now(UTC),
                     error=f"Model {model} may be deprecated or unsupported",
-                    details={"available_models": OPENAI_VALID_MODELS[:5]},  # Show first 5
+                    details={"available_models": available_models},
                 )
 
-            response = await openai_client.models.list()
+            response = await client.models.list()
 
             response_time_ms = (time.time() - start_time) * 1000
 
-            # Validate response structure
             model_ids = [
                 model_id
                 for item in getattr(response, "data", [])
@@ -105,24 +197,17 @@ class APIHealthMonitor:
             ]
             if not model_ids:
                 return HealthCheckResult(
-                    service="openai",
+                    service=spec.service,
                     status="unhealthy",
                     response_time_ms=response_time_ms,
                     timestamp=datetime.now(UTC),
-                    error="Invalid response structure from OpenAI model listing API",
+                    error=f"Invalid response structure from {spec.display_name} model listing API",
                 )
 
-            # Check response time thresholds
-            status = "healthy"
-            if response_time_ms > OPENAI_RESPONSE_UNHEALTHY_THRESHOLD_MS:
-                status = "unhealthy"
-            elif response_time_ms > OPENAI_RESPONSE_DEGRADED_THRESHOLD_MS:
-                status = "degraded"
-
-            # Removed unsupported GPT-5 parameter checks
+            status = self._classify_status(response_time_ms, spec)
 
             return HealthCheckResult(
-                service="openai",
+                service=spec.service,
                 status=status,
                 response_time_ms=response_time_ms,
                 timestamp=datetime.now(UTC),
@@ -134,131 +219,34 @@ class APIHealthMonitor:
             )
 
         except Exception as e:  # noqa: BLE001
-            response_time_ms = (time.time() - start_time) * 1000
-            error_details = classify_error(e)
+            return self._exception_result(spec.service, start_time, e)
 
-            return HealthCheckResult(
-                service="openai",
-                status="unhealthy",
-                response_time_ms=response_time_ms,
-                timestamp=datetime.now(UTC),
-                error=str(e),
-                details={
-                    "error_type": error_details.error_type.value,
-                    "error_severity": error_details.severity.value,
-                },
-            )
-
-    async def check_perplexity_health(
+    async def _check_latency_health(
         self,
-        perplexity_client,
-        config: dict[str, Any],
+        spec: ProviderHealthSpec,
+        bot_client: Any,
     ) -> HealthCheckResult:
-        """Perform health check of Perplexity API.
-
-        Tests web search functionality and citation handling.
-        """
         start_time = time.time()
 
         try:
-            model = config.get("PERPLEXITY_MODEL", "sonar-pro")
-
-            # Validate model is still supported
-            if model not in PERPLEXITY_MODELS:
-                return HealthCheckResult(
-                    service="perplexity",
-                    status="degraded",
-                    response_time_ms=0,
-                    timestamp=datetime.now(UTC),
-                    error=f"Model {model} may be deprecated or unsupported",
-                    details={"available_models": PERPLEXITY_MODELS},
-                )
-
-            response = await perplexity_client.models.list()
-
-            response_time_ms = (time.time() - start_time) * 1000
-
-            model_ids = [
-                model_id
-                for item in getattr(response, "data", [])
-                if (model_id := getattr(item, "id", None))
-            ]
-            if not model_ids:
-                return HealthCheckResult(
-                    service="perplexity",
-                    status="unhealthy",
-                    response_time_ms=response_time_ms,
-                    timestamp=datetime.now(UTC),
-                    error="Invalid response structure from Perplexity model listing API",
-                )
-
-            status = "healthy"
-            if response_time_ms > PERPLEXITY_RESPONSE_UNHEALTHY_THRESHOLD_MS:
-                status = "unhealthy"
-            elif response_time_ms > PERPLEXITY_RESPONSE_DEGRADED_THRESHOLD_MS:
-                status = "degraded"
-
-            return HealthCheckResult(
-                service="perplexity",
-                status=status,
-                response_time_ms=response_time_ms,
-                timestamp=datetime.now(UTC),
-                details={
-                    "model": model,
-                    "available_models": model_ids[:10],
-                    "model_count": len(model_ids),
-                },
-            )
-
-        except Exception as e:  # noqa: BLE001
-            response_time_ms = (time.time() - start_time) * 1000
-            error_details = classify_error(e)
-
-            return HealthCheckResult(
-                service="perplexity",
-                status="unhealthy",
-                response_time_ms=response_time_ms,
-                timestamp=datetime.now(UTC),
-                error=str(e),
-                details={
-                    "error_type": error_details.error_type.value,
-                    "error_severity": error_details.severity.value,
-                },
-            )
-
-    async def check_discord_health(self, bot_client) -> HealthCheckResult:
-        """Perform health check of Discord API connectivity.
-
-        Tests bot connection status and basic functionality.
-        """
-        start_time = time.time()
-
-        try:
-            # Check if bot is connected
             if not bot_client.is_ready():
                 return HealthCheckResult(
-                    service="discord",
+                    service=spec.service,
                     status="unhealthy",
                     response_time_ms=0,
                     timestamp=datetime.now(UTC),
                     error="Discord bot is not ready/connected",
                 )
 
-            # Basic connectivity indicators
             response_time_ms = (time.time() - start_time) * 1000
 
-            # Check latency if available
             latency_ms = (
                 getattr(bot_client, "latency", 0) * 1000
                 if hasattr(bot_client, "latency")
                 else None
             )
 
-            status = "healthy"
-            if latency_ms and latency_ms > DISCORD_LATENCY_UNHEALTHY_THRESHOLD_MS:
-                status = "unhealthy"
-            elif latency_ms and latency_ms > DISCORD_LATENCY_DEGRADED_THRESHOLD_MS:
-                status = "degraded"
+            status = self._classify_status(latency_ms, spec)
 
             guild_count = len(bot_client.guilds) if hasattr(bot_client, "guilds") else 0
             user_count = (
@@ -268,7 +256,7 @@ class APIHealthMonitor:
             )
 
             return HealthCheckResult(
-                service="discord",
+                service=spec.service,
                 status=status,
                 response_time_ms=response_time_ms,
                 timestamp=datetime.now(UTC),
@@ -285,19 +273,32 @@ class APIHealthMonitor:
             )
 
         except Exception as e:  # noqa: BLE001
-            response_time_ms = (time.time() - start_time) * 1000
-            error_details = classify_error(e)
+            return self._exception_result(spec.service, start_time, e)
 
-            return HealthCheckResult(
-                service="discord",
-                status="unhealthy",
-                response_time_ms=response_time_ms,
-                timestamp=datetime.now(UTC),
-                error=str(e),
-                details={
-                    "error_type": error_details.error_type.value,
-                },
-            )
+    async def check_provider_health(
+        self,
+        service: str,
+        client: Any,
+        config: dict[str, Any] | None = None,
+    ) -> HealthCheckResult:
+        """Run the table-described health check for one service."""
+        spec = PROVIDER_HEALTH_SPECS[service]
+        if spec.kind == "latency":
+            return await self._check_latency_health(spec, client)
+        return await self._check_api_health(spec, client, config or {})
+
+    check_openai_health = partialmethod(check_provider_health, "openai")
+    check_perplexity_health = partialmethod(check_provider_health, "perplexity")
+    check_discord_health = partialmethod(check_provider_health, "discord")
+
+    def __getattr__(self, name: str) -> Any:
+        """Resolve ``check_<service>_health`` names from the provider table."""
+        if name.startswith("check_") and name.endswith("_health"):
+            service = name[len("check_") : -len("_health")]
+            if service in PROVIDER_HEALTH_SPECS:
+                return partial(self.check_provider_health, service)
+        message = f"{type(self).__name__!r} object has no attribute {name!r}"
+        raise AttributeError(message)
 
     def record_health_check(self, result: HealthCheckResult):
         """Record health check result and update metrics."""
@@ -351,36 +352,18 @@ class APIHealthMonitor:
         Returns:
             Dict mapping service names to health check results
         """
-        results = {}
+        results: dict[str, HealthCheckResult] = {}
 
-        # OpenAI health check
-        if clients.get("openai"):
+        for service, spec in PROVIDER_HEALTH_SPECS.items():
+            client = clients.get(spec.client_key)
+            if not client:
+                continue
             try:
-                openai_result = await self.check_openai_health(clients["openai"], config)
-                results["openai"] = openai_result
-                self.record_health_check(openai_result)
+                checker = getattr(self, f"check_{service}_health")
+                result = await checker(client, config)
+                results[service] = result
+                self.record_health_check(result)
             except Exception:
-                self.logger.exception("Failed to check OpenAI health")
-
-        # Perplexity health check
-        if clients.get("perplexity"):
-            try:
-                perplexity_result = await self.check_perplexity_health(
-                    clients["perplexity"],
-                    config,
-                )
-                results["perplexity"] = perplexity_result
-                self.record_health_check(perplexity_result)
-            except Exception:
-                self.logger.exception("Failed to check Perplexity health")
-
-        # Discord health check
-        if clients.get("discord"):
-            try:
-                discord_result = await self.check_discord_health(clients["discord"])
-                results["discord"] = discord_result
-                self.record_health_check(discord_result)
-            except Exception:
-                self.logger.exception("Failed to check Discord health")
+                self.logger.exception("Failed to check %s health", spec.display_name)
 
         return results

@@ -5,6 +5,8 @@ and orchestrates the response generation with comprehensive error handling,
 logging, and thread-safe conversation management.
 """
 
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 import logging
 import re
 from typing import Any
@@ -29,6 +31,51 @@ from .perplexity_processing import process_perplexity_message
 
 # Get centralized error messages
 ERROR_MESSAGES = get_error_messages()
+
+
+async def _invoke_openai(request, client, service_config, summary):
+    return await process_openai_message(request, summary, client, service_config)
+
+
+async def _invoke_perplexity(request, client, service_config, summary):
+    return await process_perplexity_message(request, client, service_config, summary)
+
+
+@dataclass(frozen=True)
+class _OnlyModeSpec:
+    """Describe how to run one provider in single-provider mode."""
+
+    service: str
+    label: str
+    config_attr: str
+    invoke: Callable[..., Awaitable[Any]]
+    normalize: Callable[[Any], tuple[str, bool, dict | None]]
+    no_response_error: str
+    exception_error: str
+    breaker_error: str | None = None
+
+
+_ONLY_MODE_SPECS: dict[str, _OnlyModeSpec] = {
+    "perplexity": _OnlyModeSpec(
+        service="perplexity",
+        label="Perplexity",
+        config_attr="perplexity",
+        invoke=_invoke_perplexity,
+        normalize=lambda result: result,
+        no_response_error=ERROR_MESSAGES["no_response_generated"],
+        exception_error=ERROR_MESSAGES["web_search_unavailable"],
+    ),
+    "openai": _OnlyModeSpec(
+        service="openai",
+        label="OpenAI",
+        config_attr="openai",
+        invoke=_invoke_openai,
+        normalize=lambda result: (result, False, None),
+        no_response_error=ERROR_MESSAGES["no_response_generated"],
+        exception_error=ERROR_MESSAGES["ai_service_unavailable"],
+        breaker_error=ERROR_MESSAGES["ai_service_unavailable"],
+    ),
+}
 
 # Constants for magic values
 DEFAULT_LOOKBACK = 6
@@ -325,6 +372,33 @@ def _identify_routing_triggers(
     return triggers
 
 
+async def _process_only_mode(
+    request: AIRequest,
+    service: str,
+    client: Any,
+    config: AIConfig,
+    conversation_summary: list[dict] | None = None,
+) -> tuple[str, bool, dict | None]:
+    spec = _ONLY_MODE_SPECS[service]
+    request.logger.info("Running in %s-only mode", spec.label)
+    service_config = getattr(config, spec.config_attr)
+    try:
+        result = await spec.invoke(request, client, service_config, conversation_summary)
+        if result:
+            content, suppress, embed = spec.normalize(result)
+            _record_conversation_turn(request, content, spec.service, service_config.model)
+            request.logger.info("%s success (%d chars)", spec.label, len(content))
+            return content, suppress, embed
+
+        request.logger.error("%s returned no response", spec.label)
+        if spec.breaker_error is not None and get_circuit_breaker(spec.service).state == "OPEN":
+            return spec.breaker_error, False, None
+    except Exception:
+        request.logger.exception("%s processing failed", spec.label)
+        return spec.exception_error, False, None
+    return spec.no_response_error, False, None
+
+
 async def _process_perplexity_only_mode(
     request: AIRequest,
     perplexity_client: Any,
@@ -332,22 +406,13 @@ async def _process_perplexity_only_mode(
     conversation_summary: list[dict] | None = None,
 ) -> tuple[str, bool, dict | None]:
     """Process message using Perplexity-only mode."""
-    request.logger.info("Running in Perplexity-only mode")
-    try:
-        result = await process_perplexity_message(
-            request, perplexity_client, config.perplexity, conversation_summary
-        )
-        if result:
-            res_content, suppress, embed = result
-            _record_conversation_turn(request, res_content, "perplexity", config.perplexity.model)
-            request.logger.info("Perplexity success (%d chars)", len(res_content))
-            return res_content, suppress, embed
-
-        request.logger.error("Perplexity returned no response")
-        return ERROR_MESSAGES["no_response_generated"], False, None
-    except Exception:
-        request.logger.exception("Perplexity processing failed")
-        return ERROR_MESSAGES["web_search_unavailable"], False, None
+    return await _process_only_mode(
+        request,
+        "perplexity",
+        perplexity_client,
+        config,
+        conversation_summary,
+    )
 
 
 async def _process_openai_only_mode(
@@ -357,23 +422,13 @@ async def _process_openai_only_mode(
     config: AIConfig,
 ) -> tuple[str, bool, dict | None]:
     """Process message using OpenAI-only mode."""
-    request.logger.info("Running in OpenAI-only mode")
-    try:
-        response_content = await process_openai_message(
-            request, conversation_summary, openai_client, config.openai
-        )
-        if response_content:
-            _record_conversation_turn(request, response_content, "openai", config.openai.model)
-            request.logger.info("OpenAI success (%d chars)", len(response_content))
-            return response_content, False, None
-
-        request.logger.error("OpenAI returned no response")
-        if get_circuit_breaker("openai").state == "OPEN":
-            return ERROR_MESSAGES["ai_service_unavailable"], False, None
-        return ERROR_MESSAGES["no_response_generated"], False, None
-    except Exception:
-        request.logger.exception("OpenAI processing failed")
-        return ERROR_MESSAGES["ai_service_unavailable"], False, None
+    return await _process_only_mode(
+        request,
+        "openai",
+        openai_client,
+        config,
+        conversation_summary,
+    )
 
 
 async def get_smart_response(
