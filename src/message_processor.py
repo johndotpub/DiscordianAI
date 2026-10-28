@@ -6,6 +6,8 @@ from typing import Any
 import discord
 
 from .config import (
+    DEFAULT_CONTEXT_WINDOW,
+    DEFAULT_INPUT_TOKENS,
     DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
     DEFAULT_MAX_URLS_PER_MESSAGE,
     DEFAULT_SCRAPE_DEADLINE_SECONDS,
@@ -18,6 +20,18 @@ from .message_splitter import clean_message_content, error_message, send_formatt
 from .models import AIClients, AIConfig, AIRequest, OpenAIConfig, PerplexityConfig
 from .rate_limits import check_rate_limit
 from .smart_orchestrator import get_smart_response
+
+
+def _token_limits(
+    deps: dict[str, Any] | Any,
+) -> tuple[dict[str, Any], int, int]:
+    """Return the config mapping, prompt budget, and context window."""
+    config = deps.get("config") or {}
+    input_tokens = config.get("INPUT_TOKENS", deps.get("INPUT_TOKENS", DEFAULT_INPUT_TOKENS))
+    context_window = config.get(
+        "CONTEXT_WINDOW", deps.get("CONTEXT_WINDOW", DEFAULT_CONTEXT_WINDOW)
+    )
+    return config, input_tokens, context_window
 
 
 async def _process_message_core(
@@ -90,12 +104,14 @@ async def _process_message_core(
         )
 
         # Initialize config objects
+        config, input_tokens, context_window = _token_limits(deps)
         openai_config = OpenAIConfig(
             model=deps["GPT_MODEL"],
             system_message=deps["SYSTEM_MESSAGE"],
             output_tokens=deps["OUTPUT_TOKENS"],
+            input_tokens=input_tokens,
+            context_window=context_window,
         )
-        config = deps.get("config") or {}
         perplexity_model = (
             deps.get("PERPLEXITY_MODEL") or config.get("PERPLEXITY_MODEL") or "sonar-pro"
         )
@@ -103,6 +119,8 @@ async def _process_message_core(
             model=perplexity_model,
             system_message=deps["SYSTEM_MESSAGE"],
             output_tokens=deps["OUTPUT_TOKENS"],
+            input_tokens=input_tokens,
+            context_window=context_window,
             max_urls_per_message=config.get(
                 "MAX_URLS_PER_MESSAGE",
                 deps.get("MAX_URLS_PER_MESSAGE", DEFAULT_MAX_URLS_PER_MESSAGE),

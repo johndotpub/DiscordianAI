@@ -32,6 +32,8 @@ PERPLEXITY_API_URL=https://api.perplexity.ai
 PERPLEXITY_MODEL=sonar-pro
 
 # === TOKEN LIMITS ===
+# INPUT_TOKENS is the enforced prompt budget (oldest history is trimmed first).
+# OUTPUT_TOKENS is reserved inside CONTEXT_WINDOW for the completion.
 INPUT_TOKENS=120000
 OUTPUT_TOKENS=8000
 CONTEXT_WINDOW=128000

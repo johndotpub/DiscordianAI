@@ -12,6 +12,8 @@ from typing import Any
 from .api_context import api_call
 from .config import (
     CITATION_PATTERN,
+    DEFAULT_CONTEXT_WINDOW,
+    DEFAULT_INPUT_TOKENS,
     DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
     DEFAULT_MAX_URLS_PER_MESSAGE,
     DEFAULT_SCRAPE_DEADLINE_SECONDS,
@@ -19,7 +21,7 @@ from .config import (
 )
 from .discord_embeds import citation_embed_formatter
 from .error_handling import DEFAULT_API_RETRY_CONFIG, retry_with_backoff
-from .message_builder import build_messages
+from .message_builder import build_messages, resolve_completion_budget
 from .message_splitter import should_suppress_embeds
 from .models import AIRequest, PerplexityConfig
 from .web_scraper import is_scrapable_url, scrape_url_content, scrape_urls
@@ -220,16 +222,9 @@ async def process_perplexity_message(
     try:
         async with api_call("perplexity", request.logger, request) as ctx:
             urls_in_message = URL_PATTERN.findall(request.message)
-            api_params = _build_api_params(
-                config.model,
-                config.system_message,
-                request.message,
-                config.output_tokens,
-                history=conversation_summary,
-            )
-
+            effective_message = request.message
             if urls_in_message:
-                api_params["messages"][-1]["content"] = await _enhance_message_with_urls(
+                effective_message = await _enhance_message_with_urls(
                     request.message,
                     urls_in_message,
                     request.logger,
@@ -241,6 +236,18 @@ async def process_perplexity_message(
                         config, "scrape_deadline_seconds", DEFAULT_SCRAPE_DEADLINE_SECONDS
                     ),
                 )
+
+            api_params = _build_api_params(
+                config.model,
+                config.system_message,
+                effective_message,
+                config.output_tokens,
+                history=conversation_summary,
+                input_tokens=getattr(config, "input_tokens", DEFAULT_INPUT_TOKENS),
+                output_tokens=config.output_tokens,
+                context_window=getattr(config, "context_window", DEFAULT_CONTEXT_WINDOW),
+                logger=request.logger,
+            )
 
             response = await retry_with_backoff(
                 lambda: perplexity_client.chat.completions.create(**api_params),
@@ -256,18 +263,32 @@ async def process_perplexity_message(
         return None
 
 
-def _build_api_params(
+def _build_api_params(  # noqa: PLR0913
     model: str,
     system: str,
     user_msg: str,
     tokens: int,
     history: list[dict] | None = None,
+    *,
+    input_tokens: int = DEFAULT_INPUT_TOKENS,
+    output_tokens: int | None = None,
+    context_window: int = DEFAULT_CONTEXT_WINDOW,
+    logger=None,
 ) -> dict[str, Any]:
     """Prepare Perplexity API call parameters."""
+    completion_tokens = tokens if output_tokens is None else output_tokens
     return {
         "model": model,
-        "messages": build_messages(system, user_msg, history),
-        "max_tokens": tokens,
+        "messages": build_messages(
+            system,
+            user_msg,
+            history,
+            input_tokens=input_tokens,
+            output_tokens=completion_tokens,
+            context_window=context_window,
+            logger=logger,
+        ),
+        "max_tokens": resolve_completion_budget(completion_tokens, context_window, input_tokens),
     }
 
 

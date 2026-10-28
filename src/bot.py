@@ -18,6 +18,7 @@ from typing import Any
 import discord
 
 from .bot_manager import DiscordBotManager
+from .config import DEFAULT_CONTEXT_WINDOW, DEFAULT_INPUT_TOKENS
 from .connection_pool import get_connection_pool_manager
 from .conversation_manager import ThreadSafeConversationManager
 from .dependencies import BotDependencies
@@ -131,6 +132,8 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
         perplexity_model=config.get("PERPLEXITY_MODEL", "sonar-pro"),
         system_message=config["SYSTEM_MESSAGE"],
         output_tokens=config["OUTPUT_TOKENS"],
+        input_tokens=config.get("INPUT_TOKENS", DEFAULT_INPUT_TOKENS),
+        context_window=config.get("CONTEXT_WINDOW", DEFAULT_CONTEXT_WINDOW),
         rate_limiter=RateLimiter(),
         conversation_manager=ThreadSafeConversationManager(
             max_history_per_user=max_history,

@@ -6,24 +6,40 @@ conversation state management, and comprehensive error recovery.
 
 from .api_context import api_call
 from .caching import cached_response, deduplicated_request
-from .config import DEFAULT_CACHE_TTL
+from .config import DEFAULT_CACHE_TTL, DEFAULT_CONTEXT_WINDOW, DEFAULT_INPUT_TOKENS
 from .error_handling import DEFAULT_API_RETRY_CONFIG, retry_with_backoff
-from .message_builder import build_messages
+from .message_builder import build_messages, resolve_completion_budget
 from .models import AIRequest, OpenAIConfig
 
 
-def _build_openai_api_params(
+def _build_openai_api_params(  # noqa: PLR0913
     model: str,
     system: str,
     user_msg: str,
     tokens: int,
     history: list[dict] | None = None,
+    *,
+    input_tokens: int = DEFAULT_INPUT_TOKENS,
+    output_tokens: int | None = None,
+    context_window: int = DEFAULT_CONTEXT_WINDOW,
+    logger=None,
 ) -> dict:
     """Prepare OpenAI API call parameters."""
+    completion_tokens = tokens if output_tokens is None else output_tokens
     return {
         "model": model,
-        "messages": build_messages(system, user_msg, history),
-        "max_completion_tokens": tokens,
+        "messages": build_messages(
+            system,
+            user_msg,
+            history,
+            input_tokens=input_tokens,
+            output_tokens=completion_tokens,
+            context_window=context_window,
+            logger=logger,
+        ),
+        "max_completion_tokens": resolve_completion_budget(
+            completion_tokens, context_window, input_tokens
+        ),
     }
 
 
@@ -44,6 +60,10 @@ async def _fetch_openai_response(
                 request.message,
                 config.output_tokens,
                 conversation_summary,
+                input_tokens=config.input_tokens,
+                output_tokens=config.output_tokens,
+                context_window=config.context_window,
+                logger=request.logger,
             )
 
             request.logger.debug(

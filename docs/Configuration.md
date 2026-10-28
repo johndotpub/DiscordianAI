@@ -35,6 +35,14 @@ Configure OpenAI and Perplexity APIs for intelligent hybrid operation.
 - **`CONTEXT_WINDOW`**: Total context window size *(default: 128000)*
 - **`SYSTEM_MESSAGE`**: System prompt for AI personality *(default: "You are a helpful assistant.")*
 
+`INPUT_TOKENS` is enforced as a prompt budget. The bot estimates prompt size from the
+system prompt, history, and current message using roughly four characters per token with
+a 10% safety margin and a small per-message overhead. Oldest question/answer pairs are
+trimmed first; an oversized message is truncated with a visible marker. The prompt budget
+also leaves room for `OUTPUT_TOKENS` inside `CONTEXT_WINDOW`; if
+`INPUT_TOKENS + OUTPUT_TOKENS` exceeds `CONTEXT_WINDOW`, the context window wins and a
+warning naming the conflicting settings is logged.
+
 #### Web Scraping Budgets
 - **`MAX_URLS_PER_MESSAGE`**: Maximum URLs scraped from one message; extras are ignored *(default: 3)*
 - **`MAX_TOTAL_SCRAPED_CHARS`**: Maximum combined scraped page text injected into one prompt *(default: 60000)*

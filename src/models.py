@@ -5,8 +5,11 @@ import logging
 from typing import Any
 
 from .config import (
+    DEFAULT_CONTEXT_WINDOW,
+    DEFAULT_INPUT_TOKENS,
     DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
     DEFAULT_MAX_URLS_PER_MESSAGE,
+    DEFAULT_OUTPUT_TOKENS,
     DEFAULT_SCRAPE_DEADLINE_SECONDS,
 )
 
@@ -28,7 +31,9 @@ class OpenAIConfig:
 
     model: str = "gpt-5-mini"
     system_message: str = "You are a helpful assistant."
-    output_tokens: int = 8000
+    output_tokens: int = DEFAULT_OUTPUT_TOKENS
+    input_tokens: int = DEFAULT_INPUT_TOKENS
+    context_window: int = DEFAULT_CONTEXT_WINDOW
 
 
 @dataclass(frozen=True)
@@ -40,10 +45,12 @@ class PerplexityConfig:
         "You are a helpful assistant with access to current web information. "
         "When providing citations, include source URLs when available."
     )
-    output_tokens: int = 8000
+    output_tokens: int = DEFAULT_OUTPUT_TOKENS
     max_urls_per_message: int = DEFAULT_MAX_URLS_PER_MESSAGE
     max_total_scraped_chars: int = DEFAULT_MAX_TOTAL_SCRAPED_CHARS
     scrape_deadline_seconds: float = DEFAULT_SCRAPE_DEADLINE_SECONDS
+    input_tokens: int = DEFAULT_INPUT_TOKENS
+    context_window: int = DEFAULT_CONTEXT_WINDOW
 
 
 @dataclass(frozen=True)
