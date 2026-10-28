@@ -30,21 +30,29 @@ Configure OpenAI and Perplexity APIs for intelligent hybrid operation.
 #### Perplexity Settings  
 - **`PERPLEXITY_API_KEY`**: Your Perplexity API key for web search *(leave empty to disable)*
 - **`PERPLEXITY_API_URL`**: Perplexity API endpoint *(default: "https://api.perplexity.ai")*
-- **`PERPLEXITY_MODEL`**: Model to use: "sonar-pro" (default, latest), "sonar" (general) *(default: "sonar-pro")*
+- **`PERPLEXITY_MODEL`**: Model to use: "sonar-pro" (default), "sonar", "sonar-deep-research", or "sonar-reasoning-pro" *(default: "sonar-pro")*
 
 #### Token Limits
 - **`INPUT_TOKENS`**: Maximum input context tokens *(default: 120000)*
-- **`OUTPUT_TOKENS`**: Maximum output tokens per response *(default: 8000)*
+- **`OUTPUT_TOKENS`**: Maximum OpenAI output tokens per response, sent as `max_completion_tokens` *(default: 8000)*
+- **`PERPLEXITY_OUTPUT_TOKENS`**: Maximum Perplexity output tokens per response, sent as `max_tokens` *(default: the value of `OUTPUT_TOKENS`)*
 - **`CONTEXT_WINDOW`**: Total context window size *(default: 128000)*
 - **`SYSTEM_MESSAGE`**: System prompt for AI personality *(default: "You are a helpful assistant.")*
+
+`OUTPUT_TOKENS` and `PERPLEXITY_OUTPUT_TOKENS` mean different things. OpenAI's
+`max_completion_tokens` covers reasoning tokens as well as visible output, so a small
+OpenAI value can be consumed entirely by reasoning and produce an empty reply with
+`finish_reason: length`. Perplexity's `max_tokens` covers output only. Both settings share
+the documented maximum of 128,000; values above it stop startup, and an OpenAI value below
+512 logs a warning about empty replies.
 
 `INPUT_TOKENS` is enforced as a prompt budget. The bot estimates prompt size from the
 system prompt, history, and current message using roughly four characters per token with
 a 10% safety margin and a small per-message overhead. Oldest question/answer pairs are
 trimmed first; an oversized message is truncated with a visible marker. The prompt budget
-also leaves room for `OUTPUT_TOKENS` inside `CONTEXT_WINDOW`; if
-`INPUT_TOKENS + OUTPUT_TOKENS` exceeds `CONTEXT_WINDOW`, the context window wins and a
-warning naming the conflicting settings is logged.
+also leaves room for the provider's output cap inside `CONTEXT_WINDOW`; if the input and
+output budgets exceed `CONTEXT_WINDOW`, the context window wins and a warning naming the
+conflicting settings is logged.
 
 #### Web Scraping Budgets
 - **`MAX_URLS_PER_MESSAGE`**: Maximum URLs scraped from one message; extras are ignored *(default: 3)*
@@ -149,6 +157,7 @@ PERPLEXITY_API_URL=https://api.perplexity.ai
 # === TOKEN LIMITS ===
 INPUT_TOKENS=120000
 OUTPUT_TOKENS=8000
+PERPLEXITY_OUTPUT_TOKENS=8000
 CONTEXT_WINDOW=128000
 
 # === SYSTEM MESSAGE ===
@@ -198,6 +207,8 @@ export ALLOWED_CHANNELS="general,bot-testing"
 export OPENAI_API_KEY="your_openai_key"
 export PERPLEXITY_API_KEY="your_perplexity_key"
 export GPT_MODEL="gpt-5-mini"
+export OUTPUT_TOKENS="8000"
+export PERPLEXITY_OUTPUT_TOKENS="8000"
 
 # Orchestrator settings
 export LOOKBACK_MESSAGES_FOR_CONSISTENCY=8
@@ -232,9 +243,10 @@ python -m src.main --folder /opt/discordianai --conf bot.ini
 DiscordianAI includes comprehensive configuration validation:
 
 ### Startup Validation
-- **Required Fields**: Ensures DISCORD_TOKEN and at least one API key are present
+- **Required Fields**: Ensures DISCORD_TOKEN and the credentials for every configured provider are present
+- **Errors Abort Startup**: Missing credentials, malformed base URLs, non-positive limits, and output caps above 128,000 stop the process
+- **Warnings Continue**: Unknown model names, non-standard provider base URLs, small OpenAI output caps, and other provider-tolerated settings are logged without blocking startup
 - **Value Validation**: Checks integer fields, validates rate limits, and ensures proper data types
-- **Early Warnings**: Logs warnings for potentially problematic configurations
 
 ### Runtime Error Handling
 - **Global Exception Handler**: Catches and logs all unhandled exceptions with full stack traces

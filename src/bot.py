@@ -149,6 +149,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
         perplexity_model=config.get("PERPLEXITY_MODEL", "sonar-pro"),
         system_message=config["SYSTEM_MESSAGE"],
         output_tokens=config["OUTPUT_TOKENS"],
+        perplexity_output_tokens=config.get("PERPLEXITY_OUTPUT_TOKENS", config["OUTPUT_TOKENS"]),
         input_tokens=config.get("INPUT_TOKENS", DEFAULT_INPUT_TOKENS),
         context_window=config.get("CONTEXT_WINDOW", DEFAULT_CONTEXT_WINDOW),
         rate_limiter=RateLimiter(),

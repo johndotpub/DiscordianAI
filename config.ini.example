@@ -42,16 +42,21 @@ OPENAI_API_URL=https://api.openai.com/v1/
 GPT_MODEL=gpt-5-mini
 
 # === PERPLEXITY CONFIGURATION ===  
-# Supported: sonar-pro (default), sonar - Leave blank to disable web search
+# Supported: sonar-pro (default), sonar, sonar-deep-research, sonar-reasoning-pro
+# Leave the API key blank to disable web search
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
 PERPLEXITY_API_URL=https://api.perplexity.ai
 PERPLEXITY_MODEL=sonar-pro
 
 # === TOKEN LIMITS ===
 # INPUT_TOKENS is the enforced prompt budget (oldest history is trimmed first).
-# OUTPUT_TOKENS is reserved inside CONTEXT_WINDOW for the completion.
+# OUTPUT_TOKENS caps OpenAI completions (max_completion_tokens) and includes
+# reasoning tokens as well as visible output.
+# PERPLEXITY_OUTPUT_TOKENS caps Perplexity completions (max_tokens), which are
+# output only. Omit it to use the same value as OUTPUT_TOKENS.
 INPUT_TOKENS=120000
 OUTPUT_TOKENS=8000
+PERPLEXITY_OUTPUT_TOKENS=8000
 CONTEXT_WINDOW=128000
 
 # === SYSTEM MESSAGE ===

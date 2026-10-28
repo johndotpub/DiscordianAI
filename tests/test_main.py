@@ -26,7 +26,7 @@ def test_main_runs(monkeypatch):
             "LOG_FILE": "test.log",
             "LOG_LEVEL": "INFO",
             "DISCORD_TOKEN": "test_token",
-            "OPENAI_API_KEY": "test_api_key",
+            "OPENAI_API_KEY": "sk-" + "a" * 32,
         }
         from src import main
 
@@ -54,7 +54,7 @@ def test_main_handles_exception(monkeypatch):
             "LOG_FILE": "test.log",
             "LOG_LEVEL": "INFO",
             "DISCORD_TOKEN": "test_token",
-            "OPENAI_API_KEY": "test_api_key",
+            "OPENAI_API_KEY": "sk-" + "a" * 32,
         },
     )
     with pytest.raises(SystemExit, match="1"):

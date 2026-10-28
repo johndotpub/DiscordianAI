@@ -21,7 +21,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from .config import DEFAULT_ACTIVITY_TYPE, DEFAULT_CONTEXT_WINDOW, DEFAULT_INPUT_TOKENS
+from .config import (
+    DEFAULT_ACTIVITY_TYPE,
+    DEFAULT_CONTEXT_WINDOW,
+    DEFAULT_INPUT_TOKENS,
+    DEFAULT_OUTPUT_TOKENS,
+)
 
 if TYPE_CHECKING:
     import asyncio
@@ -63,7 +68,8 @@ class BotDependencies:
         gpt_model: OpenAI GPT model identifier.
         perplexity_model: Perplexity model identifier.
         system_message: System prompt for AI interactions.
-        output_tokens: Maximum output tokens per response.
+        output_tokens: Maximum OpenAI output tokens per response.
+        perplexity_output_tokens: Maximum Perplexity output tokens per response.
         input_tokens: Maximum prompt tokens per request.
         context_window: Total model context window in tokens.
         health_task: Asyncio task for the health server (set at runtime).
@@ -97,7 +103,8 @@ class BotDependencies:
     gpt_model: str = "gpt-5-mini"
     perplexity_model: str = "sonar-pro"
     system_message: str = ""
-    output_tokens: int = 8000
+    output_tokens: int = DEFAULT_OUTPUT_TOKENS
+    perplexity_output_tokens: int = DEFAULT_OUTPUT_TOKENS
     input_tokens: int = DEFAULT_INPUT_TOKENS
     context_window: int = DEFAULT_CONTEXT_WINDOW
 
@@ -141,6 +148,7 @@ class BotDependencies:
             "PERPLEXITY_MODEL": self.perplexity_model,
             "SYSTEM_MESSAGE": self.system_message,
             "OUTPUT_TOKENS": self.output_tokens,
+            "PERPLEXITY_OUTPUT_TOKENS": self.perplexity_output_tokens,
             "INPUT_TOKENS": self.input_tokens,
             "CONTEXT_WINDOW": self.context_window,
             "_health_task": self.health_task,
@@ -170,6 +178,7 @@ class BotDependencies:
             "PERPLEXITY_MODEL": "perplexity_model",
             "SYSTEM_MESSAGE": "system_message",
             "OUTPUT_TOKENS": "output_tokens",
+            "PERPLEXITY_OUTPUT_TOKENS": "perplexity_output_tokens",
             "INPUT_TOKENS": "input_tokens",
             "CONTEXT_WINDOW": "context_window",
             "_health_task": "health_task",

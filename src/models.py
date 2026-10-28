@@ -10,6 +10,7 @@ from .config import (
     DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
     DEFAULT_MAX_URLS_PER_MESSAGE,
     DEFAULT_OUTPUT_TOKENS,
+    DEFAULT_PERPLEXITY_OUTPUT_TOKENS,
     DEFAULT_SCRAPE_DEADLINE_SECONDS,
 )
 
@@ -45,7 +46,7 @@ class PerplexityConfig:
         "You are a helpful assistant with access to current web information. "
         "When providing citations, include source URLs when available."
     )
-    output_tokens: int = DEFAULT_OUTPUT_TOKENS
+    output_tokens: int = DEFAULT_PERPLEXITY_OUTPUT_TOKENS
     max_urls_per_message: int = DEFAULT_MAX_URLS_PER_MESSAGE
     max_total_scraped_chars: int = DEFAULT_MAX_TOTAL_SCRAPED_CHARS
     scrape_deadline_seconds: float = DEFAULT_SCRAPE_DEADLINE_SECONDS

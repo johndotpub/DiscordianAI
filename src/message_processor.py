@@ -34,6 +34,16 @@ def _token_limits(
     return config, input_tokens, context_window
 
 
+def _perplexity_output_tokens(deps: dict[str, Any] | Any, config: dict[str, Any]) -> int:
+    """Resolve the Perplexity cap without falling back to a false value."""
+    output_tokens = config.get("PERPLEXITY_OUTPUT_TOKENS")
+    if output_tokens is None:
+        output_tokens = deps.get("PERPLEXITY_OUTPUT_TOKENS")
+    if output_tokens is None:
+        output_tokens = deps["OUTPUT_TOKENS"]
+    return output_tokens
+
+
 async def _process_message_core(
     message: discord.Message,
     deps: dict[str, Any] | Any,
@@ -118,7 +128,7 @@ async def _process_message_core(
         perplexity_config = PerplexityConfig(
             model=perplexity_model,
             system_message=deps["SYSTEM_MESSAGE"],
-            output_tokens=deps["OUTPUT_TOKENS"],
+            output_tokens=_perplexity_output_tokens(deps, config),
             input_tokens=input_tokens,
             context_window=context_window,
             max_urls_per_message=config.get(

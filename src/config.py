@@ -41,8 +41,13 @@ OPENAI_VALID_MODELS = [
 ]
 
 
-# Perplexity Models
-PERPLEXITY_MODELS = ["sonar-pro", "sonar"]  # Latest Perplexity model
+# Perplexity Models (per the provider's documented enum)
+PERPLEXITY_MODELS = [
+    "sonar",
+    "sonar-pro",
+    "sonar-deep-research",
+    "sonar-reasoning-pro",
+]
 
 
 SNAPSHOT_MODEL_PREFIX = f"{OPENAI_MODEL_PREFIX}."
@@ -118,6 +123,7 @@ DEFAULT_USER_LOCK_CLEANUP_INTERVAL = 3600  # 1 hour
 # Token and Context Limits
 DEFAULT_INPUT_TOKENS = 120000
 DEFAULT_OUTPUT_TOKENS = 8000
+DEFAULT_PERPLEXITY_OUTPUT_TOKENS = DEFAULT_OUTPUT_TOKENS
 DEFAULT_CONTEXT_WINDOW = 128000
 
 # Web scraping budgets
@@ -242,7 +248,10 @@ OPENAI_WEB_INABILITY_PATTERNS = [
 # VALIDATION THRESHOLDS
 # ============================================================================
 
-MAX_OUTPUT_TOKENS_THRESHOLD = 50000
+MAX_OUTPUT_TOKENS_CEILING = 128000
+MAX_OUTPUT_TOKENS_THRESHOLD = MAX_OUTPUT_TOKENS_CEILING
+MAX_OUTPUT_TOKENS_COST_WARNING = 50000
+MIN_OPENAI_OUTPUT_TOKENS_WARNING = 512
 MAX_INPUT_TOKENS_THRESHOLD = 200000
 MAX_RATE_LIMIT_THRESHOLD = 100
 MAX_RECOMMENDED_REQ_PER_MIN = 60
@@ -378,6 +387,13 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
     # Get logger for error handling
     logger = logging.getLogger(__name__)
 
+    # Provenance for provider selection. A blank key explicitly disables a
+    # provider; otherwise, any provider-specific option means it was selected.
+    openai_explicit = False
+    perplexity_explicit = False
+    openai_key_disabled = False
+    perplexity_key_disabled = False
+
     # If base_folder is provided, resolve config_file and log file paths
     if base_folder and config_file and not Path(config_file).is_absolute():
         config_file = str(Path(base_folder) / config_file)
@@ -385,6 +401,10 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
     if config_file and Path(config_file).exists():
         try:
             config.read(config_file)
+            openai_explicit, openai_key_disabled = _provider_option_flags(config, "OPENAI")
+            perplexity_explicit, perplexity_key_disabled = _provider_option_flags(
+                config, "PERPLEXITY"
+            )
             _parse_discord_config(config, config_data, logger)
             _parse_default_config(config, config_data, logger)
             _parse_scraping_config(config, config_data, logger)
@@ -400,10 +420,91 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
     # 2. Override with environment variables
     _apply_env_overrides(config_data, logger)
 
+    for provider, keys in _PROVIDER_SETTINGS.items():
+        if any(key in os.environ for key in keys):
+            if provider == "OPENAI":
+                openai_explicit = True
+            else:
+                perplexity_explicit = True
+        key_name = keys[0]
+        if key_name in os.environ and not os.environ[key_name].strip():
+            if provider == "OPENAI":
+                openai_key_disabled = True
+            else:
+                perplexity_key_disabled = True
+
+    # Record which providers the operator explicitly selected before defaults
+    # make every provider look configured.
+    config_data["_OPENAI_CONFIGURED"] = _provider_has_explicit_settings(
+        config_data,
+        "OPENAI",
+        explicit=openai_explicit,
+        key_disabled=openai_key_disabled,
+    )
+    config_data["_PERPLEXITY_CONFIGURED"] = _provider_has_explicit_settings(
+        config_data,
+        "PERPLEXITY",
+        explicit=perplexity_explicit,
+        key_disabled=perplexity_key_disabled,
+    )
+
     # 3. Set defaults for missing values
     _apply_config_defaults(config_data)
 
     return config_data
+
+
+_PROVIDER_SETTINGS = {
+    "OPENAI": (
+        "OPENAI_API_KEY",
+        "OPENAI_API_URL",
+        "GPT_MODEL",
+        DEFAULT_OPENAI_API_URL,
+        "gpt-5-mini",
+    ),
+    "PERPLEXITY": (
+        "PERPLEXITY_API_KEY",
+        "PERPLEXITY_API_URL",
+        "PERPLEXITY_MODEL",
+        DEFAULT_PERPLEXITY_API_URL,
+        "sonar-pro",
+    ),
+}
+
+
+def _provider_option_flags(
+    config: configparser.ConfigParser,
+    provider: str,
+) -> tuple[bool, bool]:
+    """Return whether provider options are explicit and whether its key is blank."""
+    api_key, api_url, model, _default_url, _default_model = _PROVIDER_SETTINGS[provider]
+    key_option = config.has_option("Default", api_key)
+    key_disabled = key_option and not config.get("Default", api_key, fallback="").strip()
+    explicit = any(config.has_option("Default", key) for key in (api_key, api_url, model))
+    return explicit, key_disabled
+
+
+def _provider_has_explicit_settings(
+    config_data: dict[str, Any],
+    provider: str,
+    *,
+    explicit: bool = False,
+    key_disabled: bool = False,
+) -> bool:
+    """Return True when a provider was selected by key or explicit settings."""
+    api_key, api_url, model, default_url, default_model = _PROVIDER_SETTINGS[provider]
+    if config_data.get(api_key):
+        return True
+    if key_disabled:
+        return False
+    if explicit:
+        return True
+    configured_url = config_data.get(api_url)
+    configured_model = config_data.get(model)
+    return bool(
+        (configured_url and configured_url != default_url)
+        or (configured_model and configured_model != default_model)
+    )
 
 
 def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) -> None:
@@ -426,6 +527,7 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "GPT_MODEL",
         "INPUT_TOKENS",
         "OUTPUT_TOKENS",
+        "PERPLEXITY_OUTPUT_TOKENS",
         "CONTEXT_WINDOW",
         "SYSTEM_MESSAGE",
         "RATE_LIMIT",
@@ -463,6 +565,7 @@ def _apply_single_env_override(
     int_keys = {
         "INPUT_TOKENS",
         "OUTPUT_TOKENS",
+        "PERPLEXITY_OUTPUT_TOKENS",
         "CONTEXT_WINDOW",
         "RATE_LIMIT",
         "RATE_LIMIT_PER",
@@ -536,6 +639,7 @@ def _apply_config_defaults(config_data: dict[str, Any]) -> None:
         "GPT_MODEL": "gpt-5-mini",
         "INPUT_TOKENS": 120000,
         "OUTPUT_TOKENS": 8000,
+        "PERPLEXITY_OUTPUT_TOKENS": None,
         "CONTEXT_WINDOW": 128000,
         "SYSTEM_MESSAGE": "You are a helpful assistant.",
         "RATE_LIMIT": 10,
@@ -562,6 +666,13 @@ def _apply_config_defaults(config_data: dict[str, Any]) -> None:
     for key, value in defaults.items():
         if key not in config_data or config_data[key] is None:
             config_data[key] = value
+
+    # PERPLEXITY_OUTPUT_TOKENS defaults to the configured OpenAI cap, not a
+    # fixed number, so existing configurations keep the same behaviour.
+    if config_data.get("PERPLEXITY_OUTPUT_TOKENS") is None:
+        config_data["PERPLEXITY_OUTPUT_TOKENS"] = config_data.get(
+            "OUTPUT_TOKENS", DEFAULT_PERPLEXITY_OUTPUT_TOKENS
+        )
 
 
 def _parse_limits_config(
@@ -768,6 +879,18 @@ def _parse_default_config(
     ]
     for key, default in settings:
         config_data[key] = _get_int_safe(config, key, default, logger)
+
+    # An omitted Perplexity cap follows OUTPUT_TOKENS (applied after all
+    # overrides); an explicit value is validated and honoured on its own.
+    raw_perplexity_output = config.get("Default", "PERPLEXITY_OUTPUT_TOKENS", fallback=None)
+    if raw_perplexity_output is not None:
+        try:
+            config_data["PERPLEXITY_OUTPUT_TOKENS"] = int(raw_perplexity_output)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid PERPLEXITY_OUTPUT_TOKENS value %r; using OUTPUT_TOKENS",
+                raw_perplexity_output,
+            )
 
     config_data["SYSTEM_MESSAGE"] = config.get(
         "Default", "SYSTEM_MESSAGE", fallback="You are a helpful assistant."

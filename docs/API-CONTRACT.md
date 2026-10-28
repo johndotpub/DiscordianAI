@@ -61,8 +61,8 @@ is not a contract.
 
 ### Consequences for this codebase
 
-1. The model allowlist is out of date: `sonar-deep-research` and `sonar-reasoning-pro` are
-   missing, so a user who configures either gets a warning that is wrong.
+1. The known-model list now matches this enum. An unknown name still only warns, because
+   the provider may add models before the list is updated here.
 2. A bad model name surfaces as **400 / `invalid_model`**, so the classifier needs that
    branch; treating it as an unknown error means a permanent misconfiguration is retried
    and then reported to the user as "unexpected error".

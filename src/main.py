@@ -21,22 +21,18 @@ from typing import NoReturn
 
 import discord
 
-from .api_validation import log_validation_results
+from .api_validation import log_validation_results, validate_output_token_limits
 from .bot import run_bot
 from .config import (
     DEFAULT_ACTIVITY_TYPE,
     DEFAULT_BOT_PRESENCE,
     DEFAULT_RATE_LIMIT,
     DEFAULT_RATE_LIMIT_PER,
-    MAX_OUTPUT_TOKENS_THRESHOLD,
     load_config,
     parse_arguments,
 )
 from .dependency_check import check_dependencies
 from .structured_logging import configure_structlog
-
-# Constants for validation
-DEFAULT_OUTPUT_TOKENS_VAL = 8000
 
 
 def setup_early_logging() -> logging.Logger:
@@ -102,6 +98,36 @@ def setup_production_logging(config: dict, logger: logging.Logger) -> None:
         logger.warning("Continuing with basic logging configuration")
 
 
+def _credential_errors(config: dict) -> list[str]:
+    """Return missing-token or missing-provider-key errors."""
+    errors = []
+    if not config.get("DISCORD_TOKEN"):
+        errors.append("DISCORD_TOKEN is required but not provided")
+
+    has_openai = bool(config.get("OPENAI_API_KEY"))
+    has_perplexity = bool(config.get("PERPLEXITY_API_KEY"))
+
+    if "_OPENAI_CONFIGURED" in config:
+        openai_selected = bool(config.get("_OPENAI_CONFIGURED"))
+    else:
+        openai_selected = any(
+            key in config for key in ("OPENAI_API_URL", "GPT_MODEL", "OPENAI_API_KEY")
+        )
+
+    if not has_openai and openai_selected:
+        errors.append(
+            "OPENAI_API_KEY is required because OpenAI is configured. Accepted: "
+            "a non-empty OpenAI API key, or remove the OpenAI settings to run in "
+            "Perplexity-only mode",
+        )
+    elif not has_openai and not has_perplexity:
+        errors.append(
+            "At least one API key is required: provide either OPENAI_API_KEY (OpenAI) "
+            "or PERPLEXITY_API_KEY (Perplexity) or both",
+        )
+    return errors
+
+
 def validate_critical_config(config: dict, logger: logging.Logger) -> None:
     """Validate critical configuration before starting the bot.
 
@@ -115,22 +141,8 @@ def validate_critical_config(config: dict, logger: logging.Logger) -> None:
     Raises:
         ValueError: If critical configuration is missing or invalid
     """
-    errors = []
+    errors = _credential_errors(config)
     warnings = []
-
-    # Check Discord token
-    if not config.get("DISCORD_TOKEN"):
-        errors.append("DISCORD_TOKEN is required but not provided")
-
-    # Check API keys - at least one must be present
-    has_openai = bool(config.get("OPENAI_API_KEY"))
-    has_perplexity = bool(config.get("PERPLEXITY_API_KEY"))
-
-    if not has_openai and not has_perplexity:
-        errors.append(
-            "At least one API key is required: provide either OPENAI_API_KEY (OpenAI) "
-            "or PERPLEXITY_API_KEY (Perplexity) or both",
-        )
 
     # Validate rate limiting settings
     try:
@@ -141,17 +153,12 @@ def validate_critical_config(config: dict, logger: logging.Logger) -> None:
     except (ValueError, TypeError):
         errors.append("RATE_LIMIT and RATE_LIMIT_PER must be valid integers")
 
-    # Validate token limits
-    try:
-        output_tokens = int(config.get("OUTPUT_TOKENS", DEFAULT_OUTPUT_TOKENS_VAL))
-        if output_tokens <= 0:
-            errors.append("OUTPUT_TOKENS must be positive")
-        if output_tokens > MAX_OUTPUT_TOKENS_THRESHOLD:
-            warnings.append(
-                f"OUTPUT_TOKENS is very high ({output_tokens}) - may cause API costs/limits"
-            )
-    except (ValueError, TypeError):
-        errors.append("OUTPUT_TOKENS must be a valid integer")
+    # Validate the separate OpenAI and Perplexity output-token caps.
+    for issue in validate_output_token_limits(config):
+        if issue.startswith("ERROR:"):
+            errors.append(issue.removeprefix("ERROR:").strip())
+        else:
+            warnings.append(issue.removeprefix("WARNING:").strip())
 
     # Validate Discord presence and activity types against discord.py's enums.
     # These are operator typos: reject them now instead of failing inside on_ready.
@@ -279,7 +286,11 @@ def main() -> NoReturn:
         logger.info("Validating API parameters")
         api_validation_passed = log_validation_results(config, logger)
         if not api_validation_passed:
-            logger.warning("API validation found issues, continuing startup")
+            logger.critical(
+                "API configuration validation failed; fix the errors logged above "
+                "before starting the bot"
+            )
+            sys.exit(1)
 
         # Health checks will run after bot initialization since we need the clients
         logger.info("Health checks will run after bot initialization")
