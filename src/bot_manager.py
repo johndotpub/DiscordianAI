@@ -11,6 +11,7 @@ import discord
 from .discord_bot import set_activity_status
 from .health_checks import APIHealthMonitor
 from .message_router import handle_incoming_message, resolve_allowed_channel_names
+from .rate_limits import MAINTENANCE_INTERVAL_SECONDS
 
 
 class DiscordBotManager:
@@ -26,8 +27,49 @@ class DiscordBotManager:
         self.config = deps["config"]
         self._shutdown_requested = False
         self._shutdown_task: asyncio.Task | None = None
+        self._rate_limit_maintenance_handle: asyncio.TimerHandle | None = None
         self._running = False
         self._bot_loop: asyncio.AbstractEventLoop | None = None
+
+    def _rate_limit_window_seconds(self) -> int:
+        """Return the configured rate-limit window, falling back to 60 seconds."""
+        configured = self.deps.get("RATE_LIMIT_PER")
+        if configured is None:
+            configured = self.config.get("RATE_LIMIT_PER", 60)
+        try:
+            window = int(configured)
+        except (TypeError, ValueError):
+            window = 60
+        return max(1, window)
+
+    def _schedule_rate_limit_maintenance(self) -> None:
+        """Schedule the next off-request stale-entry sweep."""
+        rate_limiter = self.deps.get("rate_limiter")
+        if rate_limiter is None or self._rate_limit_maintenance_handle is not None:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._rate_limit_maintenance_handle = loop.call_later(
+            MAINTENANCE_INTERVAL_SECONDS,
+            self._run_rate_limit_maintenance,
+        )
+
+    def _run_rate_limit_maintenance(self) -> None:
+        """Run one stale-entry sweep and schedule the next one."""
+        self._rate_limit_maintenance_handle = None
+        if self._shutdown_requested:
+            return
+
+        rate_limiter = self.deps.get("rate_limiter")
+        try:
+            if rate_limiter is not None:
+                rate_limiter.run_maintenance(self._rate_limit_window_seconds())
+        except Exception:
+            self.logger.exception("Rate limit maintenance failed")
+        finally:
+            self._schedule_rate_limit_maintenance()
 
     def _capture_loop(self):
         """Capture the running event loop from an async context."""
@@ -100,6 +142,7 @@ class DiscordBotManager:
             self.deps["_health_task"] = asyncio.create_task(
                 health_monitor.run_all_health_checks(clients_for_health_check, self.config),
             )
+            self._schedule_rate_limit_maintenance()
             self.logger.info("Bot ready to process messages")
 
             # Start the health server after bot is ready
@@ -123,6 +166,10 @@ class DiscordBotManager:
     async def graceful_shutdown(self):
         """Perform graceful shutdown of the bot and cleanup resources."""
         self.logger.info("Initiating graceful shutdown")
+
+        if self._rate_limit_maintenance_handle is not None:
+            self._rate_limit_maintenance_handle.cancel()
+            self._rate_limit_maintenance_handle = None
 
         # Stop health server first
         health_server = self.deps.get("health_server")

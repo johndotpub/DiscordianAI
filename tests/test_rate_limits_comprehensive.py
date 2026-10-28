@@ -139,7 +139,7 @@ class TestRateLimiterCheckRateLimit:
         logger = Mock()
         user_id = 12345
 
-        with patch("src.rate_limits.time.time", side_effect=[0.0, 0.1, 0.2, 0.3, 1.5]):
+        with patch("src.rate_limits.time.monotonic", side_effect=[0.0, 0.1, 0.2, 0.3, 1.5]):
             # Use up the rate limit
             for _i in range(3):
                 rate_limiter.check_rate_limit(user_id, 3, 1, logger)
@@ -254,7 +254,7 @@ class TestRateLimiterGetUserStatus:
         logger = Mock()
         user_id = 12345
 
-        with patch("src.rate_limits.time.time", side_effect=[0.0, 0.1, 0.2, 1.5]):
+        with patch("src.rate_limits.time.monotonic", side_effect=[0.0, 0.1, 0.2, 1.5]):
             # Make requests with a short window
             for _i in range(3):
                 rate_limiter.check_rate_limit(user_id, 5, 1, logger)
