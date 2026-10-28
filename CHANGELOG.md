@@ -5,10 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-10-28
+
+### Behaviour changes
+
+- **Conversation memory is per channel, not per user.** A DM can no longer be replayed into a public reply, and two channels no longer share context. History already held in memory under the old per-user keys is not reused.
+- **Web-search follow-ups keep their thread.** The Perplexity path now receives the conversation history it always claimed to have, so a follow-up is answered with the earlier turns in view.
+- **Answers are no longer shared between users through a response cache.** Cache and request-deduplication keys include the requester and a digest of the conversation, so the same words from two people no longer return one person's answer.
+- **Long conversations are trimmed, not failed.** A conversation that outgrows the configured `INPUT_TOKENS` budget has its oldest history dropped; a single oversized message is truncated with a visible `[truncated to fit the token budget]` marker.
+- **Threads follow their parent channel.** The bot answers in a thread when the parent channel is allowed, and ignores other bots unless their IDs are listed in `TRUSTED_BOT_IDS`.
+- **Retries are limited to failures a retry can fix.** Connection failures, rate limits and server errors are retried. Read timeouts and deterministic client errors are not.
+- **A provider outage fails fast.** Repeated failures open the provider's circuit breaker, so later messages fail over immediately instead of paying another full timeout.
+- **`/health` reports observed provider state.** Provider entries include the circuit-breaker state and last success/failure times; a health port that is already in use disables the endpoint without stopping the bot.
+- **Error messages separate request failures from configuration faults.** A too-long prompt, a content-filter rejection and a permissions failure are reported as request or authentication errors rather than as a configuration problem.
+- **`LOG_FILE` is deprecated and ignored.** It is still parsed for compatibility and logs one startup note, but the bot writes no log file; the supervisor or shell redirect owns log output.
+- **The package installs as a package.** The wheel contains `src/` instead of scattering top-level modules, and the `discordianai` command works.
 
 ### Added ✨
+
 - **Perplexity attribution**: the Perplexity client sends an `X-Pplx-Integration: discordian-ai` header when its base URL host is `api.perplexity.ai`; custom hosts are unchanged.
+
+### Operations ⚙️
+
+- **Log rotation**: `contrib/logrotate/discordianai` is a ready-to-edit `copytruncate` fragment for supervisor-owned `bot.log`; `docs/Daemon.md` explains installation and the copy window.
+- **`PERPLEXITY_OUTPUT_TOKENS`**: sets Perplexity's `max_tokens` independently of OpenAI's `OUTPUT_TOKENS`; when unset it follows `OUTPUT_TOKENS`.
+- **`CONVERSATION_TTL_SECONDS`**: idle seconds before a conversation and its lock are evicted (default 1800).
+- **Scrape budgets**: `MAX_URLS_PER_MESSAGE` (default 3), `MAX_TOTAL_SCRAPED_CHARS` (default 60000) and `SCRAPE_DEADLINE_SECONDS` (default 20) bound the work one message can cause.
+- **SSRF caveat for HTTPS**: `docs/Security.md` now documents that plain HTTP is pinned to a vetted address while HTTPS relies on a pre-request DNS check, leaving a small DNS-rebinding window in exchange for correct TLS verification.
+
+### Fixed 🔧
+
+- **Conversation transcript integrity**: answers stay attached to the question that produced them, and a zero consistency lookback now disables lookback instead of reading the whole transcript.
+- **Shutdown**: `SIGTERM` and `SIGINT` now stop the bot once, with a bounded wait, instead of crashing or being killed after the launcher's grace period.
+- **Rate limiting**: windows are measured with a monotonic clock, so system clock steps no longer refuse valid users or let bursts through.
+- **Provider plumbing**: OpenAI and Perplexity share one request-building and error-classification path while keeping separate output caps; startup checks the packages the code imports.
+- **Citations and delivery**: one citation formatter and one reply path replace the per-provider duplicates, with consistent splitting for long responses.
+- **Documentation truth**: README and docs now match the code for logging, routing, retries, health, provider contracts and deprecated settings, with tests that fail on drift.
+
+### Security 🛡️
+
+- **Scraped pages are data**: page text is wrapped in an explicit untrusted block, delimiters are escaped, and model output is neutralised so pages cannot inject mentions or arbitrary links into Discord.
+
+### Tests ✅
+
+- **Coverage**: new regression tests cover channel-scoped conversations, Perplexity history, token budgets, retry policy, SSRF and redirect checks, routing rules, health truth, validation honesty, documentation drift and the changelog/version contract.
 
 ## [0.2.9.9] - 2026-06-06
 
