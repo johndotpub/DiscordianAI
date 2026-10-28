@@ -173,18 +173,20 @@ ENTITY_PATTERNS = [
     r"\$[A-Z]{1,5}\b",  # Stock symbols (e.g., $AAPL)
 ]
 
-# Follow-up detection patterns for conversation consistency
+# Follow-up detection patterns for conversation consistency.
+# Only genuine anaphora belong here: a bare request to continue, an explicit
+# "what about", a reference to one of the previous answers, or a pronoun-only
+# reply. Ordinary words such as "also" or "more" inside a fresh question must
+# not turn that question into a follow-up.
 FOLLOW_UP_PATTERNS = [
-    r"\b(continue|more|follow.?up|also|additionally|furthermore|moreover)\b",
-    r"\b(what about|how about|tell me more)\b",
-    r"^(yes|no|ok|okay),",  # Responses that continue conversation
-    # More specific: "and what about...", "but how..."
-    r"\b(and|but|however|though|although)\b\s+\w+\s*\?",
-    r"\b(and|but|however|though|although)\b\s+\w+\s*\?",
-    # Short follow-up fragments and ellipses
-    r"\b(and\?|so\?|and then\?|then what\?)\b",
-    r"\b(also\?|what now\?|and then)\b",
-    r"\.{2,}$",
+    r"^\s*(more|continue|go on|keep going)(\s+please)?\s*[.!?]*\s*$",
+    r"^\s*(tell|show|give)\s+me\s+more\s*[.!?]*\s*$",
+    r"\b(what|how)\s+about\b",
+    r"\b(and|what about|how about)\s+(the\s+)?(first|second|third|last|next|other)\s+one\b",
+    r"^\s*(and|so|but)?\s*(the\s+)?(first|second|third|last|next|other)\s+one\s*[.!?]*\s*$",
+    r"^\s*(it|that|this|those|these|they|them|he|she|him|her)\s*[.!?]*\s*$",
+    r"^\s*(yes|no|ok|okay)\s*[.!?]*\s*$",
+    r"^\s*(and then|then what|what now)\s*\??\s*$",
 ]
 
 # Explicit search intent phrases (users asking to "look up" or "search for" something)
@@ -410,6 +412,9 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "DISCORD_TOKEN",
         "ALLOWED_CHANNELS",
         "ALLOWED_CHANNEL_IDS",
+        "ALLOWED_GUILDS",
+        "ALLOWED_GUILD_IDS",
+        "TRUSTED_BOT_IDS",
         "BOT_PRESENCE",
         "ACTIVITY_TYPE",
         "ACTIVITY_STATUS",
@@ -477,11 +482,13 @@ def _apply_single_env_override(
     float_keys = {"SCRAPE_DEADLINE_SECONDS"}
     bool_keys = {"HEALTH_ENABLED", "DISCORDIANAI_LOG_COLOR"}
 
-    if key == "ALLOWED_CHANNELS":
+    if key in {"ALLOWED_CHANNELS", "ALLOWED_GUILDS"}:
         config_data[key] = (
-            [c.strip() for c in value.split(",") if c.strip()] if value.strip() else []
+            [c.strip().lstrip("#").strip() for c in value.split(",") if c.strip()]
+            if value.strip()
+            else []
         )
-    elif key == "ALLOWED_CHANNEL_IDS":
+    elif key in {"ALLOWED_CHANNEL_IDS", "ALLOWED_GUILD_IDS", "TRUSTED_BOT_IDS"}:
         config_data[key] = _parse_channel_ids(value, logger, source=key)
     elif key in int_keys:
         try:
@@ -515,6 +522,9 @@ def _apply_config_defaults(config_data: dict[str, Any]) -> None:
         "DISCORD_TOKEN": None,
         "ALLOWED_CHANNELS": [],
         "ALLOWED_CHANNEL_IDS": [],
+        "ALLOWED_GUILDS": [],
+        "ALLOWED_GUILD_IDS": [],
+        "TRUSTED_BOT_IDS": [],
         "BOT_PRESENCE": DEFAULT_BOT_PRESENCE,
         "ACTIVITY_TYPE": DEFAULT_ACTIVITY_TYPE,
         "ACTIVITY_STATUS": DEFAULT_ACTIVITY_STATUS,
@@ -704,6 +714,22 @@ def _parse_discord_config(
         channel_ids_str,
         logger,
         source="Discord.ALLOWED_CHANNEL_IDS",
+    )
+    guilds_str = config.get("Discord", "ALLOWED_GUILDS", fallback="")
+    config_data["ALLOWED_GUILDS"] = [
+        g.strip().lstrip("#").strip() for g in guilds_str.split(",") if g.strip()
+    ]
+    guild_ids_str = config.get("Discord", "ALLOWED_GUILD_IDS", fallback="")
+    config_data["ALLOWED_GUILD_IDS"] = _parse_channel_ids(
+        guild_ids_str,
+        logger,
+        source="Discord.ALLOWED_GUILD_IDS",
+    )
+    trusted_bots_str = config.get("Discord", "TRUSTED_BOT_IDS", fallback="")
+    config_data["TRUSTED_BOT_IDS"] = _parse_channel_ids(
+        trusted_bots_str,
+        logger,
+        source="Discord.TRUSTED_BOT_IDS",
     )
     config_data["BOT_PRESENCE"] = config.get(
         "Discord", "BOT_PRESENCE", fallback=DEFAULT_BOT_PRESENCE

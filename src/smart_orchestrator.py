@@ -6,6 +6,7 @@ logging, and thread-safe conversation management.
 """
 
 import logging
+import re
 from typing import Any
 
 from .config import (
@@ -31,6 +32,13 @@ ERROR_MESSAGES = get_error_messages()
 
 # Constants for magic values
 DEFAULT_LOOKBACK = 6
+_EARLY_WEB_INABILITY_WINDOW = 300
+_QUOTED_SPAN_PATTERN = re.compile(r'"[^"\n]*"|“[^”\n]*”|`[^`\n]*`')
+_NARRATIVE_MARKERS_PATTERN = re.compile(
+    r"\b(poem|story|verse|tale|fiction|imagine|imagined|imagination|dream|"
+    r"dreamed|dreamt|pretend|narrator|character|once upon a time)\b",
+    re.IGNORECASE,
+)
 
 
 def _record_conversation_turn(
@@ -89,23 +97,91 @@ def has_time_sensitivity(message: str) -> bool:
     return any(pattern.search(message) for pattern in COMPILED_TIME_SENSITIVITY_PATTERNS)
 
 
-def _detect_openai_web_inability(response_text: str) -> bool:
-    """Detect if an OpenAI response indicates it cannot access the web.
+def _query_requires_live_data(message: str) -> bool:
+    """Return True when a query plausibly needs current or web-sourced data."""
+    if not message:
+        return False
+    return (
+        any(p.search(message) for p in COMPILED_URL_DETECTION_PATTERNS)
+        or any(p.search(message) for p in COMPILED_SEARCH_INTENT_PATTERNS)
+        or has_time_sensitivity(message)
+    )
 
-    This is persona-agnostic and searches for common verb-phrase signals
-    indicating the model explicitly states an inability to browse/look up
-    current information. Returns True when a reroute to Perplexity is
-    recommended.
+
+def _is_quoted_text(response_text: str, position: int) -> bool:
+    """Return True when a position falls inside quotes, code, or a blockquote."""
+    quoted = _QUOTED_SPAN_PATTERN.finditer(response_text)
+    if any(match.start() <= position < match.end() for match in quoted):
+        return True
+
+    line_start = response_text.rfind("\n", 0, position) + 1
+    line_end = response_text.find("\n", position)
+    if line_end == -1:
+        line_end = len(response_text)
+    if response_text[line_start:line_end].lstrip().startswith(">"):
+        return True
+
+    return response_text.count("```", 0, position) % 2 == 1
+
+
+def _is_narrative_context(response_text: str, position: int) -> bool:
+    """Return True when the phrase sits inside creative or quoted narrative."""
+    sentence_start = (
+        max(
+            response_text.rfind(".", 0, position),
+            response_text.rfind("!", 0, position),
+            response_text.rfind("?", 0, position),
+            response_text.rfind("\n", 0, position),
+        )
+        + 1
+    )
+    endings = [
+        index
+        for index in (
+            response_text.find(".", position),
+            response_text.find("!", position),
+            response_text.find("?", position),
+            response_text.find("\n", position),
+        )
+        if index != -1
+    ]
+    sentence_end = min(endings) + 1 if endings else len(response_text)
+    context = response_text[max(0, sentence_start - 120) : sentence_end]
+    return bool(_NARRATIVE_MARKERS_PATTERN.search(context))
+
+
+def _detect_openai_web_inability(
+    response_text: str,
+    query: str | None = None,
+) -> bool:
+    """Detect a genuine early web-inability admission in an OpenAI response.
+
+    The phrase must be near the start of the response and outside quoted or
+    narrative text. When a query is supplied, it must also plausibly need live
+    data; otherwise a creative answer that merely mentions the internet is kept.
 
     Args:
         response_text: The assistant's response text from OpenAI.
+        query: Optional original user query used to check live-data intent.
 
     Returns:
-        True if the response signals web-inability, False otherwise.
+        True if a reroute to Perplexity is recommended, False otherwise.
     """
     if not response_text:
         return False
-    return any(p.search(response_text) for p in COMPILED_OPENAI_WEB_INABILITY_PATTERNS)
+    if query is not None and not _query_requires_live_data(query):
+        return False
+
+    for pattern in COMPILED_OPENAI_WEB_INABILITY_PATTERNS:
+        for match in pattern.finditer(response_text):
+            if match.start() > _EARLY_WEB_INABILITY_WINDOW:
+                continue
+            if _is_quoted_text(response_text, match.start()):
+                continue
+            if _is_narrative_context(response_text, match.start()):
+                continue
+            return True
+    return False
 
 
 def is_factual_query(message: str) -> bool:
@@ -173,17 +249,19 @@ def should_use_web_search(
     if any(p.search(message) for p in COMPILED_SEARCH_INTENT_PATTERNS):
         return True
 
-    # Check conversation context
+    # Check conversation context. A follow-up only inherits the previous
+    # service when there is a real prior turn in this same conversation.
     scope_key = conversation_key if conversation_key is not None else user_id
-    if conversation_manager and scope_key:
-        has_follow_up = any(pattern.search(message) for pattern in COMPILED_FOLLOW_UP_PATTERNS)
-        if has_follow_up:
+    if any(pattern.search(message) for pattern in COMPILED_FOLLOW_UP_PATTERNS):
+        recent_ai_service = None
+        if conversation_manager and scope_key:
             recent_ai_service = conversation_manager.get_recent_ai_service(
                 scope_key,
                 lookback_messages=lookback_messages,
             )
-            if recent_ai_service:
-                return recent_ai_service == "perplexity"
+        if recent_ai_service:
+            return recent_ai_service == "perplexity"
+        return False
 
     # If it's clearly conversational or creative, don't use web search
     if is_conversational_or_creative(message):
@@ -417,7 +495,11 @@ async def _process_hybrid_mode(
     if res_content:
         # If OpenAI explicitly says it cannot browse/look up current web data,
         # detect that and reroute to Perplexity (persona-agnostic detection).
-        if _detect_openai_web_inability(res_content):
+        if _detect_openai_web_inability(res_content, request.message):
+            request.logger.debug(
+                "Discarding OpenAI answer after web-inability reroute: %s",
+                res_content,
+            )
             request.logger.warning(
                 "OpenAI response indicates web-inability; rerouting to Perplexity"
             )

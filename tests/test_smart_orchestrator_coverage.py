@@ -279,7 +279,7 @@ class TestRoutingFunctions:
         user = MagicMock()
         user.id = 1
         logger = logging.getLogger("src.smart_orchestrator.test")
-        request = AIRequest("Tell me about X", user, cm, logger)
+        request = AIRequest("What is the latest news about X?", user, cm, logger)
 
         clients = AIClients(openai=object(), perplexity=object())
         cfg = AIConfig()

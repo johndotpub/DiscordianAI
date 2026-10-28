@@ -10,7 +10,7 @@ import discord
 
 from .discord_bot import set_activity_status
 from .health_checks import APIHealthMonitor
-from .message_router import handle_incoming_message
+from .message_router import handle_incoming_message, resolve_allowed_channel_names
 
 
 class DiscordBotManager:
@@ -78,6 +78,7 @@ class DiscordBotManager:
                 self.bot.user.id,
             )
             self.logger.info("Connected to %d servers", len(self.bot.guilds))
+            resolve_allowed_channel_names(self.bot, self.deps, self.logger)
 
             # Set presence
             activity = set_activity_status(

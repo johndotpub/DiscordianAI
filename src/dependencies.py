@@ -84,6 +84,10 @@ class BotDependencies:
     # Configuration scalars (extracted from config for convenience)
     allowed_channels: list[str] = field(default_factory=list)
     allowed_channel_ids: list[int] = field(default_factory=list)
+    allowed_guilds: list[str] = field(default_factory=list)
+    allowed_guild_ids: list[int] = field(default_factory=list)
+    trusted_bot_ids: list[int] = field(default_factory=list)
+    resolved_allowed_channel_ids: list[int] | None = None
     bot_presence: str = "online"
     activity_type: str = DEFAULT_ACTIVITY_TYPE
     activity_status: str = ""
@@ -123,6 +127,10 @@ class BotDependencies:
             "circuit_breakers": self.circuit_breakers,
             "ALLOWED_CHANNELS": self.allowed_channels,
             "ALLOWED_CHANNEL_IDS": self.allowed_channel_ids,
+            "ALLOWED_GUILDS": self.allowed_guilds,
+            "ALLOWED_GUILD_IDS": self.allowed_guild_ids,
+            "TRUSTED_BOT_IDS": self.trusted_bot_ids,
+            "RESOLVED_ALLOWED_CHANNEL_IDS": self.resolved_allowed_channel_ids,
             "BOT_PRESENCE": self.bot_presence,
             "ACTIVITY_TYPE": self.activity_type,
             "ACTIVITY_STATUS": self.activity_status,
@@ -148,6 +156,10 @@ class BotDependencies:
         field_name = {
             "ALLOWED_CHANNELS": "allowed_channels",
             "ALLOWED_CHANNEL_IDS": "allowed_channel_ids",
+            "ALLOWED_GUILDS": "allowed_guilds",
+            "ALLOWED_GUILD_IDS": "allowed_guild_ids",
+            "TRUSTED_BOT_IDS": "trusted_bot_ids",
+            "RESOLVED_ALLOWED_CHANNEL_IDS": "resolved_allowed_channel_ids",
             "BOT_PRESENCE": "bot_presence",
             "ACTIVITY_TYPE": "activity_type",
             "ACTIVITY_STATUS": "activity_status",
