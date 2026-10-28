@@ -81,7 +81,7 @@ These are automatically included in `requirements.txt` and installed with the bo
 Web scraping behavior is controlled by constants in `src/web_scraper.py`:
 
 ```python
-DEFAULT_TIMEOUT = 10  # Request timeout in seconds
+DEFAULT_TIMEOUT = 15  # Request timeout in seconds
 MAX_CONTENT_LENGTH = 50000  # Maximum content to extract (~12-15k tokens)
 ```
 

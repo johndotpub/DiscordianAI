@@ -1,0 +1,14 @@
+# Documentation drift exceptions. Every entry must name a check, an exact target,
+# and a reason. Follow-up notes are optional but expected for temporary gaps.
+
+[[exception]]
+check = "B1"
+target = "LOG_FILE@config.ini.example"
+reason = "LOG_FILE is deprecated and ignored; the example deliberately avoids advertising a dead setting."
+follow_up = "Remove LOG_FILE parsing when the backward-compatibility window closes."
+
+[[exception]]
+check = "B1"
+target = "LOG_FILE@complete-example"
+reason = "The complete example omits the deprecated LOG_FILE key for the same reason as config.ini.example."
+follow_up = "Remove LOG_FILE parsing when the backward-compatibility window closes."

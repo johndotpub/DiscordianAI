@@ -66,6 +66,15 @@ Prevents spam and manages API costs.
 - **`RATE_LIMIT`**: Messages per time period *(default: 10)*
 - **`RATE_LIMIT_PER`**: Time period in seconds *(default: 60)*
 
+### Connection Pooling
+
+HTTP/2 connection pool sizes for each provider client. See [ConnectionPooling.md](ConnectionPooling.md) for tuning guidance.
+
+- **`OPENAI_MAX_CONNECTIONS`**: Maximum concurrent OpenAI connections *(default: 50)*
+- **`OPENAI_MAX_KEEPALIVE`**: OpenAI keepalive connection count *(default: 10)*
+- **`PERPLEXITY_MAX_CONNECTIONS`**: Maximum concurrent Perplexity connections *(default: 30)*
+- **`PERPLEXITY_MAX_KEEPALIVE`**: Perplexity keepalive connection count *(default: 5)*
+
 ### AI Orchestrator Settings
 
 Advanced configuration for intelligent AI service routing.
@@ -130,6 +139,9 @@ DISCORD_TOKEN=your_discord_bot_token_here
 # Channels where the bot responds (comma-separated)
 ALLOWED_CHANNELS=general,bot-testing
 
+# Optional: channel IDs take precedence over ALLOWED_CHANNELS names
+ALLOWED_CHANNEL_IDS=
+
 # Optional: scope channel names to specific guilds (names or IDs)
 ALLOWED_GUILDS=
 ALLOWED_GUILD_IDS=
@@ -153,6 +165,7 @@ GPT_MODEL=gpt-5-mini
 # For web search capabilities - Leave blank to disable web search
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
 PERPLEXITY_API_URL=https://api.perplexity.ai
+PERPLEXITY_MODEL=sonar-pro
 
 # === TOKEN LIMITS ===
 INPUT_TOKENS=120000
@@ -176,6 +189,13 @@ SCRAPE_DEADLINE_SECONDS=20
 RATE_LIMIT=10
 RATE_LIMIT_PER=60
 
+[ConnectionPool]
+# HTTP/2 connection pool sizes for each provider
+OPENAI_MAX_CONNECTIONS=50
+OPENAI_MAX_KEEPALIVE=10
+PERPLEXITY_MAX_CONNECTIONS=30
+PERPLEXITY_MAX_KEEPALIVE=5
+
 [Orchestrator]
 # AI Orchestrator Configuration for advanced routing and optimization
 # How many recent messages to check for AI service consistency (0 disables)
@@ -190,8 +210,18 @@ CONVERSATION_TTL_SECONDS=1800
 # How often to clean up inactive user locks (seconds) - default 1 hour
 USER_LOCK_CLEANUP_INTERVAL=3600
 
+# Minimum words required before entity detection runs
+ENTITY_DETECTION_MIN_WORDS=10
+
 [Logging]
 LOG_LEVEL=INFO
+DISCORDIANAI_LOG_COLOR=true
+
+[Health]
+# HTTP health endpoint for Kubernetes / load balancer probes
+HEALTH_ENABLED=true
+HEALTH_HOST=127.0.0.1
+HEALTH_PORT=8080
 ```
 
 ## Environment Variable Override
@@ -202,21 +232,54 @@ All configuration values can be overridden using environment variables. This is 
 # Discord settings
 export DISCORD_TOKEN="your_token_here"
 export ALLOWED_CHANNELS="general,bot-testing"
+export ALLOWED_CHANNEL_IDS="123456789012345678"
+export ALLOWED_GUILDS="My Server"
+export ALLOWED_GUILD_IDS="123456789012345678"
+export TRUSTED_BOT_IDS="123456789012345678"
+export BOT_PRESENCE="online"
+export ACTIVITY_TYPE="watching"
+export ACTIVITY_STATUS="Humans"
 
-# AI service settings  
+# AI service settings
 export OPENAI_API_KEY="your_openai_key"
+export OPENAI_API_URL="https://api.openai.com/v1/"
 export PERPLEXITY_API_KEY="your_perplexity_key"
+export PERPLEXITY_API_URL="https://api.perplexity.ai"
+export PERPLEXITY_MODEL="sonar-pro"
 export GPT_MODEL="gpt-5-mini"
+export INPUT_TOKENS="120000"
 export OUTPUT_TOKENS="8000"
 export PERPLEXITY_OUTPUT_TOKENS="8000"
+export CONTEXT_WINDOW="128000"
+export SYSTEM_MESSAGE="You are a helpful assistant."
+
+# Rate limiting and connection pooling
+export RATE_LIMIT="10"
+export RATE_LIMIT_PER="60"
+export OPENAI_MAX_CONNECTIONS="50"
+export OPENAI_MAX_KEEPALIVE="10"
+export PERPLEXITY_MAX_CONNECTIONS="30"
+export PERPLEXITY_MAX_KEEPALIVE="5"
 
 # Orchestrator settings
-export LOOKBACK_MESSAGES_FOR_CONSISTENCY=8
-export MAX_HISTORY_PER_USER=100
+export LOOKBACK_MESSAGES_FOR_CONSISTENCY="6"
+export MAX_HISTORY_PER_USER="50"
+export CONVERSATION_TTL_SECONDS="1800"
+export USER_LOCK_CLEANUP_INTERVAL="3600"
+export ENTITY_DETECTION_MIN_WORDS="10"
 
-# Logging
-export LOG_LEVEL="DEBUG"
+# Web scraping budgets
+export MAX_URLS_PER_MESSAGE="3"
+export MAX_TOTAL_SCRAPED_CHARS="60000"
+export SCRAPE_DEADLINE_SECONDS="20"
+
+# Logging and health
+export LOG_FILE="bot.log"
+export LOG_LEVEL="INFO"
 export DISCORDIANAI_LOG_COLOR="1"
+export HEALTH_ENABLED="true"
+export HEALTH_HOST="127.0.0.1"
+export HEALTH_PORT="8080"
 ```
 
 Environment variables take precedence over `config.ini` values, allowing for flexible deployment configurations.

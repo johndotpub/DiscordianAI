@@ -114,7 +114,7 @@ This ensures **exactly one message** is sent per user query, eliminating the dup
 
 ### Model Guardrails
 
-- `api_utils.validate_gpt_model()` rejects anything outside the GPT-5 family and logs actionable warnings.
+- `api_validation.validate_openai_config()` warns when `GPT_MODEL` falls outside the documented GPT-5 identifiers; unknown names do not block startup.
 - Perplexity calls only expose `model` and `max_tokens`; Sonar-Pro is the default and sampling is handled by the API.
 - Temperature toggles were removed because GPT-5 and Sonar-Pro ignore external sampling overrides.
 
