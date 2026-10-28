@@ -36,47 +36,50 @@ async def _fetch_openai_response(
     config: OpenAIConfig,
 ) -> str | None:
     """Fetch an OpenAI response (cached/deduped) without side effects."""
-    async with api_call("openai", request.logger, request):
-        api_params = _build_openai_api_params(
-            config.model,
-            config.system_message,
-            request.message,
-            config.output_tokens,
-            conversation_summary,
-        )
+    try:
+        async with api_call("openai", request.logger, request) as ctx:
+            api_params = _build_openai_api_params(
+                config.model,
+                config.system_message,
+                request.message,
+                config.output_tokens,
+                conversation_summary,
+            )
 
-        request.logger.debug(
-            "Making OpenAI API call with %d messages", len(api_params["messages"])
-        )
+            request.logger.debug(
+                "Making OpenAI API call with %d messages", len(api_params["messages"])
+            )
 
-        try:
             response = await retry_with_backoff(
                 lambda: openai_client.chat.completions.create(**api_params),
                 DEFAULT_API_RETRY_CONFIG,
                 request.logger,
             )
-        except Exception:
-            request.logger.exception("OpenAI API call failed after retries")
-            return None
+            ctx.set_result(response)
 
-    if not (response and hasattr(response, "choices") and response.choices):
-        request.logger.error("OpenAI API returned invalid response structure: %s", response)
+            if not (response and hasattr(response, "choices") and response.choices):
+                request.logger.error(
+                    "OpenAI API returned invalid response structure: %s", response
+                )
+                return None
+
+            response_content = response.choices[0].message.content
+            if not response_content or not response_content.strip():
+                request.logger.warning("OpenAI returned empty response content")
+                return None
+
+            response_content = response_content.strip()
+
+            request.logger.info(
+                "OpenAI response generated successfully: %d characters, finish_reason: %s",
+                len(response_content),
+                getattr(response.choices[0], "finish_reason", "unknown"),
+            )
+
+            return response_content
+    except Exception:
+        request.logger.exception("OpenAI API call failed after retries")
         return None
-
-    response_content = response.choices[0].message.content
-    if not response_content or not response_content.strip():
-        request.logger.warning("OpenAI returned empty response content")
-        return None
-
-    response_content = response_content.strip()
-
-    request.logger.info(
-        "OpenAI response generated successfully: %d characters, finish_reason: %s",
-        len(response_content),
-        getattr(response.choices[0], "finish_reason", "unknown"),
-    )
-
-    return response_content
 
 
 async def process_openai_message(

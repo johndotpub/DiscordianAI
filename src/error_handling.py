@@ -11,14 +11,26 @@ This module provides robust error handling patterns including:
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from enum import Enum
 import functools
 import logging
+import math
 import re
 import secrets
 import threading
 import time
 from typing import Any
+
+import discord
+import httpx
+import openai
+
+try:
+    import httpx2
+except ImportError:  # pragma: no cover
+    httpx2 = None
 
 
 class ErrorSeverity(Enum):
@@ -42,46 +54,6 @@ class ErrorType(Enum):
     CONFIG_ERROR = "config_error"
     VALIDATION_ERROR = "validation_error"
     UNKNOWN = "unknown"
-
-
-ERROR_CLASSIFICATION_PATTERNS = {
-    "quota": ("insufficient_quota", "exceeded your current quota"),
-    "rate_limit": ("rate limit", "429"),
-    "timeout": ("timeout", "timed out"),
-    "auth": ("401", "unauthorized"),
-    "server": ("500", "502", "503", "504"),
-    "network": ("connection", "network", "dns"),
-    "discord": ("discord", "websocket", "gateway"),
-    "config": ("config", "missing", "invalid"),
-}
-
-
-def classify_error_message(error_msg: str) -> dict[str, bool]:
-    """Classify a raw error message using shared string-matching rules."""
-    lowered = error_msg.lower()
-    return {
-        "is_quota_exhausted": any(
-            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["quota"]
-        ),
-        "is_rate_limit": any(
-            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["rate_limit"]
-        ),
-        "is_timeout": any(term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["timeout"]),
-        "is_auth_error": any(term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["auth"]),
-        "is_server_error": any(
-            re.search(rf"(?<!\d){code}(?!\d)", error_msg)
-            for code in ERROR_CLASSIFICATION_PATTERNS["server"]
-        ),
-        "is_network_error": any(
-            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["network"]
-        ),
-        "is_discord_error": any(
-            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["discord"]
-        ),
-        "is_config_error": any(
-            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["config"]
-        ),
-    }
 
 
 @dataclass
@@ -283,6 +255,169 @@ def calculate_backoff_delay(attempt: int, config: RetryConfig) -> float:
     return delay
 
 
+_HTTP_STATUS_REQUEST_TIMEOUT = 408
+_HTTP_STATUS_TOO_MANY_REQUESTS = 429
+_HTTP_STATUS_SERVER_ERROR = 500
+
+_HTTPX_TIMEOUT_ERRORS: tuple[type[Exception], ...] = (httpx.TimeoutException,)
+_HTTPX_TRANSPORT_ERRORS: tuple[type[Exception], ...] = (httpx.TransportError,)
+
+if httpx2 is not None:
+    _HTTPX_TIMEOUT_ERRORS += (httpx2.TimeoutException,)
+    _HTTPX_TRANSPORT_ERRORS += (httpx2.TransportError,)
+
+
+def _error_details(
+    error_type: ErrorType,
+    severity: ErrorSeverity,
+    exception: Exception,
+    user_message: str,
+    retry_after: int | None = None,
+) -> ErrorDetails:
+    return ErrorDetails(
+        error_type=error_type,
+        severity=severity,
+        message=str(exception),
+        user_message=user_message,
+        retry_after=retry_after,
+        context={"exception_type": type(exception).__name__},
+    )
+
+
+def _get_response_header(response: Any, name: str) -> Any:
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return None
+
+    try:
+        value = headers.get(name)
+    except (AttributeError, TypeError):
+        return None
+
+    if value is not None:
+        return value
+
+    try:
+        for key in headers:
+            if str(key).lower() == name.lower():
+                return headers[key]
+    except (AttributeError, TypeError):
+        return None
+
+    return None
+
+
+def _parse_retry_after(value: Any) -> int | None:
+    if value is None:
+        return None
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    try:
+        return max(0, math.ceil(float(text)))
+    except (TypeError, ValueError, OverflowError):
+        pass
+
+    try:
+        retry_at = parsedate_to_datetime(text)
+    except (TypeError, ValueError):
+        return None
+
+    if retry_at.tzinfo is None:
+        retry_at = retry_at.replace(tzinfo=UTC)
+
+    return max(0, math.ceil((retry_at - datetime.now(UTC)).total_seconds()))
+
+
+def _retry_after_from_response(response: Any) -> int | None:
+    return _parse_retry_after(_get_response_header(response, "Retry-After"))
+
+
+def _classify_api_status_error(exception: openai.APIStatusError) -> ErrorDetails:
+    status_code = exception.status_code
+    retry_after = _retry_after_from_response(exception.response)
+
+    if status_code == _HTTP_STATUS_TOO_MANY_REQUESTS:
+        return _error_details(
+            ErrorType.API_RATE_LIMIT,
+            ErrorSeverity.MEDIUM,
+            exception,
+            "⏱️ Service is busy. Please try again in a moment.",
+            retry_after if retry_after is not None else 30,
+        )
+
+    if status_code in {401, 403}:
+        return _error_details(
+            ErrorType.API_AUTH_ERROR,
+            ErrorSeverity.HIGH,
+            exception,
+            "🔐 Authentication issue. Please contact administrator.",
+            retry_after,
+        )
+
+    if status_code == _HTTP_STATUS_REQUEST_TIMEOUT:
+        return _error_details(
+            ErrorType.API_TIMEOUT,
+            ErrorSeverity.MEDIUM,
+            exception,
+            "🔧 Request timed out. Please try again.",
+            retry_after if retry_after is not None else 10,
+        )
+
+    if status_code >= _HTTP_STATUS_SERVER_ERROR:
+        return _error_details(
+            ErrorType.API_SERVER_ERROR,
+            ErrorSeverity.HIGH,
+            exception,
+            "🔧 Service temporarily unavailable. Please try again later.",
+            retry_after if retry_after is not None else 60,
+        )
+
+    return _error_details(
+        ErrorType.VALIDATION_ERROR,
+        ErrorSeverity.MEDIUM,
+        exception,
+        "An unexpected error occurred. Please try again.",
+        retry_after,
+    )
+
+
+def _classify_typed_error(exception: Exception) -> ErrorDetails | None:
+    if isinstance(exception, (openai.APITimeoutError, *_HTTPX_TIMEOUT_ERRORS)):
+        return _error_details(
+            ErrorType.API_TIMEOUT,
+            ErrorSeverity.MEDIUM,
+            exception,
+            "🔧 Request timed out. Please try again.",
+            10,
+        )
+
+    if isinstance(exception, (openai.APIConnectionError, *_HTTPX_TRANSPORT_ERRORS)):
+        return _error_details(
+            ErrorType.NETWORK_ERROR,
+            ErrorSeverity.HIGH,
+            exception,
+            "🌐 Connection issue. Please check your network.",
+            15,
+        )
+
+    if isinstance(exception, openai.APIStatusError):
+        return _classify_api_status_error(exception)
+
+    if isinstance(exception, discord.HTTPException):
+        return _error_details(
+            ErrorType.DISCORD_CONNECTION,
+            ErrorSeverity.HIGH,
+            exception,
+            "🤖 Bot connection issue. Reconnecting...",
+            _retry_after_from_response(getattr(exception, "response", None)),
+        )
+
+    return None
+
+
 def classify_error(exception: Exception) -> ErrorDetails:
     """Classify exceptions into structured error details.
 
@@ -292,6 +427,10 @@ def classify_error(exception: Exception) -> ErrorDetails:
     Returns:
         ErrorDetails with classification and handling info
     """
+    typed_details = _classify_typed_error(exception)
+    if typed_details is not None:
+        return typed_details
+
     error_msg = str(exception)
     error_type = ErrorType.UNKNOWN
     severity = ErrorSeverity.MEDIUM
@@ -354,14 +493,7 @@ def classify_error(exception: Exception) -> ErrorDetails:
         severity = ErrorSeverity.CRITICAL
         user_message = "⚙️ Configuration issue. Please contact administrator."
 
-    return ErrorDetails(
-        error_type=error_type,
-        severity=severity,
-        message=error_msg,
-        user_message=user_message,
-        retry_after=retry_after,
-        context={"exception_type": type(exception).__name__},
-    )
+    return _error_details(error_type, severity, exception, user_message, retry_after)
 
 
 class ErrorTracker:
