@@ -8,8 +8,8 @@ import logging
 
 import discord
 
+from .citation_formatting import format_citations
 from .config import (
-    CITATION_PATTERN,
     EMBED_LIMIT,
     EMBED_SAFE_LIMIT,
 )
@@ -103,19 +103,7 @@ class CitationEmbedFormatter:
         Returns:
             str: Text with citations formatted as Discord hyperlinks
         """
-        if not citations:
-            return text
-
-        def replace_citation(match):
-            citation_num = match.group(1)
-            if citation_num in citations:
-                url = citations[citation_num]
-                # Format as clickable hyperlink for Discord embed
-                return f"[[{citation_num}]]({url})"
-            return match.group(0)  # Return original if no URL found
-
-        # Replace [1], [2], etc. with clickable hyperlinks
-        formatted_text = CITATION_PATTERN.sub(replace_citation, text)
+        formatted_text = format_citations(text, citations, style="embed")
 
         self.logger.debug("Formatted %d citations for embed description", len(citations))
         return formatted_text

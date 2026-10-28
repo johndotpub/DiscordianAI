@@ -10,6 +10,7 @@ import re
 from typing import Any
 
 from .api_context import api_call
+from .citation_formatting import _format_unlinked_citations, format_citations
 from .config import (
     CITATION_PATTERN,
     DEFAULT_CONTEXT_WINDOW,
@@ -189,13 +190,20 @@ def _normalize_citation_text(text: str, citations: dict[str, str]) -> str:
     return "\n".join(cleaned_lines).strip()
 
 
-def _clean_bare_urls_safely(text: str, urls: list) -> str:
+def _clean_bare_urls_safely(text: str, urls: list[str]) -> str:
     """Safely remove bare URLs that aren't part of markdown links."""
-    for url in urls:
-        escaped_url = re.escape(url)
-        pattern = rf"(?<!\]\(){escaped_url}(?!\s*\))"
-        text = re.sub(pattern, "", text)
-    return text
+    url_set = set(urls)
+    if not url_set:
+        return text
+
+    alternatives = "|".join(re.escape(url) for url in dict.fromkeys(urls))
+    pattern = re.compile(rf"(?<!\]\()(?:{alternatives})(?!\s*\))")
+
+    def replace_url(match) -> str:
+        matched = match.group(0)
+        return "" if matched in url_set else matched
+
+    return pattern.sub(replace_url, text)
 
 
 def format_citations_for_discord(
@@ -216,19 +224,9 @@ def format_citations_for_discord(
     Returns:
         The transformed text ready for posting to Discord.
     """
-    if not citations:
-        return text
-
-    def replace_citation(match):
-        citation_num = match.group(1)
-        if citation_num not in citations:
-            return match.group(0)
-        if not linkify:
-            return f"[{citation_num}]"
-        url = citations[citation_num]
-        return f"[{citation_num}]({url})"
-
-    return CITATION_PATTERN.sub(replace_citation, text)
+    if not linkify:
+        return _format_unlinked_citations(text, citations)
+    return format_citations(text, citations, style="message")
 
 
 async def process_perplexity_message(
