@@ -14,7 +14,13 @@ import logging
 import time
 from typing import Any
 
-from .config import OPENAI_VALID_MODELS, PERPLEXITY_MODELS, is_supported_openai_model
+from .config import (
+    DEFAULT_OPENAI_MODEL,
+    DEFAULT_PERPLEXITY_MODEL,
+    OPENAI_VALID_MODELS,
+    PERPLEXITY_MODELS,
+    is_supported_openai_model,
+)
 from .error_handling import ErrorTracker, classify_error
 
 # Health check thresholds
@@ -77,7 +83,7 @@ PROVIDER_HEALTH_SPECS: dict[str, ProviderHealthSpec] = {
         display_name="OpenAI",
         client_key="openai",
         model_key="GPT_MODEL",
-        default_model="gpt-5-mini",
+        default_model=DEFAULT_OPENAI_MODEL,
         allowed_models=tuple(OPENAI_VALID_MODELS),
         model_validator=is_supported_openai_model,
         degraded_threshold_ms=OPENAI_RESPONSE_DEGRADED_THRESHOLD_MS,
@@ -89,7 +95,7 @@ PROVIDER_HEALTH_SPECS: dict[str, ProviderHealthSpec] = {
         display_name="Perplexity",
         client_key="perplexity",
         model_key="PERPLEXITY_MODEL",
-        default_model="sonar-pro",
+        default_model=DEFAULT_PERPLEXITY_MODEL,
         allowed_models=tuple(PERPLEXITY_MODELS),
         degraded_threshold_ms=PERPLEXITY_RESPONSE_DEGRADED_THRESHOLD_MS,
         unhealthy_threshold_ms=PERPLEXITY_RESPONSE_UNHEALTHY_THRESHOLD_MS,

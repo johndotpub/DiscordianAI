@@ -25,7 +25,9 @@ from .config import (
     DEFAULT_ACTIVITY_TYPE,
     DEFAULT_CONTEXT_WINDOW,
     DEFAULT_INPUT_TOKENS,
+    DEFAULT_OPENAI_MODEL,
     DEFAULT_OUTPUT_TOKENS,
+    DEFAULT_PERPLEXITY_MODEL,
 )
 
 if TYPE_CHECKING:
@@ -100,8 +102,8 @@ class BotDependencies:
     discord_token: str = ""
     rate_limit: int = 10
     rate_limit_period: int = 60
-    gpt_model: str = "gpt-5-mini"
-    perplexity_model: str = "sonar-pro"
+    gpt_model: str = DEFAULT_OPENAI_MODEL
+    perplexity_model: str = DEFAULT_PERPLEXITY_MODEL
     system_message: str = ""
     output_tokens: int = DEFAULT_OUTPUT_TOKENS
     perplexity_output_tokens: int = DEFAULT_OUTPUT_TOKENS

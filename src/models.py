@@ -9,7 +9,9 @@ from .config import (
     DEFAULT_INPUT_TOKENS,
     DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
     DEFAULT_MAX_URLS_PER_MESSAGE,
+    DEFAULT_OPENAI_MODEL,
     DEFAULT_OUTPUT_TOKENS,
+    DEFAULT_PERPLEXITY_MODEL,
     DEFAULT_PERPLEXITY_OUTPUT_TOKENS,
     DEFAULT_SCRAPE_DEADLINE_SECONDS,
 )
@@ -30,7 +32,7 @@ class AIRequest:
 class OpenAIConfig:
     """Configuration for OpenAI specific parameters."""
 
-    model: str = "gpt-5-mini"
+    model: str = DEFAULT_OPENAI_MODEL
     system_message: str = "You are a helpful assistant."
     output_tokens: int = DEFAULT_OUTPUT_TOKENS
     input_tokens: int = DEFAULT_INPUT_TOKENS
@@ -41,7 +43,7 @@ class OpenAIConfig:
 class PerplexityConfig:
     """Configuration for Perplexity specific parameters."""
 
-    model: str = "sonar-pro"
+    model: str = DEFAULT_PERPLEXITY_MODEL
     system_message: str = (
         "You are a helpful assistant with access to current web information. "
         "When providing citations, include source URLs when available."

@@ -10,6 +10,7 @@ from .config import (
     DEFAULT_INPUT_TOKENS,
     DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
     DEFAULT_MAX_URLS_PER_MESSAGE,
+    DEFAULT_PERPLEXITY_MODEL,
     DEFAULT_SCRAPE_DEADLINE_SECONDS,
     get_error_messages,
 )
@@ -123,7 +124,9 @@ async def _process_message_core(
             context_window=context_window,
         )
         perplexity_model = (
-            deps.get("PERPLEXITY_MODEL") or config.get("PERPLEXITY_MODEL") or "sonar-pro"
+            deps.get("PERPLEXITY_MODEL")
+            or config.get("PERPLEXITY_MODEL")
+            or DEFAULT_PERPLEXITY_MODEL
         )
         perplexity_config = PerplexityConfig(
             model=perplexity_model,
