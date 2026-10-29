@@ -92,7 +92,7 @@ Logs are emitted to stdout as structured lines. The process supervisor or a shel
 
 - **`LOG_FILE`**: Deprecated and ignored. It is still parsed for backwards compatibility, and startup logs an INFO line naming the configured value. Redirect stdout or configure the supervisor's output capture instead.
 - **`LOG_LEVEL`**: Logging verbosity ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL") *(default: "INFO")*
-- **`DISCORDIANAI_LOG_COLOR`**: Colored console logging is on by default. Set to `1`/`true`/`yes` to keep colors on, or `0`/`false`/`no` to disable them. Can be set in the `[Logging]` section or as an environment variable; the environment wins.
+- **`DISCORDIANAI_LOG_COLOR`**: Color is enabled only when the output stream is a terminal, unless the setting is present and forces it on with `1`/`true`/`yes` or off with `0`/`false`/`no`; it can be set in the `[Logging]` section or as an environment variable, and the environment wins.
 
 ### Health
 

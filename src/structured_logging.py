@@ -3,8 +3,8 @@
 Configures structlog with a hybrid renderer that outputs human-readable
 logs to the console (for development) and JSON-structured logs when
 environment variable ``DISCORDIANAI_LOG_JSON=1`` is set (for production
-observability). Console color output is enabled by default and can be
-disabled with ``DISCORDIANAI_LOG_COLOR``.
+observability). Console color output follows TTY detection by default,
+but can be forced on or off with ``DISCORDIANAI_LOG_COLOR``.
 
 All existing ``logging.getLogger()`` calls are automatically enriched
 with structlog processors via the stdlib integration layer. No changes
@@ -74,6 +74,26 @@ def _env_flag(name: str) -> bool | None:
     return _parse_flag(os.environ.get(name))
 
 
+def _stream_is_tty(stream: Any) -> bool:
+    """Return whether the stream reports itself as a terminal."""
+    isatty = getattr(stream, "isatty", None)
+    if not callable(isatty):
+        return False
+    try:
+        return bool(isatty())
+    except (OSError, ValueError):
+        return False
+
+
+def _resolve_colours(force_colors: bool | None, stream: Any) -> tuple[bool, str]:
+    """Return whether to colour output and the reason for the decision."""
+    if force_colors is not None:
+        return force_colors, "forced by setting"
+    if _stream_is_tty(stream):
+        return True, "tty"
+    return False, "disabled because the stream is not a terminal"
+
+
 def configure_structlog(
     *,
     json_logs: bool | None = None,
@@ -90,8 +110,8 @@ def configure_structlog(
         log_level: Set the root logger level. If ``None``, reads
             ``DISCORDIANAI_LOG_LEVEL`` (defaults to ``INFO``).
         log_colors: Force console colors on or off. If ``None``, reads the
-            ``DISCORDIANAI_LOG_COLOR`` environment variable; colors are on
-            by default.
+            ``DISCORDIANAI_LOG_COLOR`` environment variable and otherwise
+            enables colors only when ``stream`` is a TTY.
         stream: Optional stream for the root handler, used by tests and
             as the output target for the root logging handler.
     """
@@ -114,15 +134,14 @@ def configure_structlog(
         _drop_record,
     ]
 
+    color_reason: str | None = None
     if json_logs:
         renderer = structlog.processors.JSONRenderer()
     else:
         if stream is None:
             stream = sys.stderr
-        if force_colors is False:
-            renderer = structlog.dev.ConsoleRenderer(colors=False, pad_event_to=0)
-        else:
-            renderer = structlog.dev.ConsoleRenderer(colors=True, pad_event_to=0)
+        colors_enabled, color_reason = _resolve_colours(force_colors, stream)
+        renderer = structlog.dev.ConsoleRenderer(colors=colors_enabled, pad_event_to=0)
 
     structlog.configure(
         processors=[
@@ -152,6 +171,9 @@ def configure_structlog(
     root_logger.handlers.clear()
     root_logger.addHandler(handler)
     root_logger.setLevel(level)
+
+    if color_reason is not None:
+        logging.getLogger(__name__).debug("Log colour decision: %s", color_reason)
 
 
 def get_structured_logger(name: str, **initial_context: Any) -> structlog.stdlib.BoundLogger:

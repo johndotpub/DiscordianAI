@@ -16,7 +16,10 @@ if sys.version_info < (3, 12):  # noqa: UP036
     )
     sys.exit(1)
 
+import configparser
 import logging
+import os
+from pathlib import Path
 from typing import NoReturn
 
 import discord
@@ -51,6 +54,39 @@ def setup_early_logging() -> logging.Logger:
     return logger
 
 
+def _log_color_is_explicit(config_file: str | None, base_folder: str | None) -> bool:
+    """Return whether the operator explicitly set ``DISCORDIANAI_LOG_COLOR``.
+
+    The loaded configuration always carries a value for the key, so the
+    default cannot be distinguished from an explicit setting after parsing.
+    Check the environment and the config file itself instead.
+
+    Args:
+        config_file: Config file path that was passed to ``load_config``.
+        base_folder: Optional base folder used to resolve a relative path.
+
+    Returns:
+        True when the environment or the ``[Logging]`` section sets the key.
+    """
+    if "DISCORDIANAI_LOG_COLOR" in os.environ:
+        return True
+    if not config_file:
+        return False
+
+    path = Path(config_file)
+    if base_folder and not path.is_absolute():
+        path = Path(base_folder) / path
+    if not path.is_file():
+        return False
+
+    parser = configparser.ConfigParser(interpolation=None)
+    try:
+        parser.read(path, encoding="utf-8")
+    except (configparser.Error, OSError):
+        return False
+    return parser.has_option("Logging", "DISCORDIANAI_LOG_COLOR")
+
+
 def setup_production_logging(config: dict, logger: logging.Logger) -> None:
     """Configure production logging based on loaded configuration.
 
@@ -75,10 +111,13 @@ def setup_production_logging(config: dict, logger: logging.Logger) -> None:
             log_level = "INFO"
 
         # Configure structlog for production
+        log_colors = config.get("DISCORDIANAI_LOG_COLOR")
+        if not config.get("_LOG_COLOR_EXPLICIT", True):
+            log_colors = None
         configure_structlog(
             json_logs=False,
             log_level=log_level,
-            log_colors=config.get("DISCORDIANAI_LOG_COLOR"),
+            log_colors=log_colors,
         )
 
         # The process supervisor or launcher owns bot.log redirection.
@@ -268,6 +307,9 @@ def main() -> NoReturn:
         # Step 3: Load configuration (with early logging available for errors)
         early_logger.info("Loading configuration")
         config = load_config(args.conf, getattr(args, "folder", None))
+        config["_LOG_COLOR_EXPLICIT"] = _log_color_is_explicit(
+            args.conf, getattr(args, "folder", None)
+        )
         early_logger.info("Configuration loaded")
 
         # Step 4: Set up production logging based on config

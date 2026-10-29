@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`/health` reports observed provider state.** Provider entries include the circuit-breaker state and last success/failure times; a health port that is already in use disables the endpoint without stopping the bot.
 - **Error messages separate request failures from configuration faults.** A too-long prompt, a content-filter rejection and a permissions failure are reported as request or authentication errors rather than as a configuration problem.
 - **`LOG_FILE` is deprecated and ignored.** It is still parsed for compatibility and logs one startup note, but the bot writes no log file; the supervisor or shell redirect owns log output.
+- **Log color follows the terminal.** ANSI color is emitted only when output is a terminal, unless `DISCORDIANAI_LOG_COLOR` explicitly forces it on or off; redirected logs stay plain by default.
 - **The package installs as a package.** The wheel contains `src/` instead of scattering top-level modules, and the `discordianai` command works.
 
 ### Added ✨

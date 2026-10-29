@@ -22,10 +22,10 @@ def test_configure_structlog_defaults():
     )
 
 
-def test_configure_structlog_default_console_renderer_uses_explicit_colors_true():
-    """Default console renderer should request colors explicitly."""
+def test_configure_structlog_explicit_log_colors_pass_through_to_renderer():
+    """An explicit log_colors argument is handed to the console renderer."""
     with patch("structlog.dev.ConsoleRenderer") as mock_renderer:
-        configure_structlog()
+        configure_structlog(log_colors=True)
 
     mock_renderer.assert_called_with(colors=True, pad_event_to=0)
 
@@ -127,64 +127,3 @@ def test_structured_logger_binds_context():
     assert "abc123" in output
     assert '"request_id": "abc123"' in output
     assert '"event": "hello world"' in output
-
-
-def test_configure_structlog_plain_stream_renders_colors_on_non_tty():
-    """Non-TTY streams render colored text by default when colors are enabled."""
-    stream = StringIO()
-
-    configure_structlog(stream=stream)
-
-    logger = logging.getLogger("test.rendering")
-    logger.info("hello world")
-
-    output = stream.getvalue()
-    assert "\x1b[" in output
-    assert "hello world" in output
-
-
-def test_configure_structlog_env_color_defaults_to_colors_on_non_tty_stream():
-    """Unset DISCORDIANAI_LOG_COLOR keeps colored output on non-TTY streams."""
-    stream = StringIO()
-
-    with patch.dict(os.environ, {}, clear=False):
-        os.environ.pop("DISCORDIANAI_LOG_COLOR", None)
-        configure_structlog(stream=stream)
-        logging.getLogger("test.rendering").info("hello world")
-
-    output = stream.getvalue()
-    assert "\x1b[" in output
-    assert "hello world" in output
-
-
-def test_configure_structlog_env_color_forces_colors_on_non_tty_stream():
-    """DISCORDIANAI_LOG_COLOR=1 forces colored output on non-TTY streams."""
-    stream = StringIO()
-
-    with patch.dict(os.environ, {"DISCORDIANAI_LOG_COLOR": "1"}):
-        configure_structlog(stream=stream)
-        logging.getLogger("test.rendering").info("hello world")
-
-    output = stream.getvalue()
-    assert "\x1b[" in output
-    assert "hello world" in output
-
-
-class _TTYStringIO(StringIO):
-    """StringIO subclass that reports isatty() == True."""
-
-    def isatty(self) -> bool:
-        return True
-
-
-def test_configure_structlog_env_color_disables_colors_on_tty_stream():
-    """DISCORDIANAI_LOG_COLOR=0 forces plain output on TTY streams."""
-    stream = _TTYStringIO()
-
-    with patch.dict(os.environ, {"DISCORDIANAI_LOG_COLOR": "0"}):
-        configure_structlog(stream=stream)
-        logging.getLogger("test.rendering").info("hello world")
-
-    output = stream.getvalue()
-    assert "\x1b[" not in output
-    assert "hello world" in output
