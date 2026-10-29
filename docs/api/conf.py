@@ -9,8 +9,8 @@ project = "DiscordianAI"
 copyright = "2025-2026, johndotpub"
 author = "johndotpub"
 
-release = "0.3.0"
-version = "0.3.0"
+release = "0.4.0"
+version = "0.4.0"
 
 extensions = [
     "sphinx.ext.autodoc",
