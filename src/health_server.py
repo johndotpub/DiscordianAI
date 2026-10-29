@@ -110,8 +110,13 @@ def _finite_number(value: Any, default: float = 0.0) -> float:
 
 
 def _timestamp_age(timestamp: float, monotonic_now: float) -> float | None:
-    """Return age for monotonic or wall-clock timestamps."""
-    if timestamp <= 0:
+    """Return age for monotonic or wall-clock timestamps.
+
+    A zero timestamp means the event has never happened. Negative values are
+    real monotonic readings from before boot on a young clock, so they still
+    have a positive age and must not be confused with "never".
+    """
+    if timestamp == 0:
         return None
     if timestamp <= monotonic_now:
         return max(0.0, monotonic_now - timestamp)

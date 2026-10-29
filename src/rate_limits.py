@@ -43,7 +43,7 @@ class RateLimiter:
             stale_users = [
                 user_id
                 for user_id, last_timestamp in self.last_command_timestamps.items()
-                if last_timestamp < stale_cutoff
+                if last_timestamp is not None and last_timestamp < stale_cutoff
             ]
             for user_id in stale_users:
                 self.last_command_timestamps.pop(user_id, None)
@@ -144,12 +144,14 @@ class RateLimiter:
 
         # Acquire lock to prevent race conditions
         with self._lock:
-            last_timestamp = self.last_command_timestamps.get(user_id, 0)
+            last_timestamp = self.last_command_timestamps.get(user_id)
             current_count = self.last_command_count.get(user_id, 0)
             self._last_rate_limit_window_seconds = rate_limit_window_seconds
 
-            # Check if rate limit window has expired - reset if so
-            if current_time - last_timestamp > rate_limit_window_seconds:
+            # Check if rate limit window has expired - reset if so. A missing
+            # timestamp means the window has never started, even when the
+            # monotonic clock is younger than the window.
+            if last_timestamp is None or current_time - last_timestamp > rate_limit_window_seconds:
                 self.last_command_timestamps[user_id] = current_time
                 self.last_command_count[user_id] = 1
                 log_method = logger.info
