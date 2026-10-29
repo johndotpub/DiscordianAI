@@ -7,6 +7,8 @@ including activity status management and bot presence configuration.
 # Third-party imports
 import discord
 
+from .config import DEFAULT_ACTIVITY_TYPE
+
 
 def set_activity_status(activity_type: str, activity_status: str) -> discord.Activity:
     """Create a Discord Activity object with the specified type and status.
@@ -31,7 +33,7 @@ def set_activity_status(activity_type: str, activity_status: str) -> discord.Act
         >>> # Bot will show "Playing chess"
 
     Note:
-        If an invalid activity_type is provided, defaults to 'watching'.
+        If an invalid activity_type is provided, defaults to 'listening'.
         This ensures the bot always has a valid activity status.
     """
     # Map string activity types to Discord enums
@@ -44,8 +46,9 @@ def set_activity_status(activity_type: str, activity_status: str) -> discord.Act
         "competing": discord.ActivityType.competing,
     }
 
-    # Get the activity type, defaulting to 'watching' if invalid
-    selected_type = activity_types.get(activity_type.lower(), discord.ActivityType.watching)
+    # Get the activity type, defaulting to the configured default if invalid
+    default_type = getattr(discord.ActivityType, DEFAULT_ACTIVITY_TYPE)
+    selected_type = activity_types.get(activity_type.lower(), default_type)
 
     return discord.Activity(
         type=selected_type,

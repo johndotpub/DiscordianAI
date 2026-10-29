@@ -12,6 +12,7 @@ from typing import Any
 
 import discord
 
+from .citation_formatting import renderable_citations
 from .config import (
     BARE_URL_PATTERN,
     EMBED_LIMIT,
@@ -26,7 +27,52 @@ from .truncation import truncate_with_notice
 
 _RAW_MENTION_PATTERN = re.compile(r"<(@[!&]?|#)(\d+)>")
 _MARKDOWN_LINK_PATTERN = re.compile(r"!?\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)]+)\)")
+_AUTOLINK_PATTERN = re.compile(r"<(https?://[^>\s]+)>", re.IGNORECASE)
+_BARE_HTTP_URL_PATTERN = re.compile(r"https?://(?!\u200b)[^\s<>]+", re.IGNORECASE)
+_URL_TRAILING_PUNCTUATION = ".,;:!?)]}'\""
 _CONTINUED_FOOTER = "🌐 Web search results (continued)"
+
+
+class CitationMap(dict[str, str]):
+    """Citation mapping that records URLs parsed from the model's own text.
+
+    Entries whose URL is in ``untrusted_urls`` may still appear as citation
+    markers, but they must never be rendered as clickable links.
+    """
+
+    def __init__(
+        self,
+        *args: Any,
+        untrusted_urls: Any = (),
+        **kwargs: Any,
+    ) -> None:
+        """Build a citation map with an optional set of untrusted URLs."""
+        super().__init__(*args, **kwargs)
+        known = {str(url).strip() for url in self.values()}
+        self.untrusted_urls = {
+            str(url).strip() for url in (untrusted_urls or ()) if str(url).strip() in known
+        }
+
+
+def _citations_for_text(text: str, citations: dict[str, str] | None) -> CitationMap:
+    """Return the citation entries whose markers occur in ``text``."""
+    if not citations:
+        return CitationMap()
+    return CitationMap(
+        ((number, url) for number, url in citations.items() if f"[{number}]" in text),
+        untrusted_urls=getattr(citations, "untrusted_urls", ()),
+    )
+
+
+def _sanitize_embed_description(
+    embed: discord.Embed,
+    citations: dict[str, str] | None,
+) -> None:
+    """Sanitise an embed description in place when it is a real string."""
+    description = getattr(embed, "description", None)
+    if isinstance(description, str) and description:
+        embed.description = sanitize_for_discord(description, citations)
+
 
 # ============================================================================
 # CORE MESSAGE SENDING & SPLITTING
@@ -52,7 +98,10 @@ async def _deliver(
         mentioned_users = [] if getattr(author, "bot", False) is True else [author]
         kwargs["mention_author"] = False
         kwargs["allowed_mentions"] = discord.AllowedMentions(
-            users=mentioned_users, replied_user=False
+            users=mentioned_users,
+            everyone=False,
+            roles=[],
+            replied_user=False,
         )
         await original_message.reply(content, **kwargs)
     else:
@@ -145,15 +194,17 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
     mention_prefix: str | None = None,
     _recursion_depth: int = 0,
     _chunk_budget: int | None = None,
+    citations: dict[str, str] | None = None,
 ) -> None:
     """Send messages with automatic splitting for Discord's message character limit.
 
     ``_recursion_depth`` is accepted for backwards compatibility and ignored:
     splitting is iterative and bounded by a chunk count instead.  ``_chunk_budget``
-    lets an embed continuation share the same overall chunk cap.
+    lets an embed continuation share the same overall chunk cap.  ``citations``
+    is the allowlist of trusted citation URLs for link sanitisation.
     """
     logger = deps["logger"]
-    message = sanitize_for_discord(message)
+    message = sanitize_for_discord(message, citations)
     prefix_text = mention_prefix or ""
     prefix_length = len(prefix_text)
 
@@ -200,13 +251,14 @@ def _rebuild_embed_head(
     citations: dict[str, str] | None,
 ) -> None:
     """Rebuild an embed description to match the adjusted head chunk."""
-    head_citations = {c: u for c, u in (citations or {}).items() if f"[{c}]" in head_text}
+    head_citations = _citations_for_text(head_text, citations)
     head_footer = embed.footer.text if embed.footer else None
     rebuilt_head, _ = citation_embed_formatter.create_citation_embed(
         head_text,
         head_citations,
         footer_text=head_footer,
     )
+    _sanitize_embed_description(rebuilt_head, citations)
     embed.description = rebuilt_head.description
     # Preserve existing footer unless empty; otherwise copy rebuilt footer
     if (not embed.footer or not embed.footer.text) and rebuilt_head.footer:
@@ -227,7 +279,6 @@ async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
     """
     logger = deps["logger"]
     remaining = message
-    active_citations = citations
 
     while True:
         head_text, after_split = _split_embed_head(remaining)
@@ -255,11 +306,13 @@ async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
             )
             return
 
+        head_citations = _citations_for_text(head_text, citations)
         cont_embed, _ = citation_embed_formatter.create_citation_embed(
             head_text,
-            {c: u for c, u in active_citations.items() if f"[{c}]" in head_text},
+            head_citations,
             footer_text=_CONTINUED_FOOTER,
         )
+        _sanitize_embed_description(cont_embed, citations)
         await _deliver(
             channel,
             "",
@@ -269,7 +322,7 @@ async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
         sent_messages += 1
 
         if not continuation_tail:
-            if active_citations and remaining and original_message:
+            if citations and remaining and original_message:
                 # Clean text fit the head but the embed was truncated; send the tail.
                 await send_split_message(
                     channel,
@@ -279,13 +332,12 @@ async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
                     original_message=original_message,
                     mention_prefix=None,
                     _chunk_budget=MAX_SPLIT_CHUNKS - sent_messages,
+                    citations=citations,
                 )
             return
 
         message_part2 = continuation_tail
-        remaining_citations = {
-            c: u for c, u in active_citations.items() if f"[{c}]" in message_part2
-        }
+        remaining_citations = _citations_for_text(message_part2, citations)
         if not remaining_citations:
             await send_split_message(
                 channel,
@@ -294,6 +346,7 @@ async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
                 original_message=original_message,
                 mention_prefix=None,
                 _chunk_budget=MAX_SPLIT_CHUNKS - sent_messages,
+                citations=citations,
             )
             return
         if len(message_part2) <= EMBED_LIMIT:
@@ -309,6 +362,7 @@ async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
                 remaining_citations,
                 footer_text=_CONTINUED_FOOTER,
             )
+            _sanitize_embed_description(final_embed, citations)
             await _deliver(
                 channel,
                 "",
@@ -318,7 +372,6 @@ async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
             return
 
         remaining = message_part2
-        active_citations = remaining_citations
 
 
 # Preserve the existing positional API for current callers.
@@ -338,7 +391,7 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
     the adjusted text.  ``_recursion_depth`` is accepted for backwards
     compatibility and ignored; continuations are sent iteratively.
     """
-    message = sanitize_for_discord(message)
+    message = sanitize_for_discord(message, citations)
 
     head_text, after_split = _split_embed_head(message)
     _rebuild_embed_head(embed, head_text, citations)
@@ -351,16 +404,14 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
 
     if after_split.strip():
         message_part2 = after_split.strip()
-        remaining_citations = (
-            {c: u for c, u in citations.items() if f"[{c}]" in message_part2} if citations else {}
-        )
+        remaining_citations = _citations_for_text(message_part2, citations)
         if remaining_citations:
             if len(message_part2) > EMBED_LIMIT:
                 await _send_embed_continuations(
                     channel,
                     message_part2,
                     deps,
-                    remaining_citations,
+                    citations,
                     original_message,
                     sent_messages=1,
                 )
@@ -370,6 +421,7 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
                     remaining_citations,
                     footer_text=_CONTINUED_FOOTER,
                 )
+                _sanitize_embed_description(cont_embed, citations)
                 await _deliver(
                     channel,
                     "",
@@ -384,6 +436,7 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
                 original_message=original_message,
                 mention_prefix=None,
                 _chunk_budget=MAX_SPLIT_CHUNKS - 1,
+                citations=citations,
             )
     elif citations and message and original_message:
         # Embed was truncated but clean text fit; send remaining text to avoid dropping tail
@@ -395,6 +448,7 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
             original_message=original_message,
             mention_prefix=None,
             _chunk_budget=MAX_SPLIT_CHUNKS - 1,
+            citations=citations,
         )
 
 
@@ -407,10 +461,18 @@ async def send_formatted_message(  # noqa: PLR0913, PLR0917
     embed_data: dict | None = None,
     original_message: discord.Message | None = None,
     mention_prefix: str | None = None,
+    citations: dict[str, str] | None = None,
 ) -> None:
-    """Send formatted message to Discord, using extracted splitter logic."""
+    """Send formatted message to Discord, using extracted splitter logic.
+
+    The citation allowlist is taken from ``citations`` or, when omitted, from
+    ``embed_data["citations"]`` so trusted source links survive delivery.
+    """
     logger = deps["logger"]
-    message = sanitize_for_discord(message)
+    citation_map = citations
+    if citation_map is None and embed_data:
+        citation_map = embed_data.get("citations") or {}
+    message = sanitize_for_discord(message, citation_map)
 
     if embed_data and "embed" in embed_data:
         embed = embed_data["embed"]
@@ -419,18 +481,18 @@ async def send_formatted_message(  # noqa: PLR0913, PLR0917
         was_truncated = metadata.get("was_truncated", False)
 
         if was_truncated:
-            citations = embed_data.get("citations", {})
             await send_split_message_with_embed(
                 channel,
                 clean_text,
                 deps,
                 embed,
-                citations,
+                citation_map,
                 original_message,
                 mention_prefix,
             )
             return
 
+        _sanitize_embed_description(embed, citation_map)
         try:
             await _deliver(
                 channel,
@@ -447,6 +509,7 @@ async def send_formatted_message(  # noqa: PLR0913, PLR0917
                 suppress_embeds,
                 original_message=original_message,
                 mention_prefix=mention_prefix,
+                citations=citation_map,
             )
     else:
         await send_split_message(
@@ -456,6 +519,7 @@ async def send_formatted_message(  # noqa: PLR0913, PLR0917
             suppress_embeds,
             original_message=original_message,
             mention_prefix=mention_prefix,
+            citations=citation_map,
         )
 
 
@@ -565,23 +629,94 @@ def should_suppress_embeds(text: str, threshold: int = 2) -> bool:
     return count_links(text) >= threshold
 
 
+def _normalize_link_target(target: str) -> str:
+    """Strip whitespace and optional angle brackets from a link target."""
+    target = target.strip()
+    if target.startswith("<") and target.endswith(">"):
+        target = target[1:-1].strip()
+    return target
+
+
+def _split_url_trailing_punctuation(url: str) -> tuple[str, str]:
+    """Separate punctuation that Discord should not treat as part of a URL."""
+    trailing = ""
+    while url and url[-1] in _URL_TRAILING_PUNCTUATION:
+        trailing = url[-1] + trailing
+        url = url[:-1]
+    return url, trailing
+
+
+def _neutralize_url(url: str) -> str:
+    """Make a URL non-clickable while keeping it readable.
+
+    Discord autolinks bare ``http(s)://`` text. Inserting a zero-width space
+    after the scheme terminator keeps the URL legible but stops Discord from
+    recognising it as a link.
+    """
+    lower = url.lower()
+    for scheme in ("https://", "http://"):
+        if lower.startswith(scheme):
+            return f"{url[: len(scheme)]}\u200b{url[len(scheme) :]}"
+    return url
+
+
 def sanitize_model_output(text: str, citations: dict[str, str] | None = None) -> str:
-    """Neutralise mentions and non-citation markdown links in model output."""
+    """Neutralise mentions and untrusted links in model output.
+
+    Markdown links survive only when their target is a trusted, safely
+    renderable citation URL. Bare ``http(s)://`` URLs and ``<...>`` autolinks
+    are made non-clickable by inserting a zero-width space after the scheme
+    terminator, which keeps the text readable without Discord autolinking it.
+    A bare URL that exactly matches a trusted citation URL is left intact.
+
+    Args:
+        text: Model-generated text bound for Discord.
+        citations: Optional citation map. Entries carrying an
+            ``untrusted_urls`` set are treated as labels only.
+
+    Returns:
+        Text with mentions and untrusted links neutralised.
+    """
     if not text:
         return ""
 
-    allowed_urls = {str(url).strip() for url in (citations or {}).values() if str(url).strip()}
+    allowed_urls = {
+        str(url).strip() for url in renderable_citations(citations).values() if str(url).strip()
+    }
+    protected: list[str] = []
+
+    def protect(rendered: str) -> str:
+        token = f"\x00LINK{len(protected)}\x00"
+        protected.append(rendered)
+        return token
 
     def replace_link(match: re.Match[str]) -> str:
         label = match.group(1)
-        target = match.group(2).strip()
-        if target.startswith("<") and target.endswith(">"):
-            target = target[1:-1].strip()
+        target = _normalize_link_target(match.group(2))
         if target in allowed_urls:
-            return match.group(0)
+            return protect(match.group(0))
         return label
 
     text = _MARKDOWN_LINK_PATTERN.sub(replace_link, text)
+
+    def replace_autolink(match: re.Match[str]) -> str:
+        target = _normalize_link_target(match.group(1))
+        if target in allowed_urls:
+            return protect(match.group(0))
+        return _neutralize_url(match.group(1))
+
+    text = _AUTOLINK_PATTERN.sub(replace_autolink, text)
+
+    def replace_bare_url(match: re.Match[str]) -> str:
+        raw = match.group(0)
+        core, trailing = _split_url_trailing_punctuation(raw)
+        if _normalize_link_target(core) in allowed_urls:
+            return raw
+        return f"{_neutralize_url(core)}{trailing}"
+
+    text = _BARE_HTTP_URL_PATTERN.sub(replace_bare_url, text)
+    for index, rendered in enumerate(protected):
+        text = text.replace(f"\x00LINK{index}\x00", rendered)
     text = _RAW_MENTION_PATTERN.sub(
         lambda match: f"<{match.group(1)}\u200b{match.group(2)}>",
         text,

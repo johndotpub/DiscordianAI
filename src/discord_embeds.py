@@ -8,7 +8,7 @@ import logging
 
 import discord
 
-from .citation_formatting import format_citations
+from .citation_formatting import format_citations, renderable_citations
 from .config import (
     EMBED_LIMIT,
     EMBED_SAFE_LIMIT,
@@ -44,7 +44,9 @@ class CitationEmbedFormatter:
 
         Args:
             content: Main response content with citation markers like [1], [2]
-            citations: Dictionary mapping citation numbers to URLs
+            citations: Dictionary mapping citation numbers to URLs. Entries in
+                an optional ``untrusted_urls`` set stay as plain labels and are
+                never rendered as links.
             title: Optional embed title
             footer_text: Optional footer text
 
@@ -103,9 +105,10 @@ class CitationEmbedFormatter:
         Returns:
             str: Text with citations formatted as Discord hyperlinks
         """
-        formatted_text = format_citations(text, citations, style="embed")
+        safe_citations = renderable_citations(citations)
+        formatted_text = format_citations(text, safe_citations, style="embed")
 
-        self.logger.debug("Formatted %d citations for embed description", len(citations))
+        self.logger.debug("Formatted %d citations for embed description", len(safe_citations))
         return formatted_text
 
 
