@@ -197,7 +197,9 @@ async def test_configured_channel_names_are_case_and_hash_normalised(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_same_named_channel_in_another_guild_is_not_allowed(monkeypatch, deps, caplog):
+async def test_same_named_channel_in_another_guild_is_not_allowed_when_guild_scoped(
+    monkeypatch, deps, caplog
+):
     caplog.set_level(logging.DEBUG, logger=deps["logger"].name)
     first_guild = DummyGuild(1, "First", [DummyChannel(10, "general")])
     second_guild = DummyGuild(2, "Second", [DummyChannel(20, "general")])
@@ -206,6 +208,7 @@ async def test_same_named_channel_in_another_guild_is_not_allowed(monkeypatch, d
             channel.guild = guild
     bot = SimpleNamespace(user=DummyUser(1), guilds=[first_guild, second_guild])
     deps["ALLOWED_CHANNELS"] = ["general"]
+    deps["ALLOWED_GUILDS"] = ["First"]
 
     resolved = message_router.resolve_allowed_channel_names(bot, deps, deps["logger"])
     assert resolved == {10}

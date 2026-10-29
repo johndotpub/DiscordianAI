@@ -86,12 +86,16 @@ def _scoped_guilds(
     bot: discord.Client,
     deps: dict[str, Any] | Any,
 ) -> list[Any]:
-    """Return guilds that may contribute name matches."""
+    """Return guilds that may contribute name matches.
+
+    With no guild filter every guild the bot is in is searched. Configuring
+    ``ALLOWED_GUILDS`` or ``ALLOWED_GUILD_IDS`` narrows the search to matches.
+    """
     guilds = list(getattr(bot, "guilds", []) or [])
     guild_ids, guild_names = _guild_filters(deps)
     if guild_ids or guild_names:
         return [guild for guild in guilds if _guild_is_allowed(guild, deps)]
-    return guilds[:1]
+    return guilds
 
 
 def _match_channel_ids(guilds: list[Any], names: set[str]) -> dict[str, list[int]]:
@@ -117,9 +121,8 @@ def resolve_allowed_channel_names(
     """Resolve configured channel names to IDs and store them for routing.
 
     Names are matched case-insensitively after stripping a leading ``#`` and
-    surrounding whitespace. When no guild is configured, only the first guild
-    is used as the name scope so a channel name cannot accidentally enable the
-    bot in every guild that happens to use the same name.
+    surrounding whitespace. Names match in every guild the bot is in unless
+    ``ALLOWED_GUILDS`` or ``ALLOWED_GUILD_IDS`` narrows the scope.
     """
     logger = logger or deps.get("logger")
     names = _configured_channel_names(deps)
@@ -133,7 +136,15 @@ def resolve_allowed_channel_names(
 
     resolved: set[int] = set()
     if names:
-        matches = _match_channel_ids(_scoped_guilds(bot, deps), names)
+        scoped_guilds = _scoped_guilds(bot, deps)
+        guild_ids, guild_names = _guild_filters(deps)
+        if logger is not None and not guild_ids and not guild_names:
+            logger.info(
+                "ALLOWED_CHANNELS names are matched across all %d guilds; set "
+                "ALLOWED_GUILDS or ALLOWED_GUILD_IDS to narrow the search",
+                len(scoped_guilds),
+            )
+        matches = _match_channel_ids(scoped_guilds, names)
         unmatched = [name for name in sorted(names) if name not in matches]
         for name in names - set(unmatched):
             resolved.update(matches[name])

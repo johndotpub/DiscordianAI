@@ -66,7 +66,7 @@ MUTATIONS = [
         path="src/message_router.py",
         test="tests/test_message_router_auth.py",
         old=(
-            '        if bot.user not in (getattr(message, "mentions", None) or []):\n'
+            "        if not _mentions_bot(message, bot):\n"
             '            _log_ignored(logger, message, "not_mentioned")\n'
             "            return\n"
         ),
