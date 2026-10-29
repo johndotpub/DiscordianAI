@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 import discord
+from discord import AllowedMentions
 
 from .config import (
     DEFAULT_CONTEXT_WINDOW,
@@ -20,7 +21,7 @@ from .conversation_manager import (
 )
 from .error_handling import classify_error, safe_discord_send
 from .logging_adapter import get_logger_with_context
-from .message_splitter import clean_message_content, error_message, send_formatted_message
+from .message_splitter import clean_message_content, send_formatted_message
 from .models import AIClients, AIConfig, AIRequest, OpenAIConfig, PerplexityConfig
 from .rate_limits import check_rate_limit
 from .smart_orchestrator import get_smart_response
@@ -46,6 +47,21 @@ def _perplexity_output_tokens(deps: dict[str, Any] | Any, config: dict[str, Any]
     if output_tokens is None:
         output_tokens = deps["OUTPUT_TOKENS"]
     return output_tokens
+
+
+def _reply_policy(
+    message: discord.Message,
+    author_is_bot: bool,
+) -> tuple[str, AllowedMentions]:
+    """Return the single reply prefix and mention allowlist for this message."""
+    prefix = "" if author_is_bot else f"{message.author.mention} "
+    users = [] if author_is_bot else [message.author]
+    return prefix, AllowedMentions(
+        users=users,
+        roles=[],
+        everyone=False,
+        replied_user=False,
+    )
 
 
 def _guard_bot_turn(
@@ -76,11 +92,20 @@ def _guard_bot_turn(
     return False
 
 
-async def _send_empty_fallback(channel: Any, logger: Any) -> None:
+async def _send_empty_fallback(
+    channel: Any,
+    logger: Any,
+    allowed_mentions: AllowedMentions,
+) -> None:
     """Send the fixed notice for a message that has no body after cleaning."""
     logger.info("Skipping empty message after cleaning")
     fallback = get_error_messages()["no_response_generated"]
-    if not await safe_discord_send(channel, fallback, logger):
+    if not await safe_discord_send(
+        channel,
+        fallback,
+        logger,
+        allowed_mentions=allowed_mentions,
+    ):
         logger.error("Failed to send empty-message fallback")
 
 
@@ -106,7 +131,7 @@ async def _process_message_core(
     ):
         return
 
-    reply_mention = "" if author_is_bot else f"{message.author.mention} "
+    reply_mention, allowed_mentions = _reply_policy(message, author_is_bot)
 
     # Prepare context-specific strings for logging and error messages
     if is_dm:
@@ -127,18 +152,12 @@ async def _process_message_core(
             len(clean_content),
         )
         rate_limit_msg = "⏱️ Rate limit exceeded! Please wait a moment before mentioning me again."
-        error_msg = error_message(
-            message.author.mention,
+        error_msg = (
+            f"{reply_mention}"
             "🔧 Sorry, I encountered an error while processing your message. "
-            "Please try again in a moment.",
+            "Please try again in a moment."
         )
         display_content = clean_message_content(clean_content, 100)
-
-    # A mention-only or whitespace-only message has no body to answer. Reply
-    # with the generic fallback without calling the provider or writing history.
-    if not clean_content:
-        await _send_empty_fallback(message.channel, logger)
-        return
 
     try:
         logger.info("Processing message: %s", display_content)
@@ -151,10 +170,25 @@ async def _process_message_core(
             deps["RATE_LIMIT_PER"],
             logger,
         ):
-            rate_msg = f"{message.author.mention} {rate_limit_msg}"
-            if not await safe_discord_send(message.channel, rate_msg, logger):
+            rate_msg = f"{reply_mention}{rate_limit_msg}"
+            if not await safe_discord_send(
+                message.channel,
+                rate_msg,
+                logger,
+                allowed_mentions=allowed_mentions,
+            ):
                 logger.error("Failed to send rate limit message")
             logger.warning("Rate limit exceeded")
+            return
+
+        # A mention-only or whitespace-only message has no body to answer. Reply
+        # with the generic fallback without calling the provider or writing history.
+        if not clean_content:
+            await _send_empty_fallback(
+                message.channel,
+                logger,
+                allowed_mentions,
+            )
             return
 
         # Get conversation summary for this DM/channel/thread conversation
@@ -248,13 +282,14 @@ async def _process_message_core(
             error_details = classify_error(e)
         except (AttributeError, TypeError):
             error_details = None
-        user_friendly_msg = (
-            error_details.user_message
-            if (error_details is not None and hasattr(error_details, "user_message"))
-            else error_msg
-        )
+        user_friendly_msg = getattr(error_details, "user_message", None) or error_msg
 
-        if not await safe_discord_send(message.channel, user_friendly_msg, logger):
+        if not await safe_discord_send(
+            message.channel,
+            user_friendly_msg,
+            logger,
+            allowed_mentions=allowed_mentions,
+        ):
             logger.error(  # noqa: TRY400 — intentional: exception already logged above
                 "Failed to send error message"
             )

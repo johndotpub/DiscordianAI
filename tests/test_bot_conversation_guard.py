@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from src import message_router
-from src.config import _CONFIG_DEFAULTS, load_config
+from src.config import _CONFIG_DEFAULTS, get_error_messages, load_config
 from src.conversation_manager import (
     ThreadSafeConversationManager,
     conversation_key_for_message,
@@ -314,6 +314,109 @@ def test_stale_bot_streak_is_evicted_by_the_conversation_ttl():
     clock.now += 61
 
     assert manager.begin_bot_turn(conversation_key=key) == (True, 1)
+
+
+@pytest.mark.asyncio
+async def test_bot_rate_limit_notice_carries_no_mention_permission(openai_response):
+    harness = Harness(openai_response)
+    harness.deps["RATE_LIMIT"] = 1
+    harness.deps["config"]["RATE_LIMIT"] = 1
+    await harness.send(harness.other_bot, "first turn")
+
+    limited = await harness.send(harness.other_bot, "second turn")
+
+    assert limited.replies == []
+    assert len(harness.channel.sent_messages) == 1
+    content, kwargs = harness.channel.sent_messages[0]
+    assert "rate limit" in content.lower()
+    assert "<@" not in content
+    assert "<@!" not in content
+    allowed_mentions = kwargs["allowed_mentions"]
+    assert allowed_mentions.users == []
+    assert allowed_mentions.roles == []
+    assert allowed_mentions.everyone is False
+    assert allowed_mentions.replied_user is False
+
+
+@pytest.mark.asyncio
+async def test_bot_error_notice_carries_no_mention_permission(openai_response, monkeypatch):
+    harness = Harness(openai_response)
+    monkeypatch.setattr(
+        "src.message_processor.get_smart_response",
+        AsyncMock(side_effect=RuntimeError("provider exploded")),
+    )
+    monkeypatch.setattr("src.message_processor.classify_error", lambda _exc: None)
+
+    failed = await harness.send(harness.other_bot, "trigger the error path")
+
+    assert failed.replies == []
+    assert len(harness.channel.sent_messages) == 1
+    content, kwargs = harness.channel.sent_messages[0]
+    assert "error" in content.lower()
+    assert "<@" not in content
+    assert "<@!" not in content
+    allowed_mentions = kwargs["allowed_mentions"]
+    assert allowed_mentions.users == []
+    assert allowed_mentions.roles == []
+    assert allowed_mentions.everyone is False
+    assert allowed_mentions.replied_user is False
+
+
+@pytest.mark.asyncio
+async def test_human_rate_limit_notice_keeps_the_mention(openai_response):
+    harness = Harness(openai_response)
+    harness.deps["RATE_LIMIT"] = 1
+    harness.deps["config"]["RATE_LIMIT"] = 1
+    await harness.send(harness.human, "first message")
+
+    limited = await harness.send(harness.human, "second message")
+
+    assert limited.replies == []
+    assert len(harness.channel.sent_messages) == 1
+    content, kwargs = harness.channel.sent_messages[0]
+    assert content.startswith(f"{harness.human.mention} ")
+    allowed_mentions = kwargs["allowed_mentions"]
+    assert allowed_mentions.users == [harness.human]
+    assert allowed_mentions.roles == []
+    assert allowed_mentions.everyone is False
+    assert allowed_mentions.replied_user is False
+
+
+@pytest.mark.asyncio
+async def test_human_error_notice_keeps_the_mention(openai_response, monkeypatch):
+    harness = Harness(openai_response)
+    monkeypatch.setattr(
+        "src.message_processor.get_smart_response",
+        AsyncMock(side_effect=RuntimeError("provider exploded")),
+    )
+    monkeypatch.setattr("src.message_processor.classify_error", lambda _exc: None)
+
+    failed = await harness.send(harness.human, "trigger the error path")
+
+    assert failed.replies == []
+    assert len(harness.channel.sent_messages) == 1
+    content, kwargs = harness.channel.sent_messages[0]
+    assert content.startswith(f"{harness.human.mention} ")
+    allowed_mentions = kwargs["allowed_mentions"]
+    assert allowed_mentions.users == [harness.human]
+    assert allowed_mentions.roles == []
+    assert allowed_mentions.everyone is False
+    assert allowed_mentions.replied_user is False
+
+
+@pytest.mark.asyncio
+async def test_mention_only_messages_consume_rate_limit_budget(openai_response):
+    harness = Harness(openai_response)
+    harness.deps["RATE_LIMIT"] = 2
+    harness.deps["config"]["RATE_LIMIT"] = 2
+
+    for _ in range(5):
+        await harness.send(harness.human, "")
+
+    notices = [content for content, _kwargs in harness.channel.sent_messages]
+    assert notices[0] == get_error_messages()["no_response_generated"]
+    assert sum("rate limit" in notice.lower() for notice in notices) >= 1
+    assert harness.create.await_count == 0
 
 
 def test_trusted_bot_configuration_surface_is_gone(monkeypatch):

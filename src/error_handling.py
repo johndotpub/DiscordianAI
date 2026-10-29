@@ -23,6 +23,7 @@ import time
 from typing import Any
 
 import discord
+from discord import AllowedMentions
 import httpx
 import openai
 
@@ -759,6 +760,8 @@ async def safe_discord_send(
     content: str,
     logger: logging.Logger,
     max_retries: int = 3,
+    *,
+    allowed_mentions: AllowedMentions | None = None,
 ) -> bool:
     """Safely send message to Discord with retry logic and error handling.
 
@@ -767,13 +770,17 @@ async def safe_discord_send(
         content: Message content
         logger: Logger instance
         max_retries: Maximum retry attempts
+        allowed_mentions: Optional mention allowlist for the send
 
     Returns:
         bool: True if message sent successfully, False otherwise
     """
 
     async def _send_once() -> None:
-        await channel.send(content)
+        kwargs: dict[str, Any] = {}
+        if allowed_mentions is not None:
+            kwargs["allowed_mentions"] = allowed_mentions
+        await channel.send(content, **kwargs)
 
     try:
         await retry_with_backoff(_send_once, _discord_retry_config(max_retries), logger)
