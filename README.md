@@ -20,7 +20,7 @@
 
 # DiscordianAI
 
-DiscordianAI is a Discord bot that routes each message to OpenAI or Perplexity, keeps conversation history per conversation, and formats replies for Discord. `GPT_MODEL` defaults to `gpt-5-mini` and is sent as configured: an unknown model name produces a startup warning, not an allowlist rejection. `PERPLEXITY_MODEL` defaults to `sonar-pro`. The provider decides which model names are valid. See [docs/API-CONTRACT.md](docs/API-CONTRACT.md) for what is sent to each provider.
+DiscordianAI is a Discord bot that routes each message to OpenAI or Perplexity, keeps conversation history per conversation, and formats replies for Discord. `GPT_MODEL` defaults to `gpt-6-luna` and is sent as configured: an unknown model name produces a startup warning, not an allowlist rejection. `PERPLEXITY_MODEL` defaults to `sonar-pro`. The provider decides which model names are valid. See [docs/API-CONTRACT.md](docs/API-CONTRACT.md) for what is sent to each provider.
 
 ## What Makes It Different
 
@@ -89,7 +89,7 @@ The launcher resolves Python in this order: pyenv → project-local `.venv` → 
 | Key | Purpose |
 |-----|---------|
 | `DISCORD_TOKEN` | Bot authentication token from the Discord Developer Portal.
-| `GPT_MODEL` | OpenAI model name sent as configured. Default `gpt-5-mini`; unknown names warn but do not block startup.
+| `GPT_MODEL` | OpenAI model name sent as configured. Default `gpt-6-luna`; unknown names warn but do not block startup.
 | `PERPLEXITY_MODEL` | Perplexity model name. Default `sonar-pro`; known names include `sonar`, `sonar-deep-research`, and `sonar-reasoning-pro`.
 | `INPUT_TOKENS` / `OUTPUT_TOKENS` | Prompt budget and OpenAI completion cap. `OUTPUT_TOKENS` is sent as `max_completion_tokens` and includes reasoning tokens.
 | `PERPLEXITY_OUTPUT_TOKENS` | Perplexity completion cap, sent as `max_tokens` (output only). Defaults to `OUTPUT_TOKENS`.
@@ -118,7 +118,7 @@ DISCORD_TOKEN=your_discord_bot_token
 [Default]
 OPENAI_API_KEY=sk-your-openai-key
 OPENAI_API_URL=https://api.openai.com/v1/
-GPT_MODEL=gpt-5-mini
+GPT_MODEL=gpt-6-luna
 PERPLEXITY_API_KEY=pplx-your-perplexity-key
 PERPLEXITY_MODEL=sonar-pro
 INPUT_TOKENS=120000

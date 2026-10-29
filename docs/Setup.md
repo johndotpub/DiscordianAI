@@ -45,7 +45,7 @@ Create and configure your Discord bot:
 ### Option A: Smart Hybrid Mode (Recommended) 🧠
 Get both API keys for intelligent automatic service selection:
 
-**OpenAI API Key** (for GPT-5):
+**OpenAI API Key** (for GPT-6):
 - Go to [OpenAI Platform](https://platform.openai.com/api-keys)
 - Create new API key
 - Copy the key (starts with `sk-`)

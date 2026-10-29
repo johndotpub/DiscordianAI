@@ -106,7 +106,7 @@ class TestLoadConfig:
         assert config["OPENAI_API_URL"] == "https://api.openai.com/v1/"
         assert config["PERPLEXITY_API_KEY"] is None
         assert config["PERPLEXITY_API_URL"] == "https://api.perplexity.ai"
-        assert config["GPT_MODEL"] == "gpt-5-mini"
+        assert config["GPT_MODEL"] == "gpt-6-luna"
         assert config["INPUT_TOKENS"] == 120000
         assert config["OUTPUT_TOKENS"] == 8000
         assert config["CONTEXT_WINDOW"] == 128000
@@ -138,7 +138,7 @@ ACTIVITY_STATUS=test game
 [Default]
 OPENAI_API_KEY=test_api_key
 PERPLEXITY_API_KEY=test_perplexity_key
-GPT_MODEL=gpt-5-mini
+GPT_MODEL=gpt-6-luna
 INPUT_TOKENS=50000
 OUTPUT_TOKENS=2000
 SYSTEM_MESSAGE=Test system message
@@ -179,7 +179,7 @@ LOG_LEVEL=DEBUG
             assert config["ACTIVITY_STATUS"] == "test game"
             assert config["OPENAI_API_KEY"] == "test_api_key"
             assert config["PERPLEXITY_API_KEY"] == "test_perplexity_key"
-            assert config["GPT_MODEL"] == "gpt-5-mini"
+            assert config["GPT_MODEL"] == "gpt-6-luna"
             assert config["INPUT_TOKENS"] == 50000
             assert config["OUTPUT_TOKENS"] == 2000
             assert config["SYSTEM_MESSAGE"] == "Test system message"
@@ -208,7 +208,7 @@ LOG_LEVEL=DEBUG
 
         # Should return defaults when file doesn't exist
         assert config["DISCORD_TOKEN"] is None
-        assert config["GPT_MODEL"] == "gpt-5-mini"
+        assert config["GPT_MODEL"] == "gpt-6-luna"
 
     def test_load_config_with_base_folder(self):
         """Test config loading with base folder."""
@@ -472,7 +472,7 @@ OPENAI_API_KEY=test_key
             config = load_config(temp_config_path)
             # At minimum, defaults should be present
             assert "GPT_MODEL" in config
-            assert config["GPT_MODEL"] == "gpt-5-mini"
+            assert config["GPT_MODEL"] == "gpt-6-luna"
         finally:
             os.unlink(temp_config_path)
 
@@ -489,7 +489,7 @@ DISCORD_TOKEN=test_token
         try:
             config = load_config(temp_config_path)
             assert config["DISCORD_TOKEN"] == "test_token"  # noqa: S105
-            assert config["GPT_MODEL"] == "gpt-5-mini"  # Default value
+            assert config["GPT_MODEL"] == "gpt-6-luna"  # Default value
             assert config["OPENAI_API_KEY"] is None  # Default value
         finally:
             os.unlink(temp_config_path)
@@ -503,7 +503,7 @@ DISCORD_TOKEN=test_token
         try:
             config = load_config(temp_config_path)
             # Should return all defaults
-            assert config["GPT_MODEL"] == "gpt-5-mini"
+            assert config["GPT_MODEL"] == "gpt-6-luna"
             assert config["DISCORD_TOKEN"] is None
         finally:
             os.unlink(temp_config_path)
@@ -704,4 +704,4 @@ TEST_VALUE=test
         """Test handling of nonexistent base_folder."""
         config = load_config(None, "/nonexistent/path/that/does/not/exist")
         # Should not crash, should use defaults
-        assert config["GPT_MODEL"] == "gpt-5-mini"
+        assert config["GPT_MODEL"] == "gpt-6-luna"

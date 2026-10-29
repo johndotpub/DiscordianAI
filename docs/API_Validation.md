@@ -50,7 +50,7 @@ The live provider behaviour behind these checks is recorded in
 - That cap covers **visible output plus reasoning tokens**.
 - The documented maximum is **128,000** completion tokens. A larger value is an
   error; it is not silently clamped.
-- GPT-5-specific parameter validation does **not** exist in this codebase. The
+- GPT-generation-specific parameter validation does **not** exist in this codebase. The
   old check was removed, and this document no longer claims otherwise.
 - Model names are not an allowlist gate. A name outside the documented list
   produces a warning because the provider may already support it.

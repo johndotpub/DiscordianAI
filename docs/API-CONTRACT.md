@@ -15,12 +15,15 @@ is not a contract.
 | Item | Value | Source |
 |---|---|---|
 | Endpoint used | `POST /v1/chat/completions` | `src/openai_processing.py` |
-| Model sent | whatever `GPT_MODEL` says; the deployment uses `gpt-5` | `config.ini` |
+| Model sent | whatever `GPT_MODEL` says; the shipped default is `gpt-6-luna` | `config.ini.example` |
 | Newer models accepted by the API | `gpt-5.4` answered normally at probe time, so the API is not the limit — our allowlist is | probe |
+| Chat Completions with GPT-6 | `gpt-6-luna` returned HTTP 200 at probe time with `max_completion_tokens` | probe |
 | Output cap parameter | `max_completion_tokens` (not `max_tokens`, which is deprecated and incompatible with o-series) | OpenAI Chat reference |
 | What the output cap covers | **visible output plus reasoning tokens.** A cap of 16 tokens on `gpt-5` returned HTTP 200 with `finish_reason: length` and `content: ""` — the whole budget went to reasoning | probe |
 | Maximum completion tokens on `gpt-5` | 128,000 | probe (error text) |
 | `reasoning_effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`; not every model supports every value. `gpt-6-astra` rejects `none` | OpenAI reference + changelog |
+| GPT-6 default reasoning effort | `medium`; the bot does not override it | OpenAI reference |
+| Function calling on Chat Completions | requires `reasoning_effort: none`; this bot does not use function calling | OpenAI reference |
 | `verbosity` | `low`, `medium`, `high` | OpenAI reference |
 | Oversized output cap | HTTP 400, `error.type: invalid_request_error`, `error.code: invalid_value`, message `max_tokens is too large: … This model supports at most 128000 completion tokens` | probe |
 | Prompt-too-long | code `context_length_exceeded` is the documented family, **not verified here** — probing it means paying to send a 128k-token prompt. Treat as `UNVERIFIED` until someone does | unverified |
@@ -37,8 +40,9 @@ is not a contract.
    `finish_reason: length`. The empty-content reroute path exists — it is a safety net, not
    a licence to set the cap small.
 2. Token budgeting must reserve headroom for reasoning, not just for the visible answer.
-3. `is_supported_openai_model` rejecting `gpt-5.4` or `gpt-6-*` is a *names* problem, not an
-   API problem. Validate shape, warn, and never block on an unknown model.
+3. `is_supported_openai_model` accepts the `gpt-6`, `gpt-6.1`, `gpt-5.6` and
+   `gpt-5` families, including dated snapshots, while rejecting `gpt-5-chat` and
+   other families. An unrecognised name still warns and never blocks startup.
 4. Classify `invalid_value` and `invalid_request_error` as deterministic configuration
    faults: retrying them wastes an attempt and 2–4 seconds of the user's time.
 

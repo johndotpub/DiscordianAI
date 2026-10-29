@@ -55,7 +55,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 | Component | File | Purpose |
 |-----------|------|---------|
 | **Smart Orchestrator** | `smart_orchestrator.py` | AI service selection logic based on message analysis |
-| **OpenAI Processing** | `openai_processing.py` | GPT-5 API interactions, response formatting |
+| **OpenAI Processing** | `openai_processing.py` | GPT API interactions, response formatting |
 | **Perplexity Processing** | `perplexity_processing.py` | Web search, citation extraction |
 | **Web Scraper** | `web_scraper.py` | URL content extraction for context enrichment |
 

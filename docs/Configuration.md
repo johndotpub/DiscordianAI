@@ -25,8 +25,9 @@ Configure OpenAI and Perplexity APIs for intelligent hybrid operation.
 #### OpenAI Settings
 - **`OPENAI_API_KEY`**: Your OpenAI API key for GPT models *(leave empty to disable)*
 - **`OPENAI_API_URL`**: OpenAI API endpoint *(default: "https://api.openai.com/v1/")*
-- **`GPT_MODEL`**: Model to use: "gpt-5-mini" (default, cost-effective), "gpt-5", "gpt-5-nano", "gpt-5-chat" *(default: "gpt-5-mini")*
-  
+- **`GPT_MODEL`**: Model to use. GPT-6 is current: "gpt-6-luna" (default, cost-effective), "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-astra", "gpt-6-sol". Legacy GPT-5 models ("gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-pro") remain selectable until the provider retires them on 2026-12-11 *(default: "gpt-6-luna")*
+
+The GPT-6 family is current. The provider retires the GPT-5 series on 2026-12-11; those names stay selectable until then, and `gpt-5-chat` is already retired. Validation accepts any model in the `gpt-6`, `gpt-6.1`, `gpt-5.6` and `gpt-5` families, including dated snapshots, so a new point release is usable without a code change. Names outside those families, such as `gpt-7` or `gpt6-luna`, are rejected.
 
 #### Perplexity Settings  
 - **`PERPLEXITY_API_KEY`**: Your Perplexity API key for web search *(leave empty to disable)*
@@ -156,10 +157,10 @@ ACTIVITY_STATUS=you bite my shiny metal ass!
 
 [Default]
 # === OPENAI CONFIGURATION ===
-# For GPT-5 series models - Leave blank to disable OpenAI
+# For GPT-6 series models - Leave blank to disable OpenAI
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_API_URL=https://api.openai.com/v1/
-GPT_MODEL=gpt-5-mini
+GPT_MODEL=gpt-6-luna
 
 # === PERPLEXITY CONFIGURATION ===  
 # For web search capabilities - Leave blank to disable web search
@@ -182,7 +183,7 @@ MAX_URLS_PER_MESSAGE=3
 MAX_TOTAL_SCRAPED_CHARS=60000
 SCRAPE_DEADLINE_SECONDS=20
 
-# No GPT-5-specific parameters are supported by the public API; do not configure
+# No GPT-generation-specific parameters are supported by the public API; do not configure
 
 [Limits]
 # Rate limiting to prevent spam
@@ -246,7 +247,7 @@ export OPENAI_API_URL="https://api.openai.com/v1/"
 export PERPLEXITY_API_KEY="your_perplexity_key"
 export PERPLEXITY_API_URL="https://api.perplexity.ai"
 export PERPLEXITY_MODEL="sonar-pro"
-export GPT_MODEL="gpt-5-mini"
+export GPT_MODEL="gpt-6-luna"
 export INPUT_TOKENS="120000"
 export OUTPUT_TOKENS="8000"
 export PERPLEXITY_OUTPUT_TOKENS="8000"

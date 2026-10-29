@@ -11,7 +11,7 @@
   "DISCORDIANAI_LOG_COLOR": true,
   "DISCORD_TOKEN": "test-token",
   "ENTITY_DETECTION_MIN_WORDS": 10,
-  "GPT_MODEL": "gpt-5-mini",
+  "GPT_MODEL": "gpt-6-luna",
   "HEALTH_ENABLED": true,
   "HEALTH_HOST": "127.0.0.1",
   "HEALTH_PORT": 8080,

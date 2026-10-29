@@ -30,16 +30,34 @@ from typing import Any
 # ============================================================================
 
 # OpenAI Models
-OPENAI_MODEL_PREFIX = "gpt-5"
-DEFAULT_OPENAI_MODEL = "gpt-5-mini"
+OPENAI_MODEL_PREFIX = "gpt-6"
+DEFAULT_OPENAI_MODEL = "gpt-6-luna"
 
-# Canonical GPT-5 model identifiers that we document. Snapshot variants are allowed via regex.
+# Canonical model identifiers that we document. The GPT-6 generation is current;
+# the GPT-5 entries remain selectable until the provider retires them on 2026-12-11.
 OPENAI_VALID_MODELS = [
-    OPENAI_MODEL_PREFIX,  # Latest generation - standard
-    DEFAULT_OPENAI_MODEL,  # Latest generation - cost-effective
-    "gpt-5-nano",  # Latest generation - high-speed
-    "gpt-5-chat",  # Latest generation - conversational
+    DEFAULT_OPENAI_MODEL,  # Current generation - cost-effective default
+    "gpt-6.1-sol",  # Current generation - GPT-6.1
+    "gpt-6.1-terra",  # Current generation - GPT-6.1
+    "gpt-6-astra",  # Current generation - GPT-6
+    "gpt-6-sol",  # Current generation - GPT-6
+    # Legacy GPT-5 models: selectable only until the 2026-12-11 shutdown.
+    "gpt-5",
+    "gpt-5-mini",
+    "gpt-5-nano",
+    "gpt-5-pro",
 ]
+
+# Supported families accept point releases and dated snapshots within the family.
+OPENAI_MODEL_FAMILIES = (
+    OPENAI_MODEL_PREFIX,
+    "gpt-6.1",
+    "gpt-5.6",
+    "gpt-5",
+)
+
+# Models the provider has already retired; rejected even though the family matches.
+OPENAI_RETIRED_MODELS = ("gpt-5-chat",)
 
 
 # Perplexity Models (per the provider's documented enum)
@@ -52,19 +70,31 @@ PERPLEXITY_MODELS = [
 ]
 
 
-SNAPSHOT_MODEL_PREFIX = f"{OPENAI_MODEL_PREFIX}."
+def _matches_model_family(model: str, family: str) -> bool:
+    """Return True when ``model`` is ``family`` or extends it at a boundary."""
+    return model == family or model.startswith((f"{family}-", f"{family}."))
 
 
 def is_supported_openai_model(model: str | None) -> bool:
-    """Return True if the provided GPT model matches supported GPT-5 identifiers."""
+    """Return True if the model belongs to a supported OpenAI GPT family.
+
+    A model is accepted when it is one of the documented ``OPENAI_VALID_MODELS``
+    or when it extends a family from ``OPENAI_MODEL_FAMILIES`` at a hyphen, a
+    dot, or the end of the identifier. That covers point releases and dated
+    snapshots such as ``gpt-6-luna-2026-09-01`` while rejecting a different
+    family (``gpt-7``), a malformed prefix (``gpt6-luna``), and identifiers the
+    provider has already retired (``gpt-5-chat``).
+    """
     if not model:
+        return False
+
+    if any(_matches_model_family(model, retired) for retired in OPENAI_RETIRED_MODELS):
         return False
 
     if model in OPENAI_VALID_MODELS:
         return True
 
-    # Snapshot builds arrive as dotted identifiers (e.g., gpt-5.2025-02-18, gpt-5.1).
-    return bool(model.startswith(SNAPSHOT_MODEL_PREFIX))
+    return any(_matches_model_family(model, family) for family in OPENAI_MODEL_FAMILIES)
 
 
 # API URL Patterns for validation (stricter patterns with end anchor)

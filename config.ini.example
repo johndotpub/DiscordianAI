@@ -32,10 +32,11 @@ ACTIVITY_STATUS=you bite my shiny metal ass!
 
 [Default]
 # === OPENAI CONFIGURATION ===
-# Supported: gpt-5-mini (default), gpt-5, gpt-5-nano, gpt-5-chat
+# Supported: gpt-6-luna (default), gpt-6.1-sol, gpt-6.1-terra, gpt-6-astra,
+# gpt-6-sol, plus legacy gpt-5, gpt-5-mini, gpt-5-nano and gpt-5-pro until 2026-12-11
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_API_URL=https://api.openai.com/v1/
-GPT_MODEL=gpt-5-mini
+GPT_MODEL=gpt-6-luna
 
 # === PERPLEXITY CONFIGURATION ===  
 # Supported: sonar-pro (default), sonar, sonar-deep-research, sonar-reasoning-pro
@@ -123,13 +124,13 @@ HEALTH_PROVIDER_STALE_SECONDS=300
 # HYBRID MODE (Smart Auto-Selection - Recommended):
 # OPENAI_API_KEY=sk-your-openai-key
 # PERPLEXITY_API_KEY=pplx-your-perplexity-key
-# GPT_MODEL=gpt-5-mini         # Cost-effective default
+# GPT_MODEL=gpt-6-luna        # Cost-effective default
 # PERPLEXITY_MODEL=sonar-pro   # Latest web search model
 # 
 # OPENAI ONLY MODE:
 # OPENAI_API_KEY=sk-your-openai-key
 # PERPLEXITY_API_KEY=          # Leave blank
-# GPT_MODEL=gpt-5-mini         # Or gpt-5, gpt-5-nano, gpt-5-chat
+# GPT_MODEL=gpt-6-luna        # Or gpt-6.1-sol, gpt-6-astra, gpt-5-nano
 #
 # PERPLEXITY ONLY MODE:
 # OPENAI_API_KEY=              # Leave blank

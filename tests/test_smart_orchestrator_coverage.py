@@ -476,7 +476,7 @@ class TestProcessingModes:
                 12345,
                 "assistant",
                 "OpenAI response",
-                metadata={"ai_service": "openai", "model": "gpt-5-mini"},
+                metadata={"ai_service": "openai", "model": "gpt-6-luna"},
             )
             assert conversation_manager.add_message.call_count == 2
 
@@ -601,7 +601,7 @@ class TestProcessingModes:
             12345,
             "assistant",
             "OpenAI response",
-            metadata={"ai_service": "openai", "model": "gpt-5-mini"},
+            metadata={"ai_service": "openai", "model": "gpt-6-luna"},
         )
         assert conversation_manager.add_message.call_count == 2
 
@@ -645,7 +645,7 @@ class TestProcessingModes:
                 12345,
                 "assistant",
                 "OpenAI fallback response",
-                metadata={"ai_service": "openai", "model": "gpt-5-mini"},
+                metadata={"ai_service": "openai", "model": "gpt-6-luna"},
             )
             assert conversation_manager.add_message.call_count == 2
 
