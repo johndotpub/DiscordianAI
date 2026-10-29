@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from src.config import EMBED_SAFE_LIMIT, MAX_SPLIT_RECURSION
+from src.config import EMBED_SAFE_LIMIT
 from src.message_splitter import (
     send_formatted_message,
     send_split_message,
@@ -444,22 +444,24 @@ class TestEmbedCharacterLimits:
 
 
 @pytest.mark.asyncio
-async def test_send_split_message_recursion_guard():
-    """Recursion guard truncates and exits when depth exceeds limit."""
+async def test_send_split_message_ignores_legacy_depth_hint():
+    """A legacy recursion-depth hint no longer truncates deliverable content."""
     channel = MagicMock(spec=discord.TextChannel)
     channel.send = AsyncMock()
 
     deps = {"logger": MagicMock()}
+    message = "X" * 5000
 
     await send_split_message(
         channel,
-        "X" * 50,
+        message,
         deps,
-        _recursion_depth=MAX_SPLIT_RECURSION + 1,
+        _recursion_depth=11,
     )
 
-    # Should send a truncated message and a follow-up notice
-    assert channel.send.call_count == 2
+    sent = [call[0][0] for call in channel.send.call_args_list]
+    assert "".join(sent) == message
+    assert not any("truncated" in content.lower() for content in sent)
 
 
 if __name__ == "__main__":

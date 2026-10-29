@@ -12,7 +12,6 @@ from src.config import (
     DEFAULT_PERPLEXITY_MODEL,
     EMBED_LIMIT,
     EMBED_SAFE_LIMIT,
-    MAX_SPLIT_RECURSION,
     MESSAGE_LIMIT,
 )
 from src.conversation_manager import ThreadSafeConversationManager
@@ -121,9 +120,10 @@ async def test_safe_embed_limit_holds_at_3840_and_splits_at_3841():
     assert over.sent[1][0] == "a"
 
 
-@pytest.mark.parametrize("depth", [MAX_SPLIT_RECURSION, MAX_SPLIT_RECURSION + 1])
+@pytest.mark.parametrize("depth", [10, 11])
 @pytest.mark.asyncio
-async def test_embed_recursion_guard_sends_one_truncated_reply(depth):
+async def test_embed_legacy_depth_hint_does_not_truncate(depth):
+    """The old recursion depth is ignored; the whole answer is delivered."""
     channel = RecordingChannel()
 
     await send_split_message_with_embed(
@@ -134,11 +134,11 @@ async def test_embed_recursion_guard_sends_one_truncated_reply(depth):
         _recursion_depth=depth,
     )
 
-    assert len(channel.sent) == 1
-    content, kwargs = channel.sent[0]
-    assert len(content) <= 2000
-    assert "truncated" in content
-    assert "embed" not in kwargs
+    assert len(channel.sent) == 2
+    head_embed = channel.sent[0][1]["embed"]
+    assert head_embed.description == "a" * 3840
+    assert channel.sent[1][0] == "a" * 1160
+    assert not any("truncated" in content.lower() for content, _ in channel.sent)
 
 
 @pytest.mark.asyncio

@@ -17,7 +17,7 @@ from .config import (
     EMBED_LIMIT,
     EMBED_SAFE_LIMIT,
     LINK_PATTERN,
-    MAX_SPLIT_RECURSION,
+    MAX_SPLIT_CHUNKS,
     MESSAGE_BUFFER,
     MESSAGE_LIMIT,
 )
@@ -26,6 +26,7 @@ from .truncation import truncate_with_notice
 
 _RAW_MENTION_PATTERN = re.compile(r"<(@[!&]?|#)(\d+)>")
 _MARKDOWN_LINK_PATTERN = re.compile(r"!?\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)]+)\)")
+_CONTINUED_FOOTER = "🌐 Web search results (continued)"
 
 # ============================================================================
 # CORE MESSAGE SENDING & SPLITTING
@@ -58,6 +59,82 @@ async def _deliver(
         await channel.send(content, **kwargs)
 
 
+def _truncate_to_limit(text: str, limit: int) -> str:
+    """Truncate text to ``limit`` characters with the visible Discord notice."""
+    notice = truncation_notice(len(text))
+    available = limit - len(notice)
+    if available <= 0:
+        return text[:limit]
+    truncated, _ = truncate_with_notice(text, available, notice)
+    return truncated
+
+
+def _split_message_chunks(
+    message: str,
+    first_limit: int,
+    logger: Any,
+    max_chunks: int = MAX_SPLIT_CHUNKS,
+) -> list[str]:
+    """Split a message into at most ``max_chunks`` pieces without recursion.
+
+    Each piece except the first is bounded by ``MESSAGE_LIMIT``; the first is
+    bounded by ``first_limit`` so a mention prefix still fits.  The existing
+    natural-boundary and code-block-aware adjustments decide every split point.
+    """
+    chunks: list[str] = []
+    remaining = message
+    limit = first_limit
+
+    while True:
+        if len(remaining) <= limit:
+            chunks.append(remaining)
+            return chunks
+
+        if len(chunks) >= max_chunks - 1:
+            logger.error(
+                "Message split reached chunk cap (%d) for message length %d",
+                max_chunks,
+                len(message),
+            )
+            chunks.append(_truncate_to_limit(remaining, limit))
+            return chunks
+
+        safe_target = max(1, limit - MESSAGE_BUFFER)
+        safe_split_point = min(safe_target, len(remaining) - 1)
+        split_index = find_optimal_split_point(remaining, safe_split_point)
+
+        if split_index >= limit:
+            split_index = max(1, limit - 1)
+
+        before_split, after_split = adjust_split_for_code_blocks(remaining, split_index)
+
+        if len(before_split) > limit:
+            overflow = before_split[limit:]
+            before_split = before_split[:limit]
+            after_split = overflow + after_split
+
+        if not before_split or len(after_split) >= len(remaining):
+            if not chunks and limit < MESSAGE_LIMIT:
+                # The mention prefix consumed the whole head.  Send that prefix-only
+                # chunk, then retry the same text with a full-size chunk, matching
+                # the old recursion's next step without recursing.
+                chunks.append("")
+                remaining = after_split or remaining
+                limit = MESSAGE_LIMIT
+                continue
+            logger.warning(
+                "Cannot split indivisible content of length %d within %d characters",
+                len(remaining),
+                limit,
+            )
+            chunks.append(_truncate_to_limit(remaining, limit))
+            return chunks
+
+        chunks.append(before_split)
+        remaining = after_split
+        limit = MESSAGE_LIMIT
+
+
 # Preserve the existing positional API for current callers.
 async def send_split_message(  # noqa: PLR0913, PLR0917
     channel: discord.TextChannel | discord.DMChannel,
@@ -67,8 +144,14 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
     original_message: discord.Message | None = None,
     mention_prefix: str | None = None,
     _recursion_depth: int = 0,
+    _chunk_budget: int | None = None,
 ) -> None:
-    """Send messages with automatic splitting for Discord's message character limit."""
+    """Send messages with automatic splitting for Discord's message character limit.
+
+    ``_recursion_depth`` is accepted for backwards compatibility and ignored:
+    splitting is iterative and bounded by a chunk count instead.  ``_chunk_budget``
+    lets an embed continuation share the same overall chunk cap.
+    """
     logger = deps["logger"]
     message = sanitize_for_discord(message)
     prefix_text = mention_prefix or ""
@@ -84,35 +167,15 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
         mention_prefix = None
 
     max_first_chunk = max(1, MESSAGE_LIMIT - prefix_length)
-
-    # Recursion safety
-    if _recursion_depth >= MAX_SPLIT_RECURSION:
-        logger.error(
-            "Max split recursion reached (%d) for message length %d",
-            MAX_SPLIT_RECURSION,
-            len(message),
-        )
-        trunc_notice = "[Message truncated due to recursion limit]"
-        safe_recursion_length = max(1, max_first_chunk - 50)
-        truncated, _ = truncate_with_notice(message, safe_recursion_length, "")
-        truncated = f"{prefix_text}{truncated}" if prefix_text else truncated
-        await _deliver(
-            channel,
-            truncated,
-            original_message=original_message,
-            suppress_embeds=suppress_embeds,
-        )
-        await _deliver(
-            channel,
-            trunc_notice,
-            original_message=original_message,
-            suppress_embeds=suppress_embeds,
-        )
+    max_chunks = MAX_SPLIT_CHUNKS if _chunk_budget is None else _chunk_budget
+    if max_chunks <= 0:
+        logger.error("Message split chunk budget exhausted for length %d", len(message))
         return
 
-    # Fits in one message
-    if len(message) <= max_first_chunk:
-        content = f"{prefix_text}{message}" if prefix_text else message
+    chunks = _split_message_chunks(message, max_first_chunk, logger, max_chunks)
+
+    for index, chunk in enumerate(chunks):
+        content = f"{prefix_text}{chunk}" if index == 0 and prefix_text else chunk
         if len(content) > MESSAGE_LIMIT:
             content, _ = truncate_with_notice(content, MESSAGE_LIMIT - 3, "...")
         await _deliver(
@@ -121,45 +184,141 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
             original_message=original_message,
             suppress_embeds=suppress_embeds,
         )
-        return
 
-    # Logical split: aim near the Discord limit to minimize message count
-    safe_target = max(1, max_first_chunk - MESSAGE_BUFFER)
-    safe_split_point = min(safe_target, len(message) - 1)
-    # Keep this optimal finder so we don't chop inside code fences; it feeds the
-    # code-block-aware adjustment below.
-    split_index = find_optimal_split_point(message, safe_split_point)
 
-    if split_index >= max_first_chunk:
-        split_index = max(1, max_first_chunk - 1)
+def _split_embed_head(message: str) -> tuple[str, str]:
+    """Return the embed head and remaining text using the existing split rules."""
+    if len(message) <= EMBED_SAFE_LIMIT:
+        return message, ""
+    split_index = find_optimal_split_point(message, EMBED_SAFE_LIMIT)
+    return adjust_split_for_code_blocks(message, split_index)
 
-    before_split, after_split = adjust_split_for_code_blocks(message, split_index)
 
-    if len(before_split) > max_first_chunk:
-        overflow = before_split[max_first_chunk:]
-        before_split = before_split[:max_first_chunk]
-        after_split = overflow + after_split
-
-    # Send parts
-    content_first = f"{prefix_text}{before_split}" if prefix_text else before_split
-
-    await _deliver(
-        channel,
-        content_first,
-        original_message=original_message,
-        suppress_embeds=suppress_embeds,
+def _rebuild_embed_head(
+    embed: discord.Embed,
+    head_text: str,
+    citations: dict[str, str] | None,
+) -> None:
+    """Rebuild an embed description to match the adjusted head chunk."""
+    head_citations = {c: u for c, u in (citations or {}).items() if f"[{c}]" in head_text}
+    head_footer = embed.footer.text if embed.footer else None
+    rebuilt_head, _ = citation_embed_formatter.create_citation_embed(
+        head_text,
+        head_citations,
+        footer_text=head_footer,
     )
+    embed.description = rebuilt_head.description
+    # Preserve existing footer unless empty; otherwise copy rebuilt footer
+    if (not embed.footer or not embed.footer.text) and rebuilt_head.footer:
+        embed.set_footer(text=rebuilt_head.footer.text)
 
-    if after_split:
-        await send_split_message(
-            channel,
-            after_split,
-            deps,
-            suppress_embeds=suppress_embeds,
-            original_message=original_message,
-            mention_prefix=None,
-            _recursion_depth=_recursion_depth + 1,
+
+async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
+    channel: discord.TextChannel | discord.DMChannel,
+    message: str,
+    deps: dict[str, Any],
+    citations: dict[str, str],
+    original_message: discord.Message | None,
+    sent_messages: int,
+) -> None:
+    """Send the continuation embeds and text for an already-delivered head.
+
+    This mirrors the former recursive call but counts chunks instead of depth.
+    """
+    logger = deps["logger"]
+    remaining = message
+    active_citations = citations
+
+    while True:
+        head_text, after_split = _split_embed_head(remaining)
+        continuation_tail = after_split.strip()
+
+        if sent_messages >= MAX_SPLIT_CHUNKS:
+            logger.error(
+                "Embed split reached chunk cap (%d) for message length %d",
+                MAX_SPLIT_CHUNKS,
+                len(message),
+            )
+            return
+        if sent_messages >= MAX_SPLIT_CHUNKS - 1 and (
+            continuation_tail or len(remaining) > EMBED_SAFE_LIMIT
+        ):
+            logger.error(
+                "Embed split reached chunk cap (%d) for message length %d",
+                MAX_SPLIT_CHUNKS,
+                len(message),
+            )
+            await _deliver(
+                channel,
+                _truncate_to_limit(remaining, MESSAGE_LIMIT),
+                original_message=original_message,
+            )
+            return
+
+        cont_embed, _ = citation_embed_formatter.create_citation_embed(
+            head_text,
+            {c: u for c, u in active_citations.items() if f"[{c}]" in head_text},
+            footer_text=_CONTINUED_FOOTER,
         )
+        await _deliver(
+            channel,
+            "",
+            original_message=original_message,
+            embed=cont_embed,
+        )
+        sent_messages += 1
+
+        if not continuation_tail:
+            if active_citations and remaining and original_message:
+                # Clean text fit the head but the embed was truncated; send the tail.
+                await send_split_message(
+                    channel,
+                    remaining,
+                    deps,
+                    suppress_embeds=False,
+                    original_message=original_message,
+                    mention_prefix=None,
+                    _chunk_budget=MAX_SPLIT_CHUNKS - sent_messages,
+                )
+            return
+
+        message_part2 = continuation_tail
+        remaining_citations = {
+            c: u for c, u in active_citations.items() if f"[{c}]" in message_part2
+        }
+        if not remaining_citations:
+            await send_split_message(
+                channel,
+                message_part2,
+                deps,
+                original_message=original_message,
+                mention_prefix=None,
+                _chunk_budget=MAX_SPLIT_CHUNKS - sent_messages,
+            )
+            return
+        if len(message_part2) <= EMBED_LIMIT:
+            if sent_messages >= MAX_SPLIT_CHUNKS:
+                logger.error(
+                    "Embed split reached chunk cap (%d) for message length %d",
+                    MAX_SPLIT_CHUNKS,
+                    len(message),
+                )
+                return
+            final_embed, _ = citation_embed_formatter.create_citation_embed(
+                message_part2,
+                remaining_citations,
+                footer_text=_CONTINUED_FOOTER,
+            )
+            await _deliver(
+                channel,
+                "",
+                original_message=original_message,
+                embed=final_embed,
+            )
+            return
+
+        remaining = message_part2
+        active_citations = remaining_citations
 
 
 # Preserve the existing positional API for current callers.
@@ -176,51 +335,13 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
     """Send a long message with citation embeds, maintaining citations across parts.
 
     The provided embed is modified in place so the head chunk stays aligned with
-    the adjusted text.
+    the adjusted text.  ``_recursion_depth`` is accepted for backwards
+    compatibility and ignored; continuations are sent iteratively.
     """
-    logger = deps["logger"]
     message = sanitize_for_discord(message)
-    prefix_text = mention_prefix or ""
 
-    if _recursion_depth >= MAX_SPLIT_RECURSION:
-        logger.error(
-            "Max embed split recursion reached (%d) for message length %d",
-            MAX_SPLIT_RECURSION,
-            len(message),
-        )
-        trunc_notice = truncation_notice(len(message))
-        available = MESSAGE_LIMIT - len(prefix_text) - len(trunc_notice)
-        if available < 0:
-            prefix_text = ""
-            available = MESSAGE_LIMIT - len(trunc_notice)
-        truncated, _ = truncate_with_notice(message, max(0, available), trunc_notice)
-        fallback_text = f"{prefix_text}{truncated}"
-        await _deliver(
-            channel,
-            fallback_text,
-            original_message=original_message,
-            suppress_embeds=False,
-        )
-        return
-
-    head_text = message
-    after_split = ""
-    if len(message) > EMBED_SAFE_LIMIT:
-        split_index = find_optimal_split_point(message, EMBED_SAFE_LIMIT)
-        head_text, after_split = adjust_split_for_code_blocks(message, split_index)
-
-    # Rebuild the head embed so the description matches the adjusted head chunk.
-    head_citations = {c: u for c, u in (citations or {}).items() if f"[{c}]" in head_text}
-    head_footer = embed.footer.text if embed.footer else None
-    rebuilt_head, _ = citation_embed_formatter.create_citation_embed(
-        head_text,
-        head_citations,
-        footer_text=head_footer,
-    )
-    embed.description = rebuilt_head.description
-    # Preserve existing footer unless empty; otherwise copy rebuilt footer
-    if (not embed.footer or not embed.footer.text) and rebuilt_head.footer:
-        embed.set_footer(text=rebuilt_head.footer.text)
+    head_text, after_split = _split_embed_head(message)
+    _rebuild_embed_head(embed, head_text, citations)
     await _deliver(
         channel,
         mention_prefix or "",
@@ -234,23 +355,21 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
             {c: u for c, u in citations.items() if f"[{c}]" in message_part2} if citations else {}
         )
         if remaining_citations:
-            cont_embed, _ = citation_embed_formatter.create_citation_embed(
-                message_part2,
-                remaining_citations,
-                footer_text="🌐 Web search results (continued)",
-            )
             if len(message_part2) > EMBED_LIMIT:
-                await send_split_message_with_embed(
+                await _send_embed_continuations(
                     channel,
                     message_part2,
                     deps,
-                    cont_embed,
                     remaining_citations,
                     original_message,
-                    None,
-                    _recursion_depth=_recursion_depth + 1,
+                    sent_messages=1,
                 )
             else:
+                cont_embed, _ = citation_embed_formatter.create_citation_embed(
+                    message_part2,
+                    remaining_citations,
+                    footer_text=_CONTINUED_FOOTER,
+                )
                 await _deliver(
                     channel,
                     "",
@@ -264,7 +383,7 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
                 deps,
                 original_message=original_message,
                 mention_prefix=None,
-                _recursion_depth=_recursion_depth + 1,
+                _chunk_budget=MAX_SPLIT_CHUNKS - 1,
             )
     elif citations and message and original_message:
         # Embed was truncated but clean text fit; send remaining text to avoid dropping tail
@@ -275,7 +394,7 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
             suppress_embeds=False,
             original_message=original_message,
             mention_prefix=None,
-            _recursion_depth=_recursion_depth + 1,
+            _chunk_budget=MAX_SPLIT_CHUNKS - 1,
         )
 
 

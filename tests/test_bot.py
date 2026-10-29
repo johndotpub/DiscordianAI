@@ -309,8 +309,8 @@ class TestMessageSplitting:
         assert channel.send.call_count >= 2
 
     @pytest.mark.asyncio
-    async def test_send_split_message_recursion_limit(self):
-        """Test recursion limit protection in message splitting."""
+    async def test_send_split_message_ignores_legacy_depth_hint(self):
+        """A legacy recursion-depth hint no longer truncates deliverable content."""
         channel = MagicMock(spec=discord.TextChannel)
         channel.send = AsyncMock()
 
@@ -318,11 +318,12 @@ class TestMessageSplitting:
         message = "x" * 5000
         deps = {"logger": logging.getLogger("test")}
 
-        # Test with high recursion depth to trigger limit
+        # Test with a high legacy depth hint
         await send_split_message(channel, message, deps, _recursion_depth=15)
 
-        # Should attempt to send fallback
-        assert channel.send.call_count >= 2
+        sent = [call[0][0] for call in channel.send.call_args_list]
+        assert "".join(sent) == message
+        assert not any("truncated" in content.lower() for content in sent)
 
     @pytest.mark.asyncio
     async def test_send_split_message_discord_error(self):

@@ -28,7 +28,7 @@ The 3840-character safe limit (`EMBED_SAFE_LIMIT`) provides a 256-character safe
 
 ## Message Splitting Algorithm
 
-DiscordianAI uses a sophisticated message splitting algorithm that ensures content integrity while respecting Discord's character limits. The system includes recursion limit protection and intelligent boundary detection.
+DiscordianAI uses a sophisticated message splitting algorithm that ensures content integrity while respecting Discord's character limits. The system includes a chunk-count safety cap and intelligent boundary detection.
 
 The following diagram shows how messages are intelligently split:
 
@@ -221,11 +221,10 @@ def find_optimal_split_point(message: str, target_index: int) -> int:
 - Verify citation mapping is preserved
 - Check that continuation embeds include relevant citations
 
-**Infinite recursion in splitting**:
-- Check recursion depth limits (max 10)
-- Ensure fallback truncation works
-- **NEW**: System now attempts to send remaining message when recursion limit is hit
-- **NEW**: Only truncates if the attempt fails, with separate truncation notice message
+**Splitting stops at the chunk cap**:
+- Check the maximum chunk count (50)
+- Ensure the upstream provider is not returning far more text than its output budget allows
+- A single indivisible unit that cannot fit is truncated with a visible notice; this is expected
 
 ### Performance Considerations
 
@@ -234,39 +233,37 @@ def find_optimal_split_point(message: str, target_index: int) -> int:
 - **Citation mapping**: O(c) where c is number of citations
 - **Memory usage**: Minimal additional overhead
 
-## Recursion Limit Protection
+## Chunk Cap Protection
 
 ### How It Works
 
-DiscordianAI includes sophisticated recursion limit protection to prevent infinite splitting loops:
+Splitting is iterative: the chunk list is computed up front and then sent in a loop. The chunk count is capped to stop a runaway response from producing hundreds of messages:
 
-1. **Normal Splitting**: Messages are split using intelligent boundary detection
-2. **Recursion Limit Hit**: When recursion limit is reached, the system attempts to send the remaining message
-3. **Fallback Truncation**: Only if the attempt fails (too long), the system truncates and sends a separate notice
+1. **Normal Splitting**: Messages are split using intelligent boundary detection until the remaining text fits.
+2. **Chunk Cap Hit**: At 50 chunks the splitter logs an ERROR and stops, because no legitimate provider response needs that many messages.
+3. **Indivisible Unit**: If one code fence or word cannot be split within the limit, the remaining text is truncated with a visible notice.
 
-### Recursion Limit Flow
+### Chunk Cap Flow
 
 ```mermaid
 flowchart TD
     A[Message Needs Splitting] --> B[Split Using Intelligent Boundaries]
-    B --> C{Recursion Limit Reached?}
-    C -->|No| D[Continue Normal Splitting]
-    C -->|Yes| E[Attempt to Send Entire Remaining Message]
-    E --> F{Message Too Long?}
-    F -->|No| G[Complete - No Truncation]
-    F -->|Yes| H[Truncate to Safe Length]
-    H --> I[Send Truncated Content]
-    I --> J[Send Truncation Notice]
-    J --> K[Complete with Notice]
-    D --> C
+    B --> C{Remaining Text Fits?}
+    C -->|Yes| D[Send Final Chunk]
+    C -->|No| E{Chunk Cap Reached?}
+    E -->|No| B
+    E -->|Yes| F[Log ERROR]
+    F --> G[Truncate Remaining Text]
+    G --> H[Send Truncated Final Chunk With Notice]
+    D --> I[Complete]
+    H --> I
 ```
 
 ### Benefits
 
-- **Content Preservation**: Never truncates content unless absolutely necessary
-- **Graceful Degradation**: Attempts full content delivery before truncation
-- **User Awareness**: Clear truncation notice when limits are hit
-- **Performance**: Prevents infinite recursion loops
+- **Content Preservation**: Full-length provider answers are delivered in full, with no recursion-depth cutoff.
+- **Runaway Guard**: A pathological response stops at a bounded number of messages.
+- **User Awareness**: A visible truncation notice is reserved for text that genuinely cannot be split.
 
 ## Advanced Configuration
 
@@ -277,8 +274,8 @@ flowchart TD
 MESSAGE_LIMIT = 2000
 EMBED_SAFE_LIMIT = 3840
 
-# Maximum recursion depth for splitting
-MAX_SPLIT_RECURSION = 10
+# Maximum number of chunks sent for one message
+MAX_SPLIT_CHUNKS = 50
 
 # Prefer the helpers from ``src.message_splitter`` instead of duplicating the logic.
 ```
@@ -287,7 +284,7 @@ MAX_SPLIT_RECURSION = 10
 
 ```python
 # Log split operations for debugging
-logger.debug(f"Splitting message: {len(message)} chars at depth {depth}")
+logger.debug(f"Splitting message: {len(message)} chars")
 logger.debug(f"Split point found at index {split_point}")
-logger.debug(f"Parts: {len(part1)} + {len(part2)} chars")
+logger.debug(f"Parts: {len(chunk)} chars, {len(chunks)} chunk(s) planned")
 ```

@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **Long answers are delivered completely**: message splitting is iterative and bounded by a 50-chunk runaway cap, so an answer within the provider's output budget is no longer cut off by a recursion-depth guard.
 - **Conversation transcript integrity**: answers stay attached to the question that produced them, and a zero consistency lookback now disables lookback instead of reading the whole transcript.
 - **Shutdown**: `SIGTERM` and `SIGINT` now stop the bot once, with a bounded wait, instead of crashing or being killed after the launcher's grace period.
 - **Rate limiting**: windows are measured with a monotonic clock, so system clock steps no longer refuse valid users or let bursts through.
