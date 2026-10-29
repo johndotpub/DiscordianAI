@@ -136,14 +136,18 @@ async def test_graceful_shutdown_closes_resources(base_deps):
 
 
 @pytest.mark.asyncio
-async def test_disconnect_and_resume_handlers(base_deps):
+async def test_disconnect_and_resume_handlers(base_deps, caplog):
     manager = DiscordBotManager(base_deps)
     manager.register_events()
 
-    await manager.bot.event_handlers["on_disconnect"]()
-    await manager.bot.event_handlers["on_resumed"]()
+    with caplog.at_level(logging.WARNING, logger="bot-manager-test"):
+        await manager.bot.event_handlers["on_disconnect"]()
+    assert any("disconnected" in record.message.lower() for record in caplog.records)
 
-    # No exceptions means handlers executed successfully
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="bot-manager-test"):
+        await manager.bot.event_handlers["on_resumed"]()
+    assert any("resumed" in record.message.lower() for record in caplog.records)
 
 
 def test_setup_signal_handlers(monkeypatch, base_deps):

@@ -61,19 +61,22 @@ class TestOpenAIAPIIntegration:
         openai_client.chat.completions.create = AsyncMock(
             side_effect=Exception("API rate limit exceeded")
         )
+        sleep = AsyncMock()
 
-        result = await process_openai_message(
-            request=make_request("Test message", conversation_manager=conversation_manager),
-            conversation_summary=[],
-            openai_client=openai_client,
-            config=OpenAIConfig(
-                model="gpt-5-mini",
-                system_message="You are a test assistant",
-                output_tokens=1000,
-            ),
-        )
+        with patch("src.error_handling.asyncio.sleep", sleep):
+            result = await process_openai_message(
+                request=make_request("Test message", conversation_manager=conversation_manager),
+                conversation_summary=[],
+                openai_client=openai_client,
+                config=OpenAIConfig(
+                    model="gpt-5-mini",
+                    system_message="You are a test assistant",
+                    output_tokens=1000,
+                ),
+            )
 
         assert result is None
+        assert [call.args[0] for call in sleep.await_args_list] == [30.0]
 
         conversation_manager.add_message.assert_not_called()
 

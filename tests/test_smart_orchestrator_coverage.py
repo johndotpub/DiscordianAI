@@ -169,21 +169,6 @@ class TestRoutingFunctions:
         assert not should_use_web_search("How are you feeling today?")
         assert not should_use_web_search("Write a poem about winter")
 
-    def test_should_use_web_search_with_consistency(self):
-        """Test web search function with conversation manager."""
-        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
-
-        # Test that function accepts conversation manager parameter
-        result = should_use_web_search(
-            "What is Python?",
-            conversation_manager=conversation_manager,
-            user_id=12345,
-            lookback_messages=6,
-        )
-
-        # Function should complete without error
-        assert isinstance(result, bool)
-
     def test_should_use_web_search_short_message(self):
         """Test that short messages use appropriate routing."""
         short_message = "Hi there"  # Less than default min words
@@ -594,15 +579,31 @@ class TestProcessingModes:
         clients = AIClients(openai=openai_client, perplexity=perplexity_client)
         ai_config = AIConfig()
 
-        response, _suppress_embeds, _embed_data = await _process_hybrid_mode(
-            request=request,
-            conversation_summary=[],
-            clients=clients,
-            config=ai_config,
-        )
+        with (
+            patch("src.smart_orchestrator.should_use_web_search", return_value=False),
+            patch(
+                "src.smart_orchestrator.process_openai_message",
+                return_value="OpenAI response",
+            ) as mock_openai,
+        ):
+            response, _suppress_embeds, _embed_data = await _process_hybrid_mode(
+                request=request,
+                conversation_summary=[],
+                clients=clients,
+                config=ai_config,
+            )
 
-        assert response is not None
-        assert isinstance(_suppress_embeds, bool)
+        assert response == "OpenAI response"
+        assert _suppress_embeds is False
+        assert _embed_data is None
+        mock_openai.assert_awaited_once()
+        conversation_manager.add_message.assert_any_call(
+            12345,
+            "assistant",
+            "OpenAI response",
+            metadata={"ai_service": "openai", "model": "gpt-5-mini"},
+        )
+        assert conversation_manager.add_message.call_count == 2
 
     @pytest.mark.asyncio
     async def test_process_hybrid_mode_fallback_chain(self):

@@ -289,33 +289,6 @@ class TestSanitizeForDiscord:
 
         assert result == text
 
-    def test_sanitize_escape_backticks(self):
-        """Test escaping backticks."""
-        text = "Code: `print('hello')` and ```block```"
-
-        result = sanitize_for_discord(text)
-
-        # Function doesn't escape backticks, just removes @everyone/@here
-        assert len(result) >= 0  # Basic validation
-
-    def test_sanitize_escape_asterisks(self):
-        """Test escaping asterisks for bold/italic."""
-        text = "*bold* and **very bold** text"
-
-        result = sanitize_for_discord(text)
-
-        # Function doesn't escape markdown, just handles @everyone/@here
-        assert len(result) >= 0  # Basic validation
-
-    def test_sanitize_escape_underscores(self):
-        """Test escaping underscores."""
-        text = "_italic_ and __underline__ text"
-
-        result = sanitize_for_discord(text)
-
-        # Function doesn't escape markdown, just handles @everyone/@here
-        assert len(result) >= 0  # Basic validation
-
     def test_sanitize_preserve_content(self):
         """Test that content meaning is preserved."""
         text = "Important: *check* the `config` file"

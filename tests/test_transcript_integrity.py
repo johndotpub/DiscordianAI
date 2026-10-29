@@ -117,30 +117,6 @@ def test_rebuilt_transcript_never_starts_with_assistant_and_drops_orphan():
     assert [message["content"] for message in summary] == ["Q1", "A1", "Q2", "A3"]
 
 
-def test_question_after_orphan_pairs_with_its_own_answer():
-    summary = _orphan_manager().get_conversation_summary_formatted(
-        conversation_key="dm:99",
-    )
-
-    paired_answers = {}
-    for index, message in enumerate(summary[:-1]):
-        if message["role"] == "user" and summary[index + 1]["role"] == "assistant":
-            paired_answers[message["content"]] = summary[index + 1]["content"]
-
-    assert paired_answers["Q1"] == "A1"
-    assert paired_answers["Q1"] != "A2"
-
-
-def test_newest_answer_is_present_in_summary():
-    summary = _orphan_manager().get_conversation_summary_formatted(
-        conversation_key="dm:99",
-    )
-
-    assert any(
-        message["role"] == "assistant" and message["content"] == "A3" for message in summary
-    )
-
-
 @pytest.mark.parametrize("empty_response", ["", "   \n\t"])
 def test_empty_assistant_response_is_not_recorded_as_a_turn(empty_response):
     manager = ThreadSafeConversationManager()

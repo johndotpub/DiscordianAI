@@ -281,23 +281,25 @@ class TestRequestDeduplicator:
         async def failing_request():
             nonlocal call_count
             call_count += 1
+            await asyncio.sleep(0)
             msg = "API error"
             raise ValueError(msg)
 
-        # Start multiple identical requests that will fail
-        with pytest.raises(ValueError, match="API error"):
-            tasks = []
-            for _ in range(3):
-                task = asyncio.create_task(
-                    self.deduplicator.deduplicate_request("fail_key", failing_request),
-                )
-                tasks.append(task)
+        # Followers wait on the leader's future, so the failure is shared.
+        tasks = [
+            asyncio.create_task(
+                self.deduplicator.deduplicate_request("fail_key", failing_request),
+            )
+            for _ in range(3)
+        ]
 
-            await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Should have made multiple API calls since we don't deduplicate failures
-        # (Each caller should get the chance to retry independently)
-        assert call_count >= 1
+        # One call fails once; every follower receives that same exception.
+        assert call_count == 1
+        assert all(isinstance(result, ValueError) for result in results)
+        assert all(result is results[0] for result in results)
+        assert str(results[0]) == "API error"
 
 
 class TestCachingDecorators:

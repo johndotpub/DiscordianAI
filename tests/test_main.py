@@ -7,7 +7,9 @@ import pytest
 
 
 def test_main_importable():
-    importlib.import_module("src.main")  # Should not raise
+    main = importlib.import_module("src.main")  # Should not raise
+    assert callable(main.main)
+    assert callable(main.run_bot)
 
 
 def test_main_runs(monkeypatch):

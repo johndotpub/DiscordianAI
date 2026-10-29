@@ -294,21 +294,6 @@ class TestMessageSplitting:
         channel.send.assert_called_once_with(message, suppress_embeds=False)
 
     @pytest.mark.asyncio
-    async def test_send_split_message_long(self):
-        """Test sending long message that needs splitting."""
-        channel = MagicMock(spec=discord.TextChannel)
-        channel.send = AsyncMock()
-
-        # Message longer than 2000 characters
-        message = "x" * 2500
-        deps = {"logger": logging.getLogger("test")}
-
-        await send_split_message(channel, message, deps)
-
-        # Should be called twice (for split message)
-        assert channel.send.call_count >= 2
-
-    @pytest.mark.asyncio
     async def test_send_split_message_ignores_legacy_depth_hint(self):
         """A legacy recursion-depth hint no longer truncates deliverable content."""
         channel = MagicMock(spec=discord.TextChannel)

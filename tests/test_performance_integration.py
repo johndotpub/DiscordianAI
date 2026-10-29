@@ -319,19 +319,19 @@ class TestMemoryAndResourceManagement:
         """Test performance of lock cleanup process."""
         manager = ThreadSafeConversationManager(cleanup_interval=1)
 
-        # Create many user locks
-        user_ids = list(range(500))  # 500 users
+        active_ids = list(range(250))
+        inactive_ids = list(range(250, 500))
 
-        # Access locks for all users (creates them)
-        for user_id in user_ids:
-            with manager._get_user_lock(user_id):
-                manager.add_message(user_id, "user", "test message")
+        for user_id in active_ids:
+            manager.add_message(user_id, "user", "test message")
+        for user_id in inactive_ids:
+            manager._get_user_lock(user_id)
 
-        # Force cleanup
         cleaned_count = manager.cleanup_inactive_user_locks(force=True)
 
-        # Should have cleaned up some locks (or all if they're inactive)
-        assert cleaned_count >= 0
+        assert cleaned_count == len(inactive_ids)
+        assert all(user_id in manager._user_locks for user_id in active_ids)
+        assert all(user_id not in manager._user_locks for user_id in inactive_ids)
 
 
 class TestSystemIntegrationBenchmarks:

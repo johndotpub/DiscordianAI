@@ -68,16 +68,34 @@ class TestAPIHealthMetrics:
 
     def test_metrics_calculations(self):
         """Test metrics calculations."""
-        APIHealthMetrics(
-            service="test",
-            total_checks=100,
-            successful_checks=95,
-            failed_checks=5,
-        )
+        monitor = APIHealthMonitor()
+        timestamp = datetime.now(UTC)
 
-        # Uptime calculation would be done by the monitor
-        expected_uptime = (95 / 100) * 100
-        assert expected_uptime == 95.0
+        for _ in range(95):
+            monitor.record_health_check(
+                HealthCheckResult(
+                    service="test",
+                    status="healthy",
+                    response_time_ms=1,
+                    timestamp=timestamp,
+                )
+            )
+        for _ in range(5):
+            monitor.record_health_check(
+                HealthCheckResult(
+                    service="test",
+                    status="unhealthy",
+                    response_time_ms=0,
+                    timestamp=timestamp,
+                    error="failed",
+                )
+            )
+
+        metrics = monitor.metrics["test"]
+        assert metrics.total_checks == 100
+        assert metrics.successful_checks == 95
+        assert metrics.failed_checks == 5
+        assert metrics.uptime_percentage == 95.0
 
 
 class TestAPIHealthMonitor:
@@ -104,7 +122,7 @@ class TestAPIHealthMonitor:
         result = await self.monitor.check_openai_health(openai_client, config)
 
         assert result.service == "openai"
-        assert result.status in ["healthy", "degraded"]  # Depending on response time
+        assert result.status == "healthy"
         assert result.error is None
         assert result.details["model"] == "gpt-5-mini"
         assert result.details["model_count"] == 2
@@ -156,7 +174,7 @@ class TestAPIHealthMonitor:
         result = await self.monitor.check_perplexity_health(perplexity_client, config)
 
         assert result.service == "perplexity"
-        assert result.status in ["healthy", "degraded"]
+        assert result.status == "healthy"
         assert result.error is None
         assert result.details["model"] == "sonar-pro"
         assert result.details["model_count"] == 2

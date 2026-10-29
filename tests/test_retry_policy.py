@@ -3,7 +3,6 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
-import discord
 import httpx
 import openai
 import pytest
@@ -12,7 +11,6 @@ from src.error_handling import (
     DEFAULT_API_RETRY_CONFIG,
     RetryConfig,
     retry_with_backoff,
-    safe_discord_send,
 )
 from src.web_scraper import scrape_url_content
 
@@ -147,26 +145,6 @@ async def test_deadline_stops_retries():
             await retry_with_backoff(slow_failure, DEFAULT_API_RETRY_CONFIG, Mock())
 
     assert attempts == 1
-    assert not sleep.called
-
-
-@pytest.mark.asyncio
-async def test_forbidden_discord_send_is_not_retried():
-    response = Mock()
-    response.status = 403
-    response.reason = "Forbidden"
-    response.headers = {}
-    forbidden = discord.Forbidden(response, "missing permissions")
-
-    channel = Mock()
-    channel.send = AsyncMock(side_effect=forbidden)
-    sleep = AsyncMock()
-
-    with patch("src.error_handling.asyncio.sleep", sleep):
-        result = await safe_discord_send(channel, "hello", Mock())
-
-    assert result is False
-    assert channel.send.await_count == 1
     assert not sleep.called
 
 

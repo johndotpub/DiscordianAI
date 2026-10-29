@@ -130,13 +130,7 @@ async def test_send_without_original_message_uses_channel_send() -> None:
 
     assert channel.send.call_count >= 2
     for call in channel.send.call_args_list:
-        kwargs = call.kwargs
-        assert kwargs["suppress_embeds"] is True
-        assert kwargs.get("mention_author", False) is False
-        allowed_mentions = kwargs.get("allowed_mentions")
-        if allowed_mentions is not None:
-            assert allowed_mentions.users == []
-            assert allowed_mentions.replied_user is False
+        assert call.kwargs == {"suppress_embeds": True}
 
 
 @pytest.mark.asyncio

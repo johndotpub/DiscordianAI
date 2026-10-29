@@ -19,18 +19,26 @@ warnings.filterwarnings(
 
 
 def _reset_provider_circuit_breakers() -> None:
-    """Reset the shared provider breakers in place between tests."""
-    import asyncio
+    """Replace the shared provider breakers with fresh instances between tests."""
+    import sys
 
-    from src.error_handling import PROVIDER_CIRCUIT_BREAKERS
+    from src import error_handling
 
-    for breaker in PROVIDER_CIRCUIT_BREAKERS.values():
-        breaker.failure_count = 0
-        breaker.last_failure_time = 0.0
-        breaker.last_success_time = 0.0
-        breaker.state = "CLOSED"
-        breaker._probe_in_flight = False
-        breaker._lock = asyncio.Lock()
+    registry = error_handling.PROVIDER_CIRCUIT_BREAKERS
+    previous = dict(registry)
+    replacements = {
+        provider: error_handling.CircuitBreaker(name=provider) for provider in previous
+    }
+    registry.clear()
+    registry.update(replacements)
+
+    old_to_new = {id(breaker): replacements[provider] for provider, breaker in previous.items()}
+    for module in list(sys.modules.values()):
+        if module is None or not getattr(module, "__name__", "").startswith("src."):
+            continue
+        for attribute, value in list(vars(module).items()):
+            if id(value) in old_to_new:
+                setattr(module, attribute, old_to_new[id(value)])
 
 
 @pytest.fixture(autouse=True)
