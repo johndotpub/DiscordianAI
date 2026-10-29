@@ -50,33 +50,44 @@ is not a contract.
 
 ## Perplexity
 
+The bot uses the current Agent API, not Sonar Chat Completions. The OpenAI SDK's
+`responses.create()` is pointed at the versioned alias, so the request path is
+`/v1/responses`.
+
 | Item | Value | Source |
 |---|---|---|
-| Path used by the SDK | `https://api.perplexity.ai/chat/completions` — **verified working** | probe |
-| Canonical path in current docs | `POST /v1/sonar` — **also verified working**, same response shape | probe + OpenAPI |
-| Models | `sonar`, `sonar-pro`, `sonar-deep-research`, `sonar-reasoning-pro` | OpenAPI enum |
-| `max_tokens` | integer, `0 < n ≤ 128000` | OpenAPI |
-| `reasoning_effort` | `minimal`, `low`, `medium`, `high` only. Sending `xhigh` returned HTTP 400 | OpenAPI + probe |
-| Response fields | `choices`, `created`, `citations` (list of URLs), `search_results` (list of objects), `usage` with `cost` and `search_context_size` | probe |
-| `search_results[]` keys | `title`, `url`, `date`, `last_updated`, `snippet`, `source`, `place_metadata` | probe |
-| Invalid model | HTTP **400** with `error.type: invalid_model`, `error.code: 400`. Not 422 — the OpenAPI file documents 422 for validation errors, but the live service answers 400 | probe (live beats spec) |
-| Rate-limit headers | `x-ratelimit-limit`, `-remaining`, `-reset` (epoch seconds), `-used`. Observed limit on this account: **1** | probe |
+| Canonical endpoint | `POST https://api.perplexity.ai/v1/agent` — **verified 200** | probe |
+| SDK path used | `POST https://api.perplexity.ai/v1/responses` — **verified 200**, same response shape | probe |
+| Unversioned SDK path | `POST https://api.perplexity.ai/responses` returned **404**; the client must include `/v1` | probe |
+| Model sent | `perplexity/sonar` | probe + `GET /v1/models` |
+| Catalogue | `GET /v1/models` lists 54 models and exactly one Sonar model, `perplexity/sonar` | probe |
+| Legacy interface | Sonar Chat Completions still answers 200 with `citations` and `search_results`; it is not the current catalogue or the interface this bot uses | probe |
+| Request fields | `model`, `instructions` (system prompt), `input` (history and current user message, no system role), `max_output_tokens`, `tools: [{"type": "web_search"}]` | probe |
+| Sampling | no `temperature` is sent | probe + code |
+| Response shape | `output` array of items | probe |
+| `search_results` item | `results[]` with `id`, `url`, `title`, `snippet`, `date`, `last_updated`, `source`; `id` is the 1-based marker number used in the answer as `[1]`, `[2]` | probe |
+| `message` item | `role: "assistant"`, `content: [{"type": "output_text", "text": "…"}]` | probe |
+| No-search response | `output` contains only the `message` item; there is no `search_results` item | probe |
+| Usage | `input_tokens`, `output_tokens`, `total_tokens`, and `cost` with input, output, tool-call, and total cost | probe |
+| Invalid model | HTTP **400** with `error.type: invalid_request`, `error.code: 400`, message `validation failed: model "…" is not supported`. The legacy path used `invalid_model`. Classify as a deterministic validation error and never retry | probe |
+| Rate limit | HTTP **429**; classified as a rate limit and handled by the shared retry policy | probe + code |
 | Attribution header | `X-Pplx-Integration: discordian-ai` accepted, 200, no behaviour change | probe |
 
 ### Consequences for this codebase
 
-1. The known-model list now matches this enum. An unknown name still only warns, because
-   the provider may add models before the list is updated here.
-2. A bad model name surfaces as **400 / `invalid_model`**, so the classifier needs that
-   branch; treating it as an unknown error means a permanent misconfiguration is retried
-   and then reported to the user as "unexpected error".
-3. `x-ratelimit-limit: 1` means a Perplexity request must never be issued concurrently with
-   another on the same account. The scraper's per-host politeness and the retry policy both
-   need to respect this, or the second request returns 429 and the first answer is wasted.
-4. `search_results` carries page titles, so citation embeds can show "Title — domain"
-   instead of bare URLs. Optional enhancement; the test doubles must model both fields
-   either way.
-5. `usage.cost` is returned and discarded today. Logging it makes spend visible per message.
+1. `PERPLEXITY_MODELS` now lists the current catalogue entry, `perplexity/sonar`. An unknown
+   name still only warns, because the provider may add models before the list is updated
+   here.
+2. The system prompt travels as `instructions`, not as a system message inside `input`.
+   History and the current turn travel in `input`.
+3. `max_output_tokens` replaces `max_tokens`, and `tools` always asks for `web_search`
+   because this path exists for live-data questions.
+4. Citation markers are mapped by the `search_results[].id`, not by array position, so a
+   reordered result list cannot misattribute a source.
+5. A response without `search_results` is valid: the parser returns the message text and an
+   empty citation map instead of failing.
+6. `usage.cost` is available but not logged today. Do not add a second accounting scheme to
+   report spend.
 
 ---
 
@@ -88,5 +99,6 @@ set -a && . ~/.config/environment.d/hermes.conf && set +a
 ```
 
 The probe prints status codes, header names, response key shapes and token counts. It
-never prints credentials. It makes seven calls: five successful (small, cheap) and two
-deliberate error probes. Run it after any provider upgrade, model change, or SDK bump.
+never prints credentials. It makes eleven calls: six successful (small, cheap) and five
+deliberate error probes, including the Agent API, its alias, the unversioned path, and an
+invalid model. Run it after any provider upgrade, model change, or SDK bump.

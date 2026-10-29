@@ -131,7 +131,7 @@ class Harness:
         self.logger.addHandler(logging.NullHandler())
         config = {
             "GPT_MODEL": "gpt-test",
-            "PERPLEXITY_MODEL": "sonar-pro",
+            "PERPLEXITY_MODEL": "perplexity/sonar",
             "SYSTEM_MESSAGE": "system",
             "OUTPUT_TOKENS": 256,
             "PERPLEXITY_OUTPUT_TOKENS": 256,

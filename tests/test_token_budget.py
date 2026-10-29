@@ -25,6 +25,7 @@ class RecordingClient:
         self.response_text = response_text
         self.calls: list[dict] = []
         self.chat = self.Chat(self)
+        self.responses = self.Responses(self)
 
     class Chat:
         def __init__(self, client):
@@ -38,6 +39,14 @@ class RecordingClient:
             async def create(self, *_args, **kwargs):
                 self.client.calls.append(kwargs)
                 return FakeResponse(self.client.response_text)
+
+    class Responses:
+        def __init__(self, client):
+            self.client = client
+
+        async def create(self, *_args, **kwargs):
+            self.client.calls.append(kwargs)
+            return FakeResponse(self.client.response_text)
 
 
 def _make_request(message: str = CURRENT, logger=None) -> AIRequest:
@@ -204,9 +213,13 @@ async def test_scraped_content_counts_toward_perplexity_prompt_budget():
         result = await process_perplexity_message(request, client, config)
 
     assert result is not None
-    messages = client.calls[0]["messages"]
+    call = client.calls[0]
+    messages = [
+        {"role": "system", "content": call["instructions"]},
+        *call["input"],
+    ]
     assert estimate_messages_tokens(messages) <= 500
-    assert TRUNCATION_MARKER in messages[-1]["content"]
+    assert TRUNCATION_MARKER in call["input"][-1]["content"]
 
 
 @pytest.mark.asyncio

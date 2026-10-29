@@ -60,13 +60,12 @@ OPENAI_MODEL_FAMILIES = (
 OPENAI_RETIRED_MODELS = ("gpt-5-chat",)
 
 
-# Perplexity Models (per the provider's documented enum)
-DEFAULT_PERPLEXITY_MODEL = "sonar-pro"
+# Perplexity Agent API model catalogue. The legacy Sonar names still answer on
+# Chat Completions, but they are not part of the current catalogue and this bot
+# no longer calls that interface.
+DEFAULT_PERPLEXITY_MODEL = "perplexity/sonar"
 PERPLEXITY_MODELS = [
-    "sonar",
     DEFAULT_PERPLEXITY_MODEL,
-    "sonar-deep-research",
-    "sonar-reasoning-pro",
 ]
 
 

@@ -209,9 +209,7 @@ async def test_custom_emoji_does_not_move_openai_conversation_to_perplexity():
         openai=SimpleNamespace(
             chat=SimpleNamespace(completions=SimpleNamespace(create=openai_create))
         ),
-        perplexity=SimpleNamespace(
-            chat=SimpleNamespace(completions=SimpleNamespace(create=perplexity_create))
-        ),
+        perplexity=SimpleNamespace(responses=SimpleNamespace(create=perplexity_create)),
     )
     request = AIRequest(
         message="please <:today:123456789>",

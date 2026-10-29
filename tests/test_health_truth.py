@@ -92,7 +92,7 @@ def _deps(
         "OPENAI_API_KEY": "sk-test-key" if has_openai else None,
         "PERPLEXITY_API_KEY": "pplx-test-key" if has_perplexity else None,
         "GPT_MODEL": "gpt-5-mini",
-        "PERPLEXITY_MODEL": "sonar-pro",
+        "PERPLEXITY_MODEL": "perplexity/sonar",
         "HEALTH_ENABLED": True,
     }
 

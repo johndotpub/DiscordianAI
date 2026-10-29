@@ -39,18 +39,19 @@ OPENAI_API_URL=https://api.openai.com/v1/
 GPT_MODEL=gpt-6-luna
 
 # === PERPLEXITY CONFIGURATION ===  
-# Supported: sonar-pro (default), sonar, sonar-deep-research, sonar-reasoning-pro
+# Current Agent API catalogue: perplexity/sonar (default). Legacy Sonar names
+# still answer on Chat Completions but are not used by this bot.
 # Leave the API key blank to disable web search
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
 PERPLEXITY_API_URL=https://api.perplexity.ai
-PERPLEXITY_MODEL=sonar-pro
+PERPLEXITY_MODEL=perplexity/sonar
 
 # === TOKEN LIMITS ===
 # INPUT_TOKENS is the enforced prompt budget (oldest history is trimmed first).
 # OUTPUT_TOKENS caps OpenAI completions (max_completion_tokens) and includes
 # reasoning tokens as well as visible output.
-# PERPLEXITY_OUTPUT_TOKENS caps Perplexity completions (max_tokens), which are
-# output only. Omit it to use the same value as OUTPUT_TOKENS.
+# PERPLEXITY_OUTPUT_TOKENS caps Perplexity completions (max_output_tokens),
+# which are output only. Omit it to use the same value as OUTPUT_TOKENS.
 INPUT_TOKENS=120000
 OUTPUT_TOKENS=8000
 PERPLEXITY_OUTPUT_TOKENS=8000
@@ -125,7 +126,7 @@ HEALTH_PROVIDER_STALE_SECONDS=300
 # OPENAI_API_KEY=sk-your-openai-key
 # PERPLEXITY_API_KEY=pplx-your-perplexity-key
 # GPT_MODEL=gpt-6-luna        # Cost-effective default
-# PERPLEXITY_MODEL=sonar-pro   # Latest web search model
+# PERPLEXITY_MODEL=perplexity/sonar   # Current Agent API Sonar model
 # 
 # OPENAI ONLY MODE:
 # OPENAI_API_KEY=sk-your-openai-key
@@ -135,7 +136,7 @@ HEALTH_PROVIDER_STALE_SECONDS=300
 # PERPLEXITY ONLY MODE:
 # OPENAI_API_KEY=              # Leave blank
 # PERPLEXITY_API_KEY=pplx-your-perplexity-key
-# PERPLEXITY_MODEL=sonar-pro   # Or sonar
+# PERPLEXITY_MODEL=perplexity/sonar
 #
 # === INVITE URL TEMPLATE ===
 # https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_CLIENT_ID&permissions=274945084416&scope=bot

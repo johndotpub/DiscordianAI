@@ -400,7 +400,7 @@ class TestProcessingModes:
                 12345,
                 "assistant",
                 "Perplexity response",
-                metadata={"ai_service": "perplexity", "model": "sonar-pro"},
+                metadata={"ai_service": "perplexity", "model": "perplexity/sonar"},
             )
             assert conversation_manager.add_message.call_count == 2
 
@@ -556,7 +556,7 @@ class TestProcessingModes:
                 12345,
                 "assistant",
                 "Web search result",
-                metadata={"ai_service": "perplexity", "model": "sonar-pro"},
+                metadata={"ai_service": "perplexity", "model": "perplexity/sonar"},
             )
             assert conversation_manager.add_message.call_count == 2
 
@@ -696,7 +696,7 @@ class TestProcessingModes:
                 12345,
                 "assistant",
                 "Perplexity result",
-                metadata={"ai_service": "perplexity", "model": "sonar-pro"},
+                metadata={"ai_service": "perplexity", "model": "perplexity/sonar"},
             )
             assert conversation_manager.add_message.call_count == 2
 

@@ -32,7 +32,7 @@
   "PERPLEXITY_API_URL": "https://api.perplexity.ai",
   "PERPLEXITY_MAX_CONNECTIONS": 30,
   "PERPLEXITY_MAX_KEEPALIVE": 5,
-  "PERPLEXITY_MODEL": "sonar-pro",
+  "PERPLEXITY_MODEL": "perplexity/sonar",
   "PERPLEXITY_OUTPUT_TOKENS": 8000,
   "RATE_LIMIT": 10,
   "RATE_LIMIT_PER": 60,

@@ -89,15 +89,12 @@ async def test_process_perplexity_message_failure():
     logger = MagicMock()
 
     class FailingClient:
-        class Chat:
-            class Completions:
-                async def create(self, *_args, **_kwargs):
-                    error_msg = "API failure!"
-                    raise Exception(error_msg)
+        class Responses:
+            async def create(self, *_args, **_kwargs):
+                error_msg = "API failure!"
+                raise Exception(error_msg)
 
-            completions = Completions()
-
-        chat = Chat()
+        responses = Responses()
 
     request = AIRequest(
         message="Query",
@@ -117,7 +114,7 @@ async def test_process_perplexity_message_timeout():
     logger = MagicMock()
 
     mock_client = MagicMock()
-    mock_client.chat.completions.create = AsyncMock(side_effect=TimeoutError("Timeout"))
+    mock_client.responses.create = AsyncMock(side_effect=TimeoutError("Timeout"))
 
     request = AIRequest(
         message="Query",
@@ -137,9 +134,7 @@ async def test_process_perplexity_message_empty_response():
     logger = MagicMock()
 
     mock_client = MagicMock()
-    mock_client.chat.completions.create = AsyncMock(
-        return_value=MagicMock(choices=[MagicMock(message=MagicMock(content="   "))]),
-    )
+    mock_client.responses.create = AsyncMock(return_value=FakeResponse("   "))
 
     request = AIRequest(
         message="Query",
@@ -184,17 +179,17 @@ async def test_process_perplexity_message_with_citations():
 
 
 @pytest.mark.asyncio
-async def test_process_perplexity_message_with_citations_and_search_results():
-    """A live-shaped response carries both fields; citations win the mapping."""
+async def test_process_perplexity_message_with_search_results():
+    """Agent API result ids map the answer's markers to source URLs."""
     mock_user = MagicMock()
     mock_user.id = 6
     logger = MagicMock()
 
     client = FakePerplexityClient(
         "AI is advancing [1] and GPT-5 shows promise [2].",
-        citations=["https://citation.example/one", "https://citation.example/two"],
         search_results=[
             {
+                "id": 1,
                 "title": "Search result one",
                 "url": "https://search.example/one",
                 "date": "2026-10-27",
@@ -203,6 +198,7 @@ async def test_process_perplexity_message_with_citations_and_search_results():
                 "source": "web",
             },
             {
+                "id": 2,
                 "title": "Search result two",
                 "url": "https://search.example/two",
                 "date": "2026-10-27",
@@ -213,6 +209,7 @@ async def test_process_perplexity_message_with_citations_and_search_results():
         ],
     )
     assert set(client.search_results[0]) == {
+        "id",
         "title",
         "url",
         "date",
@@ -233,26 +230,25 @@ async def test_process_perplexity_message_with_citations_and_search_results():
     assert result is not None
     _, _, embed_data = result
     assert embed_data["citations"] == {
-        "1": "https://citation.example/one",
-        "2": "https://citation.example/two",
+        "1": "https://search.example/one",
+        "2": "https://search.example/two",
     }
 
 
 @pytest.mark.asyncio
-async def test_process_perplexity_message_with_citations_only():
-    """A response without search_results still maps its citations."""
+async def test_process_perplexity_message_with_search_results_only():
+    """A response with only a search_results item still maps its citations."""
     mock_user = MagicMock()
     mock_user.id = 7
     logger = MagicMock()
 
     response = FakeResponse(
         "AI is advancing [1].",
-        citations=["https://citation.example/only"],
+        search_results=[{"id": 1, "url": "https://search.example/only"}],
     )
-    assert not hasattr(response, "search_results")
 
     client = MagicMock()
-    client.chat.completions.create = AsyncMock(return_value=response)
+    client.responses.create = AsyncMock(return_value=response)
 
     request = AIRequest(
         message="AI?",
@@ -265,7 +261,7 @@ async def test_process_perplexity_message_with_citations_only():
 
     assert result is not None
     _, _, embed_data = result
-    assert embed_data["citations"] == {"1": "https://citation.example/only"}
+    assert embed_data["citations"] == {"1": "https://search.example/only"}
 
 
 @pytest.mark.asyncio

@@ -131,7 +131,7 @@ class TestPerplexityAPIIntegration:
             ],
         )
         perplexity_client = Mock()
-        perplexity_client.chat.completions.create = AsyncMock(return_value=response)
+        perplexity_client.responses.create = AsyncMock(return_value=response)
 
         request = make_request(
             "What are the latest AI developments?",
@@ -141,7 +141,7 @@ class TestPerplexityAPIIntegration:
             request,
             perplexity_client,
             PerplexityConfig(
-                model="sonar-pro",
+                model="perplexity/sonar",
                 system_message="You are a web search assistant",
                 output_tokens=1500,
             ),
@@ -170,16 +170,20 @@ class TestPerplexityAPIIntegration:
         embed = embed_data["embed"]
         assert "AI development continues to advance" in embed.description
 
-        call_args = perplexity_client.chat.completions.create.call_args[1]
-        assert call_args["model"] == "sonar-pro"
-        assert call_args["max_tokens"] == 1500
+        call_args = perplexity_client.responses.create.call_args[1]
+        assert call_args["model"] == "perplexity/sonar"
+        assert call_args["max_output_tokens"] == 1500
+        assert call_args["instructions"] == "You are a web search assistant"
+        assert call_args["tools"] == [{"type": "web_search"}]
+        assert "messages" not in call_args
+        assert "max_tokens" not in call_args
 
     @pytest.mark.asyncio
     async def test_perplexity_error_handling(self, make_request):
         """Test Perplexity API error handling."""
         conversation_manager = Mock(spec=ThreadSafeConversationManager)
         perplexity_client = Mock()
-        perplexity_client.chat.completions.create = AsyncMock(
+        perplexity_client.responses.create = AsyncMock(
             side_effect=TimeoutError("Request timed out")
         )
 
@@ -306,7 +310,7 @@ class TestIntegrationScenarios:
         conversation_manager.get_conversation_summary_formatted.return_value = []
 
         perplexity_client = Mock()
-        perplexity_client.chat.completions.create = AsyncMock(
+        perplexity_client.responses.create = AsyncMock(
             side_effect=Exception("Perplexity unavailable")
         )
 

@@ -114,7 +114,7 @@ def _referenced_names() -> set[str]:
     return references
 
 
-@pytest.mark.parametrize("literal", ["sonar-pro", "gpt-6-luna"])
+@pytest.mark.parametrize("literal", ["perplexity/sonar", "gpt-6-luna"])
 def test_model_default_literal_appears_once_in_src(literal):
     sites = [
         f"{path.relative_to(REPO_ROOT)}:{node.lineno}"

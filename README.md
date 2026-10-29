@@ -10,7 +10,7 @@
 
 [![Discord.py](https://img.shields.io/badge/discord.py-2.7.1-5865F2.svg?logo=discord&logoColor=white)](https://discordpy.readthedocs.io/)
 [![OpenAI](https://img.shields.io/badge/OpenAI-API-412991.svg?logo=openai&logoColor=white)](https://openai.com/)
-[![Perplexity](https://img.shields.io/badge/Perplexity-Sonar--Pro-20B2AA.svg)](https://www.perplexity.ai/)
+[![Perplexity](https://img.shields.io/badge/Perplexity-Agent--API-20B2AA.svg)](https://www.perplexity.ai/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](http://unlicense.org/)
 
 [![GitHub release](https://img.shields.io/github/v/release/johndotpub/DiscordianAI)](https://github.com/johndotpub/DiscordianAI/releases)
@@ -20,11 +20,11 @@
 
 # DiscordianAI
 
-DiscordianAI is a Discord bot that routes each message to OpenAI or Perplexity, keeps conversation history per conversation, and formats replies for Discord. `GPT_MODEL` defaults to `gpt-6-luna` and is sent as configured: an unknown model name produces a startup warning, not an allowlist rejection. `PERPLEXITY_MODEL` defaults to `sonar-pro`. The provider decides which model names are valid. See [docs/API-CONTRACT.md](docs/API-CONTRACT.md) for what is sent to each provider.
+DiscordianAI is a Discord bot that routes each message to OpenAI or Perplexity, keeps conversation history per conversation, and formats replies for Discord. `GPT_MODEL` defaults to `gpt-6-luna` and is sent as configured: an unknown model name produces a startup warning, not an allowlist rejection. `PERPLEXITY_MODEL` defaults to `perplexity/sonar` and the Perplexity path uses the current Agent API. The provider decides which model names are valid. See [docs/API-CONTRACT.md](docs/API-CONTRACT.md) for what is sent to each provider.
 
 ## What Makes It Different
 
-- **Hybrid routing**: OpenAI handles reasoning and creative prompts; Perplexity Sonar handles current events and returns citations.
+- **Hybrid routing**: OpenAI handles reasoning and creative prompts; Perplexity's Agent API handles current events and returns citations.
 - **Conversation history**: History is keyed by guild channel (`g:<guild>:c:<channel>`) or DM (`dm:<user>`) and is sent to both providers. A thread keeps its own history, separate from its parent. A follow-up is routed to the provider that answered the previous turn when one is recorded.
 - **Discord-native output**: Citation embeds, message splitting at Discord's 2000-character limit, and Perplexity link-preview suppression when a response contains two or more links. The OpenAI path does not suppress previews.
 - **Operations**: Per-provider HTTP/2 connection pooling with HTTP/1.1 fallback, per-provider circuit breakers, and health checks after login plus HTTP endpoints that report observed provider and breaker state.
@@ -90,9 +90,10 @@ The launcher resolves Python in this order: pyenv → project-local `.venv` → 
 |-----|---------|
 | `DISCORD_TOKEN` | Bot authentication token from the Discord Developer Portal.
 | `GPT_MODEL` | OpenAI model name sent as configured. Default `gpt-6-luna`; unknown names warn but do not block startup.
-| `PERPLEXITY_MODEL` | Perplexity model name. Default `sonar-pro`; known names include `sonar`, `sonar-deep-research`, and `sonar-reasoning-pro`.
+| `PERPLEXITY_MODEL` | Perplexity model name. Default `perplexity/sonar`, the current Agent API Sonar model. Legacy Sonar names still answer on Chat Completions but are not used by this bot.
 | `INPUT_TOKENS` / `OUTPUT_TOKENS` | Prompt budget and OpenAI completion cap. `OUTPUT_TOKENS` is sent as `max_completion_tokens` and includes reasoning tokens.
-| `PERPLEXITY_OUTPUT_TOKENS` | Perplexity completion cap, sent as `max_tokens` (output only). Defaults to `OUTPUT_TOKENS`.
+| `PERPLEXITY_OUTPUT_TOKENS` | Perplexity completion cap, sent as `max_output_tokens` to the Agent API (output only). Defaults to `OUTPUT_TOKENS`.
+| `CONTEXT_WINDOW` | Shared context window (default 128000). It stays 128000 because it is shared with the OpenAI path, and Sonar's window is the smaller of the two.
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | How many recent messages to inspect when a follow-up inherits the previous provider.
 | `CONVERSATION_TTL_SECONDS` | Idle seconds before a conversation and its lock are evicted (default 1800).
 | `MAX_URLS_PER_MESSAGE` | Maximum URLs scraped from one message; extras are ignored (default 3).
@@ -120,7 +121,7 @@ OPENAI_API_KEY=sk-your-openai-key
 OPENAI_API_URL=https://api.openai.com/v1/
 GPT_MODEL=gpt-6-luna
 PERPLEXITY_API_KEY=pplx-your-perplexity-key
-PERPLEXITY_MODEL=sonar-pro
+PERPLEXITY_MODEL=perplexity/sonar
 INPUT_TOKENS=120000
 OUTPUT_TOKENS=8000
 SYSTEM_MESSAGE=You are a helpful assistant with access to current web information.
@@ -135,7 +136,7 @@ RATE_LIMIT_PER=60
 ### AI Orchestration
 - [src/smart_orchestrator.py](src/smart_orchestrator.py) routes by URL, search-intent, follow-up, time-sensitivity, factual, entity, and conversational patterns and owns provider selection and history writes.
 - [src/message_processor.py](src/message_processor.py) builds the per-conversation history snapshot and request, calls the orchestrator, and sends the reply.
-- [src/openai_processing.py](src/openai_processing.py) and [src/perplexity_processing.py](src/perplexity_processing.py) send only the model, messages, and provider completion cap; neither sends sampling parameters. Perplexity processing also handles scrape budgets and citation extraction.
+- [src/openai_processing.py](src/openai_processing.py) sends the model, messages, and completion cap. [src/perplexity_processing.py](src/perplexity_processing.py) sends the model, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool to the Agent API; neither sends sampling parameters. Perplexity processing also handles scrape budgets and citation extraction.
 
 ### Discord User Experience
 - [src/discord_embeds.py](src/discord_embeds.py) formats Perplexity citations into embed descriptions and truncates descriptions above the 4096-character hard limit to the 3840-character safe limit.

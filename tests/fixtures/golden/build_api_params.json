@@ -1,26 +1,23 @@
 {
   "cases": {
     "e-empty-values": {
-      "max_tokens": 0,
-      "messages": [
-        {
-          "content": "",
-          "role": "system"
-        },
+      "input": [
         {
           "content": "",
           "role": "user"
         }
       ],
-      "model": ""
+      "instructions": "",
+      "max_output_tokens": 0,
+      "model": "",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
     },
     "e-history-one-turn": {
-      "max_tokens": 8000,
-      "messages": [
-        {
-          "content": "You are a helpful assistant with access to current web information.",
-          "role": "system"
-        },
+      "input": [
         {
           "content": "Name two novels by Frank Herbert.",
           "role": "user"
@@ -30,15 +27,17 @@
           "role": "user"
         }
       ],
-      "model": "sonar-pro"
+      "instructions": "You are a helpful assistant with access to current web information.",
+      "max_output_tokens": 8000,
+      "model": "sonar-pro",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
     },
     "e-history-three-turns": {
-      "max_tokens": 2048,
-      "messages": [
-        {
-          "content": "You are a helpful assistant.",
-          "role": "system"
-        },
+      "input": [
         {
           "content": "Name two novels by Frank Herbert.",
           "role": "user"
@@ -56,105 +55,126 @@
           "role": "user"
         }
       ],
-      "model": "sonar"
+      "instructions": "You are a helpful assistant.",
+      "max_output_tokens": 2048,
+      "model": "sonar",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
     },
     "e-json-ish-content": {
-      "max_tokens": 777,
-      "messages": [
-        {
-          "content": "Return JSON with keys \"answer\" and \"sources\".",
-          "role": "system"
-        },
+      "input": [
         {
           "content": "{\"question\": \"golden behaviour?\"}",
           "role": "user"
         }
       ],
-      "model": "sonar"
+      "instructions": "Return JSON with keys \"answer\" and \"sources\".",
+      "max_output_tokens": 777,
+      "model": "sonar",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
     },
     "e-large-token-budget": {
-      "max_tokens": 120000,
-      "messages": [
-        {
-          "content": "System",
-          "role": "system"
-        },
+      "input": [
         {
           "content": "User",
           "role": "user"
         }
       ],
-      "model": "sonar-pro"
+      "instructions": "System",
+      "max_output_tokens": 120000,
+      "model": "sonar-pro",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
     },
     "e-long-system": {
-      "max_tokens": 4096,
-      "messages": [
-        {
-          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur a",
-          "role": "system"
-        },
+      "input": [
         {
           "content": "Short question",
           "role": "user"
         }
       ],
-      "model": "sonar-pro"
+      "instructions": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur a",
+      "max_output_tokens": 4096,
+      "model": "sonar-pro",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
     },
     "e-multiline-system": {
-      "max_tokens": 512,
-      "messages": [
-        {
-          "content": "Line one.\nLine two.\nLine three.",
-          "role": "system"
-        },
+      "input": [
         {
           "content": "Summarise the above.",
           "role": "user"
         }
       ],
-      "model": "sonar-pro"
+      "instructions": "Line one.\nLine two.\nLine three.",
+      "max_output_tokens": 512,
+      "model": "sonar-pro",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
     },
     "e-multiline-user": {
-      "max_tokens": 2048,
-      "messages": [
-        {
-          "content": "System prompt",
-          "role": "system"
-        },
+      "input": [
         {
           "content": "First line\nSecond line\n\nFourth line",
           "role": "user"
         }
       ],
-      "model": "sonar-pro"
+      "instructions": "System prompt",
+      "max_output_tokens": 2048,
+      "model": "sonar-pro",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
     },
     "e-standard-values": {
-      "max_tokens": 8000,
-      "messages": [
-        {
-          "content": "You are a helpful assistant.",
-          "role": "system"
-        },
+      "input": [
         {
           "content": "What is today's news?",
           "role": "user"
         }
       ],
-      "model": "sonar-pro"
+      "instructions": "You are a helpful assistant.",
+      "max_output_tokens": 8000,
+      "model": "sonar-pro",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
     },
     "e-unicode-values": {
-      "max_tokens": 1234,
-      "messages": [
-        {
-          "content": "You are helpful. 🙂",
-          "role": "system"
-        },
+      "input": [
         {
           "content": "今天の天気は？",
           "role": "user"
         }
       ],
-      "model": "sonar"
+      "instructions": "You are helpful. 🙂",
+      "max_output_tokens": 1234,
+      "model": "sonar",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
     }
   },
   "surface": "build_api_params"

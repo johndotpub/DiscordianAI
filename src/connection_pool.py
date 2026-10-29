@@ -32,6 +32,27 @@ class PoolProviderSpec:
     integration_headers: dict[str, str] | None = None
 
 
+def versioned_perplexity_client(perplexity_client: Any) -> Any:
+    """Return a client pointed at Perplexity's versioned Agent API base URL.
+
+    The SDK appends resource paths such as ``/responses`` and ``/models`` to
+    the configured base URL. Perplexity serves those at ``/v1/...``; the
+    unversioned paths return 404. ``with_options`` keeps the existing
+    credentials, headers, and HTTP connection pool. Clients without an HTTP
+    base URL (test doubles) are returned unchanged.
+    """
+    base_url = getattr(perplexity_client, "base_url", None)
+    if base_url is None or not hasattr(perplexity_client, "with_options"):
+        return perplexity_client
+
+    root = str(base_url).rstrip("/")
+    if not root.startswith(("https://", "http://")):
+        return perplexity_client
+    if root.endswith("/v1"):
+        return perplexity_client
+    return perplexity_client.with_options(base_url=f"{root}/v1")
+
+
 CONNECTION_POOL_SPECS: dict[str, PoolProviderSpec] = {
     "openai": PoolProviderSpec(
         service="openai",

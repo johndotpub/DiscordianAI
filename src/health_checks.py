@@ -21,6 +21,7 @@ from .config import (
     PERPLEXITY_MODELS,
     is_supported_openai_model,
 )
+from .connection_pool import versioned_perplexity_client
 from .error_handling import ErrorTracker, classify_error
 
 # Health check thresholds
@@ -192,7 +193,10 @@ class APIHealthMonitor:
                     details={"available_models": available_models},
                 )
 
-            response = await client.models.list()
+            model_client = (
+                versioned_perplexity_client(client) if spec.service == "perplexity" else client
+            )
+            response = await model_client.models.list()
 
             response_time_ms = (time.time() - start_time) * 1000
 

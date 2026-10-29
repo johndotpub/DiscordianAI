@@ -29,9 +29,10 @@ The live provider behaviour behind these checks is recorded in
 
 ## Warnings That Do Not Abort Startup
 
-- An unknown `PERPLEXITY_MODEL`. The warning lists the known set:
-  `sonar`, `sonar-pro`, `sonar-deep-research`, `sonar-reasoning-pro`. The
-  provider may add models before this list is updated, so the name is not fatal.
+- An unknown `PERPLEXITY_MODEL`. The warning lists the known Agent API model
+  set, currently `perplexity/sonar`. The provider may add models before this
+  list is updated, so the name is not fatal; legacy Sonar names still answer on
+  Chat Completions but warn here.
 - An unknown `GPT_MODEL`. OpenAI accepts model names beyond any list shipped
   with the bot; only the shape is known locally, not the full catalogue.
 - A well-formed base URL that is not the provider's documented endpoint. A
@@ -57,11 +58,13 @@ The live provider behaviour behind these checks is recorded in
 
 ## Perplexity
 
-- The output cap is sent as `max_tokens`, which covers output only.
+- The output cap is sent as `max_output_tokens` to the Agent API, which covers
+  output only.
 - The documented range is **1..128,000**. Values outside that range are errors.
-- The documented model enum is `sonar`, `sonar-pro`, `sonar-deep-research`, and
-  `sonar-reasoning-pro`. A different name produces a warning that lists the known
-  set; it does not prevent startup.
+- The current Agent API catalogue has one Sonar model, `perplexity/sonar`. A
+  different name produces a warning that lists the known set; it does not
+  prevent startup. Legacy names such as `sonar-pro` still answer on Chat
+  Completions but are not the current catalogue.
 
 ## Discord
 
@@ -77,7 +80,7 @@ The live provider behaviour behind these checks is recorded in
 [Default]
 INPUT_TOKENS=120000
 OUTPUT_TOKENS=8000                # OpenAI max_completion_tokens, includes reasoning
-PERPLEXITY_OUTPUT_TOKENS=8000     # Perplexity max_tokens, output only
+PERPLEXITY_OUTPUT_TOKENS=8000     # Perplexity max_output_tokens, output only
 CONTEXT_WINDOW=128000
 
 [Limits]

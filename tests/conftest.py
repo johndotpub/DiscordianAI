@@ -114,6 +114,16 @@ def perplexity_response():
         response.usage.total_tokens = 50
         response.citations = citations
         response.search_results = search_results
+        response.output = []
+        if search_results:
+            response.output.append({"type": "search_results", "results": search_results})
+        response.output.append(
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": content}],
+            }
+        )
         return response
 
     return _build

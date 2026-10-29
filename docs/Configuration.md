@@ -32,21 +32,21 @@ The GPT-6 family is current. The provider retires the GPT-5 series on 2026-12-11
 #### Perplexity Settings  
 - **`PERPLEXITY_API_KEY`**: Your Perplexity API key for web search *(leave empty to disable)*
 - **`PERPLEXITY_API_URL`**: Perplexity API endpoint *(default: "https://api.perplexity.ai")*
-- **`PERPLEXITY_MODEL`**: Model to use: "sonar-pro" (default), "sonar", "sonar-deep-research", or "sonar-reasoning-pro" *(default: "sonar-pro")*
+- **`PERPLEXITY_MODEL`**: Model to use. The current Agent API catalogue's Sonar model is "perplexity/sonar"; legacy Sonar names still answer on Chat Completions but are not used by this bot *(default: "perplexity/sonar")*
 
 #### Token Limits
 - **`INPUT_TOKENS`**: Maximum input context tokens *(default: 120000)*
 - **`OUTPUT_TOKENS`**: Maximum OpenAI output tokens per response, sent as `max_completion_tokens` *(default: 8000)*
-- **`PERPLEXITY_OUTPUT_TOKENS`**: Maximum Perplexity output tokens per response, sent as `max_tokens` *(default: the value of `OUTPUT_TOKENS`)*
-- **`CONTEXT_WINDOW`**: Total context window size *(default: 128000)*
+- **`PERPLEXITY_OUTPUT_TOKENS`**: Maximum Perplexity output tokens per response, sent as `max_output_tokens` to the Agent API *(default: the value of `OUTPUT_TOKENS`)*
+- **`CONTEXT_WINDOW`**: Total context window size *(default: 128000)*. It stays 128000 because it is shared with the OpenAI path, and Sonar's window is the smaller of the two.
 - **`SYSTEM_MESSAGE`**: System prompt for AI personality *(default: "You are a helpful assistant.")*
 
 `OUTPUT_TOKENS` and `PERPLEXITY_OUTPUT_TOKENS` mean different things. OpenAI's
 `max_completion_tokens` covers reasoning tokens as well as visible output, so a small
 OpenAI value can be consumed entirely by reasoning and produce an empty reply with
-`finish_reason: length`. Perplexity's `max_tokens` covers output only. Both settings share
-the documented maximum of 128,000; values above it stop startup, and an OpenAI value below
-512 logs a warning about empty replies.
+`finish_reason: length`. Perplexity's `max_output_tokens` covers output only. Both settings
+share the documented maximum of 128,000; values above it stop startup, and an OpenAI value
+below 512 logs a warning about empty replies.
 
 `INPUT_TOKENS` is enforced as a prompt budget. The bot estimates prompt size from the
 system prompt, history, and current message using roughly four characters per token with
@@ -166,7 +166,7 @@ GPT_MODEL=gpt-6-luna
 # For web search capabilities - Leave blank to disable web search
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
 PERPLEXITY_API_URL=https://api.perplexity.ai
-PERPLEXITY_MODEL=sonar-pro
+PERPLEXITY_MODEL=perplexity/sonar
 
 # === TOKEN LIMITS ===
 INPUT_TOKENS=120000
@@ -246,7 +246,7 @@ export OPENAI_API_KEY="your_openai_key"
 export OPENAI_API_URL="https://api.openai.com/v1/"
 export PERPLEXITY_API_KEY="your_perplexity_key"
 export PERPLEXITY_API_URL="https://api.perplexity.ai"
-export PERPLEXITY_MODEL="sonar-pro"
+export PERPLEXITY_MODEL="perplexity/sonar"
 export GPT_MODEL="gpt-6-luna"
 export INPUT_TOKENS="120000"
 export OUTPUT_TOKENS="8000"

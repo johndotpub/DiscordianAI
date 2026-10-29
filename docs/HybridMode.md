@@ -1,11 +1,11 @@
-# Smart AI Mode: Advanced GPT-5 + Perplexity Integration
+# Smart AI Mode: Advanced GPT-6 + Perplexity Integration
 
 ## Overview
 
 DiscordianAI features a sophisticated AI orchestration system with intelligent routing, conversation consistency, and three flexible operation modes:
 
-1. **OpenAI Only** - Use GPT-5 for all responses
-2. **Perplexity Only** - Use Sonar-Pro with web search for all responses  
+1. **OpenAI Only** - Use GPT-6 for all responses
+2. **Perplexity Only** - Use `perplexity/sonar` with web search for all responses
 3. **Smart Hybrid** - Automatically choose the best AI for each message with conversation consistency
 
 ## AI Service Consistency System 🔄
@@ -50,11 +50,11 @@ flowchart TD
     C -->|Failed| D[Send Rate Limit Message]
     C -->|Passed| E[Smart Orchestrator Analysis]
 
-    E --> L[Model Guard\n(GPT-5 + Sonar-Pro)]
+    E --> L[Model Guard\n(GPT-6 + Agent API)]
     L --> F{Mode Selector}
 
-    F -->|OpenAI Only| G[OpenAI Processing\n(GPT-5 family)]
-    F -->|Perplexity Only| H[Perplexity Processing\n(Sonar models)]
+    F -->|OpenAI Only| G[OpenAI Processing\n(GPT-6 family)]
+    F -->|Perplexity Only| H[Perplexity Processing\n(Agent API)]
     F -->|Hybrid| I[Check Conversation Context]
 
     I --> J{Follow-up Detected?}
@@ -78,8 +78,8 @@ flowchart TD
     T -->|OpenAI| G
     T -->|Perplexity| H
 
-    G --> R[GPT-5 Response Payload]
-    H --> PR[Sonar-Pro Response + Citations]
+    G --> R[GPT-6 Response Payload]
+    H --> PR[Agent API Response + Citations]
 
     %% OpenAI response path includes in-line web-inability detection and fallback
     R --> OW[OpenAI Response]
@@ -115,9 +115,9 @@ This ensures **exactly one message** is sent per user query, eliminating the dup
 
 ### Model Guardrails
 
-- `api_validation.validate_openai_config()` warns when `GPT_MODEL` falls outside the documented GPT-5 identifiers; unknown names do not block startup.
-- Perplexity calls only expose `model` and `max_tokens`; Sonar-Pro is the default and sampling is handled by the API.
-- Temperature toggles were removed because GPT-5 and Sonar-Pro ignore external sampling overrides.
+- `api_validation.validate_openai_config()` warns when `GPT_MODEL` falls outside the documented GPT model families; unknown names do not block startup.
+- Perplexity calls send `model`, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool. `perplexity/sonar` is the default, sampling is handled by the API, and no `temperature` is sent.
+- Citations come from the Agent API `search_results` item: each result's 1-based `id` maps to the `[n]` marker in the answer text.
 
 ## Smart Detection (No Manual Triggers Required!)
 
@@ -146,7 +146,7 @@ The bot uses advanced semantic analysis to automatically determine when web sear
 - "What's the weather like?" ← Current information
 - "Tell me about the recent SpaceX launch" ← Current events
 
-**Automatically Uses GPT-5:**
+**Automatically Uses GPT-6:**
 - "Write me a poem about robots" ← Creative
 - "How do I fix this Python error?" ← Technical
 - "What do you think about philosophy?" ← Opinion/conversation
@@ -176,7 +176,7 @@ PERPLEXITY_API_KEY=your_perplexity_api_key_here
 ```
 
 ### Mode 2: OpenAI Only
-Uses only GPT-5 for all responses:
+Uses only GPT-6 for all responses:
 
 ```ini
 # Only OpenAI configured
@@ -229,7 +229,7 @@ USER_LOCK_CLEANUP_INTERVAL=3600
 
 ### 1. Get API Keys (as needed)
 
-**OpenAI API Key** (for GPT-5):
+**OpenAI API Key** (for GPT-6):
 - Go to https://platform.openai.com/api-keys
 - Create a new API key
 
@@ -250,10 +250,10 @@ Environment variables with the same names override `config.ini`, so production d
 
 Start your bot and try these examples:
 
-- "Hello!" ← Uses GPT-5
+- "Hello!" ← Uses GPT-6
 - "What's the latest AI news?" ← Uses Perplexity
 - "Tell me about today's weather" ← Uses Perplexity
-- "How do I learn Python?" ← Uses GPT-5
+- "How do I learn Python?" ← Uses GPT-6
 
 ## Fallback Behavior
 
@@ -274,7 +274,7 @@ Both services share identical retry policy via `retry_with_backoff`:
 
 ## Cost Considerations
 
-- **GPT-5**: Higher cost per token but excellent reasoning
+- **GPT-6**: Higher cost per token but excellent reasoning
 - **Perplexity**: Lower cost for web search, includes citations
 - The bot automatically chooses the most cost-effective option based on the query type
 

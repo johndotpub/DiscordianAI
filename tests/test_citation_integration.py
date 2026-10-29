@@ -48,7 +48,7 @@ class TestCitationIntegration:
             logger=logger,
         )
         config = PerplexityConfig(
-            model="sonar-pro",
+            model="perplexity/sonar",
             system_message="You are a helpful assistant with web search.",
             output_tokens=8000,
         )

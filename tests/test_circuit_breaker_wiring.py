@@ -64,12 +64,16 @@ def _failing_client() -> MagicMock:
 
 def _perplexity_client(text: str) -> MagicMock:
     response = SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content=text), finish_reason="stop")],
-        citations=[],
-        search_results=[],
+        output=[
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": text}],
+            }
+        ]
     )
     client = MagicMock()
-    client.chat.completions.create = AsyncMock(return_value=response)
+    client.responses.create = AsyncMock(return_value=response)
     return client
 
 
@@ -256,7 +260,7 @@ async def test_open_openai_breaker_falls_back_without_raising():
         )
 
     assert response == "Perplexity fallback"
-    perplexity_client.chat.completions.create.assert_awaited_once()
+    perplexity_client.responses.create.assert_awaited_once()
 
 
 @pytest.mark.asyncio

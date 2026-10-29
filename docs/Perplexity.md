@@ -4,17 +4,40 @@ DiscordianAI provides comprehensive Perplexity integration for real-time web sea
 
 ## Supported Models
 
-### Sonar-Pro (Recommended)
-- **Latest web search model** with enhanced accuracy
-- **Real-time information access** from current web sources
-- **Advanced citation extraction** with URL formatting
-- **Optimized for recent events** and factual queries
+### Perplexity Sonar (Current)
+The Agent API catalogue lists one Sonar model, `perplexity/sonar`, and it is the
+bot's default:
 
-### Sonar (General)
-- **Standard web search model** for general queries
-- **Reliable information retrieval** from web sources
-- **Good citation support** with source attribution
-- **Cost-effective option** for basic web search needs
+- **Real-time information access** from current web sources
+- **Automatic citation extraction** with numbered `[n]` source links
+- **Web search on every call** through the `web_search` tool
+
+The legacy Sonar names (`sonar`, `sonar-pro`, `sonar-deep-research`,
+`sonar-reasoning-pro`) still answer on Chat Completions, but that interface is
+not what this bot uses.
+
+## Agent API Request and Response
+
+The bot calls the Agent API through the OpenAI SDK's `responses.create()`:
+
+- **Endpoint**: `POST https://api.perplexity.ai/v1/agent`, with
+  `POST /v1/responses` as the OpenAI-compatible alias used by the SDK.
+- **Request fields**: `model`, `instructions` (the system prompt), `input` (the
+  prior turns and current user message), `max_output_tokens`, and
+  `tools: [{"type": "web_search"}]`. No `temperature` is sent.
+- **Response**: an `output` array. A `search_results` item carries
+  `results[]` entries with `id`, `url`, `title`, `snippet`, `date`,
+  `last_updated`, and `source`; the 1-based `id` matches the `[1]`, `[2]`
+  markers in the answer. A `message` item carries `content[]` blocks of type
+  `output_text`.
+- **No-search answers**: a query that needs no search returns only the
+  `message` item, so the parser tolerates a missing `search_results` item.
+- **Usage**: `usage` reports `input_tokens`, `output_tokens`,
+  `total_tokens`, and a `cost` breakdown. The bot does not currently log that
+  cost.
+
+Chat Completions remains supported by Perplexity, but it is the legacy
+interface and this bot no longer calls it.
 
 ## Configuration
 
@@ -24,7 +47,7 @@ DiscordianAI provides comprehensive Perplexity integration for real-time web sea
 # Perplexity API configuration
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
 PERPLEXITY_API_URL=https://api.perplexity.ai
-PERPLEXITY_MODEL=sonar-pro
+PERPLEXITY_MODEL=perplexity/sonar
 
 # Response settings
 OUTPUT_TOKENS=8000
@@ -33,7 +56,7 @@ OUTPUT_TOKENS=8000
 SYSTEM_MESSAGE=You are a helpful assistant with access to current web information. When providing citations, include source URLs when available.
 ```
 
-Perplexity Sonar models manage sampling internally, so manual `temperature` controls are not exposed in DiscordianAI.
+The Agent API handles sampling internally, and DiscordianAI never sends a `temperature` parameter.
 
 ## Operation Modes
 
@@ -93,16 +116,14 @@ The following diagram shows how Perplexity responses are processed and formatted
 
 ```mermaid
 flowchart TD
-    A[Perplexity API Response] --> B[Extract Raw Text]
-    A --> C[Extract Citations Metadata]
-    A --> D[Extract Search Results]
+    A[Agent API output array] --> B[Extract message output_text]
+    A --> D[Extract search_results results]
     
     B --> E[Find Citation Markers]
     E --> F[Parse Citation Numbers]
-    F --> G[Map Citations to URLs]
+    F --> G[Map id to URL]
     
-    C --> H{Citations Available?}
-    D --> H
+    D --> H{Citations Available?}
     H -->|Yes| I[Build Citation Dictionary]
     H -->|No| J[Plain Text Response]
     
@@ -151,7 +172,7 @@ Companies are investing heavily in machine learning capabilities [2].
 ```ini
 [Default]
 PERPLEXITY_API_KEY=pplx-your-key-here
-PERPLEXITY_MODEL=sonar-pro
+PERPLEXITY_MODEL=perplexity/sonar
 OUTPUT_TOKENS=8000
 
 # Optimize for web search
@@ -194,9 +215,9 @@ The bot analyzes queries to determine when web search is beneficial:
 - **Ask follow-ups**: The bot maintains conversation context
 
 ### Model Selection
-- Use **sonar-pro** for latest information and breaking news
-- Use **sonar** for general web search and research queries
-- Consider token costs when setting OUTPUT_TOKENS
+- Use **perplexity/sonar**, the current Agent API Sonar model, for web search
+- Consider token costs when setting OUTPUT_TOKENS; `usage.cost` reports the
+  provider's own breakdown for each response
 
 ### Integration Tips
 - **Hybrid mode recommended**: Combines web search with conversational AI
@@ -215,7 +236,8 @@ The bot analyzes queries to determine when web search is beneficial:
 - Implement appropriate rate limiting in bot configuration
 
 **"Model not found"**:
-- Verify the model name is correct (supported: `sonar-pro`, `sonar`)
+- Verify the model name is correct (the current Agent API Sonar model is
+  `perplexity/sonar`)
 - Check if you have access to the specified model
 
 **Citations not formatting properly**:
@@ -240,7 +262,7 @@ For production deployment, use environment variables:
 ```bash
 export PERPLEXITY_API_KEY="pplx-your-key-here"
 export PERPLEXITY_API_URL="https://api.perplexity.ai"
-export PERPLEXITY_MODEL="sonar-pro"
+export PERPLEXITY_MODEL="perplexity/sonar"
 ```
 
 ## Getting Help

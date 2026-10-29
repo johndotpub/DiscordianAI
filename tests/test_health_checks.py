@@ -163,22 +163,22 @@ class TestAPIHealthMonitor:
         # Mock Perplexity client
         perplexity_client = Mock()
         mock_response = Mock()
-        mock_response.data = [Mock(id="sonar-pro"), Mock(id="sonar")]
+        mock_response.data = [Mock(id="perplexity/sonar"), Mock(id="other-model")]
 
         mock_create = AsyncMock()
         mock_create.return_value = mock_response
         perplexity_client.models.list = mock_create
 
-        config = {"PERPLEXITY_MODEL": "sonar-pro"}
+        config = {"PERPLEXITY_MODEL": "perplexity/sonar"}
 
         result = await self.monitor.check_perplexity_health(perplexity_client, config)
 
         assert result.service == "perplexity"
         assert result.status == "healthy"
         assert result.error is None
-        assert result.details["model"] == "sonar-pro"
+        assert result.details["model"] == "perplexity/sonar"
         assert result.details["model_count"] == 2
-        assert result.details["available_models"] == ["sonar-pro", "sonar"]
+        assert result.details["available_models"] == ["perplexity/sonar", "other-model"]
 
         # Verify that the API call was made successfully
         perplexity_client.models.list.assert_called_once()
@@ -318,7 +318,7 @@ class TestAPIHealthMonitor:
 
         config = {
             "GPT_MODEL": "gpt-5-mini",
-            "PERPLEXITY_MODEL": "sonar-pro",
+            "PERPLEXITY_MODEL": "perplexity/sonar",
         }
 
         results = await self.monitor.run_all_health_checks(clients, config)

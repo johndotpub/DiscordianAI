@@ -22,7 +22,7 @@ def _valid_config(**overrides):
         "GPT_MODEL": "gpt-5-mini",
         "PERPLEXITY_API_KEY": PERPLEXITY_KEY,
         "PERPLEXITY_API_URL": "https://api.perplexity.ai",
-        "PERPLEXITY_MODEL": "sonar-pro",
+        "PERPLEXITY_MODEL": "perplexity/sonar",
         "INPUT_TOKENS": 120000,
         "OUTPUT_TOKENS": 8000,
         "PERPLEXITY_OUTPUT_TOKENS": 7000,
@@ -134,8 +134,7 @@ def test_unknown_perplexity_model_warns_with_known_set_and_continues():
 
     assert not errors, errors
     warning = next(w for w in warnings if "sonar-experimental" in w)
-    for model in ("sonar", "sonar-pro", "sonar-deep-research", "sonar-reasoning-pro"):
-        assert model in warning
+    assert "perplexity/sonar" in warning
 
     exit_code, run_bot = _run_main_with_config(config)
     assert exit_code is None

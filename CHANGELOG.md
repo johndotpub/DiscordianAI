@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Behaviour changes
 
 - **The default model is now `gpt-6-luna`; GPT-5 series models are retired by the provider on 2026-12-11 and remain selectable until then.**
+- **Perplexity now uses the Agent API.** Requests go to `/v1/agent` (the SDK uses the `/v1/responses` alias) with `instructions`, `input`, `max_output_tokens`, and the `web_search` tool; answers come from `output` items and citations from `search_results`. `PERPLEXITY_MODEL` defaults to `perplexity/sonar`. Sonar Chat Completions is still supported by the provider but is no longer what this bot uses. **Upgrading: a config that sets `PERPLEXITY_MODEL` to a legacy Sonar id — `sonar`, `sonar-pro`, `sonar-reasoning-pro`, `sonar-deep-research` — must change it to `perplexity/sonar`. The Agent API does not accept the old ids; startup warns and requests fail until the value is updated.**
 - **Conversation memory is per channel, not per user.** A DM can no longer be replayed into a public reply, and two channels no longer share context. History already held in memory under the old per-user keys is not reused.
 - **Web-search follow-ups keep their thread.** The Perplexity path now receives the conversation history it always claimed to have, so a follow-up is answered with the earlier turns in view.
 - **Answers are no longer shared between users through a response cache.** Cache and request-deduplication keys are scoped to the conversation key plus a digest of the conversation, with the requester as a fallback when no conversation key is given, so the same words from two people no longer return one person's answer.
@@ -34,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Operations ⚙️
 
 - **Log rotation**: `contrib/logrotate/discordianai` is a ready-to-edit `copytruncate` fragment for supervisor-owned `bot.log`; `docs/Daemon.md` explains installation and the copy window.
-- **`PERPLEXITY_OUTPUT_TOKENS`**: sets Perplexity's `max_tokens` independently of OpenAI's `OUTPUT_TOKENS`; when unset it follows `OUTPUT_TOKENS`.
+- **`PERPLEXITY_OUTPUT_TOKENS`**: sets Perplexity's `max_output_tokens` independently of OpenAI's `OUTPUT_TOKENS`; when unset it follows `OUTPUT_TOKENS`.
 - **`CONVERSATION_TTL_SECONDS`**: idle seconds before a conversation and its lock are evicted (default 1800).
 - **Scrape budgets**: `MAX_URLS_PER_MESSAGE` (default 3), `MAX_TOTAL_SCRAPED_CHARS` (default 60000) and `SCRAPE_DEADLINE_SECONDS` (default 20) bound the work one message can cause.
 - **SSRF caveat for HTTPS**: `docs/Security.md` now documents that plain HTTP is pinned to a vetted address while HTTPS relies on a pre-request DNS check, leaving a small DNS-rebinding window in exchange for correct TLS verification.

@@ -34,8 +34,33 @@ def show(label, resp):
         return body
     print("  top-level keys:", SHAPE(body))
     if "usage" in body and isinstance(body["usage"], dict):
-        print("  usage keys:", SHAPE(body["usage"]))
-        print("  usage:", {k: body["usage"][k] for k in ("prompt_tokens", "completion_tokens", "total_tokens") if k in body["usage"]})
+        usage = body["usage"]
+        print("  usage keys:", SHAPE(usage))
+        usage_keys = (
+            "prompt_tokens",
+            "completion_tokens",
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "cost",
+        )
+        print("  usage:", {k: usage[k] for k in usage_keys if k in usage})
+    if isinstance(body.get("output"), list):
+        print("  output item types:", [item.get("type") for item in body["output"] if isinstance(item, dict)])
+        for item in body["output"]:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") == "search_results":
+                results = item.get("results") or []
+                print("    search_results count:", len(results))
+                if results and isinstance(results[0], dict):
+                    print("    search_results[0] keys:", SHAPE(results[0]))
+                    print("    search_results[0].id:", results[0].get("id"))
+            elif item.get("type") == "message":
+                content = item.get("content") or []
+                print("    message content types:", [part.get("type") for part in content if isinstance(part, dict)])
+                text = next((part.get("text") for part in content if isinstance(part, dict) and part.get("type") == "output_text"), None)
+                print("    output_text preview:", repr(str(text)[:60]))
     for k in ("citations", "search_results", "related_questions"):
         if k in body:
             v = body[k]
@@ -120,6 +145,56 @@ def main():
             json={"model": "sonar-pro", "max_tokens": 16, "reasoning_effort": "xhigh", **cheap},
         )
         show("perplexity reasoning_effort=xhigh (outside documented enum)", r)
+
+        pplx_headers = {
+            "Authorization": f"Bearer {pplx}",
+            "X-Pplx-Integration": "discordian-ai",
+        }
+        agent_request = {
+            "model": "perplexity/sonar",
+            "instructions": "Answer in one sentence and cite sources.",
+            "input": [{"role": "user", "content": "What was the top news headline today?"}],
+            "max_output_tokens": 200,
+            "tools": [{"type": "web_search"}],
+        }
+
+        # 8. Perplexity Agent API canonical path, with web search
+        r = c.post(
+            "https://api.perplexity.ai/v1/agent",
+            headers=pplx_headers,
+            json=agent_request,
+        )
+        show("perplexity /v1/agent perplexity/sonar + web_search", r)
+
+        # 9. Agent API OpenAI-compatible alias, a query that needs no search
+        r = c.post(
+            "https://api.perplexity.ai/v1/responses",
+            headers=pplx_headers,
+            json={
+                "model": "perplexity/sonar",
+                "instructions": "Be brief.",
+                "input": [{"role": "user", "content": "Reply with the single word: ok"}],
+                "max_output_tokens": 16,
+                "tools": [{"type": "web_search"}],
+            },
+        )
+        show("perplexity /v1/responses no-search shape", r)
+
+        # 10. The unversioned path the SDK would use without the /v1 base URL
+        r = c.post(
+            "https://api.perplexity.ai/responses",
+            headers=pplx_headers,
+            json=agent_request,
+        )
+        show("perplexity /responses unversioned path", r)
+
+        # 11. Agent API validation error shape: bogus model
+        r = c.post(
+            "https://api.perplexity.ai/v1/agent",
+            headers=pplx_headers,
+            json={**agent_request, "model": "perplexity/typo"},
+        )
+        show("perplexity /v1/agent bogus model (validation error shape)", r)
 
 
 if __name__ == "__main__":

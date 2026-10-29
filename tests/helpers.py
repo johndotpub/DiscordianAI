@@ -28,6 +28,19 @@ class FakeResponse:
 
     def __init__(self, content="Test response", citations=None, search_results=None):
         self.choices = [FakeChoice(content)]
+        output_search_results = search_results
+        if output_search_results is None and citations:
+            output_search_results = _search_results_for(citations)
+        self.output = []
+        if output_search_results:
+            self.output.append({"type": "search_results", "results": output_search_results})
+        self.output.append(
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": content or ""}],
+            }
+        )
         if citations is not None:
             self.citations = citations
         if search_results is not None:
@@ -85,6 +98,7 @@ class FakePerplexityClient:
             search_results = _search_results_for(self.citations)
         self.search_results = search_results
         self.chat = self.Chat(self)
+        self.responses = self.Responses(self)
 
     class Chat:
         def __init__(self, client):
@@ -101,6 +115,17 @@ class FakePerplexityClient:
                     citations=self.client.citations,
                     search_results=self.client.search_results,
                 )
+
+    class Responses:
+        def __init__(self, client):
+            self.client = client
+
+        async def create(self, *_args, **_kwargs):
+            return FakeResponse(
+                self.client.response_text,
+                citations=self.client.citations,
+                search_results=self.client.search_results,
+            )
 
 
 def create_mock_user(user_id=12345, username="testuser", display_name="Test User"):

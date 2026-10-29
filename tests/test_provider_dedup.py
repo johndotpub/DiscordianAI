@@ -158,11 +158,11 @@ async def test_existing_status_classification_is_preserved(
     else:
         times = iter([0.0, elapsed_ms / 1000])
         monkeypatch.setattr(health_checks.time, "time", lambda: next(times))
-        client = _models_client(["gpt-5-mini"] if service == "openai" else ["sonar-pro"])
+        client = _models_client(["gpt-5-mini"] if service == "openai" else ["perplexity/sonar"])
         config = (
             {"GPT_MODEL": "gpt-5-mini"}
             if service == "openai"
-            else {"PERPLEXITY_MODEL": "sonar-pro"}
+            else {"PERPLEXITY_MODEL": "perplexity/sonar"}
         )
         result = await _run_check(monitor, service, client, config)
 

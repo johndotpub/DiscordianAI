@@ -253,7 +253,7 @@ class TestMessageProcessing:
             RATE_LIMIT_PER=60,
             SYSTEM_MESSAGE="You are a test bot",
             OUTPUT_TOKENS=100,
-            config={"PERPLEXITY_MODEL": "sonar-pro"},
+            config={"PERPLEXITY_MODEL": "perplexity/sonar"},
         )
 
         with (

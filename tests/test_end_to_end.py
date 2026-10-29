@@ -83,7 +83,7 @@ class FakeMessage:
 def _build_dependencies(bot, channel, openai_client):
     config = {
         "GPT_MODEL": "gpt-5-mini",
-        "PERPLEXITY_MODEL": "sonar-pro",
+        "PERPLEXITY_MODEL": "perplexity/sonar",
         "SYSTEM_MESSAGE": SYSTEM_PROMPT,
         "OUTPUT_TOKENS": 1234,
         "PERPLEXITY_OUTPUT_TOKENS": 4321,

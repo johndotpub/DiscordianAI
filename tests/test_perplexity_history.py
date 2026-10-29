@@ -25,20 +25,15 @@ class RecordingPerplexityClient:
         self.response_text = response_text
         self.citations = citations or []
         self.calls: list[dict] = []
-        self.chat = self.Chat(self)
+        self.responses = self.Responses(self)
 
-    class Chat:
+    class Responses:
         def __init__(self, client):
             self.client = client
-            self.completions = self.Completions(client)
 
-        class Completions:
-            def __init__(self, client):
-                self.client = client
-
-            async def create(self, *_args, **kwargs):
-                self.client.calls.append(kwargs)
-                return FakeResponse(self.client.response_text, citations=self.client.citations)
+        async def create(self, *_args, **kwargs):
+            self.client.calls.append(kwargs)
+            return FakeResponse(self.client.response_text, citations=self.client.citations)
 
 
 def _make_request(
@@ -70,7 +65,9 @@ async def test_perplexity_sends_full_history_with_current_message_last():
     )
 
     assert result is not None
-    messages = client.calls[0]["messages"]
+    call = client.calls[0]
+    assert call["instructions"] == PerplexityConfig().system_message
+    messages = [{"role": "system", "content": call["instructions"]}, *call["input"]]
     assert len(messages) == 5
     assert [message["role"] for message in messages] == [
         "system",
@@ -88,7 +85,7 @@ def test_openai_and_perplexity_builders_share_history_structure():
     from src.openai_processing import _build_openai_api_params
 
     perplexity_params = _build_api_params(
-        "sonar-pro",
+        "perplexity/sonar",
         "You are a helpful assistant.",
         CURRENT,
         8000,
@@ -102,34 +99,26 @@ def test_openai_and_perplexity_builders_share_history_structure():
         HISTORY,
     )
 
-    assert [message["role"] for message in perplexity_params["messages"]] == [
-        message["role"] for message in openai_params["messages"]
-    ]
-    assert perplexity_params["messages"] == openai_params["messages"]
-
-
-def test_empty_history_produces_system_and_user_only():
-    expected = [
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": CURRENT},
+    assert perplexity_params["instructions"] == openai_params["messages"][0]["content"]
+    assert perplexity_params["input"] == openai_params["messages"][1:]
+    assert [message["role"] for message in perplexity_params["input"]] == [
+        message["role"] for message in openai_params["messages"][1:]
     ]
 
-    assert (
-        _build_api_params("sonar-pro", "You are a helpful assistant.", CURRENT, 8000)["messages"]
-        == expected
-    )
-    assert (
-        _build_api_params("sonar-pro", "You are a helpful assistant.", CURRENT, 8000, None)[
-            "messages"
-        ]
-        == expected
-    )
-    assert (
-        _build_api_params("sonar-pro", "You are a helpful assistant.", CURRENT, 8000, [])[
-            "messages"
-        ]
-        == expected
-    )
+
+def test_empty_history_produces_system_instructions_and_user_input():
+    expected_input = [{"role": "user", "content": CURRENT}]
+
+    for history in (None, []):
+        params = _build_api_params(
+            "perplexity/sonar",
+            "You are a helpful assistant.",
+            CURRENT,
+            8000,
+            history,
+        )
+        assert params["instructions"] == "You are a helpful assistant."
+        assert params["input"] == expected_input
 
 
 @pytest.mark.asyncio
@@ -141,7 +130,7 @@ async def test_orchestrator_web_follow_up_sends_prior_turn():
         conversation_key,
         "assistant",
         "Frank Herbert wrote Dune.",
-        metadata={"ai_service": "perplexity", "model": "sonar-pro"},
+        metadata={"ai_service": "perplexity", "model": "perplexity/sonar"},
     )
     conversation_summary = manager.get_conversation_summary_formatted(conversation_key)
     client = RecordingPerplexityClient("Dune Messiah was published in 1969.")
@@ -161,9 +150,9 @@ async def test_orchestrator_web_follow_up_sends_prior_turn():
 
     assert response == "Dune Messiah was published in 1969."
     assert client.calls
-    messages = client.calls[0]["messages"]
-    assert messages == [
-        {"role": "system", "content": AIConfig().perplexity.system_message},
+    call = client.calls[0]
+    assert call["instructions"] == AIConfig().perplexity.system_message
+    assert call["input"] == [
         {"role": "user", "content": "Who wrote Dune?"},
         {"role": "assistant", "content": "Frank Herbert wrote Dune."},
         {"role": "user", "content": CURRENT},

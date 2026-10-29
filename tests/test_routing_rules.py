@@ -336,7 +336,7 @@ def test_second_one_after_perplexity_turn_routes_to_web():
         conversation_key,
         "assistant",
         "Dune and Dune Messiah.",
-        metadata={"ai_service": "perplexity", "model": "sonar-pro"},
+        metadata={"ai_service": "perplexity", "model": "perplexity/sonar"},
     )
 
     assert should_use_web_search(
