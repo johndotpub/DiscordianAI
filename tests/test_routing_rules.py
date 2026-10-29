@@ -166,7 +166,7 @@ async def test_thread_under_disallowed_parent_is_ignored_with_reason(monkeypatch
     reasons = _ignored_reasons(caplog)
     assert len(reasons) == 1
     level, line = reasons[0]
-    assert level == logging.DEBUG
+    assert level == logging.INFO
     assert "thread_parent_not_allowed" in line
 
 

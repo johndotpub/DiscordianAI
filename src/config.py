@@ -81,7 +81,7 @@ DEFAULT_PERPLEXITY_API_URL = "https://api.perplexity.ai"
 
 # Discord Activity Types
 DISCORD_ACTIVITY_TYPES = ["playing", "streaming", "listening", "watching", "custom", "competing"]
-DEFAULT_ACTIVITY_TYPE = "watching"
+DEFAULT_ACTIVITY_TYPE = "listening"
 DEFAULT_BOT_PRESENCE = "online"
 DEFAULT_ACTIVITY_STATUS = "Humans"
 
@@ -397,6 +397,7 @@ _CONFIG_DEFAULTS: dict[str, Any] = {
     "HEALTH_ENABLED": True,
     "HEALTH_HOST": "127.0.0.1",
     "HEALTH_PORT": 8080,
+    "HEALTH_PROVIDER_STALE_SECONDS": 300,
 }
 
 # ============================================================================
@@ -818,6 +819,13 @@ def _parse_health_config(
         config,
         "HEALTH_PORT",
         _CONFIG_DEFAULTS["HEALTH_PORT"],
+        logger,
+        section="Health",
+    )
+    config_data["HEALTH_PROVIDER_STALE_SECONDS"] = _get_int_safe(
+        config,
+        "HEALTH_PROVIDER_STALE_SECONDS",
+        _CONFIG_DEFAULTS["HEALTH_PROVIDER_STALE_SECONDS"],
         logger,
         section="Health",
     )

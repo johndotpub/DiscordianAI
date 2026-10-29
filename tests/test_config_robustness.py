@@ -151,7 +151,7 @@ def test_allowed_channel_ids_documented_in_sample_config():
     assert "precedence" in sample.lower()
 
 
-def test_activity_type_defaults_agree_on_watching():
+def test_activity_type_defaults_agree_on_listening():
     parser = configparser.ConfigParser()
     parser.read(REPO_ROOT / "config.ini.example", encoding="utf-8")
     sample_default = parser.get("Discord", "ACTIVITY_TYPE")
@@ -162,7 +162,7 @@ def test_activity_type_defaults_agree_on_watching():
 
     deps = BotDependencies(bot=object(), logger=logging.getLogger("test.config"), config={})
 
-    assert sample_default == default_from_config == deps.activity_type == "watching"
+    assert sample_default == default_from_config == deps.activity_type == "listening"
 
 
 def test_allowed_channel_ids_only_does_not_warn_about_no_channels(caplog):

@@ -311,7 +311,7 @@ async def handle_incoming_message(
 
         if _is_thread(message.channel):
             if not _thread_parent_allowed(message.channel, deps, bot):
-                _log_ignored(logger, message, "thread_parent_not_allowed")
+                _log_ignored_mention(logger, message, "thread_parent_not_allowed")
                 return
         elif not _channel_allowed(message.channel, deps, bot):
             _log_ignored_mention(logger, message, "channel_not_allowed")

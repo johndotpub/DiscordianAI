@@ -27,7 +27,7 @@ ALLOWED_GUILD_IDS=
 
 # Bot presence settings
 BOT_PRESENCE=online
-ACTIVITY_TYPE=watching
+ACTIVITY_TYPE=listening
 ACTIVITY_STATUS=you bite my shiny metal ass!
 
 [Default]
@@ -105,8 +105,9 @@ ENTITY_DETECTION_MIN_WORDS=10
 
 [Logging]
 LOG_LEVEL=INFO
-# Console colors for logs. Also settable via the DISCORDIANAI_LOG_COLOR env var.
-DISCORDIANAI_LOG_COLOR=true
+# Console colors for logs are opted into. Set this to true (or 1/yes) to enable
+# them; false keeps redirected logs plain. Also settable via the env var.
+DISCORDIANAI_LOG_COLOR=false
 
 [Health]
 # HTTP health endpoint for Kubernetes / load balancer probes
@@ -114,6 +115,8 @@ DISCORDIANAI_LOG_COLOR=true
 HEALTH_ENABLED=true
 HEALTH_HOST=127.0.0.1
 HEALTH_PORT=8080
+# Seconds after a provider's last success before health marks it degraded
+HEALTH_PROVIDER_STALE_SECONDS=300
 
 # === CONFIGURATION EXAMPLES ===
 #

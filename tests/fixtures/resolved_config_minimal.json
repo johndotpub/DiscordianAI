@@ -1,6 +1,6 @@
 {
   "ACTIVITY_STATUS": "Humans",
-  "ACTIVITY_TYPE": "watching",
+  "ACTIVITY_TYPE": "listening",
   "ALLOWED_CHANNELS": [],
   "ALLOWED_CHANNEL_IDS": [],
   "ALLOWED_GUILDS": [],
@@ -15,6 +15,7 @@
   "HEALTH_ENABLED": true,
   "HEALTH_HOST": "127.0.0.1",
   "HEALTH_PORT": 8080,
+  "HEALTH_PROVIDER_STALE_SECONDS": 300,
   "INPUT_TOKENS": 120000,
   "LOG_FILE": "bot.log",
   "LOG_LEVEL": "INFO",

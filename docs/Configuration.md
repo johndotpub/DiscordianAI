@@ -13,7 +13,7 @@ Controls Discord bot behavior and connectivity.
 - **`ALLOWED_CHANNEL_IDS`**: Comma-separated list of channel IDs the bot responds in; when set, IDs take precedence over `ALLOWED_CHANNELS` names
 - **`ALLOWED_GUILDS`** / **`ALLOWED_GUILD_IDS`**: Optional guild names or IDs that narrow channel-name matching; without them, names match in every guild the bot is in
 - **`BOT_PRESENCE`**: Bot's online status ("online", "offline", "idle", "dnd", "invisible") *(default: "online")*
-- **`ACTIVITY_TYPE`**: Activity type displayed ("playing", "streaming", "listening", "watching", "custom", "competing") *(default: "watching")*
+- **`ACTIVITY_TYPE`**: Activity type displayed ("playing", "streaming", "listening", "watching", "custom", "competing") *(default: "listening")*
 - **`ACTIVITY_STATUS`**: Status message displayed with activity *(default: "Humans")*
 
 Bot-authored messages are accepted like human messages, but replies never include the bot author's mention and never authorise it in `allowed_mentions`. Two consecutive bot-authored turns are allowed per conversation; the next is dropped until a human message resets the streak. The streak is held with the conversation state and expires with `CONVERSATION_TTL_SECONDS`.
@@ -89,9 +89,9 @@ Advanced configuration for intelligent AI service routing.
 
 ### Logging
 
-Logs are emitted to stdout as structured lines. The process supervisor or a shell redirect decides where they are stored.
+Logs are emitted to stderr as structured lines. The process supervisor or a shell redirect decides where they are stored; redirecting stdout alone produces an empty file.
 
-- **`LOG_FILE`**: Deprecated and ignored. It is still parsed for backwards compatibility, and startup logs an INFO line naming the configured value. Redirect stdout or configure the supervisor's output capture instead.
+- **`LOG_FILE`**: Deprecated and ignored. It is still parsed for backwards compatibility, and startup logs an INFO line naming the configured value. Redirect stderr (or both streams) or configure the supervisor's output capture instead.
 - **`LOG_LEVEL`**: Logging verbosity ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL") *(default: "INFO")*
 - **`DISCORDIANAI_LOG_COLOR`**: Color is enabled only when the output stream is a terminal, unless the setting is present and forces it on with `1`/`true`/`yes` or off with `0`/`false`/`no`; it can be set in the `[Logging]` section or as an environment variable, and the environment wins.
 
@@ -102,6 +102,7 @@ Lightweight HTTP health checks for Docker and Kubernetes deployments.
 - **`HEALTH_ENABLED`**: Enable or disable the health server *(default: `true`)*
 - **`HEALTH_HOST`**: Bind address for the health server *(default: `127.0.0.1`)*
 - **`HEALTH_PORT`**: Port for readiness/liveness probes *(default: `8080`)*
+- **`HEALTH_PROVIDER_STALE_SECONDS`**: Seconds after a provider's last success before health marks it degraded *(default: `300`)*
 
 ## Operation Modes
 
@@ -150,7 +151,7 @@ ALLOWED_GUILD_IDS=
 
 # Bot presence settings  
 BOT_PRESENCE=online
-ACTIVITY_TYPE=watching
+ACTIVITY_TYPE=listening
 ACTIVITY_STATUS=you bite my shiny metal ass!
 
 [Default]
@@ -214,13 +215,14 @@ ENTITY_DETECTION_MIN_WORDS=10
 
 [Logging]
 LOG_LEVEL=INFO
-DISCORDIANAI_LOG_COLOR=true
+DISCORDIANAI_LOG_COLOR=false
 
 [Health]
 # HTTP health endpoint for Kubernetes / load balancer probes
 HEALTH_ENABLED=true
 HEALTH_HOST=127.0.0.1
 HEALTH_PORT=8080
+HEALTH_PROVIDER_STALE_SECONDS=300
 ```
 
 ## Environment Variable Override
@@ -235,7 +237,7 @@ export ALLOWED_CHANNEL_IDS="123456789012345678"
 export ALLOWED_GUILDS="My Server"
 export ALLOWED_GUILD_IDS="123456789012345678"
 export BOT_PRESENCE="online"
-export ACTIVITY_TYPE="watching"
+export ACTIVITY_TYPE="listening"
 export ACTIVITY_STATUS="Humans"
 
 # AI service settings

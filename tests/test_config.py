@@ -100,7 +100,7 @@ class TestLoadConfig:
         assert config["DISCORD_TOKEN"] is None
         assert config["ALLOWED_CHANNELS"] == []
         assert config["BOT_PRESENCE"] == "online"
-        assert config["ACTIVITY_TYPE"] == "watching"
+        assert config["ACTIVITY_TYPE"] == "listening"
         assert config["ACTIVITY_STATUS"] == "Humans"
         assert config["OPENAI_API_KEY"] is None
         assert config["OPENAI_API_URL"] == "https://api.openai.com/v1/"
