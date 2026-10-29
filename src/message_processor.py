@@ -14,7 +14,10 @@ from .config import (
     DEFAULT_SCRAPE_DEADLINE_SECONDS,
     get_error_messages,
 )
-from .conversation_manager import conversation_key_for_message
+from .conversation_manager import (
+    MAX_CONSECUTIVE_BOT_TURNS,
+    conversation_key_for_message,
+)
 from .error_handling import classify_error, safe_discord_send
 from .logging_adapter import get_logger_with_context
 from .message_splitter import clean_message_content, error_message, send_formatted_message
@@ -45,6 +48,42 @@ def _perplexity_output_tokens(deps: dict[str, Any] | Any, config: dict[str, Any]
     return output_tokens
 
 
+def _guard_bot_turn(
+    message: discord.Message,
+    conversation_manager: Any,
+    conversation_key: str,
+    author_is_bot: bool,
+    logger: Any,
+) -> bool:
+    """Return False when a conversation has too many consecutive bot turns."""
+    if not author_is_bot:
+        conversation_manager.reset_bot_streak(conversation_key=conversation_key)
+        return True
+
+    allowed, streak = conversation_manager.begin_bot_turn(conversation_key=conversation_key)
+    if allowed:
+        return True
+
+    logger.info(
+        "Dropping bot-authored turn from %s (%s) in conversation %s: "
+        "consecutive_bot_streak=%d exceeds limit=%d; a human message resets the streak",
+        getattr(message.author, "name", "unknown"),
+        getattr(message.author, "id", "unknown"),
+        conversation_key,
+        streak,
+        MAX_CONSECUTIVE_BOT_TURNS,
+    )
+    return False
+
+
+async def _send_empty_fallback(channel: Any, logger: Any) -> None:
+    """Send the fixed notice for a message that has no body after cleaning."""
+    logger.info("Skipping empty message after cleaning")
+    fallback = get_error_messages()["no_response_generated"]
+    if not await safe_discord_send(channel, fallback, logger):
+        logger.error("Failed to send empty-message fallback")
+
+
 async def _process_message_core(
     message: discord.Message,
     deps: dict[str, Any] | Any,
@@ -56,6 +95,18 @@ async def _process_message_core(
     conversation_manager = deps["conversation_manager"]
     conversation_key = conversation_key_for_message(message, is_dm=is_dm)
     clean_content = (message.content or "").strip()
+    author_is_bot = getattr(message.author, "bot", False) is True
+
+    if not _guard_bot_turn(
+        message,
+        conversation_manager,
+        conversation_key,
+        author_is_bot,
+        logger,
+    ):
+        return
+
+    reply_mention = "" if author_is_bot else f"{message.author.mention} "
 
     # Prepare context-specific strings for logging and error messages
     if is_dm:
@@ -86,10 +137,7 @@ async def _process_message_core(
     # A mention-only or whitespace-only message has no body to answer. Reply
     # with the generic fallback without calling the provider or writing history.
     if not clean_content:
-        logger.info("Skipping empty message after cleaning")
-        fallback = get_error_messages()["no_response_generated"]
-        if not await safe_discord_send(message.channel, fallback, logger):
-            logger.error("Failed to send empty-message fallback")
+        await _send_empty_fallback(message.channel, logger)
         return
 
     try:
@@ -188,7 +236,7 @@ async def _process_message_core(
             suppress_embeds=suppress_embeds,
             embed_data=embed_data,
             original_message=message,
-            mention_prefix=f"{message.author.mention} ",
+            mention_prefix=reply_mention,
         )
         logger.info("Message processed and response sent")
 

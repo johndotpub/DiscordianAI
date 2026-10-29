@@ -47,9 +47,11 @@ async def _deliver(
     if embed is None or suppress_embeds:
         kwargs["suppress_embeds"] = suppress_embeds
     if original_message is not None:
+        author = original_message.author
+        mentioned_users = [] if getattr(author, "bot", False) is True else [author]
         kwargs["mention_author"] = False
         kwargs["allowed_mentions"] = discord.AllowedMentions(
-            users=[original_message.author], replied_user=False
+            users=mentioned_users, replied_user=False
         )
         await original_message.reply(content, **kwargs)
     else:

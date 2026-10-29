@@ -363,7 +363,6 @@ _CONFIG_DEFAULTS: dict[str, Any] = {
     "ALLOWED_CHANNEL_IDS": [],
     "ALLOWED_GUILDS": [],
     "ALLOWED_GUILD_IDS": [],
-    "TRUSTED_BOT_IDS": [],
     "BOT_PRESENCE": DEFAULT_BOT_PRESENCE,
     "ACTIVITY_TYPE": DEFAULT_ACTIVITY_TYPE,
     "ACTIVITY_STATUS": DEFAULT_ACTIVITY_STATUS,
@@ -563,7 +562,6 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "ALLOWED_CHANNEL_IDS",
         "ALLOWED_GUILDS",
         "ALLOWED_GUILD_IDS",
-        "TRUSTED_BOT_IDS",
         "BOT_PRESENCE",
         "ACTIVITY_TYPE",
         "ACTIVITY_STATUS",
@@ -639,7 +637,7 @@ def _apply_single_env_override(
             if value.strip()
             else []
         )
-    elif key in {"ALLOWED_CHANNEL_IDS", "ALLOWED_GUILD_IDS", "TRUSTED_BOT_IDS"}:
+    elif key in {"ALLOWED_CHANNEL_IDS", "ALLOWED_GUILD_IDS"}:
         config_data[key] = _parse_channel_ids(value, logger, source=key)
     elif key in int_keys:
         try:
@@ -849,12 +847,6 @@ def _parse_discord_config(
         guild_ids_str,
         logger,
         source="Discord.ALLOWED_GUILD_IDS",
-    )
-    trusted_bots_str = config.get("Discord", "TRUSTED_BOT_IDS", fallback="")
-    config_data["TRUSTED_BOT_IDS"] = _parse_channel_ids(
-        trusted_bots_str,
-        logger,
-        source="Discord.TRUSTED_BOT_IDS",
     )
     config_data["BOT_PRESENCE"] = config.get(
         "Discord", "BOT_PRESENCE", fallback=_CONFIG_DEFAULTS["BOT_PRESENCE"]

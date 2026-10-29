@@ -106,7 +106,7 @@ The launcher resolves Python in this order: pyenv → project-local `.venv` → 
 - `ALLOWED_CHANNEL_IDS` matches channel IDs and takes precedence when set.
 - `ALLOWED_GUILDS` / `ALLOWED_GUILD_IDS` narrow name matching to configured servers; without them, names match in every guild the bot is in.
 - Threads are authorised by their parent channel's allowlist, but their conversation history uses the thread's own channel ID.
-- Other bots are ignored unless their user ID is listed in `TRUSTED_BOT_IDS`.
+- Bot authors are answered like any other sender, but an answer never mentions the bot that sent the message. After two consecutive bot-authored turns in one conversation, the next is dropped until a human message resets the streak.
 - Prefer IDs for stable targeting across servers; names are handy for local testing.
 
 ### Minimal hybrid config
@@ -140,7 +140,7 @@ RATE_LIMIT_PER=60
 ### Discord User Experience
 - [src/discord_embeds.py](src/discord_embeds.py) formats Perplexity citations into embed descriptions and truncates descriptions above the 4096-character hard limit to the 3840-character safe limit.
 - [src/message_splitter.py](src/message_splitter.py) splits at 2000 characters, uses 3840 as the safe embed split target and 4096 as the hard embed limit, avoids splitting code blocks, and provides the link-count check used to suppress previews at two or more links.
-- [src/message_router.py](src/message_router.py) handles mentions, DMs, channel and thread allowlists, trusted bots, and dispatch to the DM/channel processors.
+- [src/message_router.py](src/message_router.py) handles mentions, DMs, channel and thread allowlists, bot-authored senders, and dispatch to the DM/channel processors.
 
 ### Reliability & Ops
 - [src/connection_pool.py](src/connection_pool.py) creates HTTP/2 clients with 50/10 connections for OpenAI and 30/5 for Perplexity, falling back to HTTP/1.1 when `h2` is unavailable.

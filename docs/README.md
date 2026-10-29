@@ -20,7 +20,7 @@ Welcome to the DiscordianAI documentation! This guide covers everything you need
 - **[Embed Limits](EmbedLimits.md)** - Discord embed size limits and strategies
 - **Conversational UX**
     - Bot shows typing indicators while AI responses are being generated
-    - All replies are threaded (reply-to) and start with the requesting user's mention for clarity
+    - All replies are threaded (reply-to) and start with the requesting human's mention for clarity; bot authors are answered without a mention prefix
 
 ### 🔧 Infrastructure
 - **[Architecture](Architecture.md)** - System design, patterns, and components

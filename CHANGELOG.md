@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Web-search follow-ups keep their thread.** The Perplexity path now receives the conversation history it always claimed to have, so a follow-up is answered with the earlier turns in view.
 - **Answers are no longer shared between users through a response cache.** Cache and request-deduplication keys include the requester and a digest of the conversation, so the same words from two people no longer return one person's answer.
 - **Long conversations are trimmed, not failed.** A conversation that outgrows the configured `INPUT_TOKENS` budget has its oldest history dropped; a single oversized message is truncated with a visible `[truncated to fit the token budget]` marker.
-- **Threads follow their parent channel.** The bot answers in a thread when the parent channel is allowed, and ignores other bots unless their IDs are listed in `TRUSTED_BOT_IDS`.
+- **Threads follow their parent channel.** The bot answers in a thread when the parent channel is allowed.
+- **Bot authors are answered without a mention loop.** A bot that addresses the bot is answered like any other sender, but the reply never mentions that bot and never authorises it in `allowed_mentions`. After two consecutive bot-authored turns in one conversation, further bot turns are dropped until a human message resets the streak.
 - **Retries are limited to failures a retry can fix.** Connection failures, rate limits and server errors are retried. Read timeouts and deterministic client errors are not.
 - **A provider outage fails fast.** Repeated failures open the provider's circuit breaker, so later messages fail over immediately instead of paying another full timeout.
 - **`/health` reports observed provider state.** Provider entries include the circuit-breaker state and last success/failure times; a health port that is already in use disables the endpoint without stopping the bot.

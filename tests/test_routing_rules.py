@@ -248,13 +248,6 @@ async def test_same_named_channel_in_another_guild_is_not_allowed_when_guild_sco
             "author": DummyUser(456),
             "mentions": [DummyUser(1)],
         },
-        {
-            "reason": "other_bot",
-            "level": logging.INFO,
-            "channel": DummyChannel(10, "general"),
-            "author": DummyUser(999, bot=True),
-            "mentions": [DummyUser(1)],
-        },
     ],
 )
 async def test_each_ignored_message_logs_exactly_one_reason_at_expected_level(
@@ -290,7 +283,7 @@ async def test_each_ignored_message_logs_exactly_one_reason_at_expected_level(
 
 
 @pytest.mark.asyncio
-async def test_bot_author_is_ignored_and_cannot_start_a_reply_loop(monkeypatch, deps, caplog):
+async def test_bot_author_mention_is_processed(monkeypatch, deps, caplog):
     caplog.set_level(logging.DEBUG, logger=deps["logger"].name)
     guild = DummyGuild(1, "Guild", [DummyChannel(10, "general")])
     guild.text_channels[0].guild = guild
@@ -309,14 +302,9 @@ async def test_bot_author_is_ignored_and_cannot_start_a_reply_loop(monkeypatch, 
         bot,
     )
 
-    process_channel.assert_not_called()
+    process_channel.assert_awaited_once()
     process_dm.assert_not_called()
-    reasons = _ignored_reasons(caplog)
-    assert len(reasons) == 1
-    level, line = reasons[0]
-    assert level == logging.INFO
-    assert "other_bot" in line
-    assert "TRUSTED_BOT_IDS" in line
+    assert _ignored_reasons(caplog) == []
 
 
 def test_follow_up_patterns_have_no_duplicate_sources():

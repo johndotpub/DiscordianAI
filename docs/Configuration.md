@@ -12,10 +12,11 @@ Controls Discord bot behavior and connectivity.
 - **`ALLOWED_CHANNELS`**: Comma-separated list of channel names the bot responds in (e.g., "general,bot-testing")
 - **`ALLOWED_CHANNEL_IDS`**: Comma-separated list of channel IDs the bot responds in; when set, IDs take precedence over `ALLOWED_CHANNELS` names
 - **`ALLOWED_GUILDS`** / **`ALLOWED_GUILD_IDS`**: Optional guild names or IDs that narrow channel-name matching; without them, names match in every guild the bot is in
-- **`TRUSTED_BOT_IDS`**: Optional comma-separated bot user IDs that may interact with this bot; empty by default
 - **`BOT_PRESENCE`**: Bot's online status ("online", "offline", "idle", "dnd", "invisible") *(default: "online")*
 - **`ACTIVITY_TYPE`**: Activity type displayed ("playing", "streaming", "listening", "watching", "custom", "competing") *(default: "watching")*
 - **`ACTIVITY_STATUS`**: Status message displayed with activity *(default: "Humans")*
+
+Bot-authored messages are accepted like human messages, but replies never include the bot author's mention and never authorise it in `allowed_mentions`. Two consecutive bot-authored turns are allowed per conversation; the next is dropped until a human message resets the streak. The streak is held with the conversation state and expires with `CONVERSATION_TTL_SECONDS`.
 
 ### AI Service Configuration
 
@@ -147,9 +148,6 @@ ALLOWED_CHANNEL_IDS=
 ALLOWED_GUILDS=
 ALLOWED_GUILD_IDS=
 
-# Optional: bot user IDs allowed to interact with this bot
-TRUSTED_BOT_IDS=
-
 # Bot presence settings  
 BOT_PRESENCE=online
 ACTIVITY_TYPE=watching
@@ -236,7 +234,6 @@ export ALLOWED_CHANNELS="general,bot-testing"
 export ALLOWED_CHANNEL_IDS="123456789012345678"
 export ALLOWED_GUILDS="My Server"
 export ALLOWED_GUILD_IDS="123456789012345678"
-export TRUSTED_BOT_IDS="123456789012345678"
 export BOT_PRESENCE="online"
 export ACTIVITY_TYPE="watching"
 export ACTIVITY_STATUS="Humans"

@@ -104,7 +104,7 @@ MUTATIONS = [
         name="drop-reply-mention-prefix",
         path="src/message_processor.py",
         test="tests/test_end_to_end.py",
-        old='            mention_prefix=f"{message.author.mention} ",',
+        old="            mention_prefix=reply_mention,",
         new="            mention_prefix=None,",
     ),
     Mutation(

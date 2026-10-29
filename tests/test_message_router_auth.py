@@ -241,7 +241,7 @@ async def test_thread_whose_parent_is_not_allowed_is_ignored(deps, spies):
 
 
 @pytest.mark.asyncio
-async def test_message_from_another_bot_is_ignored(deps, spies):
+async def test_message_from_another_bot_is_processed(deps, spies):
     channel = FakeChannel(42)
     guild = _guild_with(channel)
     bot = _bot(guild)
@@ -251,6 +251,6 @@ async def test_message_from_another_bot_is_ignored(deps, spies):
 
     await message_router.handle_incoming_message(message, deps, bot)
 
-    spies.channel.assert_not_awaited()
+    spies.channel.assert_awaited_once_with(message, deps)
     spies.dm.assert_not_awaited()
     assert channel.sent_messages == []

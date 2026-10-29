@@ -16,6 +16,8 @@ from .config import DEFAULT_CONVERSATION_TTL_SECONDS
 
 ConversationKey = int | str
 
+MAX_CONSECUTIVE_BOT_TURNS = 2
+
 
 def make_conversation_key(
     user_id: int | str,
@@ -96,6 +98,7 @@ class ThreadSafeConversationManager:
         self._conversations: dict[ConversationKey, list[dict[str, str]]] = {}
         self._user_locks: dict[ConversationKey, threading.RLock] = {}
         self._last_activity: dict[ConversationKey, float] = {}
+        self._bot_streaks: dict[ConversationKey, int] = {}
         self._global_lock = threading.RLock()
         self._max_history = max_history_per_user
         self._cleanup_interval = cleanup_interval
@@ -172,7 +175,7 @@ class ThreadSafeConversationManager:
             candidates = [
                 (key, last_seen, self._user_locks.get(key))
                 for key, last_seen in self._last_activity.items()
-                if last_seen < cutoff and key in self._conversations
+                if last_seen < cutoff and (key in self._conversations or key in self._bot_streaks)
             ]
 
         expired_count = 0
@@ -182,17 +185,23 @@ class ThreadSafeConversationManager:
                 with self._global_lock:
                     if self._last_activity.get(key) != last_seen:
                         continue
-                    if self._conversations.pop(key, None) is not None:
+                    had_conversation = self._conversations.pop(key, None) is not None
+                    had_streak = self._bot_streaks.pop(key, None) is not None
+                    if had_conversation or had_streak:
                         self._last_activity.pop(key, None)
-                        expired_count += 1
+                        if had_conversation:
+                            expired_count += 1
                 continue
 
             with lock, self._global_lock:
                 if self._last_activity.get(key) != last_seen:
                     continue
-                if self._conversations.pop(key, None) is not None:
+                had_conversation = self._conversations.pop(key, None) is not None
+                had_streak = self._bot_streaks.pop(key, None) is not None
+                if had_conversation or had_streak:
                     self._last_activity.pop(key, None)
-                    expired_count += 1
+                    if had_conversation:
+                        expired_count += 1
                 if self._user_locks.get(key) is lock:
                     del self._user_locks[key]
                     removed_locks += 1
@@ -223,6 +232,7 @@ class ThreadSafeConversationManager:
                 if self._user_locks.get(key) is lock:
                     del self._user_locks[key]
                     self._last_activity.pop(key, None)
+                    self._bot_streaks.pop(key, None)
                     removed_count += 1
 
         return removed_count
@@ -355,6 +365,55 @@ class ThreadSafeConversationManager:
                 message_count,
             )
 
+    def begin_bot_turn(
+        self,
+        user_id: ConversationKey | None = None,
+        *,
+        conversation_key: ConversationKey | None = None,
+        max_consecutive: int = MAX_CONSECUTIVE_BOT_TURNS,
+    ) -> tuple[bool, int]:
+        """Reserve a consecutive bot-authored turn for a conversation.
+
+        The streak is counted per conversation and evicted with the conversation
+        TTL. A dropped turn does not replace the recorded streak, so further
+        bot messages remain blocked until a human message resets it.
+
+        Args:
+            user_id (ConversationKey): Legacy user ID fallback.
+            conversation_key (ConversationKey): Explicit DM/channel conversation key.
+            max_consecutive (int): Maximum bot-authored turns allowed in a row.
+
+        Returns:
+            Tuple[bool, int]: Whether this turn is allowed and the streak count
+            for this attempt.
+        """
+        key = self._resolve_key(user_id, conversation_key)
+        self._safe_cleanup()
+        user_lock = self._get_user_lock(key)
+        with user_lock:
+            streak = self._bot_streaks.get(key, 0) + 1
+            if streak > max_consecutive:
+                return False, streak
+            self._bot_streaks[key] = streak
+            self._touch(key)
+            return True, streak
+
+    def reset_bot_streak(
+        self,
+        user_id: ConversationKey | None = None,
+        *,
+        conversation_key: ConversationKey | None = None,
+    ) -> None:
+        """Clear the consecutive bot-authored turn streak for a conversation.
+
+        Args:
+            user_id (ConversationKey): Legacy user ID fallback.
+            conversation_key (ConversationKey): Explicit DM/channel conversation key.
+        """
+        key = self._resolve_key(user_id, conversation_key)
+        with self._global_lock:
+            self._bot_streaks.pop(key, None)
+
     def update_conversation(
         self,
         user_id: ConversationKey | None = None,
@@ -392,6 +451,8 @@ class ThreadSafeConversationManager:
         with user_lock:
             # Deep copy to prevent external modifications
             self._conversations[key] = copy.deepcopy(conversation)
+            with self._global_lock:
+                self._bot_streaks.pop(key, None)
 
             # Apply length limit
             if len(self._conversations[key]) > self._max_history:
@@ -428,6 +489,8 @@ class ThreadSafeConversationManager:
         key = self._resolve_key(user_id, conversation_key)
         self._safe_cleanup()
         if not self._has_conversation_state(key):
+            with self._global_lock:
+                self._bot_streaks.pop(key, None)
             return 0
 
         user_lock = self._get_user_lock(key)
@@ -436,6 +499,7 @@ class ThreadSafeConversationManager:
             self._conversations.pop(key, None)
             with self._global_lock:
                 self._last_activity.pop(key, None)
+                self._bot_streaks.pop(key, None)
 
             self._logger.info(
                 "Cleared conversation for %s: %d messages removed",

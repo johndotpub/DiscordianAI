@@ -49,9 +49,7 @@ def _info_records(caplog):
 
 
 @pytest.mark.asyncio
-async def test_untrusted_bot_mention_logs_one_info_naming_the_author_and_setting(
-    deps, spies, caplog
-):
+async def test_bot_mention_is_processed_without_an_ignoring_line(deps, spies, caplog):
     caplog.set_level(logging.INFO, logger=deps["logger"].name)
     channel = FakeChannel(42)
     guild = _guild_with(channel)
@@ -62,33 +60,10 @@ async def test_untrusted_bot_mention_logs_one_info_naming_the_author_and_setting
 
     await message_router.handle_incoming_message(message, deps, bot)
 
-    info = _info_records(caplog)
-    assert len(info) == 1
-    line = info[0].getMessage()
-    assert "1502038480144957510" in line
-    assert "TRUSTED_BOT_IDS" in line
-    assert "other_bot" in line
-    spies.channel.assert_not_awaited()
-    spies.dm.assert_not_awaited()
-    assert channel.sent_messages == []
-
-
-@pytest.mark.asyncio
-async def test_trusted_bot_mention_is_processed_without_an_ignoring_line(deps, spies, caplog):
-    caplog.set_level(logging.INFO, logger=deps["logger"].name)
-    channel = FakeChannel(42)
-    guild = _guild_with(channel)
-    bot = _bot(guild)
-    deps["ALLOWED_CHANNEL_IDS"] = [42]
-    other_bot = FakeUser(999, bot=True)
-    deps["TRUSTED_BOT_IDS"] = [other_bot.id]
-    message = _message(channel, author=other_bot, mentions=[bot.user], guild=guild)
-
-    await message_router.handle_incoming_message(message, deps, bot)
-
     spies.channel.assert_awaited_once_with(message, deps)
     spies.dm.assert_not_awaited()
     assert _info_records(caplog) == []
+    assert channel.sent_messages == []
 
 
 @pytest.mark.asyncio
@@ -143,7 +118,7 @@ async def test_unmentioned_bot_message_stays_at_debug(deps, spies, caplog):
 
     assert _info_records(caplog) == []
     assert any(
-        record.levelno == logging.DEBUG and "reason=other_bot" in record.getMessage()
+        record.levelno == logging.DEBUG and "reason=not_mentioned" in record.getMessage()
         for record in caplog.records
     )
     spies.channel.assert_not_awaited()

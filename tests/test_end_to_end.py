@@ -103,7 +103,6 @@ def _build_dependencies(bot, channel, openai_client):
         "ALLOWED_CHANNEL_IDS": [channel.id],
         "ALLOWED_GUILDS": [],
         "ALLOWED_GUILD_IDS": [],
-        "TRUSTED_BOT_IDS": [],
     }
     logger = logging.getLogger("end-to-end-test")
     logger.addHandler(logging.NullHandler())
@@ -123,7 +122,6 @@ def _build_dependencies(bot, channel, openai_client):
         allowed_channel_ids=[channel.id],
         allowed_guilds=[],
         allowed_guild_ids=[],
-        trusted_bot_ids=[],
         rate_limit=config["RATE_LIMIT"],
         rate_limit_period=config["RATE_LIMIT_PER"],
         gpt_model=config["GPT_MODEL"],

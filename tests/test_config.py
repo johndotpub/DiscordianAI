@@ -18,7 +18,6 @@ def isolate_config_env(monkeypatch):
         "ALLOWED_CHANNEL_IDS",
         "ALLOWED_GUILDS",
         "ALLOWED_GUILD_IDS",
-        "TRUSTED_BOT_IDS",
         "BOT_PRESENCE",
         "ACTIVITY_TYPE",
         "ACTIVITY_STATUS",

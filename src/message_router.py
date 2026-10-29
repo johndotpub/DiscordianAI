@@ -4,6 +4,7 @@ from typing import Any
 
 import discord
 
+from .conversation_manager import conversation_key_for_message
 from .logging_adapter import get_logger_with_context
 from .message_processor import process_channel_message, process_dm_message
 
@@ -242,17 +243,6 @@ def _is_group_dm(channel: Any) -> bool:
     return bool(group_type) and isinstance(channel, group_type)
 
 
-def _is_trusted_bot(author: Any, deps: dict[str, Any] | Any) -> bool:
-    trusted = _as_int_set(deps.get("TRUSTED_BOT_IDS", []))
-    if not trusted:
-        # Also accept the older spelling for callers that still use it.
-        trusted = _as_int_set(deps.get("TRUSTED_BOTS", []))
-    try:
-        return int(getattr(author, "id", None)) in trusted
-    except (TypeError, ValueError):
-        return False
-
-
 def _mentions_bot(message: Any, bot: discord.Client) -> bool:
     """Return True when the message mentions the bot."""
     return bot.user in (getattr(message, "mentions", None) or [])
@@ -297,19 +287,18 @@ async def handle_incoming_message(
 
     try:
         author = getattr(message, "author", None)
-        if (getattr(author, "bot", False) or author == bot.user) and not _is_trusted_bot(
-            author, deps
-        ):
-            if _mentions_bot(message, bot):
-                _log_ignored_mention(
-                    logger,
-                    message,
-                    "other_bot",
-                    "not in TRUSTED_BOT_IDS; add the id to allow bot-to-bot replies",
-                )
-            else:
-                _log_ignored(logger, message, "other_bot")
+        if author == getattr(bot, "user", None):
+            _log_ignored(logger, message, "self")
             return
+
+        if getattr(author, "bot", False) is not True:
+            conversation_manager = deps.get("conversation_manager")
+            if conversation_manager is not None:
+                is_dm = isinstance(message.channel, discord.DMChannel) or _is_group_dm(
+                    message.channel
+                )
+                conversation_key = conversation_key_for_message(message, is_dm=is_dm)
+                conversation_manager.reset_bot_streak(conversation_key=conversation_key)
 
         if isinstance(message.channel, discord.DMChannel) or _is_group_dm(message.channel):
             async with message.channel.typing():
