@@ -132,6 +132,45 @@ def test_docker_workflow_has_qemu_pr_build_and_split_registry_pushes():
     assert pushed_registries == {"ghcr", "dockerhub"}
 
 
+def test_dockerhub_credentials_are_lifted_to_job_env_and_gate_the_step():
+    workflow = _load_yaml(DOCKER_PATH)
+    publish = workflow["jobs"]["publish"]
+    environment = publish.get("env", {}) or {}
+    assert environment.get("DOCKERHUB_USERNAME") == "${{ secrets.DOCKERHUB_USERNAME }}"
+    assert environment.get("DOCKERHUB_TOKEN") == "${{ secrets.DOCKERHUB_TOKEN }}"
+
+    login_steps = [
+        step
+        for step in publish.get("steps", []) or []
+        if _action(step).startswith("docker/login-action")
+        and (step.get("with", {}) or {}).get("registry") == "docker.io"
+    ]
+    assert login_steps, "docker.yml has no Docker Hub login step"
+    for step in login_steps:
+        condition = str(step.get("if", ""))
+        assert "env.DOCKERHUB_USERNAME != ''" in condition
+        assert "env.DOCKERHUB_TOKEN != ''" in condition
+
+
+def test_no_workflow_step_condition_references_the_secrets_context():
+    workflows = sorted((REPO_ROOT / ".github" / "workflows").glob("*.yml"))
+    assert workflows
+
+    offenders = []
+    for path in workflows:
+        workflow = _load_yaml(path)
+        for job_name, job in workflow.get("jobs", {}).items():
+            for index, step in enumerate(job.get("steps", []) or []):
+                condition = step.get("if")
+                if condition is not None and "secrets." in str(condition):
+                    offenders.append(f"{path.name}:{job_name}:steps[{index}]")
+
+    assert not offenders, (
+        "the secrets context is unavailable in steps[*].if; lift it into job-level env: "
+        f"{offenders}"
+    )
+
+
 def test_codeql_clear_text_logging_filter_is_scoped_or_removed():
     config = _load_yaml(CODEQL_PATH)
     filters = config.get("query-filters", []) or []
@@ -155,7 +194,10 @@ def test_coverage_upload_failure_is_visible():
 
     for step in codecov_steps:
         assert step.get("continue-on-error") is not True
-        assert (step.get("with", {}) or {}).get("fail_ci_if_error") is True
+        with_options = step.get("with", {}) or {}
+        assert with_options.get("fail_ci_if_error") is True
+        assert with_options.get("files") == "coverage.xml"
+        assert "file" not in with_options
 
 
 def test_local_config_names_are_git_ignored():

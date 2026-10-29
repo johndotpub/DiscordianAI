@@ -13,6 +13,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[1]
 COMPOSE_PATH = REPO_ROOT / "docker-compose.yml"
 DOCKERFILE_PATH = REPO_ROOT / "Dockerfile"
+DOCKERIGNORE_PATH = REPO_ROOT / ".dockerignore"
 SECURITY_DOC_PATH = REPO_ROOT / "docs" / "Security.md"
 
 YAML_BLOCK_PATTERN = re.compile(r"```ya?ml\s*\n(.*?)```", re.DOTALL)
@@ -123,6 +124,15 @@ def test_compose_has_no_mounts_for_paths_nothing_writes():
     targets = {Path(target).as_posix().rstrip("/") for _, target in volumes}
     assert not sources & {"./logs", "./data", "logs", "data"}
     assert not targets & {"/app/logs", "/app/data"}
+
+
+def test_dockerignore_excludes_generated_sphinx_output():
+    patterns = {
+        line.strip()
+        for line in DOCKERIGNORE_PATH.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    assert "docs/api/_build/" in patterns
 
 
 def test_dockerfile_defines_a_healthcheck():

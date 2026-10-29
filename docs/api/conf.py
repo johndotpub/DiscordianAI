@@ -1,9 +1,9 @@
 """Sphinx configuration for DiscordianAI API reference."""
 
-import os
+from pathlib import Path
 import sys
 
-sys.path.insert(0, os.path.abspath("../.."))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 project = "DiscordianAI"
 copyright = "2025-2026, johndotpub"

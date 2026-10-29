@@ -88,6 +88,23 @@ MUTATIONS = [
         ),
     ),
     Mutation(
+        name="scoped-guilds-only-first-guild",
+        path="src/message_router.py",
+        test="tests/test_channel_name_scope.py",
+        old="    return guilds\n",
+        new="    return guilds[:1]\n",
+    ),
+    Mutation(
+        name="bot-reply-prefix-mentions-bot",
+        path="src/message_processor.py",
+        test="tests/test_bot_conversation_guard.py",
+        old='= "" if author_is_bot else f"{message.author.mention} "',
+        new=(
+            '= f"{message.author.mention} " if author_is_bot '
+            'else f"{message.author.mention} "'
+        ),
+    ),
+    Mutation(
         name="openai-uses-perplexity-model",
         path="src/message_processor.py",
         test="tests/test_end_to_end.py",
