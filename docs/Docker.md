@@ -35,8 +35,9 @@ curl -fsS http://127.0.0.1:8080/health
 The health server binds `127.0.0.1:8080` by default; set `HEALTH_HOST=0.0.0.0` whenever
 you publish the port.
 
-Logs are written to stdout, so use `docker compose logs` or your supervisor's log
-capture. The container does not write to `./logs` or `./data`.
+Logs are written to stderr, so use `docker compose logs` (which captures both streams) or
+your supervisor's log capture. Redirecting stdout alone produces an empty file. The
+container does not write to `./logs` or `./data`.
 
 ## docker run
 

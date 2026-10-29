@@ -89,7 +89,7 @@ This command:
 5. Runs `daemon-reload` and enables the service
 6. Prints management commands
 
-The config file name (without `.ini`) becomes the systemd instance name. `--install-systemd bot.ini` creates `discordian-bot@bot.service`, `--install-systemd production.ini` creates `discordian-bot@prod.service`.
+The config file name (without `.ini`) becomes the systemd instance name. `--install-systemd bot.ini` creates `discordian-bot@bot.service`, `--install-systemd production.ini` creates `discordian-bot@production.service`.
 
 ### Manual setup
 

@@ -111,39 +111,40 @@ DEFAULT_HEADERS = {
 
 ## Logging and Debugging
 
-### Comprehensive Logging
-
-The web scraper provides detailed logging at multiple levels:
-
-```python
-# Info level - successful operations
-logger.info(f"Successfully scraped {len(content)} characters from {url}")
-
-# Debug level - detailed process information  
-logger.debug(f"Scraped content preview: {content[:200]}...")
-logger.debug(f"Found content using selector: {selector}")
-
-# Warning level - issues that don't prevent operation
-logger.warning(f"Content too large ({size} bytes), skipping: {url}")
-
-# Error level - failures that prevent scraping
-logger.error(f"HTTP error {status_code} for URL: {url}")
-```
-
 ### What Gets Logged
 
-**For Each URL Processing Attempt:**
-- URL validation and scrapability check
-- HTTP request details and response status
-- Content extraction method used
-- Final content length and preview
-- Any errors or fallbacks encountered
+The web scraper logs diagnostics about the fetch, not the page body:
 
-**For Scraped Content:**
-- **Yes, scraped content is logged** for debugging purposes
-- Content preview (first 200 characters) in debug logs
-- Full content length for token management
-- Truncation notices if content was too long
+```python
+# URL and lifecycle
+logger.info("Starting web scraping for URL: %s", url)
+logger.info("Scraped %d chars from %s", original_len, url)
+
+# Status and failures
+logger.error("HTTP %s for %s", status, url)
+logger.warning("Attempt %d failed for %s: %s", attempt + 1, url, str(e))
+
+# Budgets and truncation
+logger.warning(
+    "Scraped content capped at %d characters "
+    "(MAX_TOTAL_SCRAPED_CHARS); truncated or omitted %d page(s)",
+    max_total_chars,
+    affected,
+)
+```
+
+**For Each URL Processing Attempt:**
+- The URL being requested and any redirects followed
+- The HTTP status or error and the retry attempt
+- Refused, timed-out, or over-budget scrapes
+- The extracted content length and any truncation notice
+
+**Never Logged:**
+- Page text or content previews
+- The extraction selector or extraction method
+- Response bodies
+
+Scraped text is used only to build the prompt; it is not written to the log.
 
 ## Error Handling
 

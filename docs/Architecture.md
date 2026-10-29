@@ -205,11 +205,11 @@ The health server publishes each breaker's state through
 ```python
 @cached_response(ttl=300)
 @deduplicated_request()
-async def process_openai_message(...):
+async def _fetch_openai_response(...):
     ...
 ```
 
-`_extract_message_context()` has been extracted as a shared helper, but the full decorator stack shown here is still aspirational; the codebase currently uses explicit caching and deduplication helpers.
+These decorators wrap `_fetch_openai_response()` in `src/openai_processing.py`; `_extract_message_context()` is the shared helper that supplies the cache and deduplication scope.
 
 **Features:**
 - TTL-based expiration
@@ -288,7 +288,8 @@ a 90-second overall deadline stops retries even when attempts remain.
 from src.connection_pool import ConnectionPoolManager
 
 pool = ConnectionPoolManager()
-client = pool.get_openai_client()
+openai_client = pool.create_openai_client(openai_api_key, openai_base_url)
+perplexity_client = pool.create_perplexity_client(perplexity_api_key, perplexity_base_url)
 ```
 
 ### Caching Strategy

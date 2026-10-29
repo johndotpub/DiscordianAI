@@ -14,7 +14,7 @@ services:
     env_file:
       - .env
 
-    # The bot only reads config.ini; logs go to stdout.
+    # The bot only reads config.ini; it writes logs to stderr, which Docker captures.
     volumes:
       - ./config.ini:/app/config.ini:ro
 

@@ -11,17 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Conversation memory is per channel, not per user.** A DM can no longer be replayed into a public reply, and two channels no longer share context. History already held in memory under the old per-user keys is not reused.
 - **Web-search follow-ups keep their thread.** The Perplexity path now receives the conversation history it always claimed to have, so a follow-up is answered with the earlier turns in view.
-- **Answers are no longer shared between users through a response cache.** Cache and request-deduplication keys include the requester and a digest of the conversation, so the same words from two people no longer return one person's answer.
+- **Answers are no longer shared between users through a response cache.** Cache and request-deduplication keys are scoped to the conversation key plus a digest of the conversation, with the requester as a fallback when no conversation key is given, so the same words from two people no longer return one person's answer.
 - **Long conversations are trimmed, not failed.** A conversation that outgrows the configured `INPUT_TOKENS` budget has its oldest history dropped; a single oversized message is truncated with a visible `[truncated to fit the token budget]` marker.
 - **Threads follow their parent channel.** The bot answers in a thread when the parent channel is allowed.
+- **Channel-name allowlists apply in every guild.** `ALLOWED_CHANNELS` names now resolve in every guild the bot is in. `ALLOWED_GUILDS` or `ALLOWED_GUILD_IDS` narrow the search, and `ALLOWED_CHANNEL_IDS` takes precedence when both forms are set.
 - **Bot authors are answered without a mention loop.** A bot that addresses the bot is answered like any other sender, but the reply never mentions that bot and never authorises it in `allowed_mentions`. After two consecutive bot-authored turns in one conversation, further bot turns are dropped until a human message resets the streak.
 - **Retries are limited to failures a retry can fix.** Connection failures, rate limits and server errors are retried. Read timeouts and deterministic client errors are not.
 - **A provider outage fails fast.** Repeated failures open the provider's circuit breaker, so later messages fail over immediately instead of paying another full timeout.
 - **`/health` reports observed provider state.** Provider entries include the circuit-breaker state and last success/failure times; a health port that is already in use disables the endpoint without stopping the bot.
 - **Error messages separate request failures from configuration faults.** A too-long prompt, a content-filter rejection and a permissions failure are reported as request or authentication errors rather than as a configuration problem.
 - **`LOG_FILE` is deprecated and ignored.** It is still parsed for compatibility and logs one startup note, but the bot writes no log file; the supervisor or shell redirect owns log output.
-- **Log color follows the terminal.** ANSI color is emitted only when output is a terminal, unless `DISCORDIANAI_LOG_COLOR` explicitly forces it on or off; redirected logs stay plain by default.
+- **Log color follows the terminal unless configured.** When `DISCORDIANAI_LOG_COLOR` is absent, ANSI color is emitted only when the output stream is a terminal. An explicit setting forces colour on or off; the sample `config.ini.example` sets it to `false`, so redirected logs stay plain unless an operator opts in.
 - **The package installs as a package.** The wheel contains `src/` instead of scattering top-level modules, and the `discordianai` command works.
+- **Some configuration errors now stop startup.** A malformed `OPENAI_API_URL` or `PERPLEXITY_API_URL`, or an output-token cap above 128,000, is fatal. An operator upgrading with one of those settings must fix it before the bot can boot.
+- **Citations and mention handling are hardened.** Citations survive to the wire, non-allowlisted links are reduced to their label, bare URLs and autolinks are broken with a zero-width space after the scheme, and a reply's allowed mentions can no longer ping `@everyone` or a role.
 
 ### Added ✨
 
@@ -47,7 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security 🛡️
 
-- **Scraped pages are data**: page text is wrapped in an explicit untrusted block, delimiters are escaped, and model output is neutralised so pages cannot inject mentions or arbitrary links into Discord.
+- **Scraped pages are data**: page text is wrapped in an explicit untrusted block and delimiters are escaped. Model output is neutralised so scraped pages cannot inject mentions or markdown links, bare URLs, or autolinks into Discord: non-allowlisted links are reduced to their label or broken with a zero-width space after the scheme. A URL that appears inside an allowlisted citation is left intact.
 
 ### Tests ✅
 

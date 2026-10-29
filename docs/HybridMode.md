@@ -154,10 +154,10 @@ The bot uses advanced semantic analysis to automatically determine when web sear
 
 ## Discord Citation Features
 
-### Proper Hyperlinks
-- Converts numbered citations [1], [2] into clickable Discord hyperlinks
-- Format: `[1](https://full-url)` - preserves the citation number for readability
-- No more unclickable numbers in brackets!
+### Citations
+- Message text keeps bare numbered markers such as `[1]` and `[2]`. Production calls the formatter with `linkify=False`, so the message body does not contain clickable citation links.
+- Clickable citations exist only in the citation embed, where a marker renders as `[[1]](https://full-url)`.
+- A citation URL is left intact only when it is allowlisted and safely renderable; other links are neutralised by the output sanitiser.
 
 ### Smart Embed Suppression
 - Automatically suppresses link previews when there are multiple citations

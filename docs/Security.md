@@ -133,13 +133,18 @@ RetryConfig(
 
 ## 🔒 Input Validation
 
-### Message Sanitization
+### Message Handling
 
-All user input is processed through sanitization:
+- **Inbound text is not sanitized.** The message body is sent to the configured provider unchanged; the bot does not strip instructions, links, or markdown before the request.
+- **Outbound text is neutralised.** Messages longer than Discord's 2000-character limit are split, and model output is sanitised for mentions and links before delivery. These controls apply to outbound text only.
+- **Discord does not moderate bot messages.** Server AutoMod or channel permissions can restrict what users send, but the bot's own replies are not passed through Discord's moderation.
+- **URLs are validated before scraping.** Every user-supplied URL is checked by the SSRF protections below before any request is made.
 
-- **Length limits**: Messages exceeding Discord's 2000 character limit are split
-- **Content filtering**: Handled by Discord's built-in moderation
-- **URL validation**: URLs are validated before scraping
+### Prompt Injection
+
+Scraped page text is wrapped in `<untrusted_webpage_content>` tags. A data-only directive tells the model to treat the block as data and ignore instructions inside it, and delimiter lookalikes are escaped case-insensitively, including whitespace and self-closing variants. This reduces the chance that a page can close the block or pass itself off as the system prompt.
+
+The delimiters do not compel a model to obey the directive. Only scraped page text receives this treatment; user messages and conversation history are not wrapped. An injected page can still influence the content of an answer, so treat prompt injection as a residual risk: the wrapper is a mitigation, not a guarantee.
 
 ### Configuration Validation
 
@@ -313,7 +318,7 @@ services:
 
 ### Logging
 
-- Logs are written to stdout; the supervisor or shell redirect decides where they are stored
+- Logs are written to stderr; the supervisor or shell redirect decides where they are stored. Redirecting stdout alone produces an empty file.
 - Sensitive data (API keys, tokens) is never logged
 - Log levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
 

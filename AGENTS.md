@@ -64,8 +64,10 @@ broke it, and each break is a user-visible bug.
   operational notices (rate-limit and error text) use `error_handling.safe_discord_send()`
   or the router's last-resort `channel.send`; they must stay constant text and must never
   carry model output. *Why:* an answer must not be able to mention `@everyone` or a role,
-  and splitting must not create two mention policies. *Consequence:* mention abuse and
-  inconsistent reply targeting. *Check:*
+  and splitting must not create two mention policies. Pings are prevented both by the
+  allowed-mentions policy (`everyone=False`, `roles=[]`) and by output neutralisation;
+  delivery sets the policy explicitly. *Consequence:* mention abuse and inconsistent reply
+  targeting. *Check:*
   `tests/test_delivery_helper.py::test_only_one_allowed_mentions_construction`,
   `tests/test_delivery_helper.py`, and `tests/test_golden_behaviour.py`.
 
@@ -300,9 +302,9 @@ tox -e py312
 - **Log rotation uses the shipped fragment.** `contrib/logrotate/discordianai` rotates a
   supervisor-owned `bot.log` with `copytruncate`, because the bot does not reopen a log file
   it never opened. Install it and replace the placeholder path.
-- **The supervisor owns stdout.** Logs go to stdout (`LOG_FILE` is ignored). The shipped
-  systemd unit appends stdout/stderr to `bot.log`; Docker captures stdout. Use one owner for
-  redirection so lines are neither duplicated nor lost.
+- **The supervisor owns stderr.** Logs go to stderr (`LOG_FILE` is ignored). The shipped
+  systemd unit appends stdout/stderr to `bot.log`; Docker captures both streams. Use one
+  owner for redirection so lines are neither duplicated nor lost.
 - **Keep the health endpoint local by default.** `HEALTH_HOST` defaults to `127.0.0.1`.
   The compose file sets `0.0.0.0` inside the container but publishes only
   `127.0.0.1:8080` on the host.
@@ -330,8 +332,9 @@ These cost real debugging time in this repository. Recognise them before repeati
   `tests/test_health_truth.py::test_http2_enabled_reflects_the_client_configuration` does.
 - **Coverage can stay green while one user's answer is served to another.** The cache key
   once omitted the requester and the conversation; the same words from two people returned
-  one person's answer. Cache and dedup keys include the user and a conversation digest;
-  `tests/test_caching_scope.py` is the guard.
+  one person's answer. Cache and dedup keys are scoped to the conversation key plus a
+  digest of the conversation, with the requester as a fallback when no conversation key is
+  given; `tests/test_caching_scope.py` is the guard.
 - **A config key can be parsed, validated, and read by nothing.** `LOG_FILE` is deliberately
   ignored (and documented as such); `ENTITY_DETECTION_MIN_WORDS` is parsed but not wired
   into routing. A new key that nothing reads is a lie in `config.ini.example`; wire it, or

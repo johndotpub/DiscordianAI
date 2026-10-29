@@ -146,11 +146,11 @@ Send these messages to your bot to verify it's working:
 
 ### Check Logs
 
-The bot writes logs to stdout. Where they end up depends on how you started it:
+The bot writes logs to stderr. Where they end up depends on how you started it:
 
-- `./discordian.sh -d ...` redirects output to `bot.log` in the project directory.
+- `./discordian.sh -d ...` redirects both stdout and stderr to `bot.log` in the project directory (`>> bot.log 2>&1`).
 - The systemd unit redirects stdout and stderr to `bot.log` (see [Daemon.md](Daemon.md)).
-- Running `python -m src.main` directly prints to the terminal. To keep a file, redirect it yourself:
+- Running `python -m src.main` directly prints to the terminal. To keep a file, redirect both streams; redirecting stdout alone produces an empty file:
 
   ```bash
   python -m src.main --conf config.ini >> bot.log 2>&1

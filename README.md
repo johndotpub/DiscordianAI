@@ -26,7 +26,7 @@ DiscordianAI is a Discord bot that routes each message to OpenAI or Perplexity, 
 
 - **Hybrid routing**: OpenAI handles reasoning and creative prompts; Perplexity Sonar handles current events and returns citations.
 - **Conversation history**: History is keyed by guild channel (`g:<guild>:c:<channel>`) or DM (`dm:<user>`) and is sent to both providers. A thread keeps its own history, separate from its parent. A follow-up is routed to the provider that answered the previous turn when one is recorded.
-- **Discord-native output**: Citation embeds, message splitting at Discord's 2000-character limit, and link-preview embed suppression when a response contains two or more links.
+- **Discord-native output**: Citation embeds, message splitting at Discord's 2000-character limit, and Perplexity link-preview suppression when a response contains two or more links. The OpenAI path does not suppress previews.
 - **Operations**: Per-provider HTTP/2 connection pooling with HTTP/1.1 fallback, per-provider circuit breakers, and health checks after login plus HTTP endpoints that report observed provider and breaker state.
 - **Single-source configuration**: `config.ini` or environment variables drive every mode. Startup validation stops on missing credentials, malformed URLs, and invalid limits, and warns about unknown model names.
 
@@ -47,7 +47,7 @@ DiscordianAI is a Discord bot that routes each message to OpenAI or Perplexity, 
 5. **Run the bot**: `python -m src.main --conf config.ini` (or the installed console script: `discordianai --conf config.ini`).
 6. **Run tests** before shipping: `pytest` (coverage gate: 84% via tox/Codecov)
 
-Logs go to stdout. The bot does not open `bot.log`; the deprecated `LOG_FILE` setting is ignored. `bot.log` exists only when `discordian.sh` in daemon mode or a process supervisor redirects stdout to it.
+Logs go to stderr. The bot does not open `bot.log`; the deprecated `LOG_FILE` setting is ignored. `bot.log` exists only when `discordian.sh` in daemon mode or a process supervisor captures stderr. Redirect stderr, or both streams with `>> bot.log 2>&1`; redirecting stdout alone produces an empty file.
 
 Need the full Discord bot creation walkthrough and environment prep? See [docs/Setup.md](docs/Setup.md).
 
@@ -59,7 +59,7 @@ python -m src.main --conf config.ini --folder /path/to/base/folder
 
 - `--conf` points at the config file.
 - `--folder` (optional) makes config paths relative to a base directory (useful for Docker or systemd units).
-- Logs go to stdout. The redirect or supervisor creates the file, for example `python -m src.main --conf config.ini >> bot.log 2>&1`. The bot opens only stdout, and `LOG_FILE` is deprecated and ignored.
+- Logs go to stderr. The redirect or supervisor creates the file, for example `python -m src.main --conf config.ini >> bot.log 2>&1`. The bot writes only to stderr, and `LOG_FILE` is deprecated and ignored. Redirecting only stdout leaves the file empty.
 - The installed console script accepts the same arguments: `discordianai --conf config.ini`.
 
 ### Running with the launcher script
@@ -80,7 +80,7 @@ The included [discordian.sh](discordian.sh) script handles Python environment re
 ./discordian.sh --install-systemd bot.ini
 ```
 
-The launcher resolves Python in this order: pyenv → project-local `.venv` → shell venv → system `python3`. It creates a `.venv/` automatically if none exists. It also ensures the working directory is correct — no more `ModuleNotFoundError: No module named 'src'` when running from cron. In daemon mode it redirects stdout to `bot.log` and records the process ID in `.bot.pid`.
+The launcher resolves Python in this order: pyenv → project-local `.venv` → shell venv → system `python3`. It creates a `.venv/` automatically if none exists. It also ensures the working directory is correct — no more `ModuleNotFoundError: No module named 'src'` when running from cron. In daemon mode it redirects both stdout and stderr to `bot.log` (`>> bot.log 2>&1`) and records the process ID in `.bot.pid`.
 
 `--install-systemd` generates a complete systemd user unit from the config file name (e.g., `bot.ini` → `discordian-bot@bot.service`), writes it to `~/.config/systemd/user/`, enables it, and prints management commands. See [docs/Daemon.md](docs/Daemon.md) for both cron and systemd setup. The shipped logrotate fragment is [contrib/logrotate/discordianai](contrib/logrotate/discordianai); it uses `copytruncate` because the bot never reopens a log file it did not open.
 
@@ -139,7 +139,7 @@ RATE_LIMIT_PER=60
 
 ### Discord User Experience
 - [src/discord_embeds.py](src/discord_embeds.py) formats Perplexity citations into embed descriptions and truncates descriptions above the 4096-character hard limit to the 3840-character safe limit.
-- [src/message_splitter.py](src/message_splitter.py) splits at 2000 characters, uses 3840 as the safe embed split target and 4096 as the hard embed limit, avoids splitting code blocks, and provides the link-count check used to suppress previews at two or more links.
+- [src/message_splitter.py](src/message_splitter.py) splits at 2000 characters, uses 3840 as the safe embed split target and 4096 as the hard embed limit, avoids splitting code blocks, and provides the link-count check that the Perplexity path uses to suppress previews at two or more links. The OpenAI path always returns `False`.
 - [src/message_router.py](src/message_router.py) handles mentions, DMs, channel and thread allowlists, bot-authored senders, and dispatch to the DM/channel processors.
 
 ### Reliability & Ops
