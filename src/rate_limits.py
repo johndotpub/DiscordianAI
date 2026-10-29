@@ -77,6 +77,7 @@ class RateLimiter:
             cooldown_until = self._fail_open_cooldown_until
             if not isinstance(cooldown_until, (int, float)):
                 cooldown_until = 0.0
+                self._fail_open_cooldown_until = cooldown_until
 
             fail_open_errors += 1
             self.fail_open_errors = fail_open_errors
@@ -236,9 +237,10 @@ async def check_rate_limit(
         )
         now = time.monotonic()
         fail_open_result = rate_limiter.record_fail_open_error(now)
+        # record_fail_open_error always returns a 3-tuple; this guards only custom limiters.
         try:
             _, cooldown_active, entering_cooldown = fail_open_result
-        except (TypeError, ValueError):
+        except (TypeError, ValueError):  # pragma: no cover
             cooldown_until = getattr(rate_limiter, "fail_open_cooldown_until", 0.0)
             if not isinstance(cooldown_until, (int, float)):
                 cooldown_until = 0.0

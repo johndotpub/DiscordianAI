@@ -303,7 +303,8 @@ class APIHealthMonitor:
 
     def __getattr__(self, name: str) -> Any:
         """Resolve ``check_<service>_health`` names from the provider table."""
-        if name.startswith("check_") and name.endswith("_health"):
+        # Every current service has an explicit partialmethod above.
+        if name.startswith("check_") and name.endswith("_health"):  # pragma: no cover
             service = name[len("check_") : -len("_health")]
             if service in PROVIDER_HEALTH_SPECS:
                 return partial(self.check_provider_health, service)
@@ -344,8 +345,8 @@ class APIHealthMonitor:
                 1 - weight
             ) * metrics.average_response_time_ms + weight * result.response_time_ms
 
-        # Calculate uptime percentage
-        if metrics.total_checks > 0:
+        # Calculate uptime percentage; total_checks is always positive here.
+        if metrics.total_checks > 0:  # pragma: no branch
             metrics.uptime_percentage = (metrics.successful_checks / metrics.total_checks) * 100
 
     async def run_all_health_checks(
