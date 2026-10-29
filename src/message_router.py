@@ -242,12 +242,37 @@ def _is_trusted_bot(author: Any, deps: dict[str, Any] | Any) -> bool:
         return False
 
 
+def _mentions_bot(message: Any, bot: discord.Client) -> bool:
+    """Return True when the message mentions the bot."""
+    return bot.user in (getattr(message, "mentions", None) or [])
+
+
 def _log_ignored(logger: Any, message: Any, reason: str) -> None:
     """Emit exactly one DEBUG reason line for a deliberately ignored message."""
     logger.debug(
         "Ignoring message %s: reason=%s",
         getattr(message, "id", "unknown"),
         reason,
+    )
+
+
+def _log_ignored_mention(
+    logger: Any,
+    message: Any,
+    reason: str,
+    hint: str | None = None,
+) -> None:
+    """Emit exactly one INFO line for a mention that routing deliberately drops."""
+    author = getattr(message, "author", None)
+    channel = getattr(message, "channel", None)
+    suffix = f" ({hint})" if hint else ""
+    logger.info(
+        "Ignoring mention from %s %s in channel %s: reason=%s%s",
+        "bot" if getattr(author, "bot", False) else "user",
+        getattr(author, "id", "unknown"),
+        getattr(channel, "id", "unknown"),
+        reason,
+        suffix,
     )
 
 
@@ -264,7 +289,15 @@ async def handle_incoming_message(
         if (getattr(author, "bot", False) or author == bot.user) and not _is_trusted_bot(
             author, deps
         ):
-            _log_ignored(logger, message, "other_bot")
+            if _mentions_bot(message, bot):
+                _log_ignored_mention(
+                    logger,
+                    message,
+                    "other_bot",
+                    "not in TRUSTED_BOT_IDS; add the id to allow bot-to-bot replies",
+                )
+            else:
+                _log_ignored(logger, message, "other_bot")
             return
 
         if isinstance(message.channel, discord.DMChannel) or _is_group_dm(message.channel):
@@ -272,7 +305,7 @@ async def handle_incoming_message(
                 await process_dm_message(message, deps)
             return
 
-        if bot.user not in (getattr(message, "mentions", None) or []):
+        if not _mentions_bot(message, bot):
             _log_ignored(logger, message, "not_mentioned")
             return
 
@@ -281,7 +314,7 @@ async def handle_incoming_message(
                 _log_ignored(logger, message, "thread_parent_not_allowed")
                 return
         elif not _channel_allowed(message.channel, deps, bot):
-            _log_ignored(logger, message, "channel_not_allowed")
+            _log_ignored_mention(logger, message, "channel_not_allowed")
             return
 
         async with message.channel.typing():
