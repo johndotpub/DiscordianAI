@@ -37,16 +37,24 @@ Not built:
 - **The Clef seam.** `ROUTER_MODE=model` raises `NotImplementedError` naming this document; there is no
   `src/routing/clef.py`, no model call, and no model fallback path.
 
-Measured on the sealed and gate corpora (ambiguous rows excluded; recall / precision / accuracy):
+Measured on the corpora in `tests/routing/corpora/`, ambiguous rows excluded, at the threshold the bot
+runs (0.10 in a channel — the results are identical at 0.50, because any bearing cue saturates and the gate
+decides everything below it):
 
 | Corpus | n scored | Heuristic | Incumbent on the same rows |
 |---|---|---|---|
-| Sealed | 564 | 0.677 / 0.806 / 0.741 | — |
-| Gate | 380 | 0.653 / 0.689 / 0.679 | 0.453 / 0.775 / 0.661 |
+| `sealed-a` — ordinary traffic | 145 | 0.722 / 0.897 / 0.821 | 0.597 / 0.811 / 0.731 |
+| `sealed-b` — surface-wording traps | 144 | 0.738 / 0.534 / 0.736 | 0.405 / 0.486 / 0.701 |
+| Combined | 289 | **0.728 / 0.716 / 0.778** | 0.526 / 0.682 / 0.716 |
 
-The shipped heuristic does **not** meet the design's aspirational overall recall floor of 0.90. The
-numbers above are the measured result, not a target; the gate's value over the incumbent is higher recall
-(+0.200) at lower precision (−0.086).
+Recall improves by 20 points and precision by 3.4 on identical rows. The honest reading: on ordinary
+traffic precision is high (0.897), and on deliberately trap-weighted input it collapses to 0.534 while still
+beating the incumbent's 0.486. The router is willing to search on a pleasantry that mentions a date or a
+state word; that is the cost of preferring a wasted lookup to a confidently stale answer, and this table is
+where it is admitted.
+
+The shipped heuristic does **not** meet the aspirational overall recall target of 0.90. The numbers above are
+measured, not targeted.
 
 
 ## Why

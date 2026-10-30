@@ -13,9 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from `src/routing/`: bearing evidence (a status, price, version, event, or other mutable value) may
   route to Perplexity, while framing (question shape, opinion, creative, social, proper names) can never
   decide alone. The ordered regex chain and its pattern lists were deleted rather than left dormant, so
-  there is no flag to restore the old behaviour. On the sealed corpus the router measures recall 0.677,
-  precision 0.806, accuracy 0.741 (n=564); on the gate corpus it measures 0.653 / 0.689 / 0.679 (n=380)
-  against the incumbent's 0.453 / 0.775 / 0.661 on the same rows.
+  there is no flag to restore the old behaviour. Measured on the corpora committed under
+  `tests/routing/corpora/`: recall **0.728**, precision **0.716**, accuracy 0.778 over 289 scored rows,
+  against the deleted chain's 0.526 / 0.682 / 0.716 on the same rows. On ordinary traffic the router is
+  0.722 / 0.897; on a set deliberately built from surface-wording traps it is 0.738 / **0.534**, still
+  ahead of the incumbent's 0.405 / 0.486. Precision on trap-heavy input is the known cost of preferring a
+  wasted search to a confidently stale answer, and it is stated rather than averaged away.
 - **Cache entries carry the routing decision.** Keys now include the service, router id, policy version,
   decision source, function, route salt, and degraded flag, so a web-routed message cannot receive a
   cached local answer and an unsure decision is not stored at all.
