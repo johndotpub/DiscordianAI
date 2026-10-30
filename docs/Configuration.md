@@ -109,6 +109,11 @@ Lightweight HTTP health checks for Docker and Kubernetes deployments.
 - **`HEALTH_PORT`**: Port for readiness/liveness probes *(default: `8080`)*
 - **`HEALTH_PROVIDER_STALE_SECONDS`**: Seconds after a provider's last success before health marks it degraded *(default: `300`)*
 
+> **No cost cap.** These thresholds decide how readily the router searches; none of them is a
+> budget. There is no allowance, counter or price model in the routing path, so spend follows the
+> message mix rather than a configured ceiling. Measured precision also falls on trap-heavy input
+> (pleasantries that contain a date or a state word); the numbers are in `docs/routing/DESIGN.md`.
+
 ## Operation Modes
 
 DiscordianAI supports three distinct operation modes based on your API key configuration:

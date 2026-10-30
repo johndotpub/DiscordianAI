@@ -169,7 +169,7 @@ diff or with the named command.
   and every `CONSTANT = value` line in prose is checked against `src/config.py`; change both
   sides in the same commit.
 - **No references to deleted modules or functions, and no test-tree listings that enumerate
-  files.** `tests/test_docs_truth.py` scans `*.md` and `docs/api/*.rst` for missing modules,
+  files.** `tests/test_docs_truth.py` scans `README.md` and the top level of `docs/*.md` for missing modules,
   stale symbols, and non-existent commands.
 - **When behaviour changes, the doc changes in the same commit.** A follow-up documentation
   PR is a broken contract, not a plan.

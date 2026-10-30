@@ -237,6 +237,14 @@ Both services share the same retry policy via `retry_with_backoff`:
 
 ## Cost Considerations
 
+**Routing has no cost cap.** The router decides whether a message needs live data on the strength of the
+message itself — there is no budget, no per-hour search allowance and no price model in the decision. Search
+volume therefore follows what people ask, not how much you are willing to spend. If you need a ceiling, it
+belongs at the Discord or provider level, not in the router, because a router that stops searching when a
+counter runs out answers live questions from stale weights and cannot tell you it did so.
+
+## Cost Considerations
+
 - **GPT-6**: Higher cost per token but strong reasoning on stable knowledge and code.
 - **Perplexity**: Includes citations and live web data but is reserved for messages that carry bearing
   evidence.

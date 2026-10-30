@@ -102,7 +102,8 @@ CONVERSATION_TTL_SECONDS=1800
 # How often to clean up inactive user locks (seconds) - default 1 hour
 USER_LOCK_CLEANUP_INTERVAL=3600
 
-# Minimum words required before entity detection runs
+# Deprecated: parsed for compatibility, no runtime effect. Entity detection was replaced by the
+# routing evidence model; this key is retained so existing configs still load.
 ENTITY_DETECTION_MIN_WORDS=10
 
 # Router implementation: heuristic (default) or model (not implemented yet)

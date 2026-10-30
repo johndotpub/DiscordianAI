@@ -21,7 +21,10 @@ Built and shipped:
 - `src/routing/` — frozen contracts, text views and cues, the bundled English lexicon, weighted scoring,
   the heuristic router, the router factory, content-free telemetry, and the input builder.
 - `src/smart_orchestrator.py` — one `build_router_input(...)` and one `router.decide(...)` per message;
-  the decision route selects the provider. The old regex functions and their pattern lists are gone.
+  the decision route selects the provider. The old regex functions and their pattern lists are gone, with
+  one exception worth naming: `_OPENAI_WEB_INABILITY_PATTERNS` survives in `src/smart_orchestrator.py`
+  because it detects a model's own admission that it cannot browse, which is still needed for the safety net
+  described below.
 - Cache identity — keys carry `service`, `router_id`, `policy_version`, `decision_source`, `function`,
   route salt, and `degraded`, so a web answer and a local answer cannot share an entry.
 - One attempt per provider per request — an `AttemptLedger` stops the web-inability reroute from calling
@@ -281,15 +284,25 @@ Floors are **per slice**, because the two error directions cost differently: a m
 confidently stale answer (5–10× worse), while a needless search on *"thanks, that was lovely"* is a public
 embarrassment that a technical false positive is not.
 
+**The targets** — what this would need to be before it could be called finished:
+
 | Slice | Recall (needs live) | Precision |
 |---|---|---|
-| Social / chat | — | ≥ 0.98 |
-| Technical / code | — | ≥ 0.60 |
-| Overall | ≥ 0.90 (target 0.92) | ≥ 0.75 |
+| Social / chat | — | 0.98 |
+| Technical / code | — | 0.60 |
+| Overall | 0.90 | 0.75 |
 
-Plus: hard-rule cases exact (URL, explicit search, creative-only); two runs identical and hermetic
-(sockets blocked); 20 labels flipped with a fixed seed must fail the suite; every production misroute gets
-a corpus row before it is fixed.
+**The measured values** are below, and three of the five targets are not met. The social slice is the
+sharpest miss: precision there is far under target because pleasantries containing a date or a state word
+still occasionally buy a search.
+
+**What CI enforces is deliberately weaker than the targets** — regression floors set roughly eight points
+under the measured values, so a legitimate trade-off does not fail the build while a collapse does. Calling
+those floors a "release gate" would be an over-claim, and this document does not.
+
+Also required, and enforced: hard-rule cases exact (URL, explicit search, creative-only); two runs identical
+and hermetic (sockets blocked); a fixture whose labels are flipped with a fixed seed must fail the suite;
+every production misroute gets a corpus row before it is fixed.
 
 ## Clef seam
 
