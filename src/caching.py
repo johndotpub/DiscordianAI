@@ -160,7 +160,7 @@ def _generate_scoped_key(message: str, context: dict[str, Any]) -> str | None:
     if has_conversation and scope_id is None:
         return None
 
-    normalized_message = str(message).strip().lower()
+    normalized_message = str(message).strip()
 
     context_key = {
         "model": context.get("model", "unknown"),

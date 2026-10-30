@@ -156,21 +156,21 @@ class TestResponseCache:
         cached = self.cache.get_cached_response(message, context)
         assert cached == response
 
-    def test_cache_key_normalization(self):
-        """Test cache key normalization for similar messages."""
+    def test_cache_key_normalization_strips_whitespace_only(self):
+        """Cache keys ignore surrounding whitespace but preserve letter case."""
         context = {"model": "gpt-5-mini", "system_message": "Test"}
         response = "Test response"
 
         # Cache response with original message
         self.cache.cache_response("What is AI?", context, response)
 
-        # Should hit cache with normalized message
-        cached = self.cache.get_cached_response("what is ai?", context)
-        assert cached == response
-
-        # Should also hit with extra whitespace
+        # Whitespace is not part of the prompt
         cached = self.cache.get_cached_response("  What is AI?  ", context)
         assert cached == response
+
+        # Case is meaningful, so a differently-cased prompt is a cache miss
+        cached = self.cache.get_cached_response("what is ai?", context)
+        assert cached is None
 
     def test_should_not_cache_time_sensitive(self):
         """Test that time-sensitive responses are not cached."""

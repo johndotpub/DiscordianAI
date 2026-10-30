@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.caching import RequestDeduplicator, ResponseCache, response_cache
+from src.caching import RequestDeduplicator, ResponseCache, cached_response, response_cache
 from src.models import AIRequest, OpenAIConfig
 from src.openai_processing import _fetch_openai_response
 
@@ -169,6 +169,34 @@ async def test_stateless_repeat_still_hits_cache():
 
     assert len(client.calls) == 1
     assert first == second
+
+
+def test_cache_keys_preserve_case_and_ignore_surrounding_whitespace():
+    cache = ResponseCache()
+    context = {"model": "gpt-test", "system_message": "test"}
+
+    assert cache._generate_cache_key("ABC", context) != cache._generate_cache_key("abc", context)
+    assert cache._generate_cache_key("ABC", context) == cache._generate_cache_key("ABC", context)
+    assert cache._generate_cache_key(" ABC ", context) == cache._generate_cache_key("ABC", context)
+
+
+@pytest.mark.asyncio
+async def test_cached_response_for_uppercase_prompt_is_not_served_for_lowercase():
+    calls = []
+
+    @cached_response(ttl=300.0)
+    async def answer(message):
+        calls.append(message)
+        return f"answer for {message}"
+
+    uppercase = await answer("ABC")
+    lowercase = await answer("abc")
+    repeated_uppercase = await answer("ABC")
+
+    assert uppercase == "answer for ABC"
+    assert lowercase == "answer for abc"
+    assert repeated_uppercase == "answer for ABC"
+    assert calls == ["ABC", "abc"]
 
 
 def test_bounded_size_eviction_still_holds():
