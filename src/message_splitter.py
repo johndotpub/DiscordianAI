@@ -15,7 +15,6 @@ import discord
 from .citation_formatting import renderable_citations
 from .config import (
     BARE_URL_PATTERN,
-    EMBED_LIMIT,
     EMBED_SAFE_LIMIT,
     LINK_PATTERN,
     MAX_SPLIT_CHUNKS,
@@ -93,16 +92,19 @@ async def _deliver(
         kwargs["embed"] = embed
     if embed is None or suppress_embeds:
         kwargs["suppress_embeds"] = suppress_embeds
+    mentioned_users: list[discord.abc.User] = []
     if original_message is not None:
         author = original_message.author
-        mentioned_users = [] if getattr(author, "bot", False) is True else [author]
+        if getattr(author, "bot", False) is not True:
+            mentioned_users = [author]
         kwargs["mention_author"] = False
-        kwargs["allowed_mentions"] = discord.AllowedMentions(
-            users=mentioned_users,
-            everyone=False,
-            roles=[],
-            replied_user=False,
-        )
+    kwargs["allowed_mentions"] = discord.AllowedMentions(
+        users=mentioned_users,
+        everyone=False,
+        roles=[],
+        replied_user=False,
+    )
+    if original_message is not None:
         await original_message.reply(content, **kwargs)
     else:
         await channel.send(content, **kwargs)
@@ -237,12 +239,53 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
         )
 
 
-def _split_embed_head(message: str) -> tuple[str, str]:
-    """Return the embed head and remaining text using the existing split rules."""
-    if len(message) <= EMBED_SAFE_LIMIT:
+def _rendered_embed_length(message: str, citations: dict[str, str] | None) -> int:
+    """Return the embed description length after citation rendering."""
+    if not citations:
+        return len(message)
+    return len(citation_embed_formatter.render_description(message, citations))
+
+
+def _rendered_embed_split_point(message: str, citations: dict[str, str]) -> int:
+    """Find the longest prefix whose rendered description fits the safe limit."""
+    low = 0
+    high = len(message)
+    while low < high:
+        middle = (low + high + 1) // 2
+        if _rendered_embed_length(message[:middle], citations) <= EMBED_SAFE_LIMIT:
+            low = middle
+        else:
+            high = middle - 1
+    return low
+
+
+def _split_embed_head(
+    message: str,
+    citations: dict[str, str] | None = None,
+) -> tuple[str, str]:
+    """Return the embed head and remaining text using the existing split rules.
+
+    When citations are present the split is measured on the rendered embed
+    description, because citation links expand the text beyond its clean length.
+    """
+    if not citations:
+        if len(message) <= EMBED_SAFE_LIMIT:
+            return message, ""
+        split_index = find_optimal_split_point(message, EMBED_SAFE_LIMIT)
+        return adjust_split_for_code_blocks(message, split_index)
+
+    if _rendered_embed_length(message, citations) <= EMBED_SAFE_LIMIT:
         return message, ""
-    split_index = find_optimal_split_point(message, EMBED_SAFE_LIMIT)
-    return adjust_split_for_code_blocks(message, split_index)
+
+    max_prefix = _rendered_embed_split_point(message, citations)
+    if max_prefix <= 0:
+        split_index = min(len(message), EMBED_SAFE_LIMIT) or len(message)
+        return message[:split_index], message[split_index:]
+
+    split_index = min(max_prefix, find_optimal_split_point(message, max_prefix))
+    if split_index <= 0:
+        split_index = max_prefix
+    return message[:split_index], message[split_index:]
 
 
 def _rebuild_embed_head(
@@ -281,7 +324,7 @@ async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
     remaining = message
 
     while True:
-        head_text, after_split = _split_embed_head(remaining)
+        head_text, after_split = _split_embed_head(remaining, citations)
         continuation_tail = after_split.strip()
 
         if sent_messages >= MAX_SPLIT_CHUNKS:
@@ -322,18 +365,6 @@ async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
         sent_messages += 1
 
         if not continuation_tail:
-            if citations and remaining and original_message:
-                # Clean text fit the head but the embed was truncated; send the tail.
-                await send_split_message(
-                    channel,
-                    remaining,
-                    deps,
-                    suppress_embeds=False,
-                    original_message=original_message,
-                    mention_prefix=None,
-                    _chunk_budget=MAX_SPLIT_CHUNKS - sent_messages,
-                    citations=citations,
-                )
             return
 
         message_part2 = continuation_tail
@@ -349,7 +380,7 @@ async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
                 citations=citations,
             )
             return
-        if len(message_part2) <= EMBED_LIMIT:
+        if _rendered_embed_length(message_part2, citations) <= EMBED_SAFE_LIMIT:
             if sent_messages >= MAX_SPLIT_CHUNKS:
                 logger.error(
                     "Embed split reached chunk cap (%d) for message length %d",
@@ -393,7 +424,7 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
     """
     message = sanitize_for_discord(message, citations)
 
-    head_text, after_split = _split_embed_head(message)
+    head_text, after_split = _split_embed_head(message, citations)
     _rebuild_embed_head(embed, head_text, citations)
     await _deliver(
         channel,
@@ -406,7 +437,7 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
         message_part2 = after_split.strip()
         remaining_citations = _citations_for_text(message_part2, citations)
         if remaining_citations:
-            if len(message_part2) > EMBED_LIMIT:
+            if _rendered_embed_length(message_part2, citations) > EMBED_SAFE_LIMIT:
                 await _send_embed_continuations(
                     channel,
                     message_part2,
@@ -438,18 +469,6 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
                 _chunk_budget=MAX_SPLIT_CHUNKS - 1,
                 citations=citations,
             )
-    elif citations and message and original_message:
-        # Embed was truncated but clean text fit; send remaining text to avoid dropping tail
-        await send_split_message(
-            channel,
-            message,
-            deps,
-            suppress_embeds=False,
-            original_message=original_message,
-            mention_prefix=None,
-            _chunk_budget=MAX_SPLIT_CHUNKS - 1,
-            citations=citations,
-        )
 
 
 # Preserve the existing positional API for current callers.

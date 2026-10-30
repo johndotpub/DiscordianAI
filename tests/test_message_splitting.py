@@ -362,7 +362,7 @@ class TestMessageSplittingIntegration:
                 message,
                 deps,
                 base_embed,
-                {"1": "https://example.com"},
+                {},
                 original_message=None,
                 mention_prefix=None,
             )
@@ -376,11 +376,11 @@ class TestMessageSplittingIntegration:
             assert head_embed is not None
             assert head_embed.description == expected_head
 
-        # Continuation embed should be built from the adjusted tail text
+        # The adjusted tail is delivered as text, so the head and tail align.
         mock_create.assert_called()
         last_call = channel.send.call_args_list[-1]
-        assert last_call.kwargs.get("embed") is mock_cont_embed
-        assert mock_cont_embed.description == expected_tail.strip()
+        assert last_call.kwargs.get("embed") is None
+        assert last_call.args[0] == expected_tail.strip()
 
     @pytest.mark.asyncio
     async def test_content_preservation_no_truncation(self):

@@ -95,6 +95,18 @@ class CitationEmbedFormatter:
         self.logger.debug("Created citation embed with %d citations", len(citations))
         return embed, metadata
 
+    def render_description(self, content: str, citations: dict[str, str]) -> str:
+        """Render an embed description with citations, without truncating it.
+
+        Args:
+            content: Response text with citation markers such as ``[1]``.
+            citations: Mapping of citation numbers to source URLs.
+
+        Returns:
+            The description exactly as citation formatting would render it.
+        """
+        return self._format_citations_for_embed_description(content, citations)
+
     def _format_citations_for_embed_description(self, text: str, citations: dict[str, str]) -> str:
         """Format citation numbers as clickable hyperlinks for Discord embed description.
 

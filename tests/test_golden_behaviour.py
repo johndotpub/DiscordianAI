@@ -8,6 +8,7 @@ reviewable statement that user-visible behaviour changed.
 import asyncio
 import json
 
+import discord
 import pytest
 
 from tests.golden_cases import (
@@ -38,7 +39,14 @@ def _assert_discord_call_invariants(replay) -> None:
         else:
             assert call["method"] == "send"
             assert "mention_author" not in kwargs
-            assert "allowed_mentions" not in kwargs
+            allowed_mentions = kwargs["allowed_mentions"]
+            assert isinstance(allowed_mentions, discord.AllowedMentions)
+            assert allowed_mentions.users == []
+            assert allowed_mentions.roles == []
+            assert allowed_mentions.everyone is False
+            parse = allowed_mentions.to_dict()["parse"]
+            assert "everyone" not in parse
+            assert "roles" not in parse
 
 
 @pytest.mark.parametrize("case", ALL_CASES, ids=[case["id"] for case in ALL_CASES])

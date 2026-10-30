@@ -7,9 +7,11 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+from src.discord_embeds import citation_embed_formatter
 from src.message_splitter import send_split_message, send_split_message_with_embed
 
 MENTION_PREFIX = "<@42> "
+EMBED_SAFE_LIMIT = 3840
 
 
 class RecordingChannel:
@@ -108,6 +110,103 @@ async def test_long_cited_answer_with_embed_arrives_complete():
     rendered = _rendered_embed_texts(calls)
     assert "".join(rendered) == f"{MENTION_PREFIX}{body}"
     assert not any("truncated" in text.lower() for text in rendered)
+
+
+def _cited_body(sentence_count: int, filler_words: int) -> tuple[str, dict[str, str]]:
+    filler = "word " * filler_words
+    parts = [f"Sentence {index:02d} {filler}[{index + 1}]." for index in range(sentence_count)]
+    body = " ".join(parts)
+    citations = {
+        str(index + 1): f"https://example.com/source/{index + 1}"
+        for index in range(sentence_count)
+    }
+    return body, citations
+
+
+def _all_delivered_texts(original: SimpleNamespace) -> list[str]:
+    texts: list[str] = []
+    for call in original.reply.call_args_list:
+        texts.append(call.args[0])
+        embed = call.kwargs.get("embed")
+        if embed is not None and embed.description:
+            texts.append(_unlink_embed_citations(embed.description))
+    return texts
+
+
+@pytest.mark.asyncio
+async def test_cited_body_that_overflows_rendered_embed_is_delivered_once():
+    body, citations = _cited_body(39, 13)
+    _, metadata = citation_embed_formatter.create_citation_embed(body, citations)
+    assert metadata["formatted_length"] > EMBED_SAFE_LIMIT
+    channel = RecordingChannel()
+    original = _original_message()
+    embed = discord.Embed(description="placeholder")
+
+    await send_split_message_with_embed(
+        channel,
+        body,
+        {"logger": MagicMock()},
+        embed,
+        citations,
+        original_message=original,
+    )
+
+    texts = _all_delivered_texts(original)
+    delivered = "".join(texts)
+    assert delivered == body
+    assert len(original.reply.call_args_list) == 2
+    for index in range(39):
+        assert delivered.count(f"Sentence {index:02d}") == 1
+    assert "Sentence 38" in delivered
+
+
+@pytest.mark.asyncio
+async def test_uncited_body_that_fits_the_embed_is_delivered_as_one_embed():
+    body, _ = _cited_body(39, 13)
+    channel = RecordingChannel()
+    original = _original_message()
+    embed = discord.Embed(description="placeholder")
+
+    await send_split_message_with_embed(
+        channel,
+        body,
+        {"logger": MagicMock()},
+        embed,
+        {},
+        original_message=original,
+    )
+
+    original.reply.assert_called_once()
+    assert original.reply.call_args.args[0] == ""
+    assert original.reply.call_args.kwargs["embed"] is embed
+    assert embed.description == body
+
+
+@pytest.mark.asyncio
+async def test_delivery_count_does_not_grow_with_the_number_of_citations():
+    body, _ = _cited_body(45, 13)
+    counts = []
+
+    for citation_count in (5, 39):
+        citations = {
+            str(index + 1): f"https://example.com/source/{index + 1}"
+            for index in range(citation_count)
+        }
+        channel = RecordingChannel()
+        original = _original_message()
+        embed = discord.Embed(description="placeholder")
+
+        await send_split_message_with_embed(
+            channel,
+            body,
+            {"logger": MagicMock()},
+            embed,
+            citations,
+            original_message=original,
+        )
+        counts.append(len(original.reply.call_args_list))
+
+    assert counts == [2, 2]
 
 
 @pytest.mark.asyncio

@@ -21,6 +21,17 @@ from src.message_splitter import (
 )
 
 
+def _assert_deny_all_mentions(kwargs):
+    allowed_mentions = kwargs["allowed_mentions"]
+    assert isinstance(allowed_mentions, discord.AllowedMentions)
+    assert allowed_mentions.everyone is False
+    assert allowed_mentions.roles == []
+    assert allowed_mentions.users == []
+    parse = allowed_mentions.to_dict()["parse"]
+    assert "everyone" not in parse
+    assert "roles" not in parse
+
+
 class TestSendFormattedMessage:
     """Test send_formatted_message function for duplication prevention."""
 
@@ -50,7 +61,10 @@ class TestSendFormattedMessage:
         await send_formatted_message(channel, message, deps, embed_data=embed_data)
 
         # Should send ONLY the embed with empty message (prevents duplication)
-        channel.send.assert_called_once_with("", embed=embed)
+        channel.send.assert_called_once()
+        assert channel.send.call_args.args == ("",)
+        assert channel.send.call_args.kwargs["embed"] is embed
+        _assert_deny_all_mentions(channel.send.call_args.kwargs)
 
     @pytest.mark.asyncio
     async def test_send_formatted_message_no_duplication(self):
@@ -167,7 +181,10 @@ class TestSendFormattedMessage:
         await send_formatted_message(channel, message, deps)
 
         # Should send as regular message
-        channel.send.assert_called_once_with(message, suppress_embeds=False)
+        channel.send.assert_called_once()
+        assert channel.send.call_args.args == (message,)
+        assert channel.send.call_args.kwargs["suppress_embeds"] is False
+        _assert_deny_all_mentions(channel.send.call_args.kwargs)
 
     @pytest.mark.asyncio
     async def test_send_formatted_message_reply_with_mention(self):
@@ -291,7 +308,10 @@ class TestSendSplitMessageWithEmbed:
         await send_split_message_with_embed(channel, content, deps, embed, citations)
 
         # Should send only the original embed
-        channel.send.assert_called_once_with("", embed=embed)
+        channel.send.assert_called_once()
+        assert channel.send.call_args.args == ("",)
+        assert channel.send.call_args.kwargs["embed"] is embed
+        _assert_deny_all_mentions(channel.send.call_args.kwargs)
 
     @pytest.mark.asyncio
     async def test_split_embed_long_content_basic(self):
@@ -311,7 +331,10 @@ class TestSendSplitMessageWithEmbed:
         # Should send at least the first embed
         assert channel.send.call_count >= 1
         # First call should be with the original embed
-        assert channel.send.call_args_list[0] == (("",), {"embed": embed})
+        first_call = channel.send.call_args_list[0]
+        assert first_call.args == ("",)
+        assert first_call.kwargs["embed"] is embed
+        _assert_deny_all_mentions(first_call.kwargs)
 
     @pytest.mark.asyncio
     async def test_split_embed_continuation_reply_with_mentions(self):
@@ -363,8 +386,8 @@ class TestSendSplitMessageWithEmbed:
         assert mock_create.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_split_embed_truncated_with_remaining_text(self):
-        """When truncated embed leaves no after_split, remaining text still sends as reply."""
+    async def test_split_embed_short_content_is_not_sent_twice(self):
+        """A short cited answer stays in one embed instead of repeating as text."""
         channel = MagicMock(spec=discord.TextChannel)
         channel.send = AsyncMock()
 
@@ -389,14 +412,9 @@ class TestSendSplitMessageWithEmbed:
                 mention_prefix=f"{author.mention} ",
             )
 
-        # continuation path should send remaining text once via split helper
-        mock_split.assert_called_once()
-        args, kwargs = mock_split.call_args
-        assert args[0] is channel
-        assert args[1] == "Short content [1]"
-        assert kwargs["original_message"] is original_message
-        assert kwargs["mention_prefix"] is None
-        assert kwargs["suppress_embeds"] is False
+        mock_split.assert_not_called()
+        original_message.reply.assert_called_once()
+        assert original_message.reply.call_args.kwargs["embed"] is first_embed
 
 
 class TestEmbedCharacterLimits:
@@ -419,7 +437,10 @@ class TestEmbedCharacterLimits:
 
         # Should send the original embed first
         assert channel.send.call_count >= 1
-        assert channel.send.call_args_list[0] == (("",), {"embed": embed})
+        first_call = channel.send.call_args_list[0]
+        assert first_call.args == ("",)
+        assert first_call.kwargs["embed"] is embed
+        _assert_deny_all_mentions(first_call.kwargs)
 
     @pytest.mark.asyncio
     async def test_regular_message_2000_limit_respected(self):

@@ -45,6 +45,18 @@ def _assert_reply_policy(original_message: MagicMock) -> None:
         assert allowed_mentions.replied_user is False
 
 
+def _assert_deny_all_mentions(kwargs: dict) -> None:
+    allowed_mentions = kwargs["allowed_mentions"]
+    assert isinstance(allowed_mentions, discord.AllowedMentions)
+    assert allowed_mentions.everyone is False
+    assert allowed_mentions.roles == []
+    assert allowed_mentions.users == []
+    assert allowed_mentions.replied_user is False
+    parse = allowed_mentions.to_dict()["parse"]
+    assert "everyone" not in parse
+    assert "roles" not in parse
+
+
 def test_only_one_allowed_mentions_construction() -> None:
     """All outbound mention policy must come from the single delivery helper."""
     source = "\n".join(path.read_text(encoding="utf-8") for path in SRC_DIR.rglob("*.py"))
@@ -130,7 +142,18 @@ async def test_send_without_original_message_uses_channel_send() -> None:
 
     assert channel.send.call_count >= 2
     for call in channel.send.call_args_list:
-        assert call.kwargs == {"suppress_embeds": True}
+        assert call.kwargs["suppress_embeds"] is True
+        _assert_deny_all_mentions(call.kwargs)
+
+
+@pytest.mark.asyncio
+async def test_channel_send_without_original_message_denies_all_mentions() -> None:
+    channel = _channel()
+
+    await send_split_message(channel, "A short answer", _deps())
+
+    channel.send.assert_called_once()
+    _assert_deny_all_mentions(channel.send.call_args.kwargs)
 
 
 @pytest.mark.asyncio

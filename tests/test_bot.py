@@ -291,7 +291,13 @@ class TestMessageSplitting:
 
         await send_split_message(channel, message, deps)
 
-        channel.send.assert_called_once_with(message, suppress_embeds=False)
+        channel.send.assert_called_once()
+        assert channel.send.call_args.args == (message,)
+        assert channel.send.call_args.kwargs["suppress_embeds"] is False
+        allowed_mentions = channel.send.call_args.kwargs["allowed_mentions"]
+        assert allowed_mentions.everyone is False
+        assert allowed_mentions.roles == []
+        assert allowed_mentions.users == []
 
     @pytest.mark.asyncio
     async def test_send_split_message_ignores_legacy_depth_hint(self):
