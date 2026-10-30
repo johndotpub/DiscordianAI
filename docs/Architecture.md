@@ -24,7 +24,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
                                                  ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │ Orchestration & AI Selection                                                            │
-│   routing heuristics · OpenAI processing · Perplexity processing                         │
+│   evidence-based routing · OpenAI processing · Perplexity processing                      │
 └────────────────────────────────────────────────┬───────────────────────────────────────┘
                                                  │
                                                  ▼
@@ -63,7 +63,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| **Config** | `config.py` | Configuration loading, constants, patterns |
+| **Config** | `config.py` | Configuration loading and constants |
 | **Connection Pool** | `connection_pool.py` | HTTP/2 connection pooling for API clients |
 | **Caching** | `caching.py` | Response caching, request deduplication |
 | **Error Handling** | `error_handling.py` | Circuit breaker, retry logic, error classification |
@@ -115,12 +115,11 @@ sequenceDiagram
     MP->>MP: Rate limit & guardrail checks
     MP->>CM: Fetch conversation history
     MP->>O: Route message
-    O->>O: Analyze message patterns
-    O->>O: Sanitize for routing (routing-only)
-    O->>O: Search-intent check
-    O->>O: Select AI service
+    O->>O: Build one RouterInput (message, channel kind, history)
+    O->>O: Score bearing and framing evidence
+    O->>O: Select AI service from the route decision
     O->>C: Check cache
-    alt Cache hit
+    alt Cache hit for this route
         C-->>O: Cached response
     else Cache miss
         O->>AI: API call with retry

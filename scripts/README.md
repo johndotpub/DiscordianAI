@@ -37,7 +37,7 @@ Score the routing heuristic on a labelled JSONL corpus, overall and per slice.
 
 **Usage:**
 ```bash
-python scripts/router_eval.py --corpus corpus.jsonl [--json] [--baseline old|none] [--slice FIELD]
+python scripts/router_eval.py --corpus corpus.jsonl [--json] [--slice FIELD]
 ```
 
 **What it does:**
@@ -45,7 +45,6 @@ python scripts/router_eval.py --corpus corpus.jsonl [--json] [--baseline old|non
 - Excludes ambiguous rows and reports how many were excluded
 - Prints recall first, with a 95% Wilson interval, then precision and accuracy
 - Reports TP/FP/TN/FN for the whole corpus and for each slice
-- With `--baseline old`, scores `src.smart_orchestrator.should_use_web_search()` on the same rows and prints the delta
 - With `--json`, emits the same report for CI
 
 ### Other Debug Scripts

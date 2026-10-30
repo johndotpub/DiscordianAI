@@ -69,21 +69,3 @@ def test_slices_are_grouped_from_the_requested_field(tmp_path: Path) -> None:
     assert result["slices"]["technical"]["n"] == 2
     assert result["slices"]["technical"]["tn"] == 1
     assert result["slices"]["technical"]["fn"] == 1
-
-
-def test_baseline_old_scores_the_same_rows_and_reports_delta(tmp_path: Path) -> None:
-    """The incumbent number is always measured on identical data."""
-    result = _run(_fixture(tmp_path), "--baseline", "old")
-
-    assert result["baseline"]["n_scored"] == result["n_scored"] == 3
-    assert result["baseline"]["overall"]["n"] == 3
-    delta = result["delta"]["overall"]
-    assert delta["recall"] == (
-        result["overall"]["recall"] - result["baseline"]["overall"]["recall"]
-    )
-    assert delta["precision"] == (
-        result["overall"]["precision"] - result["baseline"]["overall"]["precision"]
-    )
-    assert delta["accuracy"] == (
-        result["overall"]["accuracy"] - result["baseline"]["overall"]["accuracy"]
-    )

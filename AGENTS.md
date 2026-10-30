@@ -31,12 +31,12 @@ broke it, and each break is a user-visible bug.
   and `smart_orchestrator.py` (the call).
 
 - **The orchestrator owns routing and its side effects.** `get_smart_response()` and its
-  hybrid path call `should_use_web_search()`, pick the provider, fall back, and record the
-  successful turn. No client module imports routing patterns, calls
-  `should_use_web_search()`, or decides which provider runs. *Why:* routing is a single
-  policy with one place to test. *Consequence:* duplicated routing drifts and produces
-  answers from the wrong provider. *Check:* `rg -n 'should_use_web_search|COMPILED_.*PATTERNS' src`
-  shows routing use only in `smart_orchestrator.py` and pattern definitions in `config.py`.
+  hybrid path build one `RouterInput`, call `router.decide()` once, pick the provider, fall
+  back, and record the successful turn. No client module imports routing code or decides
+  which provider runs. *Why:* routing is a single policy with one place to test.
+  *Consequence:* duplicated routing drifts and produces answers from the wrong provider.
+  *Check:* `rg -n 'build_router|build_router_input|\.decide\(' src` shows routing use only
+  in `smart_orchestrator.py` and the `routing` package.
 
 - **History is keyed per conversation, never per user.** The only valid keys are
   `g:<guild>:c:<channel>` and `dm:<user>`, built by
@@ -121,8 +121,8 @@ diff or with the named command.
   failure (the assertion, traceback, or observed wrong output) so the next person can
   reproduce it. A fix without a regression test is not finished.
 - **Mock at the boundary, never the function under test.** Fake the HTTP client and Discord
-  objects; do not patch `get_smart_response`, `should_use_web_search`, or the delivery
-  helper when the test claims to verify routing or delivery. A test that still passes with
+  objects; do not patch `get_smart_response`, the router, or the delivery helper when the
+  test claims to verify routing or delivery. A test that still passes with
   the feature deleted is not a test. `tests/test_end_to_end.py` is the reference: only the
   Discord objects and `chat.completions.create` are faked.
 - **Protocol boundaries are absolute numbers.** New tests state the regular-message limit

@@ -1,7 +1,7 @@
 # Routing: design record
 
-Status: accepted design, implementation in progress. Supersedes the regex chain in
-`src/smart_orchestrator.py`.
+Status: implemented and wired. The heuristic router is the production routing path; the regex
+chain it replaces has been deleted. The optional Clef model seam is designed but not built.
 
 Scope decisions taken with the project owner:
 
@@ -14,18 +14,49 @@ Scope decisions taken with the project owner:
 - **Outright replacement.** This replaces the regex router in one step — no shadow mode, no A/B arms, no
   percentage ramp, no canary guild. The old path is deleted, and reverting means reverting the commit.
 
+## Implementation status
+
+Built and shipped:
+
+- `src/routing/` — frozen contracts, text views and cues, the bundled English lexicon, weighted scoring,
+  the heuristic router, the router factory, content-free telemetry, and the input builder.
+- `src/smart_orchestrator.py` — one `build_router_input(...)` and one `router.decide(...)` per message;
+  the decision route selects the provider. The old regex functions and their pattern lists are gone.
+- Cache identity — keys carry `service`, `router_id`, `policy_version`, `decision_source`, `function`,
+  route salt, and `degraded`, so a web answer and a local answer cannot share an entry.
+- One attempt per provider per request — an `AttemptLedger` stops the web-inability reroute from calling
+  Perplexity twice after it has already failed.
+- Degraded operation — a missing conversation manager or a history lookup that raises still produces a
+  decision with empty context and a successful model answer.
+
+Not built:
+
+- **The Clef seam.** `ROUTER_MODE=model` raises `NotImplementedError` naming this document; there is no
+  `src/routing/clef.py`, no model call, and no model fallback path.
+
+Measured on the sealed and gate corpora (ambiguous rows excluded; recall / precision / accuracy):
+
+| Corpus | n scored | Heuristic | Incumbent on the same rows |
+|---|---|---|---|
+| Sealed | 564 | 0.677 / 0.806 / 0.741 | — |
+| Gate | 380 | 0.653 / 0.689 / 0.679 | 0.453 / 0.775 / 0.661 |
+
+The shipped heuristic does **not** meet the design's aspirational overall recall floor of 0.90. The
+numbers above are the measured result, not a target; the gate's value over the incumbent is higher recall
+(+0.200) at lower precision (−0.086).
+
 
 ## Why
 
-Routing decides whether a message is answered by a local model or by a web-searching one. The current
-implementation is an ordered chain of ~52 regexes with ~275 literal alternatives, and it measures 66%
+Routing decides whether a message is answered by a local model or by a web-searching one. The previous
+implementation was an ordered chain of ~52 regexes with ~275 literal alternatives, and it measured 66%
 accuracy on an independently authored 74-message corpus — 21 live questions missed, 4 needless searches.
-Its failures are structural, not a matter of a longer word list:
+Its failures were structural, not a matter of a longer word list:
 
 - Branch order is the classifier. A greeting returns before the live-data check, so
   *"Hi there, what's the latest news?"* is answered locally.
-- Two implementations of one decision: `_identify_routing_triggers` re-runs the same regexes to write a
-  log line, so the log can contradict the decision.
+- Two implementations of one decision: the old trigger logger re-ran the same regexes to write a log
+  line, so the log could contradict the decision. The router log now reads the score trace.
 - Vocabulary as code: adding `restock` needs a release, a doc edit and a fixture regeneration.
 
 The goal is a router that does not need continual vocabulary maintenance, is complete on its own with no
@@ -94,8 +125,8 @@ class Router(Protocol):
 ```
 
 **The trace is the decision.** `score == sum(e.weight for e in decision.evidence)` is a tested invariant.
-`_identify_routing_triggers` is deleted, not deprecated: a reason can only appear in the log if it moved
-the number.
+The old trigger logger is deleted, not deprecated: a reason can only appear in the log if it moved the
+number.
 
 `decide` is async even though the heuristic does no I/O, so a model implementation is a swap rather than a
 refactor. `HeuristicRouter` additionally exposes `decide_sync` for tests and the evaluation harness; the
@@ -200,27 +231,25 @@ One global lexicon ships with the release. There is no operator overlay and no p
 ## Caching
 
 The router emits its cache policy; the caller obeys it. `_generate_scoped_key(message, context, *, salt)`
-becomes keyword-only with **no default**, so a call site cannot forget it.
+is keyword-only with **no default**, so a call site cannot forget it.
 
 - `cacheable` is false for the unsure band, for a local route that carried bearing cues, and for URL
-  overrides.
-- Response-cache key gains `service`, `router_version`, `decision_source`, `function` and `degraded`.
-  Today it drops all five, which is how a web-routed message was served a cached OpenAI answer.
-- A degraded fallback (web failed, local answer returned) is stored with `degraded=true` and replayed only
-  as a failure, never as a web answer.
-- Perplexity answers are cached for at most 120 s, because they carry citations and go stale.
+  overrides. `cache_response()` refuses to store a non-cacheable decision.
+- Response-cache keys include `service`, `router_id`, `policy_version`, `decision_source`, `function`,
+  route salt, and `degraded`. A web-routed message can no longer be served a cached local answer, or the
+  reverse.
+- A degraded fallback (web failed, local answer returned) is stored with `degraded=true` and is only
+  reachable from the fallback path, never as a successful web answer.
+- Perplexity answers are not response-cached; they carry citations and go stale quickly.
 
 ## Observability
 
-One structured line per decision, content-free: `ts, evt=route, req_id, guild_hash, channel_hash,
-conv_hash, service, score, threshold, source, reasons (≤5 feature ids), rules_version, config_fp,
-latency_us`.
+Each hybrid decision emits one content-free log line built from `routing.telemetry.decision_log_fields()`:
+route, band, service, score, threshold, up to five evidence signal names, router id, policy version, and
+latency. Message text, matched spans, and entity text are not logged.
 
-Three log statements currently leak message content and are removed: the sanitised message in
-`smart_orchestrator`, the raw message, and `entity:<matched text>`.
-
-Counters survive restarts (absolute totals, hourly flush and on SIGTERM, boot id gap on crash) and surface
-in `/health` as a `router` block: web share, false-local count, fallback count, rules_version.
+The design's persistent counters and `/health` router block (web share, false-local count, fallback count)
+are **not built**; `/health` still reports provider and breaker state only.
 
 ## Rollout
 
@@ -228,7 +257,7 @@ This is a replacement, not a migration with arms. The new router is wired in, th
 the same release, and there is no shadow mode, no percentage ramp and no canary guild.
 
 The only runtime switch is `ROUTER_MODE=heuristic|model`, which selects the implementation and defaults to
-`heuristic`. Per-channel-kind thresholds (`ROUTER_WEB_THRESHOLD_CHANNEL` 0.10,
+`heuristic`; `model` currently raises because the Clef seam is unimplemented. Per-channel-kind thresholds (`ROUTER_WEB_THRESHOLD_CHANNEL` 0.10,
 `ROUTER_WEB_THRESHOLD_ANNOUNCE` 0.07, `ROUTER_WEB_THRESHOLD_DM` 0.20) are tuning, not rollout: they exist
 because a public channel and a DM have different costs of being wrong, not to stage the change.
 
@@ -237,11 +266,10 @@ evaluation floors below are a release gate rather than a monitoring exercise.
 
 ## Evaluation
 
-`scripts/router_eval.py --corpus FILE [--json] [--baseline old|none] [--slice FIELD]` scores JSONL
-rows with `text`, `expect` (`web`, `local`, `ambiguous`), optional `slice` and `why`. It excludes
-ambiguous rows, reports recall first with a 95% Wilson interval, and prints the overall and per-slice
-confusion matrix. `--baseline old` scores the incumbent `should_use_web_search()` on the same rows and
-prints the delta; `--json` is the CI form.
+`scripts/router_eval.py --corpus FILE [--json] [--slice FIELD]` scores JSONL rows with `text`, `expect`
+(`web`, `local`, `ambiguous`), optional `slice` and `why`. It excludes ambiguous rows, reports recall first
+with a 95% Wilson interval, and prints the overall and per-slice confusion matrix. The incumbent baseline
+was measured on the same rows before its code was deleted; `--json` is the CI form.
 
 Floors are **per slice**, because the two error directions cost differently: a missed live question is a
 confidently stale answer (5–10× worse), while a needless search on *"thanks, that was lovely"* is a public
@@ -276,10 +304,10 @@ Constraints that keep it optional:
 
 | Step | Change | Behaviour |
 |---|---|---|
-| 1 | `src/routing/` contracts, features, scoring, heuristic, lexicon + unit tests | none (not wired) |
-| 2 | Wire the router in; delete `_identify_routing_triggers`; fix the cache key, the double Perplexity attempt, the manager-None crash | intended |
-| 3 | Delete the old pattern lists and the truth-test entries they dragged in; docs | none |
-| 4 | Optional model behind `ROUTER_MODE` | none when off |
+| 1 | `src/routing/` contracts, features, scoring, heuristic, lexicon + unit tests | done; was not wired |
+| 2 | Wire the router in; delete the trigger logger; fix the cache key, the double Perplexity attempt, the manager-None crash | done; this is the behaviour change |
+| 3 | Delete the old pattern lists and the truth-test entries they dragged in; docs | done with step 2 |
+| 4 | Optional model behind `ROUTER_MODE` | not built; selecting it raises |
 
 Step 1 is behaviour-preserving by construction because nothing calls it. Step 2 is the replacement, and it
 carries the evaluation gate: the corpus floors are checked before the commit that wires it in, not after.

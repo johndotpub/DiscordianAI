@@ -7,13 +7,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src import message_router
-from src.config import COMPILED_FOLLOW_UP_PATTERNS, FOLLOW_UP_PATTERNS
 from src.conversation_manager import ThreadSafeConversationManager
 from src.models import AIClients, AIConfig, AIRequest
+from src.routing import HeuristicRouter
+from src.routing.context import build_router_input
 from src.smart_orchestrator import (
     _detect_openai_web_inability,
     _process_hybrid_mode,
-    should_use_web_search,
 )
 
 
@@ -307,25 +307,19 @@ async def test_bot_author_mention_is_processed(monkeypatch, deps, caplog):
     assert _ignored_reasons(caplog) == []
 
 
-def test_follow_up_patterns_have_no_duplicate_sources():
-    """Every follow-up regex source is compiled exactly once."""
-    sources = [pattern.pattern for pattern in COMPILED_FOLLOW_UP_PATTERNS]
-
-    assert len(sources) == len(FOLLOW_UP_PATTERNS)
-    assert len(sources) == len(set(sources))
+def _decide(message: str, manager, conversation_key: str = "g:1:c:10"):
+    request = SimpleNamespace(message=message, conversation_key=conversation_key)
+    router_input = build_router_input(request, manager, 6)
+    return HeuristicRouter().decide_sync(router_input)
 
 
 def test_incidental_also_without_prior_turn_is_not_a_follow_up():
     message = "I also need help with a Python traceback"
-    assert not any(pattern.search(message) for pattern in COMPILED_FOLLOW_UP_PATTERNS)
-
     manager = ThreadSafeConversationManager()
-    assert not should_use_web_search(
-        message,
-        manager,
-        user_id=456,
-        conversation_key="g:1:c:10",
-    )
+
+    decision = _decide(message, manager)
+
+    assert decision.route == "local"
 
 
 def test_second_one_after_perplexity_turn_routes_to_web():
@@ -339,12 +333,25 @@ def test_second_one_after_perplexity_turn_routes_to_web():
         metadata={"ai_service": "perplexity", "model": "perplexity/sonar"},
     )
 
-    assert should_use_web_search(
-        "and the second one?",
-        manager,
-        user_id=456,
-        conversation_key=conversation_key,
+    decision = _decide("and the second one?", manager, conversation_key)
+
+    assert decision.route == "web"
+
+
+def test_second_one_after_openai_turn_stays_local():
+    manager = ThreadSafeConversationManager()
+    conversation_key = "g:1:c:10"
+    manager.add_message(conversation_key, "user", "Name two poems by Frank O'Hara.")
+    manager.add_message(
+        conversation_key,
+        "assistant",
+        "Two poems.",
+        metadata={"ai_service": "openai", "model": "gpt-6-luna"},
     )
+
+    decision = _decide("and the second one?", manager, conversation_key)
+
+    assert decision.route == "local"
 
 
 @pytest.mark.asyncio
@@ -366,7 +373,6 @@ async def test_poem_mentioning_internet_keeps_openai_answer():
     clients = AIClients(openai=object(), perplexity=object())
 
     with (
-        patch("src.smart_orchestrator.should_use_web_search", return_value=False),
         patch(
             "src.smart_orchestrator.process_openai_message",
             new=AsyncMock(return_value=poem),

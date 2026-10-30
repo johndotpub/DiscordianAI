@@ -95,12 +95,15 @@ PERPLEXITY_API_KEY=your_perplexity_key_here
 - Maintains clean conversation flow
 
 ### 🧠 Intelligent Query Routing
-The bot automatically uses Perplexity for:
-- **URLs and links** (automatically detected and content extracted)
-- Current events and news queries
-- Time-sensitive information requests
-- Factual research questions
-- Queries with proper nouns and entities
+The router sends a message to Perplexity when it carries **bearing evidence** that the answer depends on a
+value that can change:
+- **URLs and links** (explicit web instructions or supplied pages)
+- Current events, news, and volatile topics
+- Status, price, version, release, schedule, and weather questions
+- Follow-ups that inherit a previous web route in the same conversation
+
+Stable facts, creative requests, code help, and social messages stay local even when they are phrased as
+questions or contain proper names.
 
 ### 🔗 URL Processing
 When URLs are detected in messages, the bot:
@@ -193,19 +196,22 @@ LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 ## Orchestrator Integration
 
 ### Smart Query Analysis
-The bot analyzes queries to determine when web search is beneficial:
+One evidence-based decision is built per message before any provider call:
 
-- **Time sensitivity patterns**: "latest", "current", "recent", "today"
-- **Factual query indicators**: "what is", "how many", "statistics"
-- **Entity detection**: Company names, locations, people, events
-- **Follow-up consistency**: Maintains same AI service for related queries
+- **Bearing evidence**: status, change/outcome events, prices, versions, volatile topics, and explicit URL
+  or web instructions can route to Perplexity.
+- **Framing evidence**: question shape, imperatives, opinions, creative requests, social text, and proper
+  names are weighted below 1 and cannot decide alone.
+- **Follow-up consistency**: a short anaphoric follow-up inherits the previous route from the same
+  conversation at +2/-2, unless the new message carries its own bearing evidence or changes topic.
 
 ### Routing Decision Logic
-1. **Conversation context**: Checks recent AI service usage
-2. **Conversational queries**: Routes creative/personal queries to OpenAI
-3. **Current events**: Routes time-sensitive queries to Perplexity
-4. **Factual research**: Routes fact-finding queries to Perplexity
-5. **Entity-rich queries**: Routes specific searches to Perplexity
+1. **Build one input**: message text, channel kind, recent turns, and the previous route.
+2. **Score evidence**: bearing and framing cues produce a signed trace and a web probability.
+3. **Apply the gate**: no bearing cue and no override means local; otherwise the channel-kind threshold
+   decides web, local, or unsure.
+4. **Deliver and record**: the selected provider answers, and only the successful turn is written to
+   history.
 
 ## Best Practices
 

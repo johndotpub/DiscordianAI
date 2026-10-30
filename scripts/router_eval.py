@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from importlib import import_module
 import json
 import math
 from pathlib import Path
@@ -26,7 +25,6 @@ from src.routing.heuristic import HeuristicRouter  # noqa: E402 - repo root is a
 _EXPECTED = frozenset({"web", "local", "ambiguous"})
 _Z_95 = 1.959963984540054
 _DEFAULT_SLICE_FIELD = "slice"
-_METRIC_NAMES = ("recall", "precision", "accuracy")
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,15 +182,6 @@ def _predict_heuristic(text: str) -> bool:
     return decision.route == "web"
 
 
-def _predict_incumbent(text: str) -> bool:
-    module = import_module("src.smart_orchestrator")
-    return bool(module.should_use_web_search(text))
-
-
-def _delta(current: Mapping[str, Any], baseline: Mapping[str, Any]) -> dict[str, float]:
-    return {name: float(current[name]) - float(baseline[name]) for name in _METRIC_NAMES}
-
-
 def _format_metrics(label: str, metrics: Mapping[str, Any]) -> str:
     low, high = metrics["recall_ci95"]
     return (
@@ -210,34 +199,17 @@ def _emit(line: str) -> None:
     sys.stdout.flush()
 
 
-def _print_report(result: Mapping[str, Any], baseline: str) -> None:
+def _print_report(result: Mapping[str, Any]) -> None:
     _emit(f"excluded={result['n_excluded']} ambiguous rows")
     _emit(_format_metrics("overall", result["overall"]))
     for name, metrics in result["slices"].items():
         _emit(_format_metrics(f"slice {name}", metrics))
-    if baseline == "old" and "baseline" in result:
-        _emit(_format_metrics("baseline old overall", result["baseline"]["overall"]))
-        for name, metrics in result["baseline"]["slices"].items():
-            _emit(_format_metrics(f"baseline old slice {name}", metrics))
-        delta = result["delta"]["overall"]
-        _emit(
-            "delta overall: "
-            f"recall={delta['recall']:+.3f} "
-            f"precision={delta['precision']:+.3f} "
-            f"accuracy={delta['accuracy']:+.3f}"
-        )
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus", required=True, type=Path, help="JSONL corpus to score")
     parser.add_argument("--json", action="store_true", dest="as_json", help="emit JSON")
-    parser.add_argument(
-        "--baseline",
-        choices=("old", "none"),
-        default="none",
-        help="also score the incumbent regex router",
-    )
     parser.add_argument(
         "--slice",
         default=_DEFAULT_SLICE_FIELD,
@@ -256,20 +228,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     rows = _read_rows(args.corpus)
     result = evaluate(rows, _predict_heuristic, slice_field=args.slice)
     result["corpus"] = str(args.corpus)
-    if args.baseline == "old":
-        baseline = evaluate(rows, _predict_incumbent, slice_field=args.slice)
-        result["baseline"] = baseline
-        result["delta"] = {
-            "overall": _delta(result["overall"], baseline["overall"]),
-            "slices": {
-                name: _delta(metrics, baseline["slices"].get(name, Metrics().as_dict()))
-                for name, metrics in result["slices"].items()
-            },
-        }
     if args.as_json:
         _emit(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
     else:
-        _print_report(result, args.baseline)
+        _print_report(result)
     return 0
 
 

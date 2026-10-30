@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import logging
 from typing import Any
 
 from .contracts import ConversationContext, RouterInput, Turn
 
 _SERVICE_ROUTE: dict[str, str] = {"perplexity": "web", "openai": "local"}
+_LOGGER = logging.getLogger(__name__)
 
 
 def build_router_input(
@@ -29,7 +31,11 @@ def build_router_input(
     try:
         service = _recent_service(conversation_manager, conversation_key, lookback)
         history = _history(conversation_manager, conversation_key)
-    except Exception:  # noqa: BLE001 - history is optional and caller-owned
+    except Exception as exc:  # noqa: BLE001 - history is optional and caller-owned
+        _LOGGER.warning(
+            "Conversation history unavailable; routing with empty context (%s)",
+            type(exc).__name__,
+        )
         return _input_for(request, text, ConversationContext())
 
     turns = _turns(history, lookback)

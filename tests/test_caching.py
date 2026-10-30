@@ -150,10 +150,10 @@ class TestResponseCache:
         response = "Python is a programming language."
 
         # Cache response
-        self.cache.cache_response(message, context, response)
+        self.cache.cache_response(message, context, response, salt="test-salt")
 
         # Retrieve cached response
-        cached = self.cache.get_cached_response(message, context)
+        cached = self.cache.get_cached_response(message, context, salt="test-salt")
         assert cached == response
 
     def test_cache_key_normalization_strips_whitespace_only(self):
@@ -162,14 +162,14 @@ class TestResponseCache:
         response = "Test response"
 
         # Cache response with original message
-        self.cache.cache_response("What is AI?", context, response)
+        self.cache.cache_response("What is AI?", context, response, salt="test-salt")
 
         # Whitespace is not part of the prompt
-        cached = self.cache.get_cached_response("  What is AI?  ", context)
+        cached = self.cache.get_cached_response("  What is AI?  ", context, salt="test-salt")
         assert cached == response
 
         # Case is meaningful, so a differently-cased prompt is a cache miss
-        cached = self.cache.get_cached_response("what is ai?", context)
+        cached = self.cache.get_cached_response("what is ai?", context, salt="test-salt")
         assert cached is None
 
     def test_should_not_cache_time_sensitive(self):
@@ -185,9 +185,9 @@ class TestResponseCache:
         ]
 
         for response in time_sensitive_responses:
-            self.cache.cache_response("test message", context, response)
+            self.cache.cache_response("test message", context, response, salt="test-salt")
             # Should not be cached
-            cached = self.cache.get_cached_response("test message", context)
+            cached = self.cache.get_cached_response("test message", context, salt="test-salt")
             assert cached is None
 
     def test_should_not_cache_short_responses(self):
@@ -198,8 +198,8 @@ class TestResponseCache:
         short_responses = ["Yes.", "No", "OK", "   \n  "]
 
         for response in short_responses:
-            self.cache.cache_response("test message", context, response)
-            cached = self.cache.get_cached_response("test message", context)
+            self.cache.cache_response("test message", context, response, salt="test-salt")
+            cached = self.cache.get_cached_response("test message", context, salt="test-salt")
             assert cached is None
 
     def test_cache_stats(self):
@@ -207,11 +207,11 @@ class TestResponseCache:
         # Perform some cache operations
         context = {"model": "test"}
 
-        self.cache.cache_response("msg1", context, "Long response 1 for testing")
-        self.cache.cache_response("msg2", context, "Long response 2 for testing")
+        self.cache.cache_response("msg1", context, "Long response 1 for testing", salt="test-salt")
+        self.cache.cache_response("msg2", context, "Long response 2 for testing", salt="test-salt")
 
-        self.cache.get_cached_response("msg1", context)  # Hit
-        self.cache.get_cached_response("msg3", context)  # Miss
+        self.cache.get_cached_response("msg1", context, salt="test-salt")  # Hit
+        self.cache.get_cached_response("msg3", context, salt="test-salt")  # Miss
 
         stats = self.cache.get_stats()
         assert stats["hits"] >= 1

@@ -105,6 +105,14 @@ USER_LOCK_CLEANUP_INTERVAL=3600
 # Minimum words required before entity detection runs
 ENTITY_DETECTION_MIN_WORDS=10
 
+# Router implementation: heuristic (default) or model (not implemented yet)
+ROUTER_MODE=heuristic
+
+# Web-route probability thresholds by channel kind
+ROUTER_WEB_THRESHOLD_CHANNEL=0.10
+ROUTER_WEB_THRESHOLD_ANNOUNCE=0.07
+ROUTER_WEB_THRESHOLD_DM=0.20
+
 [Logging]
 LOG_LEVEL=INFO
 # Console colors for logs are opted into. Set this to true (or 1/yes) to enable

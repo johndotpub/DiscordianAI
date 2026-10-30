@@ -24,7 +24,7 @@ DiscordianAI is a Discord bot that routes each message to OpenAI or Perplexity, 
 
 ## What Makes It Different
 
-- **Hybrid routing**: OpenAI handles reasoning and creative prompts; Perplexity's Agent API handles current events and returns citations.
+- **Evidence-based hybrid routing**: a local heuristic scores bearing evidence (things whose value can change) against framing (the shape of the request). OpenAI handles stable knowledge, reasoning, and creative prompts; Perplexity's Agent API handles live facts and returns citations.
 - **Conversation history**: History is keyed by guild channel (`g:<guild>:c:<channel>`) or DM (`dm:<user>`) and is sent to both providers. A thread keeps its own history, separate from its parent. A follow-up is routed to the provider that answered the previous turn when one is recorded.
 - **Discord-native output**: Citation embeds, message splitting at Discord's 2000-character limit, and Perplexity link-preview suppression when a response contains two or more links. The OpenAI path does not suppress previews.
 - **Operations**: Per-provider HTTP/2 connection pooling with HTTP/1.1 fallback, per-provider circuit breakers, and health checks after login plus HTTP endpoints that report observed provider and breaker state.
@@ -34,7 +34,7 @@ DiscordianAI is a Discord bot that routes each message to OpenAI or Perplexity, 
 
 | Mode | What it does | When the chosen provider fails |
 |------|--------------|--------------------------------|
-| 🧠 **Smart Hybrid** | Requires both clients. Routes each message using URL, search-intent, follow-up, time-sensitivity, factual, entity, and conversational checks. | If Perplexity is selected and fails, the bot tries OpenAI. If OpenAI is selected and fails or returns no content, the bot tries Perplexity. An OpenAI answer that says it cannot browse is rerouted to Perplexity; if that reroute fails, the original OpenAI answer is returned. If both fail, the bot sends an error notice. |
+| 🧠 **Smart Hybrid** | Requires both clients. Builds one evidence-based routing decision per message, then sends live-data questions to Perplexity and stable/local questions to OpenAI. | If Perplexity is selected and fails, the bot tries OpenAI and marks the answer degraded. If OpenAI is selected and returns no content, the bot tries Perplexity. An OpenAI answer that says it cannot browse is rerouted only when Perplexity has not already failed in this request. Each provider is attempted at most once. If both fail, the bot sends an error notice. |
 | 🤖 **OpenAI Only** | Requires only the OpenAI client. Every message goes to the configured OpenAI model. | The bot sends an error notice. It does not fall back to Perplexity. |
 | 🔍 **Perplexity Only** | Requires only the Perplexity client. Every message goes to the configured Perplexity model and citations are formatted into embeds. | The bot sends an error notice. It does not fall back to OpenAI. |
 
@@ -95,6 +95,8 @@ The launcher resolves Python in this order: pyenv → project-local `.venv` → 
 | `PERPLEXITY_OUTPUT_TOKENS` | Perplexity completion cap, sent as `max_output_tokens` to the Agent API (output only). Defaults to `OUTPUT_TOKENS`.
 | `CONTEXT_WINDOW` | Shared context window (default 128000). It stays 128000 because it is shared with the OpenAI path, and Sonar's window is the smaller of the two.
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | How many recent messages to inspect when a follow-up inherits the previous provider.
+| `ROUTER_MODE` | Router implementation, `heuristic` by default. `model` is not implemented and raises with a pointer to `docs/routing/DESIGN.md`.
+| `ROUTER_WEB_THRESHOLD_CHANNEL` / `ROUTER_WEB_THRESHOLD_ANNOUNCE` / `ROUTER_WEB_THRESHOLD_DM` | Web-route probability thresholds for ordinary channels (0.10), announcement channels (0.07), and DMs (0.20).
 | `CONVERSATION_TTL_SECONDS` | Idle seconds before a conversation and its lock are evicted (default 1800).
 | `MAX_URLS_PER_MESSAGE` | Maximum URLs scraped from one message; extras are ignored (default 3).
 | `MAX_TOTAL_SCRAPED_CHARS` | Maximum combined scraped text injected into one prompt (default 60000).
@@ -134,7 +136,7 @@ RATE_LIMIT_PER=60
 ## Key Components
 
 ### AI Orchestration
-- [src/smart_orchestrator.py](src/smart_orchestrator.py) routes by URL, search-intent, follow-up, time-sensitivity, factual, entity, and conversational patterns and owns provider selection and history writes.
+- [src/smart_orchestrator.py](src/smart_orchestrator.py) asks `src/routing/` for one evidence-based decision per message, owns provider selection and fallback, and writes the successful turn to history.
 - [src/message_processor.py](src/message_processor.py) builds the per-conversation history snapshot and request, calls the orchestrator, and sends the reply.
 - [src/openai_processing.py](src/openai_processing.py) sends the model, messages, and completion cap. [src/perplexity_processing.py](src/perplexity_processing.py) sends the model, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool to the Agent API; neither sends sampling parameters. Perplexity processing also handles scrape budgets and citation extraction.
 
