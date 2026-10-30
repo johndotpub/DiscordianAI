@@ -16,7 +16,14 @@ from .contracts import (
     RouterConfig,
     RouterInput,
 )
-from .features import Cue, TextViews, extract_cues, extract_overrides, views
+from .features import (
+    Cue,
+    TextViews,
+    extract_cues,
+    extract_overrides,
+    parse_explicit_route,
+    views,
+)
 from .lexicon import Lexicon
 from .scoring import decide
 
@@ -123,19 +130,32 @@ class HeuristicRouter:
     def decide_sync(self, request: RouterInput) -> RouteDecision:
         """Return the routing decision synchronously for tests and the corpus runner."""
         started = perf_counter()
-        text_views = views(request.text)
+        explicit, text = parse_explicit_route(request.text)
+        text_views = views(text)
         cues: list[Cue] = [
             *extract_overrides(text_views, self._lexicon),
             *extract_cues(text_views, self._lexicon, clock=_clock(request.now)),
         ]
-        inherited = _inheritance_cue(request, text_views, cues)
-        if inherited is not None:
-            cues.append(inherited)
+        if explicit is not None:
+            cues.append(
+                Cue(
+                    signal=f"override.route.{explicit.route}",
+                    klass="override",
+                    span=(0, 0),
+                    detail=explicit.class_hint or explicit.route,
+                    source="override",
+                    weight=1.0,
+                )
+            )
+        else:
+            inherited = _inheritance_cue(request, text_views, cues)
+            if inherited is not None:
+                cues.append(inherited)
         latency_ms = (perf_counter() - started) * 1000.0
         return decide(
             cues,
             self._effective_config(request.config),
-            text=request.text,
+            text=text,
             latency_ms=latency_ms,
         )
 

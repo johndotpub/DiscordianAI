@@ -18,6 +18,7 @@ from .contracts import (
     Source,
     Turn,
 )
+from .features import ExplicitRoute, parse_explicit_route
 from .heuristic import HeuristicRouter
 from .scoring import Score, decide, score
 from .telemetry import decision_log_fields
@@ -28,6 +29,7 @@ __all__ = [
     "ConversationContext",
     "Evidence",
     "EvidenceClass",
+    "ExplicitRoute",
     "HeuristicRouter",
     "Route",
     "RouteDecision",
@@ -40,6 +42,7 @@ __all__ = [
     "build_router",
     "decide",
     "decision_log_fields",
+    "parse_explicit_route",
     "score",
 ]
 

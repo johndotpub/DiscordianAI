@@ -13,10 +13,7 @@
         "busy",
         "closed",
         "degraded",
-        "sold out",
-        "in stock",
         "out of stock",
-        "deprecated",
         "available"
       ]
     },
@@ -26,10 +23,7 @@
       "terms": [
         "released",
         "shipped",
-        "ship",
         "changed",
-        "came out",
-        "comes out",
         "went live",
         "launched",
         "rolled out",
@@ -59,7 +53,6 @@
         "forecast",
         "temperature",
         "news",
-        "price",
         "rate",
         "score",
         "schedule",
@@ -70,9 +63,97 @@
         "flight",
         "traffic",
         "queue",
+        "cve"
+      ]
+    },
+    "release_state": {
+      "klass": "bearing",
+      "weight": 2.2,
+      "terms": [
+        "out yet",
+        "is it out",
+        "come out",
+        "comes out",
+        "coming out",
+        "shipping",
+        "ships",
+        "still in beta",
+        "out of beta",
+        "out of eap",
+        "release candidate",
+        "rc",
+        "early access",
+        "preorder",
+        "general availability",
+        "ga",
+        "deprecated",
+        "sunset"
+      ]
+    },
+    "commerce": {
+      "klass": "bearing",
+      "weight": 2.0,
+      "terms": [
+        "how much",
+        "pricing",
+        "price",
+        "cost",
+        "costs",
+        "trading at",
+        "go for",
+        "goes for",
+        "going for",
+        "tickets",
+        "fare",
+        "fares",
+        "msrp",
+        "per month",
+        "a month",
+        "a year",
+        "in stock",
         "restock",
-        "cve",
-        "changelog"
+        "back in stock",
+        "sold out",
+        "deal",
+        "discount",
+        "worth"
+      ]
+    },
+    "incumbency": {
+      "klass": "bearing",
+      "weight": 1.6,
+      "terms": [
+        "president",
+        "prime minister",
+        "pm",
+        "ceo",
+        "cto",
+        "senator",
+        "governor",
+        "mayor",
+        "chancellor",
+        "manager",
+        "coach",
+        "in office",
+        "still in",
+        "these days",
+        "nowadays"
+      ]
+    },
+    "version_currency": {
+      "klass": "bearing",
+      "weight": 1.8,
+      "terms": [
+        "version",
+        "lts",
+        "kernel",
+        "release",
+        "releases",
+        "edition",
+        "changelog",
+        "release notes",
+        "roadmap",
+        "deprecation"
       ]
     },
     "encyclopedic_relation": {

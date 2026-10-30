@@ -90,6 +90,8 @@ class RouteDecision:
     router_id: str
     policy_version: str
     latency_ms: float
+    text: str = ""
+    source: Source = "structural"
 
 
 class Router(Protocol):

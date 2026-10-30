@@ -131,6 +131,47 @@ def test_group_8_follow_ups_inherit_only_when_a_prior_turn_exists() -> None:
     assert _decide("tell me more", _context("web")).route == "web"
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "tell me more about the rust borrow checker",
+        "tell me more about Rust",
+    ],
+)
+def test_group_11_a_new_topic_cancels_web_inheritance(text: str) -> None:
+    """A content word or title-case token absent from prior user terms is a shift."""
+    decision = _decide(text, _context("web"))
+
+    assert decision.route == "local"
+    assert decision.band == "confident"
+
+
+def test_group_12_ordinal_follow_up_without_history_is_confident_local() -> None:
+    """An ordinal reference cannot inherit when there is no prior route."""
+    decision = _decide("and the second one")
+
+    assert decision.route == "local"
+    assert decision.band == "confident"
+
+
+def test_group_13_inheritance_decays_after_two_turns() -> None:
+    """A web route more than one turn back does not carry an ordinal follow-up."""
+    context = ConversationContext(
+        turns=(
+            Turn(role="user", text="what is a monad"),
+            Turn(role="assistant", text="a monad is a design pattern", route="web"),
+            Turn(role="user", text="and the first one"),
+            Turn(role="user", text="that was useful"),
+        ),
+        last_route="web",
+    )
+
+    decision = _decide("and the second one", context)
+
+    assert decision.route == "local"
+    assert decision.band == "confident"
+
+
 def test_group_9_explicit_search_instructions_win() -> None:
     """An explicit search goes to web; an explicit memory request goes local."""
     assert _decide("search the web for the rust 2024 edition guide").route == "web"

@@ -7,8 +7,8 @@ import pytest
 
 from src.routing.lexicon import Lexicon, LexiconError
 
-STARTER_CLASS_COUNT = 8
-STARTER_TERM_COUNT = 80
+STARTER_CLASS_COUNT = 12
+STARTER_TERM_COUNT = 137
 
 
 def _write(tmp_path: Path, data: dict[str, object]) -> Path:

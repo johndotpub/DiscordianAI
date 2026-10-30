@@ -9,7 +9,7 @@ import re
 import unicodedata
 from urllib.parse import urlsplit
 
-from .contracts import EvidenceClass, Source
+from .contracts import EvidenceClass, Route, Source
 from .lexicon import Lexicon
 from .scoring import STRUCTURAL_WEIGHTS
 
@@ -98,6 +98,7 @@ SOURCE_EXTENSIONS = frozenset(
 )
 _MIN_SUFFIX_LENGTH = 2
 _MAX_SUFFIX_LENGTH = 24
+_MAX_FILENAME_TOKEN_LENGTH = 64
 _KNOWN_SUFFIXES = frozenset(
     {
         "ai",
@@ -233,11 +234,13 @@ def _joined(*parts: str) -> str:
 
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
-_URL_CANDIDATE_PATTERN = re.compile(r"\S*\.\S*")
+_URL_CANDIDATE_PATTERN = re.compile(r"(?<!\S)\S*\.\S*")
 _FENCE_PATTERN = re.compile(r"```(?:.*?```|.*\Z)", re.DOTALL)
 _DOT_LETTER_PATTERN = re.compile(r"\.[A-Za-z]")
 _FILENAME_PATTERN = re.compile(
-    r"(?<![\w])[\w./\\-]+\.(?:"
+    r"(?<![\w./\\-])[\w./\\-]{1,"
+    + str(_MAX_FILENAME_TOKEN_LENGTH)
+    + r"}\.(?:"
     + "|".join(sorted(SOURCE_EXTENSIONS, key=len, reverse=True))
     + r")(?![\w])",
     re.IGNORECASE,
@@ -291,6 +294,55 @@ _NARRATIVE_PATTERN = re.compile(
 _LOOKUP_PATTERN = re.compile(
     r"\b(?:look up|lookup|search for|find out|google|what is|who is" + r"|tell me about)\b"
 )
+_SUPPLIED_ARTEFACT_PATTERN = re.compile(
+    r"(?:"
+    r"^\s*summari[sz]e\s*:"
+    r"|^\s*summari[sz]e\s+(?:this|these|the following|the above|below)\b"
+    r"|\btl;dr\b"
+    r"|\bturn these\b[^.\n]{0,30}\bnotes into\b"
+    r"|\bturn this into\b"
+    r"|\bthese\b(?:\s+\w+){0,3}\s+notes\b"
+    r"|\bthis\b(?:\s+\w+){0,2}\s+(?:log|error|json|changelog|paragraph)\b"
+    r"|\bwhat(?: is|s)? this saying\b"
+    r"|\bshould the\b[^.!?\n]{1,80}\bbe\b"
+    r"|\bin our schema\b"
+    r")"
+)
+_IN_PLAIN_ENGLISH_PATTERN = re.compile(r"\bin plain english\b")
+_SUPPLIED_MARKERS = (
+    "summar",
+    "tl;dr",
+    "turn this",
+    "turn these",
+    "these",
+    "this",
+    "what",
+    "should the",
+    "in our schema",
+    "plain english",
+)
+_QUOTED_BLOCK_PATTERN = re.compile(
+    r"```.*?```|(?:^|\n)\s*>|[\"“][^\"”\n]{4,}[\"”]|'[^'\n]{4,}'|`[^`\n]{4,}`",
+    re.DOTALL,
+)
+_DURATION_PATTERN = re.compile(
+    r"\b(?:a couple of|a few|\d+(?:\.\d+)?|an?|one|two|three|four|five|six"
+    r"|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen"
+    r"|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty"
+    r"|sixty|seventy|eighty|ninety|hundred)\s+"
+    r"(?:seconds?|minutes?|hours?|days?|weeks?|months?|years?)\b"
+)
+_SUPPLIED_CANCELLED_CLASSES = frozenset({"volatile_topic", "change_verb"})
+_EXPLICIT_ROUTE_PREFIXES: dict[str, tuple[Route, str | None]] = {
+    "!web": ("web", None),
+    "?web": ("web", None),
+    "!local": ("local", None),
+    "?status": ("web", "status"),
+    "?price": ("web", "price"),
+    "?release": ("web", "release"),
+    "?news": ("web", "news"),
+}
+_EXPLICIT_PREFIX_PATTERN = re.compile(r"^([!?])([a-z]+)\s+")
 _ENTITY_WORD = r"[A-Z][a-z]+(?:['\u2019-][A-Z][a-z]+)?"
 _ENTITY_PATTERN = re.compile(rf"\b{_ENTITY_WORD}(?:\s+{_ENTITY_WORD})*\b")
 _QUESTION_WORDS = frozenset(
@@ -460,6 +512,10 @@ _SIGNAL_BY_CLASS: dict[str, tuple[str, EvidenceClass]] = {
     "change_verb": ("pred.change", "bearing"),
     "outcome_verb": ("pred.outcome", "bearing"),
     "volatile_topic": ("topic.volatile", "bearing"),
+    "release_state": ("pred.release", "bearing"),
+    "commerce": ("topic.commerce", "bearing"),
+    "incumbency": ("topic.incumbency", "bearing"),
+    "version_currency": ("topic.version_currency", "bearing"),
     "encyclopedic_relation": ("frame.bounded_relation", "framing"),
     "social_only": ("frame.social_only", "framing"),
     "greeting": ("frame.greeting", "framing"),
@@ -497,6 +553,32 @@ class Cue:
     detail: str
     source: Source = "structural"
     weight: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class ExplicitRoute:
+    """A control prefix that forces a route before any scoring happens."""
+
+    route: Route
+    class_hint: str | None = None
+
+
+def parse_explicit_route(text: str) -> tuple[ExplicitRoute | None, str]:
+    """Parse a leading control prefix and return the text that remains.
+
+    The prefix must be at position zero, lowercase, and followed by
+    whitespace. An unknown or malformed prefix is ordinary text and is
+    returned unchanged.
+    """
+    match = _EXPLICIT_PREFIX_PATTERN.match(text)
+    if match is None:
+        return None, text
+    token = f"{match.group(1)}{match.group(2)}"
+    spec = _EXPLICIT_ROUTE_PREFIXES.get(token)
+    if spec is None:
+        return None, text
+    route, class_hint = spec
+    return ExplicitRoute(route=route, class_hint=class_hint), text[match.end() :].lstrip()
 
 
 def views(text: str) -> TextViews:
@@ -636,7 +718,6 @@ def extract_cues(
     code_regions = _code_regions(surface)
     masked = _mask_regions(surface, code_regions) if code_regions else surface
     tokens = _tokens(folded)
-    token_starts = tuple(token[1] for token in tokens)
 
     def add(
         signal: str,
@@ -656,19 +737,7 @@ def extract_cues(
             )
         )
 
-    for hit in lexicon.find(folded):
-        if hit.term.class_name == "state_adjective" and not _has_copula_near(
-            tokens, token_starts, hit.span
-        ):
-            continue
-        signal, klass = _SIGNAL_BY_CLASS[hit.term.class_name]
-        add(
-            signal,
-            klass,
-            hit.span,
-            hit.term.text,
-            lexicon.class_weights[hit.term.class_name],
-        )
+    cues.extend(_lexicon_cues(lexicon, views, tokens))
 
     _add_pattern(cues, views, _EVENT_PATTERN, ("pred.event", "bearing"))
     _add_pattern(cues, views, _VERSION_PATTERN, ("shape.version", "bearing"))
@@ -715,6 +784,8 @@ def extract_cues(
     for match in _TRACEBACK_PATTERN.finditer(surface):
         add("code.shape", "framing", match.span(), "traceback")
 
+    cues = _suppress_declarative_incumbency(cues)
+
     has_other_bearing = any(cue.klass == "bearing" and cue.signal != "time.deixis" for cue in cues)
     question_present = any(cue.signal == "frame.question" for cue in cues)
     if not has_other_bearing and not question_present:
@@ -732,6 +803,82 @@ def extract_cues(
         ]
 
     return _sorted_cues(cues)
+
+
+def _lexicon_cues(
+    lexicon: Lexicon,
+    views: TextViews,
+    tokens: tuple[tuple[str, int, int], ...],
+) -> list[Cue]:
+    folded = views.folded
+    token_starts = tuple(token[1] for token in tokens)
+    supplied_spans = _supplied_artefact_spans(views)
+    duration_spans = _duration_spans(folded) if "hour" in folded else ()
+    cues: list[Cue] = []
+    for hit in lexicon.find(folded):
+        if supplied_spans and hit.term.class_name in _SUPPLIED_CANCELLED_CLASSES:
+            continue
+        if hit.term.class_name == "volatile_topic" and _overlaps(hit.span, duration_spans):
+            continue
+        if hit.term.class_name == "state_adjective" and not _has_copula_near(
+            tokens, token_starts, hit.span
+        ):
+            continue
+        signal, klass = _SIGNAL_BY_CLASS[hit.term.class_name]
+        cues.append(
+            Cue(
+                signal=signal,
+                klass=klass,
+                span=views.surface_span(hit.span[0], hit.span[1]),
+                detail=hit.term.text,
+                source="lexicon",
+                weight=lexicon.class_weights[hit.term.class_name],
+            )
+        )
+    cues.extend(
+        Cue(
+            signal="neg.supplied_artifact",
+            klass="local",
+            span=views.surface_span(span[0], span[1]),
+            detail="artifact",
+            source="structural",
+            weight=STRUCTURAL_WEIGHTS["neg.supplied_artifact"],
+        )
+        for span in supplied_spans
+    )
+    return cues
+
+
+def _supplied_artefact_spans(views: TextViews) -> tuple[tuple[int, int], ...]:
+    if not any(marker in views.folded for marker in _SUPPLIED_MARKERS):
+        return ()
+    spans = {match.span() for match in _SUPPLIED_ARTEFACT_PATTERN.finditer(views.folded)}
+    if _IN_PLAIN_ENGLISH_PATTERN.search(views.folded) and _QUOTED_BLOCK_PATTERN.search(
+        views.surface
+    ):
+        spans.update(match.span() for match in _IN_PLAIN_ENGLISH_PATTERN.finditer(views.folded))
+    return tuple(sorted(spans))
+
+
+def _duration_spans(folded: str) -> tuple[tuple[int, int], ...]:
+    return tuple(match.span() for match in _DURATION_PATTERN.finditer(folded))
+
+
+def _overlaps(span: tuple[int, int], regions: tuple[tuple[int, int], ...]) -> bool:
+    return any(span[0] < end and span[1] > start for start, end in regions)
+
+
+def _suppress_declarative_incumbency(cues: list[Cue]) -> list[Cue]:
+    incumbency = [cue for cue in cues if cue.signal == "topic.incumbency"]
+    if not incumbency:
+        return cues
+    question_present = any(cue.signal == "frame.question" for cue in cues)
+    other_bearing = any(
+        cue.klass == "bearing" and cue.signal != "topic.incumbency" for cue in cues
+    )
+    if question_present or other_bearing:
+        return cues
+    return [cue for cue in cues if cue.signal != "topic.incumbency"]
 
 
 def _add_pattern(
@@ -804,12 +951,27 @@ def _valid_host(host: str, *, require_known_suffix: bool) -> bool:
 def _code_regions(text: str) -> tuple[tuple[int, int, str], ...]:
     if "```" not in text and _DOT_LETTER_PATTERN.search(text) is None:
         return ()
-    fences = [(match.start(), match.end(), "fence") for match in _FENCE_PATTERN.finditer(text)]
+    fences = _merge_adjacent_regions(
+        [(match.start(), match.end(), "fence") for match in _FENCE_PATTERN.finditer(text)]
+    )
     masked = _mask_regions(text, fences)
     filenames = [
         (match.start(), match.end(), "filename") for match in _FILENAME_PATTERN.finditer(masked)
     ]
-    return tuple(sorted([*fences, *filenames]))
+    return tuple(_merge_adjacent_regions([*fences, *filenames]))
+
+
+def _merge_adjacent_regions(
+    regions: list[tuple[int, int, str]],
+) -> list[tuple[int, int, str]]:
+    merged: list[tuple[int, int, str]] = []
+    for start, end, kind in sorted(regions):
+        if merged and kind == merged[-1][2] and start <= merged[-1][1]:
+            previous_start, previous_end, _ = merged[-1]
+            merged[-1] = (previous_start, max(previous_end, end), kind)
+            continue
+        merged.append((start, end, kind))
+    return merged
 
 
 def _mask_regions(

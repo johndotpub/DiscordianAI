@@ -122,13 +122,21 @@ framing decide alone. Each family saturates (best hit full weight, second half, 
 
 ### Bearing families (structural shapes and predicates, not topic lists)
 
-`pred.status` (copula within 3 tokens of a state adjective), `pred.change` (released, came out, went live,
-dropped), `pred.outcome` (won, lost, beat, elected, passed), `pred.event` (what happened, any updates,
-what's new), `pred.compat` (works with, supports), `shape.version` / `shape.version_range`,
-`shape.money` / `shape.unit`, `time.year` (year >= current year − 1, from an injected clock — never a
-literal list), `topic.volatile` (weather, news, price, score, schedule, outage, advisory, hours, flight),
-`time.deixis` (closed-class; bearing **only when another bearing cue exists**, otherwise weak framing —
-this is the fix for *"I spoke to John Smith yesterday"*).
+`pred.status` (copula within 3 tokens of a state adjective), `pred.change` (changed, released, shipped,
+went live, launched, rolled out, dropped, announced), `pred.outcome` (won, lost, beat, elected, passed),
+`pred.event` (what happened, any updates, what's new), `pred.compat` (works with, supports),
+`pred.release` (out yet, release candidate, early access, deprecated), `shape.version` /
+`shape.version_range`, `shape.money` / `shape.unit`, `time.year` (year >= current year − 1, from an
+injected clock — never a literal list), `topic.volatile` (weather, news, rate, score, schedule, outage,
+advisory, hours, flight), `topic.commerce` (price, cost, fare, a month, in stock, sold out),
+`topic.incumbency` (president, ceo, manager, these days), `topic.version_currency` (version, lts, kernel,
+release notes, roadmap), `time.deixis` (closed-class; bearing **only when another bearing cue exists**,
+otherwise weak framing — this is the fix for *"I spoke to John Smith yesterday"*).
+
+A bare `change` or `changes` is not a `pred.change` event: the class requires a change of state about a
+thing. A counted duration (`two hours`, `3 hours`) is not an opening-hours `topic.volatile` cue. A
+declarative role mention (`the president of the company`) does not become `topic.incumbency` without a
+question or another bearing cue.
 
 ### Framing families
 
@@ -136,6 +144,8 @@ this is the fix for *"I spoke to John Smith yesterday"*).
 `frame.social_only`, `frame.greeting` (weight 0: logged, never decisive), `frame.bounded_relation`
 (`capital of`), `frame.open_reference` (`tell me about`), `ref.entity` (title-case run; **always framing**),
 `neg.narrative` (first person + past + deixis), `neg.env` (my server / repo / branch / code),
+`neg.supplied_artifact` (a pasted log, diff, note, JSON, paragraph, or quoted block that the user asks to
+summarise, explain, or transform; this cancels `topic.volatile` and `pred.change` in the same message),
 `code.shape` (fenced block, traceback, masked filename), `cue.lookup` (decides upward but loses to code
 context).
 
@@ -151,7 +161,16 @@ Two parallel views over identical offsets: `surface` (case preserved — entity 
 - URL detection requires a public-suffix label and rejects masked filenames, so `asyncio.gather` and
   `package.json` are not URLs.
 - Typos without a misspelling list: a delete-1 index over lexicon terms (SymSpell shape), built at load;
-  a token within edit distance 1 hits its class. `wether`, `githbu` match.
+  a token within edit distance 1 hits its class. `wether`, `githbu` match. Present-tense forms such as
+  `change` and `changes` never inherit a past-tense class term.
+
+### Explicit control prefixes
+
+`features.parse_explicit_route()` runs before scoring and is O(1) on the first token. `!web`/`?web` force
+web, `!local` forces local, and `?status`/`?price`/`?release`/`?news` force web while recording the named
+class as an override witness. The token must be lowercase at position zero and followed by whitespace;
+anything else is ordinary text. The decision carries `source="override"` and the remainder in
+`RouteDecision.text`, and it is never cacheable under the plain message's salt.
 
 ### Inheritance
 
@@ -167,8 +186,12 @@ stops *"the second one?"* inheriting two turns later.
 ```json
 {"version": "1", "language": "en",
  "classes": {
-   "state_adjective": {"klass": "bearing", "weight": 2.4, "terms": ["down", "offline", "sold out", "in stock", "deprecated"]},
-   "volatile_topic":  {"klass": "bearing", "weight": 1.6, "terms": ["weather", "news", "price", "score", "outage", "advisory", "hours", "flight"]},
+   "state_adjective": {"klass": "bearing", "weight": 2.4, "terms": ["down", "offline", "busy", "available"]},
+   "release_state":   {"klass": "bearing", "weight": 2.2, "terms": ["out yet", "release candidate", "early access", "deprecated"]},
+   "commerce":        {"klass": "bearing", "weight": 2.0, "terms": ["how much", "price", "cost", "a month", "in stock", "sold out"]},
+   "incumbency":      {"klass": "bearing", "weight": 1.6, "terms": ["president", "ceo", "manager", "these days"]},
+   "version_currency":{"klass": "bearing", "weight": 1.8, "terms": ["version", "lts", "release", "changelog", "roadmap"]},
+   "volatile_topic":  {"klass": "bearing", "weight": 1.8, "terms": ["weather", "news", "score", "outage", "advisory", "hours", "flight"]},
    "social_only":     {"klass": "framing", "weight": -4.0, "terms": ["thanks", "best regards", "goodnight"]}
  },
  "overrides": {"web_instruction": ["search-or-browse within 20 chars of web/internet/online"],
@@ -222,8 +245,11 @@ evaluation floors below are a release gate rather than a monitoring exercise.
 
 ## Evaluation
 
-`tests/routing_corpus.jsonl` — 500 labelled cases, data only, plus a 100-case holdout the evaluation job
-loads and developers do not tune against.
+`scripts/router_eval.py --corpus FILE [--json] [--baseline old|none] [--slice FIELD]` scores JSONL
+rows with `text`, `expect` (`web`, `local`, `ambiguous`), optional `slice` and `why`. It excludes
+ambiguous rows, reports recall first with a 95% Wilson interval, and prints the overall and per-slice
+confusion matrix. `--baseline old` scores the incumbent `should_use_web_search()` on the same rows and
+prints the delta; `--json` is the CI form.
 
 Floors are **per slice**, because the two error directions cost differently: a missed live question is a
 confidently stale answer (5–10× worse), while a needless search on *"thanks, that was lovely"* is a public

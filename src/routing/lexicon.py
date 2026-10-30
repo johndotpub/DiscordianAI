@@ -31,6 +31,11 @@ _WHITESPACE = re.compile(r"\s+")
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 _NEVER_MATCH = re.compile(r"(?!)")
 _BUNDLED_PATH = Path(__file__).resolve().parent / "data" / "lexicon.en.json"
+_FUZZY_EXCLUSIONS: dict[str, frozenset[str]] = {
+    "change_verb": frozenset(
+        {"change", "changes", "changing", "release", "releases", "releasing"}
+    ),
+}
 _FUZZY_STOPWORDS = frozenset(
     {
         "about",
@@ -118,6 +123,21 @@ class Lexicon:
         repr=False,
         compare=False,
     )
+    term_lookups: Mapping[str, Mapping[str, Term]] = field(
+        default_factory=dict,
+        repr=False,
+        compare=False,
+    )
+    exact_words: frozenset[str] = field(
+        default_factory=frozenset,
+        repr=False,
+        compare=False,
+    )
+    first_words: Mapping[str, frozenset[str]] = field(
+        default_factory=dict,
+        repr=False,
+        compare=False,
+    )
     _fuzzy_cache: dict[str, tuple[Term, ...]] = field(
         default_factory=dict,
         repr=False,
@@ -134,26 +154,37 @@ class Lexicon:
         """Return exact and one-edit-away term hits in ``folded``."""
         hits: list[TermHit] = []
         exact_keys: set[tuple[str, int, int]] = set()
+        token_matches = tuple(_TOKEN_PATTERN.finditer(folded))
+        token_set = {match.group() for match in token_matches}
         for class_name in sorted(self.matchers):
-            lookup = {term.text: term for term in self.terms[class_name]}
+            triggers = self.first_words.get(class_name)
+            if triggers is not None and token_set.isdisjoint(triggers):
+                continue
+            lookup = self.term_lookups.get(class_name)
+            if lookup is None:
+                lookup = {term.text: term for term in self.terms[class_name]}
             for match in self.matchers[class_name].finditer(folded):
-                term = lookup.get(_fold_term(match.group(0)))
+                term = lookup.get(_WHITESPACE.sub(" ", match.group(0)))
                 if term is None:
                     continue
                 hits.append(TermHit(term=term, span=match.span()))
                 exact_keys.add((class_name, match.start(), match.end()))
 
-        exact_words = {
-            term.text
-            for class_terms in self.terms.values()
-            for term in class_terms
-            if " " not in term.text
-        }
-        for token_match in _TOKEN_PATTERN.finditer(folded):
+        exact_words = self.exact_words
+        if not exact_words:
+            exact_words = frozenset(
+                term.text
+                for class_terms in self.terms.values()
+                for term in class_terms
+                if " " not in term.text
+            )
+        for token_match in token_matches:
             token = token_match.group()
             if token in exact_words:
                 continue
             for term in self._fuzzy_matches_folded(token):
+                if token in _FUZZY_EXCLUSIONS.get(term.class_name, ()):
+                    continue
                 key = (term.class_name, token_match.start(), token_match.end())
                 if key in exact_keys:
                     continue
@@ -220,6 +251,24 @@ class Lexicon:
 
         classes, weights, terms, matchers, fuzzy_index, fuzzy_terms = _build_classes(classes_raw)
         overrides = _compile_overrides(data.get("overrides", {}))
+        term_lookups = MappingProxyType(
+            {
+                name: MappingProxyType({term.text: term for term in class_terms})
+                for name, class_terms in terms.items()
+            }
+        )
+        exact_words = frozenset(
+            term.text
+            for class_terms in terms.values()
+            for term in class_terms
+            if " " not in term.text
+        )
+        first_words = MappingProxyType(
+            {
+                name: frozenset(term.text.split(" ", 1)[0] for term in class_terms)
+                for name, class_terms in terms.items()
+            }
+        )
         return cls(
             version=version,
             language=language,
@@ -230,6 +279,9 @@ class Lexicon:
             overrides=overrides,
             fuzzy_index=fuzzy_index,
             fuzzy_terms=fuzzy_terms,
+            term_lookups=term_lookups,
+            exact_words=exact_words,
+            first_words=first_words,
         )
 
 

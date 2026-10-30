@@ -77,6 +77,22 @@ def test_mask_code_preserves_length_and_line_breaks() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "main.py",
+        "config.ini",
+        "package.json",
+        "docker-compose.yml",
+        r"C:\path\file.cs",
+        "../../lib/x.ts",
+    ],
+)
+def test_filename_detection_keeps_paths_and_common_extensions(text: str) -> None:
+    """The bounded filename pattern still recognises files and relative paths."""
+    assert text not in mask_code(text)
+
+
 def test_fenced_file_and_masked_filename_emit_code_shape(lexicon: Lexicon) -> None:
     """A fenced block and a bare filename both look like code."""
     fenced = extract_cues(views("```python\nmain.py\n```"), lexicon)
