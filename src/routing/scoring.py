@@ -35,8 +35,6 @@ STRUCTURAL_WEIGHTS: dict[str, float] = {
 }
 """Base weight for every structural signal emitted by ``features``."""
 
-_EXPLICIT_WEB_SIGNALS = frozenset({"override.route.web"})
-_EXPLICIT_LOCAL_SIGNALS = frozenset({"override.route.local"})
 _WEB_OVERRIDE_SIGNALS = frozenset({"override.web_instruction", "override.url"})
 _LOCAL_OVERRIDE_SIGNALS = frozenset({"override.local_instruction", "neg.supplied_artifact"})
 _MENTION_PATTERN = re.compile(r"<@[!&]?\d+>|<#\d+>|<a?:[A-Za-z0-9_]+:\d+>")
@@ -53,8 +51,6 @@ class Score:
     has_web_override: bool
     has_local_override: bool
     has_url_override: bool
-    has_explicit_web: bool = False
-    has_explicit_local: bool = False
 
     @property
     def has_override(self) -> bool:
@@ -109,8 +105,6 @@ def score(cues: Iterable[Cue], config: RouterConfig) -> Score:
         has_web_override=any(item.signal in _WEB_OVERRIDE_SIGNALS for item in applied),
         has_local_override=any(item.signal in _LOCAL_OVERRIDE_SIGNALS for item in applied),
         has_url_override=any(item.signal == "override.url" for item in applied),
-        has_explicit_web=any(item.signal in _EXPLICIT_WEB_SIGNALS for item in applied),
-        has_explicit_local=any(item.signal in _EXPLICIT_LOCAL_SIGNALS for item in applied),
     )
 
 
@@ -125,15 +119,9 @@ def decide(
     scored = score(cues, config)
     resolved_router_id = config.router_id
     resolved_policy_version = config.policy_version
-    decision_source: Source = (
-        "override" if scored.has_explicit_web or scored.has_explicit_local else "structural"
-    )
+    decision_source: Source = "structural"
 
-    if scored.has_explicit_local:
-        route, band, threshold, confidence = "local", "confident", config.tau_local, 1.0
-    elif scored.has_explicit_web:
-        route, band, threshold, confidence = "web", "confident", config.tau, 1.0
-    elif scored.has_local_override:
+    if scored.has_local_override:
         route, band, threshold, confidence = "local", "confident", config.tau_local, 1.0
     elif scored.has_web_override:
         route, band, threshold, confidence = "web", "confident", config.tau, 1.0
@@ -165,8 +153,6 @@ def decide(
         band == "confident"
         and _has_content(text)
         and not scored.has_url_override
-        and not scored.has_explicit_web
-        and not scored.has_explicit_local
         and not (route == "local" and scored.has_bearing)
     )
     cache = CachePolicy(

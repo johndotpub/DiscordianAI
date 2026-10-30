@@ -9,7 +9,7 @@ import re
 import unicodedata
 from urllib.parse import urlsplit
 
-from .contracts import EvidenceClass, Route, Source
+from .contracts import EvidenceClass, Source
 from .lexicon import Lexicon, TermHit
 from .scoring import STRUCTURAL_WEIGHTS
 
@@ -384,16 +384,6 @@ _NON_VERB_AFTER_TO = frozenset(
     }
 )
 _SUPPLIED_CANCELLED_CLASSES = frozenset({"volatile_topic", "change_verb"})
-_EXPLICIT_ROUTE_PREFIXES: dict[str, tuple[Route, str | None]] = {
-    "!web": ("web", None),
-    "?web": ("web", None),
-    "!local": ("local", None),
-    "?status": ("web", "status"),
-    "?price": ("web", "price"),
-    "?release": ("web", "release"),
-    "?news": ("web", "news"),
-}
-_EXPLICIT_PREFIX_PATTERN = re.compile(r"^([!?])([a-z]+)\s+")
 _ENTITY_WORD = r"[A-Z][a-z]+(?:['\u2019-][A-Z][a-z]+)?"
 _ENTITY_PATTERN = re.compile(rf"\b{_ENTITY_WORD}(?:\s+{_ENTITY_WORD})*\b")
 _QUESTION_WORDS = frozenset(
@@ -604,32 +594,6 @@ class Cue:
     detail: str
     source: Source = "structural"
     weight: float = 0.0
-
-
-@dataclass(frozen=True, slots=True)
-class ExplicitRoute:
-    """A control prefix that forces a route before any scoring happens."""
-
-    route: Route
-    class_hint: str | None = None
-
-
-def parse_explicit_route(text: str) -> tuple[ExplicitRoute | None, str]:
-    """Parse a leading control prefix and return the text that remains.
-
-    The prefix must be at position zero, lowercase, and followed by
-    whitespace. An unknown or malformed prefix is ordinary text and is
-    returned unchanged.
-    """
-    match = _EXPLICIT_PREFIX_PATTERN.match(text)
-    if match is None:
-        return None, text
-    token = f"{match.group(1)}{match.group(2)}"
-    spec = _EXPLICIT_ROUTE_PREFIXES.get(token)
-    if spec is None:
-        return None, text
-    route, class_hint = spec
-    return ExplicitRoute(route=route, class_hint=class_hint), text[match.end() :].lstrip()
 
 
 def views(text: str) -> TextViews:

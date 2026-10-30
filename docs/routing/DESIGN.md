@@ -164,14 +164,6 @@ Two parallel views over identical offsets: `surface` (case preserved — entity 
   a token within edit distance 1 hits its class. `wether`, `githbu` match. Present-tense forms such as
   `change` and `changes` never inherit a past-tense class term.
 
-### Explicit control prefixes
-
-`features.parse_explicit_route()` runs before scoring and is O(1) on the first token. `!web`/`?web` force
-web, `!local` forces local, and `?status`/`?price`/`?release`/`?news` force web while recording the named
-class as an override witness. The token must be lowercase at position zero and followed by whitespace;
-anything else is ordinary text. The decision carries `source="override"` and the remainder in
-`RouteDecision.text`, and it is never cacheable under the plain message's salt.
-
 ### Inheritance
 
 A follow-up is ≤ 6 tokens **and** (closed-class anaphor, bare continuation, or leading coordinator)

@@ -1,7 +1,7 @@
 """Regression cases drawn from the blind routing sets.
 
 The blind sets are development data now: each row below is a message that was
-misrouted before the class, negation, or prefix fix it exercises.
+misrouted before the class or negation fix it exercises.
 """
 
 from datetime import UTC, datetime
@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 import pytest
 
 from src.routing.contracts import ConversationContext, RouterInput
-from src.routing.features import extract_cues, parse_explicit_route, views
+from src.routing.features import extract_cues, extract_overrides, views
 from src.routing.heuristic import HeuristicRouter
 from src.routing.lexicon import Lexicon
 
@@ -108,16 +108,12 @@ SUPPLIED_ARTEFACT_CASES = [
     "should the migration run before the schema be applied?",
     "in our schema the field is optional",
 ]
-EXPLICIT_PREFIX_CASES = [
-    ("!web what does idempotent mean?", "web", None),
-    ("?web what does idempotent mean?", "web", None),
-    ("!local is github down?", "local", None),
-    ("?status what does idempotent mean?", "web", "status"),
-    ("?price what does idempotent mean?", "web", "price"),
-    ("?release what does idempotent mean?", "web", "release"),
-    ("?news what does idempotent mean?", "web", "news"),
+NATURAL_LANGUAGE_INSTRUCTION_CASES = [
+    ("search the web for the rust edition guide", "web", "override.web_instruction"),
+    ("look it up online", "web", "override.web_instruction"),
+    ("answer from memory", "local", "override.local_instruction"),
+    ("do not search", "local", "override.local_instruction"),
 ]
-NON_PREFIXES = ["?! really", "!important", "? what", " !web x", "!WEB x", "!web"]
 
 
 def _decide(text: str):
@@ -199,49 +195,33 @@ def test_supplied_artefact_negation_cancels_volatile_and_change(text: str) -> No
     assert decision.band == "confident"
 
 
-@pytest.mark.parametrize(("text", "expected_route", "class_hint"), EXPLICIT_PREFIX_CASES)
-def test_explicit_prefix_forces_the_stated_route(
-    text: str, expected_route: str, class_hint: str | None
+@pytest.mark.parametrize(("text", "expected_route", "signal"), NATURAL_LANGUAGE_INSTRUCTION_CASES)
+def test_natural_language_instructions_still_set_the_route(
+    text: str, expected_route: str, signal: str
 ) -> None:
-    """A control prefix wins even when the remainder scores the other way."""
-    explicit, remainder = parse_explicit_route(text)
+    """Instruction phrases remain ordinary lexicon overrides."""
+    cues = extract_overrides(views(text), LEXICON)
     decision = _decide(text)
 
-    assert explicit is not None
-    assert explicit.route == expected_route
-    assert explicit.class_hint == class_hint
-    assert remainder == text.split(" ", 1)[1].lstrip()
-    assert not remainder.startswith(("!", "?"))
+    assert any(cue.signal == signal and cue.source == "override" for cue in cues)
     assert decision.route == expected_route
-    assert decision.source == "override"
-    assert decision.text == remainder
-    if class_hint is not None:
-        assert any(
-            item.source == "override" and item.detail == class_hint for item in decision.evidence
-        )
 
 
-@pytest.mark.parametrize("text", NON_PREFIXES)
-def test_malformed_or_unknown_prefixes_are_ordinary_text(text: str) -> None:
-    """Only a known lowercase token at position zero followed by space parses."""
-    explicit, remainder = parse_explicit_route(text)
+def test_bang_token_is_ordinary_text_without_a_command_grammar() -> None:
+    """A leading ``!web`` is inert; the message is scored exactly as written."""
+    decision = _decide("!web what is 2 + 2")
 
-    assert explicit is None
-    assert remainder == text
-
-
-def test_explicit_route_beats_the_opposite_embedded_instruction() -> None:
-    """An explicit prefix outranks a search/memory instruction in the remainder."""
-    assert _decide("!web do not search, answer from memory").route == "web"
-    assert _decide("!local https://example.com/status").route == "local"
+    assert decision.route == "local"
+    assert decision.source == "structural"
+    assert decision.text == "!web what is 2 + 2"
+    assert not any(item.signal.startswith("override.route") for item in decision.evidence)
 
 
-def test_explicit_override_is_never_cached_for_a_plain_message() -> None:
-    """The remainder keeps its own text but cannot reuse the plain cache entry."""
-    explicit_decision = _decide("?web is github down")
-    plain_decision = _decide("is github down")
+def test_question_prefix_routes_by_its_content() -> None:
+    """A leading ``?status`` contributes no override; the content still routes web."""
+    decision = _decide("?status is github down")
 
-    assert explicit_decision.text == plain_decision.text == "is github down"
-    assert explicit_decision.source == "override"
-    assert not explicit_decision.cache.cacheable
-    assert plain_decision.cache.cacheable
+    assert decision.route == "web"
+    assert decision.source == "structural"
+    assert decision.text == "?status is github down"
+    assert any(item.signal == "pred.status" for item in decision.evidence)
