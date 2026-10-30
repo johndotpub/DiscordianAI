@@ -51,8 +51,14 @@ _FUZZY_EXCLUSIONS: dict[str, frozenset[str]] = {
     "release_state": frozenset({"rest", "rests"}),
     "volatile_topic": frozenset({"braking", "deadline", "deadlines", "headline", "wife", "wives"}),
 }
+# Fuzzy hits are excluded outright rather than given a reduced weight: any
+# positive bearing weight can still decide a route on its own, while an exact
+# hit is handled before this set is consulted. Short function words are never
+# fuzzy-matched: at two letters an insertion or deletion turns one into another
+# word (`on`/`won`, `to`/`cto`) long before it looks like a typo.
 _FUZZY_STOPWORDS = frozenset(
     {
+        "a",
         "about",
         "after",
         "again",
@@ -72,11 +78,13 @@ _FUZZY_STOPWORDS = frozenset(
         "had",
         "has",
         "have",
+        "i",
         "last",
         "list",
         "new",
         "next",
         "now",
+        "on",
         "should",
         "than",
         "that",
@@ -89,6 +97,8 @@ _FUZZY_STOPWORDS = frozenset(
         "they",
         "this",
         "those",
+        "to",
+        "u",
         "was",
         "were",
         "will",
@@ -166,7 +176,7 @@ class Lexicon:
         return cls._from_mapping(_read_mapping(source))
 
     def find(self, folded: str) -> tuple[TermHit, ...]:
-        """Return exact and one-edit-away term hits in ``folded``."""
+        """Return exact hits plus permitted typo hits in ``folded``."""
         hits: list[TermHit] = []
         exact_keys: set[tuple[str, int, int]] = set()
         token_matches = tuple(_TOKEN_PATTERN.finditer(folded))
@@ -195,7 +205,7 @@ class Lexicon:
             )
         for token_match in token_matches:
             token = token_match.group()
-            if token in exact_words:
+            if len(token) < _FUZZY_MIN_LENGTH or token in exact_words:
                 continue
             for term in self._fuzzy_matches_folded(token):
                 if token in _FUZZY_EXCLUSIONS.get(term.class_name, ()):
@@ -225,7 +235,7 @@ class Lexicon:
         )
 
     def fuzzy_matches(self, token: str) -> tuple[Term, ...]:
-        """Return single-word terms within edit distance one of ``token``."""
+        """Return single-word terms reachable by a permitted typo of ``token``."""
         return self._fuzzy_matches_folded(_fold_term(token))
 
     def _fuzzy_matches_folded(self, folded: str) -> tuple[Term, ...]:
@@ -238,19 +248,19 @@ class Lexicon:
             or len(folded) < _FUZZY_MIN_LENGTH
             or folded in _FUZZY_STOPWORDS
         ):
-            return ()
+            matches: tuple[Term, ...] = ()
+        else:
+            variants = {folded, *_deletions(folded)}
+            candidates: set[Term] = set()
+            for variant in variants:
+                candidates.update(self.fuzzy_terms.get(variant, ()))
 
-        variants = {folded, *_deletions(folded)}
-        candidates: set[Term] = set()
-        for variant in variants:
-            candidates.update(self.fuzzy_terms.get(variant, ()))
-
-        matches = tuple(
-            sorted(
-                (term for term in candidates if _within_one_edit(folded, term.text)),
-                key=lambda term: (term.class_name, term.text),
+            matches = tuple(
+                sorted(
+                    (term for term in candidates if _is_permitted_fuzzy_edit(folded, term.text)),
+                    key=lambda term: (term.class_name, term.text),
+                )
             )
-        )
         if len(self._fuzzy_cache) < _FUZZY_CACHE_MAX:
             self._fuzzy_cache[folded] = matches
         return matches
@@ -468,7 +478,7 @@ def _build_fuzzy_index(
 ) -> Mapping[str, tuple[str, ...]]:
     index: dict[str, set[str]] = {}
     for term in class_terms:
-        if " " in term.text or len(term.text) < _FUZZY_MIN_LENGTH:
+        if " " in term.text:
             continue
         variants = {term.text, *_deletions(term.text)}
         for variant in variants:
@@ -482,14 +492,31 @@ def _deletions(word: str) -> set[str]:
     return {word[:index] + word[index + 1 :] for index in range(len(word))}
 
 
-def _within_one_edit(left: str, right: str) -> bool:
-    if left == right:
+def _is_permitted_fuzzy_edit(candidate: str, term: str) -> bool:
+    """Return True only for an insertion, deletion, or adjacent transposition."""
+    if candidate == term:
         return True
-    if abs(len(left) - len(right)) > 1:
+    if abs(len(candidate) - len(term)) > 1:
         return False
-    if len(left) == len(right):
-        return sum(a != b for a, b in zip(left, right, strict=True)) == 1
+    if len(candidate) == len(term):
+        return _is_adjacent_transposition(candidate, term)
+    return _is_single_insertion_or_deletion(candidate, term)
 
+
+def _is_adjacent_transposition(left: str, right: str) -> bool:
+    index = 0
+    limit = len(left) - 1
+    while index < limit and left[index] == right[index]:
+        index += 1
+    return (
+        index < limit
+        and left[index] == right[index + 1]
+        and left[index + 1] == right[index]
+        and left[index + 2 :] == right[index + 2 :]
+    )
+
+
+def _is_single_insertion_or_deletion(left: str, right: str) -> bool:
     shorter, longer = (left, right) if len(left) < len(right) else (right, left)
     index = 0
     while index < len(shorter) and shorter[index] == longer[index]:

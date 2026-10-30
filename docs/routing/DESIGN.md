@@ -191,9 +191,15 @@ Two parallel views over identical offsets: `surface` (case preserved — entity 
 - Filenames masked before URL and entity detection.
 - URL detection requires a public-suffix label and rejects masked filenames, so `asyncio.gather` and
   `package.json` are not URLs.
-- Typos without a misspelling list: a delete-1 index over lexicon terms (SymSpell shape), built at load;
-  a token within edit distance 1 hits its class. `wether`, `githbu` match. Present-tense forms such as
-  `change` and `changes` never inherit a past-tense class term.
+- Typos without a misspelling list: a delete-1 index over lexicon terms (SymSpell shape), built at load.
+  A token matches when it differs from a term by an adjacent transposition (`dwon` → `down`), an
+  insertion (`wether` → `weather`, `degradded` → `degraded`), or a deletion (`offlin` → `offline`). A
+  same-length substitution never matches (`race`/`rate`, `down`/`dawn`), because that is how a real word
+  becomes another real word. Exact matches win first. Tokens shorter than four characters are never
+  fuzzy-matched: at that length there is no reliable one-edit neighbourhood, and exact matching still
+  applies. Common function words are excluded for the same reason. Fuzzy results are memoised per token
+  for the process lifetime in a bounded cache, since the lexicon is fixed at load. Present-tense forms
+  such as `change` and `changes` never inherit a past-tense class term.
 
 ### Inheritance
 
