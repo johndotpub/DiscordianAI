@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 STRUCTURAL_WEIGHTS: dict[str, float] = {
     "pred.event": 2.2,
+    "pred.error_code": 2.0,
     "shape.version": 2.0,
     "shape.money": 1.8,
     "time.year": 2.0,

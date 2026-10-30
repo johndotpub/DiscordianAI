@@ -35,6 +35,21 @@ _FUZZY_EXCLUSIONS: dict[str, frozenset[str]] = {
     "change_verb": frozenset(
         {"change", "changes", "changing", "release", "releases", "releasing"}
     ),
+    "outcome_verb": frozenset(
+        {
+            "acquire",
+            "acquires",
+            "acquiring",
+            "note",
+            "noted",
+            "notes",
+            "rule",
+            "rules",
+            "vite",
+        }
+    ),
+    "release_state": frozenset({"rest", "rests"}),
+    "volatile_topic": frozenset({"braking", "deadline", "deadlines", "headline", "wife", "wives"}),
 }
 _FUZZY_STOPWORDS = frozenset(
     {

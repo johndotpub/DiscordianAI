@@ -10,7 +10,7 @@ import unicodedata
 from urllib.parse import urlsplit
 
 from .contracts import EvidenceClass, Route, Source
-from .lexicon import Lexicon
+from .lexicon import Lexicon, TermHit
 from .scoring import STRUCTURAL_WEIGHTS
 
 SOURCE_EXTENSIONS = frozenset(
@@ -331,6 +331,57 @@ _DURATION_PATTERN = re.compile(
     r"|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty"
     r"|sixty|seventy|eighty|ninety|hundred)\s+"
     r"(?:seconds?|minutes?|hours?|days?|weeks?|months?|years?)\b"
+)
+_SERVICE_NOUNS = frozenset(
+    {
+        "api",
+        "app",
+        "auth",
+        "backend",
+        "bot",
+        "cluster",
+        "database",
+        "db",
+        "endpoint",
+        "frontend",
+        "node",
+        "server",
+        "servers",
+        "service",
+        "site",
+        "status",
+    }
+)
+_HTTP_STATUS_TOKENS = frozenset(
+    {"400", "401", "403", "429", "500", "502", "503", "504", "4xx", "5xx"}
+)
+_HTTP_STATUS_PATTERN = re.compile(
+    r"(?<![a-z0-9])(?:"
+    + "|".join(sorted(_HTTP_STATUS_TOKENS, key=len, reverse=True))
+    + r")s?(?![a-z0-9])"
+)
+_NON_VERB_AFTER_TO = frozenset(
+    {
+        "a",
+        "an",
+        "her",
+        "him",
+        "his",
+        "it",
+        "its",
+        "me",
+        "my",
+        "our",
+        "the",
+        "their",
+        "them",
+        "these",
+        "this",
+        "those",
+        "us",
+        "you",
+        "your",
+    }
 )
 _SUPPLIED_CANCELLED_CLASSES = frozenset({"volatile_topic", "change_verb"})
 _EXPLICIT_ROUTE_PREFIXES: dict[str, tuple[Route, str | None]] = {
@@ -737,12 +788,11 @@ def extract_cues(
             )
         )
 
-    cues.extend(_lexicon_cues(lexicon, views, tokens))
-
     _add_pattern(cues, views, _EVENT_PATTERN, ("pred.event", "bearing"))
     _add_pattern(cues, views, _VERSION_PATTERN, ("shape.version", "bearing"))
     _add_pattern(cues, views, _MONEY_PATTERN, ("shape.money", "bearing"))
     _add_pattern(cues, views, _DEIXIS_PATTERN, ("time.deixis", "bearing"))
+    cues.extend(_error_code_cues(views, tokens))
 
     current_year = (clock or date.today)().year
     for match in _YEAR_PATTERN.finditer(folded):
@@ -784,6 +834,15 @@ def extract_cues(
     for match in _TRACEBACK_PATTERN.finditer(surface):
         add("code.shape", "framing", match.span(), "traceback")
 
+    cues.extend(
+        _lexicon_cues(
+            lexicon,
+            views,
+            tokens,
+            structural_bearing=any(cue.klass == "bearing" for cue in cues),
+        )
+    )
+
     cues = _suppress_declarative_incumbency(cues)
 
     has_other_bearing = any(cue.klass == "bearing" and cue.signal != "time.deixis" for cue in cues)
@@ -809,20 +868,31 @@ def _lexicon_cues(
     lexicon: Lexicon,
     views: TextViews,
     tokens: tuple[tuple[str, int, int], ...],
+    *,
+    structural_bearing: bool,
 ) -> list[Cue]:
     folded = views.folded
     token_starts = tuple(token[1] for token in tokens)
     supplied_spans = _supplied_artefact_spans(views)
     duration_spans = _duration_spans(folded) if "hour" in folded else ()
-    cues: list[Cue] = []
+    entries: list[tuple[TermHit, bool]] = []
     for hit in lexicon.find(folded):
         if supplied_spans and hit.term.class_name in _SUPPLIED_CANCELLED_CLASSES:
             continue
         if hit.term.class_name == "volatile_topic" and _overlaps(hit.span, duration_spans):
             continue
-        if hit.term.class_name == "state_adjective" and not _has_copula_near(
-            tokens, token_starts, hit.span
+        if hit.term.class_name == "state_adjective" and not _state_adjective_is_bearing(
+            views, tokens, token_starts, hit
         ):
+            continue
+        entries.append((hit, hit.term.klass == "bearing"))
+
+    bearing_count = (1 if structural_bearing else 0) + sum(
+        1 for _hit, bearing in entries if bearing
+    )
+    cues: list[Cue] = []
+    for hit, bearing in entries:
+        if _is_idiom_guard(hit, tokens, token_starts) and bearing_count - int(bearing) == 0:
             continue
         signal, klass = _SIGNAL_BY_CLASS[hit.term.class_name]
         cues.append(
@@ -847,6 +917,117 @@ def _lexicon_cues(
         for span in supplied_spans
     )
     return cues
+
+
+def _error_code_cues(
+    views: TextViews,
+    tokens: tuple[tuple[str, int, int], ...],
+) -> list[Cue]:
+    if _HTTP_STATUS_PATTERN.search(views.folded) is None:
+        return []
+    cues: list[Cue] = []
+    for index, (token, start, end) in enumerate(tokens):
+        if not _is_http_status_token(token):
+            continue
+        window = range(max(0, index - 3), min(len(tokens), index + 4))
+        if not any(tokens[near][0] in _SERVICE_NOUNS for near in window if near != index):
+            continue
+        cues.append(
+            Cue(
+                signal="pred.error_code",
+                klass="bearing",
+                span=views.surface_span(start, end),
+                detail=token,
+                source="structural",
+                weight=STRUCTURAL_WEIGHTS["pred.error_code"],
+            )
+        )
+    return cues
+
+
+def _is_http_status_token(token: str) -> bool:
+    return token in _HTTP_STATUS_TOKENS or (
+        token.endswith("s") and token[:-1] in _HTTP_STATUS_TOKENS
+    )
+
+
+def _state_adjective_is_bearing(
+    views: TextViews,
+    tokens: tuple[tuple[str, int, int], ...],
+    token_starts: tuple[int, ...],
+    hit: TermHit,
+) -> bool:
+    indexes = _term_token_indexes(token_starts, hit.span)
+    if indexes is None:
+        return _has_copula_near(tokens, token_starts, hit.span)
+    first, last = indexes
+    if hit.term.text == "up":
+        return _has_service_noun_near(views, tokens, first, last)
+    if _has_copula_near(tokens, token_starts, hit.span):
+        return True
+    return _has_service_noun_near(views, tokens, first, last)
+
+
+def _is_idiom_guard(
+    hit: TermHit,
+    tokens: tuple[tuple[str, int, int], ...],
+    token_starts: tuple[int, ...],
+) -> bool:
+    indexes = _term_token_indexes(token_starts, hit.span)
+    if indexes is None:
+        return False
+    _first, last = indexes
+    if hit.term.class_name == "state_adjective" and hit.term.text in {"down", "up"}:
+        return _is_willingness_shape(tokens, last)
+    if hit.term.class_name == "commerce" and hit.term.text == "worth":
+        return last + 1 < len(tokens) and tokens[last + 1][0] == "it"
+    return False
+
+
+def _is_willingness_shape(
+    tokens: tuple[tuple[str, int, int], ...],
+    last: int,
+) -> bool:
+    if last + 2 >= len(tokens):
+        return False
+    connector = tokens[last + 1][0]
+    follower = tokens[last + 2][0]
+    return connector == "to" and not follower.isdigit() and follower not in _NON_VERB_AFTER_TO
+
+
+def _has_service_noun_near(
+    views: TextViews,
+    tokens: tuple[tuple[str, int, int], ...],
+    first: int,
+    last: int,
+) -> bool:
+    window = range(max(0, first - 2), min(len(tokens), last + 3))
+    return any(
+        tokens[index][0] in _SERVICE_NOUNS and not _is_possessive(views, tokens, index)
+        for index in window
+        if not first <= index <= last
+    )
+
+
+def _is_possessive(
+    views: TextViews,
+    tokens: tuple[tuple[str, int, int], ...],
+    index: int,
+) -> bool:
+    if index + 1 >= len(tokens) or tokens[index + 1][0] != "s":
+        return False
+    return views.surface[tokens[index][2] : tokens[index + 1][1]] in {"'", "\u2019"}
+
+
+def _term_token_indexes(
+    token_starts: tuple[int, ...],
+    span: tuple[int, int],
+) -> tuple[int, int] | None:
+    first = bisect_left(token_starts, span[0])
+    if first >= len(token_starts) or token_starts[first] >= span[1]:
+        return None
+    last = max(first, bisect_left(token_starts, span[1]) - 1)
+    return first, last
 
 
 def _supplied_artefact_spans(views: TextViews) -> tuple[tuple[int, int], ...]:

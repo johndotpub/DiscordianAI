@@ -7,6 +7,7 @@
       "weight": 2.4,
       "terms": [
         "down",
+        "up",
         "offline",
         "unreachable",
         "broken",
@@ -42,7 +43,13 @@
         "elected",
         "passed",
         "failed",
-        "resigned"
+        "resigned",
+        "voted",
+        "vote",
+        "rejected",
+        "bought out",
+        "acquired",
+        "ruled"
       ]
     },
     "volatile_topic": {
@@ -63,7 +70,13 @@
         "flight",
         "traffic",
         "queue",
-        "cve"
+        "cve",
+        "status page",
+        "headlines",
+        "breaking",
+        "downtime",
+        "maintenance",
+        "wipe"
       ]
     },
     "release_state": {
@@ -87,7 +100,11 @@
         "general availability",
         "ga",
         "deprecated",
-        "sunset"
+        "sunset",
+        "live yet",
+        "out of early access",
+        "wiped",
+        "reset"
       ]
     },
     "commerce": {
