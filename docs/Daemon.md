@@ -137,7 +137,9 @@ Install it system-wide:
 sudo cp contrib/logrotate/discordianai /etc/logrotate.d/discordianai
 ```
 
-Then edit `/etc/logrotate.d/discordianai` and replace `/path/to/DiscordianAI/bot.log` with the actual log path. The fragment rotates at 50 MB, keeps five compressed generations, skips missing or empty files, and enables `copytruncate`.
+Then edit `/etc/logrotate.d/discordianai` and replace `/path/to/DiscordianAI/bot.log` with the actual log path. The fragment rotates at 100 MB, keeps fifty compressed generations, stamps each rotated file with its date (`bot.log-2026-10-30.gz`), and enables `copytruncate`.
+
+**Retention:** fifty generations of up to 100 MB is roughly 5 GB of compressed history, which at this bot's volume is years. Rotation archives; it does not expire. The only setting that deletes anything is `rotate`, so lower that number deliberately if you ever want a hard ceiling. Compressed rotations are written beside the live file.
 
 > **`copytruncate` caveat**: logrotate copies `bot.log` and then truncates the original so the running process can keep writing to the same file descriptor. Any log lines written between the copy and the truncate can be lost. This is the only option here because the supervisor owns the open file and the bot cannot be signalled to reopen it. Keep the log and its rotated copies on the same filesystem so the copy window is as short as possible.
 
