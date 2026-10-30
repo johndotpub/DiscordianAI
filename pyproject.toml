@@ -38,11 +38,12 @@ classifiers = [
 discordianai = "src.main:main"
 
 [tool.setuptools]
-packages = ["src"]
+packages = ["src", "src.routing"]
 package-dir = {"" = "."}
 
 [tool.setuptools.package-data]
 src = ["py.typed"]
+"src.routing" = ["data/*.json"]
 
 [project.optional-dependencies]
 dev = [
