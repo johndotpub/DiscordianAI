@@ -36,6 +36,29 @@ def test_main_runs(monkeypatch):
         mock_run_bot.assert_called_once()
 
 
+@pytest.mark.parametrize("config_kind", ["missing", "directory"])
+def test_main_rejects_a_config_path_that_is_not_a_file(monkeypatch, tmp_path, config_kind):
+    import sys
+
+    from src import main
+
+    config_path = tmp_path / "config.ini"
+    if config_kind == "directory":
+        config_path.mkdir()
+    monkeypatch.setattr(sys, "argv", ["prog", "--conf", str(config_path)])
+
+    with (
+        patch("src.main.load_config") as mock_load_config,
+        patch("src.main.run_bot") as mock_run_bot,
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        main.main()
+
+    assert exc_info.value.code == 1
+    mock_load_config.assert_not_called()
+    mock_run_bot.assert_not_called()
+
+
 def test_main_handles_exception(monkeypatch):
     import sys
 

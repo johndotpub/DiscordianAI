@@ -87,6 +87,31 @@ def _log_color_is_explicit(config_file: str | None, base_folder: str | None) -> 
     return parser.has_option("Logging", "DISCORDIANAI_LOG_COLOR")
 
 
+def _require_existing_config_file(
+    config_file: str | None,
+    base_folder: str | None,
+    logger: logging.Logger,
+) -> None:
+    """Exit when an explicitly requested config file is missing or not a file.
+
+    The container entrypoint always passes ``--conf config.ini``, so a missing
+    mount or the directory Docker creates for a missing bind source must fail
+    clearly instead of being silently ignored.
+    """
+    if not config_file:
+        return
+
+    path = Path(config_file)
+    if base_folder and not path.is_absolute():
+        path = Path(base_folder) / path
+    if not path.is_file():
+        logger.critical(
+            "Configuration file %s is missing or not a regular file; create it before starting",
+            path,
+        )
+        sys.exit(1)
+
+
 def setup_production_logging(config: dict, logger: logging.Logger) -> None:
     """Configure production logging based on loaded configuration.
 
@@ -303,6 +328,7 @@ def main() -> NoReturn:
             args.conf,
             getattr(args, "folder", None),
         )
+        _require_existing_config_file(args.conf, getattr(args, "folder", None), early_logger)
 
         # Step 3: Load configuration (with early logging available for errors)
         early_logger.info("Loading configuration")

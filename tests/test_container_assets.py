@@ -15,6 +15,7 @@ COMPOSE_PATH = REPO_ROOT / "docker-compose.yml"
 DOCKERFILE_PATH = REPO_ROOT / "Dockerfile"
 DOCKERIGNORE_PATH = REPO_ROOT / ".dockerignore"
 SECURITY_DOC_PATH = REPO_ROOT / "docs" / "Security.md"
+DOCKER_DOC_PATH = REPO_ROOT / "docs" / "Docker.md"
 
 YAML_BLOCK_PATTERN = re.compile(r"```ya?ml\s*\n(.*?)```", re.DOTALL)
 HEALTHCHECK_PATTERN = re.compile(r"^\s*HEALTHCHECK\b", re.IGNORECASE)
@@ -165,3 +166,16 @@ def test_security_doc_lists_only_shipped_compose_properties_or_optional_hardenin
                 )
 
     assert checked_services, "No compose service examples found in docs/Security.md"
+
+
+def test_docker_doc_requires_a_config_file_before_compose_up():
+    doc = DOCKER_DOC_PATH.read_text(encoding="utf-8")
+    assert "can be configured entirely through environment variables" not in doc
+    assert "requires a config file" in doc.lower()
+    assert "cp config.ini.example config.ini" in doc
+    assert "touch config.ini" in doc
+    assert "docker compose up" in doc
+    before_compose = doc.split("docker compose up", 1)[0]
+    assert "cp config.ini.example config.ini" in before_compose
+    assert "docker creates a directory" in doc.lower()
+    assert "cannot read" in doc.lower()
