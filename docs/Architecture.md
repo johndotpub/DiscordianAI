@@ -24,7 +24,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
                                                  ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │ Orchestration & AI Selection                                                            │
-│   routing heuristics · OpenAI processing · Perplexity processing                         │
+│   evidence-based routing · OpenAI processing · Perplexity processing                      │
 └────────────────────────────────────────────────┬───────────────────────────────────────┘
                                                  │
                                                  ▼
@@ -54,7 +54,8 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| **Smart Orchestrator** | `smart_orchestrator.py` | AI service selection logic based on message analysis |
+| **Router** | `routing/` | Decides whether a message needs live web data. Evidence model: *bearing* cues (a mutable referent) may decide, *framing* cues (the shape of the request) are scaled and can never decide alone. Owns the lexicon, the thresholds and the cache policy. |
+| **Smart Orchestrator** | `smart_orchestrator.py` | Executes the router's decision against the providers, applies fallbacks, and records conversation turns |
 | **OpenAI Processing** | `openai_processing.py` | GPT API interactions, response formatting |
 | **Perplexity Processing** | `perplexity_processing.py` | Web search, citation extraction |
 | **Web Scraper** | `web_scraper.py` | URL content extraction for context enrichment |
@@ -63,7 +64,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| **Config** | `config.py` | Configuration loading, constants, patterns |
+| **Config** | `config.py` | Configuration loading and constants |
 | **Connection Pool** | `connection_pool.py` | HTTP/2 connection pooling for API clients |
 | **Caching** | `caching.py` | Response caching, request deduplication |
 | **Error Handling** | `error_handling.py` | Circuit breaker, retry logic, error classification |
@@ -90,7 +91,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 - **Rate Limiting** (`rate_limits.py`): Per-user buckets enforce `[Limits]` from config.ini so spam never overwhelms upstream APIs.
 - **Conversation History** (`conversation_manager.py`): Thread-safe per-conversation transcripts preserve context while pruning automatically. A conversation key is `g:<guild>:c:<channel>` for a guild channel or thread, or `dm:<user>` for a direct message; a thread uses its own channel id, so it never shares history with its parent.
 - **Activity & Presence** (`discord_bot.py` + config): Status text, presence state, and activity type are configurable at runtime.
-- **Direct Messages** (`bot.py`): DM sessions bypass mention requirements but still honor rate limits and consistency checks.
+- **Direct Messages** (`bot.py`): DM sessions bypass mention requirements but still honour rate limits, and follow-ups inherit the previous service through the router.
 - **Channel Targeting** (`message_router.py`): `ALLOWED_CHANNELS` gating ensures the bot only replies where it is expected.
 - **Smart Message Splitting** (`message_splitter.py`): Discord-safe splitting protects code blocks, embeds, and citations from truncation.
 - **Global Exception Handling** (`error_handling.py` + `bot.py`): Centralized logging and graceful fallbacks keep the process alive after faults.
@@ -115,12 +116,11 @@ sequenceDiagram
     MP->>MP: Rate limit & guardrail checks
     MP->>CM: Fetch conversation history
     MP->>O: Route message
-    O->>O: Analyze message patterns
-    O->>O: Sanitize for routing (routing-only)
-    O->>O: Search-intent check
-    O->>O: Select AI service
+    O->>O: Build one RouterInput (message, channel kind, history)
+    O->>O: Score bearing and framing evidence
+    O->>O: Select AI service from the route decision
     O->>C: Check cache
-    alt Cache hit
+    alt Cache hit for this route
         C-->>O: Cached response
     else Cache miss
         O->>AI: API call with retry

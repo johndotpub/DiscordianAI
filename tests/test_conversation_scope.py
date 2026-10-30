@@ -181,10 +181,11 @@ def test_cached_dm_answer_is_not_served_for_guild_key():
     dm_context = {**base_context, "conversation_key": "dm:88"}
     guild_context = {**base_context, "conversation_key": "g:1:c:2"}
 
-    cache.cache_response("same question", dm_context, answer)
+    salt = "local:heuristic@1:1"
+    cache.cache_response("same question", dm_context, answer, salt=salt)
 
-    assert cache.get_cached_response("same question", dm_context) == answer
-    assert cache.get_cached_response("same question", guild_context) is None
+    assert cache.get_cached_response("same question", dm_context, salt=salt) == answer
+    assert cache.get_cached_response("same question", guild_context, salt=salt) is None
 
 
 def test_history_cap_applies_per_conversation():

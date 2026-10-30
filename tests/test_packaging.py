@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -23,6 +24,19 @@ _BUILD_ROOT_FILES = (
     "LICENSE",
     "MANIFEST.in",
 )
+_ROUTING_MODULES = frozenset(
+    {
+        "src/routing/__init__.py",
+        "src/routing/contracts.py",
+        "src/routing/context.py",
+        "src/routing/features.py",
+        "src/routing/heuristic.py",
+        "src/routing/lexicon.py",
+        "src/routing/scoring.py",
+        "src/routing/telemetry.py",
+    }
+)
+_ROUTING_LEXICON = "src/routing/data/lexicon.en.json"
 
 
 def _copy_build_tree(destination: Path) -> Path:
@@ -79,7 +93,9 @@ def test_wheel_ships_src_package_and_exposes_console_script(tmp_path):
     wheel = _build_wheel(tmp_path)
 
     with zipfile.ZipFile(wheel) as archive:
-        top_level = {name.partition("/")[0] for name in archive.namelist() if name}
+        entries = {name for name in archive.namelist() if name}
+        top_level = {name.partition("/")[0] for name in entries}
+        lexicon_payload = archive.read(_ROUTING_LEXICON) if _ROUTING_LEXICON in entries else None
 
     dist_info = {name for name in top_level if name.endswith(".dist-info")}
     assert len(dist_info) == 1, f"expected one dist-info directory, found {top_level}"
@@ -87,6 +103,22 @@ def test_wheel_ships_src_package_and_exposes_console_script(tmp_path):
         "wheel top-level entries must be exactly the dist-info directory and src/, "
         f"found {sorted(top_level)}"
     )
+
+    missing_routing_modules = _ROUTING_MODULES - entries
+    assert not missing_routing_modules, (
+        "wheel is missing routing modules (check that [tool.setuptools] packages "
+        f"includes 'src.routing'): {sorted(missing_routing_modules)}"
+    )
+
+    assert lexicon_payload is not None, (
+        f"wheel is missing routing lexicon {_ROUTING_LEXICON} (check that "
+        "[tool.setuptools.package-data] ships src.routing/data/*.json)"
+    )
+    lexicon = json.loads(lexicon_payload)
+    assert isinstance(lexicon, dict), f"{_ROUTING_LEXICON} must contain a JSON object"
+    classes = lexicon.get("classes")
+    assert isinstance(classes, dict), f"{_ROUTING_LEXICON} key 'classes' must be a JSON object"
+    assert classes, f"{_ROUTING_LEXICON} must declare at least one routing class"
 
     project = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
     assert project["project"]["scripts"]["discordianai"] == "src.main:main"

@@ -1,0 +1,150 @@
+{"text": "morning, anyone else awake or is it just me and the cat", "expect": "local", "slice": "social", "why": "server small talk, no fact to look up"}
+{"text": "welcome back man, how was the trip", "expect": "local", "slice": "social", "why": "greeting to a member, nothing to verify"}
+{"text": "gg last night, that last round was unreal", "expect": "local", "slice": "social", "why": "about a match they played together, not a published result"}
+{"text": "who's modding #help this week, need to ask about a ban", "expect": "local", "slice": "social", "why": "roster question about this server, answer lives in server context"}
+{"text": "happy birthday 🎉 hope the studio day goes well", "expect": "local", "slice": "social", "why": "social greeting, time-invariant"}
+{"text": "just joined — been producing dnb about six years, mostly serum and a bit of vital", "expect": "local", "slice": "social", "why": "self-introduction, user's own background"}
+{"text": "saw them live in manchester in 2019, genuinely the best gig of my life", "expect": "local", "slice": "social", "why": "personal anecdote with a fixed date and place, not a current listing"}
+{"text": "lol the bot posted the release notes in #general again", "expect": "local", "slice": "social", "why": "complaint about channel etiquette, 'release' is incidental"}
+{"text": "anyone up for a 20 min call to pair on this, my brain is fried", "expect": "local", "slice": "social", "why": "scheduling a chat with a member, no external fact"}
+{"text": "reminder we do the listening party the first friday of every month", "expect": "local", "slice": "social", "why": "recurring house ritual, not a one-off event to look up"}
+{"text": "what's the default nofile limit for a systemd unit", "expect": "local", "slice": "technical", "why": "stable documented default, does not change week to week"}
+{"text": "is postgres 17 actually out yet or still rc", "expect": "web", "slice": "technical", "why": "release state flips, must be checked against upstream"}
+{"text": "nginx keeps 502ing right after deploy, upstream timed out at 60s, where do i look", "expect": "local", "slice": "technical", "why": "debugging their own stack from symptoms they supplied"}
+{"text": "what does ERESOLVE unable to resolve dependency tree actually mean", "expect": "local", "slice": "technical", "why": "stable meaning of a long-standing npm error"}
+{"text": "how do i see what's eating disk on a linux box", "expect": "local", "slice": "technical", "why": "durable how-to, same answer next year"}
+{"text": "does docker compose v2 still support profiles", "expect": "local", "slice": "technical", "why": "capability that has not changed, 'still' is not a live signal"}
+{"text": "my thinkpad drops wifi whenever the microwave runs, is the card dying", "expect": "local", "slice": "technical", "why": "diagnosis of the user's own machine"}
+{"text": "is github actions degraded right now", "expect": "web", "slice": "technical", "why": "platform health is live-only information"}
+{"text": "should i put zfs or ext4 on a 4 disk media server", "expect": "local", "slice": "technical", "why": "advice on a design choice, stable tradeoffs"}
+{"text": "what's the current node lts", "expect": "web", "slice": "technical", "why": "LTS line moves with each major release"}
+{"text": "why does [].append(1) return None, i keep trying to chain it", "expect": "local", "slice": "code_help", "why": "language semantics, fixed answer"}
+{"text": "TypeError: 'NoneType' object is not subscriptable — line 42 is cfg['db']['host']", "expect": "local", "slice": "code_help", "why": "reading a traceback they pasted"}
+{"text": "what's the real difference between `is` and `==` for small ints", "expect": "local", "slice": "code_help", "why": "language semantics, does not age"}
+{"text": "how do i reverse a list in place without slicing", "expect": "local", "slice": "code_help", "why": "API recall, stable"}
+{"text": "this regex won't match plus-addressed emails: ^\\w+@\\w+\\.\\w+$", "expect": "local", "slice": "code_help", "why": "explaining a pattern they pasted"}
+{"text": "is there a stdlib way to flatten [[1,2],[3]]", "expect": "local", "slice": "code_help", "why": "library recall, stable"}
+{"text": "pytest says fixture 'db' not found but it's defined in conftest", "expect": "local", "slice": "code_help", "why": "debugging their own repo layout"}
+{"text": "yield still hasn't clicked, what actually happens on the first next()", "expect": "local", "slice": "code_help", "why": "conceptual explanation, timeless"}
+{"text": "does rust have anything like python dataclasses", "expect": "local", "slice": "code_help", "why": "cross-language comparison, stable"}
+{"text": "why does my useEffect fire twice in dev but once in prod", "expect": "local", "slice": "code_help", "why": "known framework behaviour, fixed answer"}
+{"text": "give me 8 name ideas for a lofi side project, nothing with 'chill' in it", "expect": "local", "slice": "creative", "why": "generation task, no facts required"}
+{"text": "help me rhyme something with 'static' that isn't 'dramatic'", "expect": "local", "slice": "creative", "why": "wordplay request, self-contained"}
+{"text": "four lines about leaving a small town, keep it bleak", "expect": "local", "slice": "creative", "why": "writing prompt answered from the model"}
+{"text": "good chord progression for a sad indie chorus in D", "expect": "local", "slice": "creative", "why": "music theory, stable knowledge"}
+{"text": "story prompt: a lighthouse keeper on europa who's the last one left", "expect": "local", "slice": "creative", "why": "fiction seed, nothing to look up"}
+{"text": "5 artist aliases that sound like an aphex twin b-side", "expect": "local", "slice": "creative", "why": "naming brainstorm, no external lookup"}
+{"text": "punch up this tagline: 'ship faster, break less'", "expect": "local", "slice": "creative", "why": "editing text they pasted"}
+{"text": "make this blurb sound less like a press release", "expect": "local", "slice": "creative", "why": "rewriting supplied copy in place"}
+{"text": "haiku about monday standup that isn't mean", "expect": "local", "slice": "creative", "why": "constrained writing task"}
+{"text": "what do i call a track that's half breakcore half ambient", "expect": "local", "slice": "creative", "why": "genre-naming opinion, stable"}
+{"text": "is tailwind worth learning at this point or is it a fad", "expect": "local", "slice": "opinion", "why": "value judgement about a skill, not a price or version"}
+{"text": "vim or emacs, settle it", "expect": "local", "slice": "opinion", "why": "classic preference argument"}
+{"text": "does tabs vs spaces actually matter to anyone", "expect": "local", "slice": "opinion", "why": "style preference, evergreen"}
+{"text": "best daw for someone coming off garageband", "expect": "local", "slice": "opinion", "why": "recommendation from stable knowledge"}
+{"text": "is rust actually good for web backends or is that just hype", "expect": "local", "slice": "opinion", "why": "technical opinion, does not require a source"}
+{"text": "thoughts on a monorepo for a 5 person team", "expect": "local", "slice": "opinion", "why": "tradeoff discussion, stable"}
+{"text": "should i master my own tracks or pay someone", "expect": "local", "slice": "opinion", "why": "advice on their workflow, no rate card involved"}
+{"text": "is it weird to sidechain the kick and the bass together", "expect": "local", "slice": "opinion", "why": "production taste question"}
+{"text": "was it worth getting the m1 in 2020 instead of waiting", "expect": "local", "slice": "opinion", "why": "retrospective on a purchase they already made"}
+{"text": "the current 4-on-the-floor trend in everything is boring me", "expect": "local", "slice": "opinion", "why": "'current' means the prevailing style, not a live feed"}
+{"text": "is discord down for anyone else right now", "expect": "web", "slice": "live_status", "why": "service health changes minute to minute"}
+{"text": "github actions stuck queued 40 min, is that global", "expect": "web", "slice": "live_status", "why": "platform-wide incident state"}
+{"text": "is steam having issues today", "expect": "web", "slice": "live_status", "why": "live availability only"}
+{"text": "is it just me or is the anthropic api slow as hell lately", "expect": "ambiguous", "slice": "live_status", "why": "could be provider degradation or their own network"}
+{"text": "cloudflare throwing 502 for everyone or just us", "expect": "web", "slice": "live_status", "why": "needs the provider status page"}
+{"text": "did soundcloud just go down", "expect": "web", "slice": "live_status", "why": "outage in progress"}
+{"text": "my interface status light is solid red, does that mean clipping", "expect": "local", "slice": "live_status", "why": "manual question about hardware on their desk"}
+{"text": "ci is red on main since my last commit", "expect": "local", "slice": "live_status", "why": "state of their own repository"}
+{"text": "is spotify down", "expect": "web", "slice": "live_status", "why": "live service health"}
+{"text": "the monitor flickers when the fridge kicks on, is it the cable", "expect": "local", "slice": "live_status", "why": "fault-finding on their own desk setup"}
+{"text": "how much is splice now, they changed the tiers again", "expect": "web", "slice": "price_commerce", "why": "subscription pricing is a moving number"}
+{"text": "is pro-q still on sale or did that end", "expect": "web", "slice": "price_commerce", "why": "promo window is time-bound"}
+{"text": "cheapest place to get an sm7b in the uk", "expect": "web", "slice": "price_commerce", "why": "retail price and stock vary by day"}
+{"text": "is splice worth it if i only grab samples occasionally", "expect": "ambiguous", "slice": "price_commerce", "why": "value judgement tangled with current pricing"}
+{"text": "i paid £180 for my interface in 2021, was that a rip off", "expect": "local", "slice": "price_commerce", "why": "past purchase they made, no live price needed"}
+{"text": "how much did you pay for your monitors", "expect": "local", "slice": "price_commerce", "why": "asking about a member's own gear spend"}
+{"text": "venue hire for the night was £400 and we sold 60 tickets", "expect": "local", "slice": "price_commerce", "why": "their own gig economics, fixed past numbers"}
+{"text": "does the arturia collection V include analog lab", "expect": "local", "slice": "price_commerce", "why": "bundle contents, stable fact"}
+{"text": "does ableton still do the upgrade price from intro", "expect": "web", "slice": "price_commerce", "why": "current upgrade policy and price"}
+{"text": "is logic's student bundle still a thing", "expect": "web", "slice": "price_commerce", "why": "current licensing offer"}
+{"text": "what's the latest stable pytorch", "expect": "web", "slice": "release_version", "why": "version pointer moves with each release"}
+{"text": "when did python 3.13 actually land", "expect": "local", "slice": "release_version", "why": "a past release date is fixed history, not a moving target"}
+{"text": "is 2.4 still in beta or is it out", "expect": "web", "slice": "release_version", "why": "current release channel state"}
+{"text": "which cuda does pytorch 2.5 want", "expect": "local", "slice": "release_version", "why": "published compatibility table, stable for that version"}
+{"text": "i'm stuck on 3.9 because of an old deps tree, is that a problem", "expect": "local", "slice": "release_version", "why": "their own environment, advice only"}
+{"text": "has next 15 dropped the app dir completely", "expect": "web", "slice": "release_version", "why": "depends on what shipped in the current major"}
+{"text": "the latest thing i tried was downgrading and it fixed it", "expect": "local", "slice": "release_version", "why": "'latest' here means most recent attempt, not a version"}
+{"text": "does 3.12 still ship distutils", "expect": "local", "slice": "release_version", "why": "settled fact about a frozen version"}
+{"text": "should i jump to the new lts now or wait a release", "expect": "ambiguous", "slice": "release_version", "why": "advice, but hinges on what shipped most recently"}
+{"text": "my plugin says 1.8.2, is that the newest", "expect": "web", "slice": "release_version", "why": "requires the vendor's current version"}
+{"text": "who won the arsenal game last night", "expect": "web", "slice": "results_schedule", "why": "score of a finished fixture"}
+{"text": "when's the next f1 race", "expect": "web", "slice": "results_schedule", "why": "calendar moves weekly"}
+{"text": "what time does the patch drop today", "expect": "web", "slice": "results_schedule", "why": "today's deploy time from the publisher"}
+{"text": "are we still freezing deploys friday", "expect": "local", "slice": "results_schedule", "why": "their own team's release calendar"}
+{"text": "when's the next steam sale", "expect": "web", "slice": "results_schedule", "why": "event date announced per season"}
+{"text": "what's the score", "expect": "web", "slice": "results_schedule", "why": "live match state"}
+{"text": "i'm playing the jazz cafe on the 3rd, doors at 8, come down", "expect": "local", "slice": "results_schedule", "why": "their own gig, fixed date and venue in the message"}
+{"text": "when's our next release window again", "expect": "ambiguous", "slice": "results_schedule", "why": "internal plan vs published schedule, unclear which"}
+{"text": "when does the current ranked season end", "expect": "web", "slice": "results_schedule", "why": "season end moves with each patch"}
+{"text": "the tournament schedule is up, i'm in heat 3 on saturday", "expect": "local", "slice": "results_schedule", "why": "their own heat in a local event they already read"}
+{"text": "do i need an umbrella in london tomorrow", "expect": "web", "slice": "weather_travel", "why": "forecast is live data"}
+{"text": "is it snowing in denver right now", "expect": "web", "slice": "weather_travel", "why": "present conditions"}
+{"text": "cheapest train leeds to manchester on friday", "expect": "web", "slice": "weather_travel", "why": "fares and timetables move"}
+{"text": "worth flying out friday or should i wait for cheaper", "expect": "ambiguous", "slice": "weather_travel", "why": "fare timing plus personal call, either reading holds"}
+{"text": "it pissed it down in sheffield the whole week i was there in march", "expect": "local", "slice": "weather_travel", "why": "remembered weather from a past trip"}
+{"text": "how long's the flight dublin to lisbon", "expect": "local", "slice": "weather_travel", "why": "stable flight duration"}
+{"text": "should i bring a jacket to manchester this weekend", "expect": "web", "slice": "weather_travel", "why": "weekend forecast"}
+{"text": "is the m6 closed tonight", "expect": "web", "slice": "weather_travel", "why": "road status changes hourly"}
+{"text": "how far is the venue from the station", "expect": "local", "slice": "weather_travel", "why": "fixed geography"}
+{"text": "i flew out of gatwick in 2022 and it was chaos, is it still that bad", "expect": "local", "slice": "weather_travel", "why": "their own trip memory with a date, no live query implied"}
+{"text": "who's ceo of openai now", "expect": "web", "slice": "incumbency", "why": "office holder can change any day"}
+{"text": "who's pm of the uk", "expect": "web", "slice": "incumbency", "why": "current office holder"}
+{"text": "who runs the rust foundation these days", "expect": "web", "slice": "incumbency", "why": "current leadership"}
+{"text": "our cto is stepping down next month, who do i escalate to", "expect": "local", "slice": "incumbency", "why": "internal org chart question"}
+{"text": "who's running the community calls now", "expect": "ambiguous", "slice": "incumbency", "why": "could be this server's rota or a public programme"}
+{"text": "i was treasurer of our uni society in 2019", "expect": "local", "slice": "incumbency", "why": "their own past role, no lookup"}
+{"text": "who maintains requests these days", "expect": "web", "slice": "incumbency", "why": "maintainer roster changes"}
+{"text": "who won the chile election", "expect": "web", "slice": "incumbency", "why": "result of a live political contest"}
+{"text": "who's on the python steering council currently", "expect": "web", "slice": "incumbency", "why": "current membership"}
+{"text": "who's the mod of this server", "expect": "local", "slice": "incumbency", "why": "server-specific role, answered from context"}
+{"text": "what does this mean: EACCES: permission denied, open '/var/run/docker.sock'", "expect": "local", "slice": "supplied_text", "why": "interpreting pasted output"}
+{"text": "explain this log line: WARN retrying in 3s (attempt 4/5)", "expect": "local", "slice": "supplied_text", "why": "interpreting pasted output"}
+{"text": "what's this in my terminal: zsh: command not found: python", "expect": "local", "slice": "supplied_text", "why": "interpreting pasted shell output"}
+{"text": "parse this for me: level=error msg=\"context deadline exceeded\"", "expect": "local", "slice": "supplied_text", "why": "interpreting pasted log"}
+{"text": "translate: 'ich hab dich lieb'", "expect": "local", "slice": "supplied_text", "why": "translating supplied string"}
+{"text": "what does this commit message mean: revert \"fix: flaky test\"", "expect": "local", "slice": "supplied_text", "why": "explaining pasted commit text"}
+{"text": "what language is this: println!(\"hi\")", "expect": "local", "slice": "supplied_text", "why": "identifying pasted snippet"}
+{"text": "does this clause mean i can sublet: 'the tenant may not assign this tenancy'", "expect": "local", "slice": "supplied_text", "why": "reading supplied contract wording"}
+{"text": "what's this symbol on my keyboard, ⌥", "expect": "local", "slice": "supplied_text", "why": "identifying a glyph they pasted"}
+{"text": "what does chmod 755 actually grant", "expect": "local", "slice": "supplied_text", "why": "stable permissions semantics"}
+{"text": "what's 20% off 249.99", "expect": "local", "slice": "arithmetic", "why": "pure calculation on numbers in the message"}
+{"text": "how many seconds is a 4 beat bar at 128", "expect": "local", "slice": "arithmetic", "why": "fixed arithmetic"}
+{"text": "split £84 three ways with 20% tip", "expect": "local", "slice": "arithmetic", "why": "self-contained arithmetic"}
+{"text": "96k at 140bpm, how many samples in a bar", "expect": "local", "slice": "arithmetic", "why": "deterministic maths"}
+{"text": "how many bytes is 3.5 tib", "expect": "local", "slice": "arithmetic", "why": "unit conversion"}
+{"text": "if i compress 4:1 on a signal 3db over threshold, what's the output", "expect": "local", "slice": "arithmetic", "why": "static gain maths"}
+{"text": "12.99 + 4.50 + 7.25", "expect": "local", "slice": "arithmetic", "why": "sum, no lookup"}
+{"text": "is 3 plugins at 29 each 87", "expect": "local", "slice": "arithmetic", "why": "checking mental maths, 'price' context is irrelevant"}
+{"text": "how many semitones from c to f#", "expect": "local", "slice": "arithmetic", "why": "fixed interval"}
+{"text": "how many 16th notes in 7 bars of 4/4", "expect": "local", "slice": "arithmetic", "why": "counting, no source"}
+{"text": "and the other one?", "expect": "local", "slice": "followup", "why": "refers to the previous turn"}
+{"text": "what about for windows", "expect": "local", "slice": "followup", "why": "extending the prior answer"}
+{"text": "ok do that but with the second option", "expect": "local", "slice": "followup", "why": "instruction on prior output"}
+{"text": "expand on the third point, especially the price part", "expect": "local", "slice": "followup", "why": "elaborating their own earlier thread"}
+{"text": "same question but postgres", "expect": "local", "slice": "followup", "why": "substituting a term in the prior question"}
+{"text": "why though", "expect": "local", "slice": "followup", "why": "asks for reasoning on the last answer"}
+{"text": "try again but shorter", "expect": "local", "slice": "followup", "why": "rewrite instruction"}
+{"text": "and in the key of d", "expect": "local", "slice": "followup", "why": "transposing the prior suggestion"}
+{"text": "you said 2.4 earlier, which is it", "expect": "local", "slice": "followup", "why": "resolving their own conversation history"}
+{"text": "what did i ask you before this", "expect": "local", "slice": "followup", "why": "recall of the session"}
+{"text": "did anything big happen in tech today", "expect": "web", "slice": "news", "why": "today's events"}
+{"text": "any news on the oracle tiktok thing", "expect": "web", "slice": "news", "why": "deal status changes"}
+{"text": "what happened with the xz backdoor thing", "expect": "local", "slice": "news", "why": "settled historical event, explainable from knowledge"}
+{"text": "is there an update on the merger", "expect": "web", "slice": "news", "why": "regulatory status is live"}
+{"text": "did the epic appeal get decided", "expect": "web", "slice": "news", "why": "court ruling status"}
+{"text": "latest on the chip export rules", "expect": "web", "slice": "news", "why": "policy shifts"}
+{"text": "i read the news about the layoffs, my mate got let go the same week", "expect": "local", "slice": "news", "why": "personal story about a friend, not the news item"}
+{"text": "did they announce next year's lineup", "expect": "web", "slice": "news", "why": "announcement is time-bound"}
+{"text": "what's going on with red sea shipping right now", "expect": "web", "slice": "news", "why": "ongoing situation"}
+{"text": "the outage last night took our prod down for two hours", "expect": "local", "slice": "news", "why": "their own incident, 'down' is not a service status"}

@@ -142,8 +142,8 @@ def _extract_request_scope(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dic
     }
 
 
-def _generate_scoped_key(message: str, context: dict[str, Any]) -> str | None:
-    """Build a key scoped to the conversation (or legacy owner) and history."""
+def _generate_scoped_key(message: str, context: dict[str, Any], *, salt: str) -> str | None:
+    """Build a key scoped to the conversation, history, and routing decision."""
     user_id = context.get("user_id")
     conversation_key = context.get("conversation_key")
     conversation_digest = context.get("conversation_digest")
@@ -169,10 +169,64 @@ def _generate_scoped_key(message: str, context: dict[str, Any]) -> str | None:
         ).hexdigest()[:8],
         "conversation_scope": "" if scope_id is None else str(scope_id),
         "conversation_digest": conversation_digest,
+        "service": context.get("service", "unknown"),
+        "router_id": context.get("router_id", "unknown"),
+        "policy_version": context.get("policy_version", "unknown"),
+        "decision_source": context.get("decision_source", "unknown"),
+        "function": context.get("function", "unknown"),
+        "route": context.get("route", ""),
+        "degraded": bool(context.get("degraded", False)),
+        "salt": salt,
     }
 
     key_data = (normalized_message, context_key)
     return hashlib.sha256(str(key_data).encode()).hexdigest()
+
+
+def _extract_routing_context(request: Any, func_name: str) -> dict[str, Any]:
+    """Return routing fields for a cache key, with explicit legacy defaults."""
+    routing = getattr(request, "routing", None) if request is not None else None
+
+    def read(name: str, default: Any) -> Any:
+        if routing is None:
+            return default
+        if isinstance(routing, dict):
+            return routing.get(name, default)
+        return getattr(routing, name, default)
+
+    salt = read("salt", None)
+    if not isinstance(salt, str) or not salt:
+        salt = f"{func_name}:unrouted"
+    return {
+        "service": read("service", "unknown"),
+        "router_id": read("router_id", "unknown"),
+        "policy_version": read("policy_version", "unknown"),
+        "decision_source": read("decision_source", "unknown"),
+        "route": read("route", ""),
+        "degraded": bool(read("degraded", False)),
+        "cacheable": bool(read("cacheable", True)),
+        "salt": salt,
+    }
+
+
+def _cache_context(
+    func_name: str,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> tuple[Any, dict[str, Any], str]:
+    """Build the cache context and required salt for one decorated call."""
+    message, model, system_message = _extract_message_context(args, kwargs)
+    request = args[0] if args and hasattr(args[0], "message") else kwargs.get("request")
+    routing = _extract_routing_context(request, func_name)
+    salt = routing.pop("salt")
+    context = {
+        "function": func_name,
+        "model": model,
+        "system_message": system_message,
+        **_extract_request_scope(args, kwargs),
+        **routing,
+    }
+    return message, context, salt
 
 
 @dataclass
@@ -312,14 +366,29 @@ class ResponseCache:
 
         return not any(re.search(pattern, response_lower) for pattern in time_indicators)
 
-    def _generate_cache_key(self, message: str, context: dict[str, Any]) -> str | None:
-        """Generate cache key scoped to the request identity and context."""
-        return _generate_scoped_key(message, context)
+    def _generate_cache_key(
+        self,
+        message: str,
+        context: dict[str, Any],
+        *,
+        salt: str,
+    ) -> str | None:
+        """Generate cache key scoped to the request identity and routing decision."""
+        return _generate_scoped_key(message, context, salt=salt)
 
-    def get_cached_response(self, message: str, context: dict[str, Any]) -> str | None:
+    def get_cached_response(
+        self,
+        message: str,
+        context: dict[str, Any],
+        *,
+        salt: str,
+    ) -> str | None:
         """Get cached response if available."""
         try:
-            cache_key = self._generate_cache_key(message, context)
+            if context.get("cacheable", True) is False:
+                return None
+
+            cache_key = self._generate_cache_key(message, context, salt=salt)
             if cache_key is None:
                 return None
 
@@ -341,13 +410,17 @@ class ResponseCache:
         context: dict[str, Any],
         response: str,
         ttl: float | None = None,
+        *,
+        salt: str,
     ) -> None:
         """Cache response if appropriate."""
         try:
+            if context.get("cacheable", True) is False:
+                return
             if not self._should_cache_response(response):
                 return
 
-            cache_key = self._generate_cache_key(message, context)
+            cache_key = self._generate_cache_key(message, context, salt=salt)
             if cache_key is None:
                 return
 
@@ -444,21 +517,13 @@ def cached_response(ttl: float = 300.0, cache_instance: ResponseCache | None = N
 
         @wraps(func)
         async def wrapper(*args, **kwargs) -> Any:
-            # Generate cache key from function name and arguments
+            # Generate cache key from function name, arguments, and routing.
             func_name = func.__name__
-
-            message, model, system_message = _extract_message_context(args, kwargs)
-
-            context = {
-                "function": func_name,
-                "model": model,
-                "system_message": system_message,
-                **_extract_request_scope(args, kwargs),
-            }
+            message, context, salt = _cache_context(func_name, args, kwargs)
 
             # Try to get cached response
             if isinstance(message, str) and message:
-                cached = cache.get_cached_response(message, context)
+                cached = cache.get_cached_response(message, context, salt=salt)
                 if cached is not None:
                     return cached
 
@@ -467,7 +532,7 @@ def cached_response(ttl: float = 300.0, cache_instance: ResponseCache | None = N
 
             # Cache successful responses
             if isinstance(result, str) and isinstance(message, str):
-                cache.cache_response(message, context, result, ttl)
+                cache.cache_response(message, context, result, ttl, salt=salt)
 
             return result
 
@@ -490,17 +555,9 @@ def deduplicated_request(key_func: Callable | None = None):
             if key_func:
                 request_key = key_func(*args, **kwargs)
             else:
-                # Default key generation
-                message, model, system_message = _extract_message_context(args, kwargs)
-                scope = _extract_request_scope(args, kwargs)
-                scoped_key = _generate_scoped_key(
-                    message,
-                    {
-                        "model": model,
-                        "system_message": system_message,
-                        **scope,
-                    },
-                )
+                # Default key generation uses the same routing fields as the cache.
+                message, context, salt = _cache_context(func.__name__, args, kwargs)
+                scoped_key = _generate_scoped_key(message, context, salt=salt)
                 if scoped_key is None:
                     return await func(*args, **kwargs)
 

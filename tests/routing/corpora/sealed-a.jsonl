@@ -1,0 +1,150 @@
+{"text": "GG on that raid last night, cleanest run we've had!", "expect": "local", "slice": "social", "why": "shared history among this community's own members"}
+{"text": "I'm gonna be offline for a few days, moving flats", "expect": "local", "slice": "social", "why": "the user's own plans"}
+{"text": "Welcome to the server! Read #rules then say hi in here", "expect": "local", "slice": "social", "why": "static community instruction"}
+{"text": "That spawn build looks amazing from the ridge!", "expect": "local", "slice": "social", "why": "opinion about the community's own world"}
+{"text": "I'll bring snacks to the Saturday meetup, probably the usual flapjacks", "expect": "local", "slice": "social", "why": "the user's own commitment"}
+{"text": "We should do another community night soon, last one was fun", "expect": "local", "slice": "social", "why": "community preference, not a checkable fact"}
+{"text": "Hope everyones week is going alright 🙂", "expect": "local", "slice": "social", "why": "small talk about people here; typo + emoji"}
+{"text": "Is the neighbourhood group still doing the Tuesday coffee thing?", "expect": "ambiguous", "slice": "social", "why": "our own group's habit, but 'still' implies checking present state"}
+{"text": "Anyone up for voice later? Nothing planned, just hanging out", "expect": "local", "slice": "social", "why": "informal organising among members"}
+{"text": "Sorry I missed the party, was stuck at work 😩", "expect": "local", "slice": "social", "why": "personal context of the speaker; emoji"}
+{"text": "what's the current stable paper build for 1.21? ours is ancient", "expect": "web", "slice": "technical", "why": "current build numbers change with releases"}
+{"text": "How do I raise the tick rate on a Fabric server without melting the CPU", "expect": "local", "slice": "technical", "why": "stable how-to knowledge, no live data needed"}
+{"text": "Server times out when more than eight people join, what should I check", "expect": "local", "slice": "technical", "why": "debugging the user's own machine"}
+{"text": "Is there a way to see which plugin is eating all the RAM", "expect": "local", "slice": "technical", "why": "general technique, doesn't change over time"}
+{"text": "Whats the difference between a VLAN and a subnet", "expect": "local", "slice": "technical", "why": "stable networking concept; lowercase, typo"}
+{"text": "Does the new NVIDIA driver still break the shader mod", "expect": "web", "slice": "technical", "why": "depends on the current driver and mod state"}
+{"text": "How do I put the map page behind a reverse proxy on Ubuntu", "expect": "local", "slice": "technical", "why": "stable setup knowledge"}
+{"text": "Backups have been failing since the disk swap, journalctl is full of IO errors", "expect": "local", "slice": "technical", "why": "user's own box and logs"}
+{"text": "What port does the voice server listen on by default", "expect": "local", "slice": "technical", "why": "stable documented default"}
+{"text": "Hosting panel won't load, is there an outage right now", "expect": "web", "slice": "technical", "why": "live provider status"}
+{"text": "My script throws KeyError when the config file is missing, how do I handle that", "expect": "local", "slice": "code_help", "why": "user's own code, stable fix"}
+{"text": "Why does my loop print the last item twice", "expect": "local", "slice": "code_help", "why": "user's own code"}
+{"text": "This function returns None when the list is empty and I can't see why", "expect": "local", "slice": "code_help", "why": "review of the snippet they wrote"}
+{"text": "what's the latest discord.py version and did the intents change again", "expect": "web", "slice": "code_help", "why": "current library version and API changes"}
+{"text": "How do I open a modal in discord.js v14", "expect": "local", "slice": "code_help", "why": "version-pinned API question, stable answer"}
+{"text": "Any linter that flags unused imports in Rust", "expect": "local", "slice": "code_help", "why": "stable tooling knowledge"}
+{"text": "Bot crashes on startup after the update, traceback is below", "expect": "local", "slice": "code_help", "why": "their own bot and its log"}
+{"text": "Best way to store timestamps in SQLite", "expect": "local", "slice": "code_help", "why": "stable design advice"}
+{"text": "Does GitHub Actions still support the node16 runner", "expect": "web", "slice": "code_help", "why": "deprecation status changes over time"}
+{"text": "How do I round a float to two decimals in JavaScript", "expect": "local", "slice": "code_help", "why": "stable language fact"}
+{"text": "Give me a name for a tavern in spawn town, something dwarven", "expect": "local", "slice": "creative", "why": "generation from a user brief"}
+{"text": "Write a short lore blurb for the new desert outpost", "expect": "local", "slice": "creative", "why": "generation from a user brief"}
+{"text": "Can you do a haiku about mining at 3am", "expect": "local", "slice": "creative", "why": "generation, nothing time-sensitive"}
+{"text": "Help me come up with a tagline for the community poster", "expect": "local", "slice": "creative", "why": "generation from a brief"}
+{"text": "I need a warm autumn palette for a base, oranges and browns", "expect": "local", "slice": "creative", "why": "design brief, preference-driven"}
+{"text": "Make the welcome message sound less corporate and more like us", "expect": "local", "slice": "creative", "why": "rewrite of their own text"}
+{"text": "Suggest five team names for the build competition", "expect": "local", "slice": "creative", "why": "generation"}
+{"text": "Write a two line rhyme for the anniversary post", "expect": "local", "slice": "creative", "why": "generation"}
+{"text": "Describe a haunted lighthouse in three sentences", "expect": "local", "slice": "creative", "why": "generation"}
+{"text": "Draft a short warm announcement for the charity stream", "expect": "local", "slice": "creative", "why": "drafting from a brief"}
+{"text": "Is it worth switching from Paper to Fabric for a small server", "expect": "local", "slice": "opinion", "why": "trade-off opinion, answer doesn't age"}
+{"text": "What do you all think of the new map layout", "expect": "local", "slice": "opinion", "why": "opinion about the community's own world"}
+{"text": "Should we keep PvP on by default", "expect": "local", "slice": "opinion", "why": "community preference"}
+{"text": "Honestly the new spawn is worse than the old one", "expect": "local", "slice": "opinion", "why": "opinion statement"}
+{"text": "Which is easier for a beginner, Java or Bedrock", "expect": "local", "slice": "opinion", "why": "stable comparison"}
+{"text": "Do you prefer voice or text for organising events", "expect": "local", "slice": "opinion", "why": "preference question"}
+{"text": "I think the street needs more bike racks, anyone else", "expect": "local", "slice": "opinion", "why": "opinion about their own area"}
+{"text": "What's the best pizza place near the community centre", "expect": "ambiguous", "slice": "opinion", "why": "could be local opinion or a live check of what's open"}
+{"text": "Unpopular opinion: the old rules channel was clearer", "expect": "local", "slice": "opinion", "why": "opinion statement"}
+{"text": "Would you rather have a bigger map or more plugins", "expect": "local", "slice": "opinion", "why": "preference question"}
+{"text": "Is the Minecraft server up right now", "expect": "web", "slice": "live_status", "why": "live service state"}
+{"text": "Is Discord down for anyone else, messages won't send", "expect": "web", "slice": "live_status", "why": "live outage status"}
+{"text": "Can someone check if Dynmap is loading for them", "expect": "web", "slice": "live_status", "why": "current site state"}
+{"text": "is the stream live yet", "expect": "web", "slice": "live_status", "why": "live broadcast status"}
+{"text": "Is the library open today", "expect": "web", "slice": "live_status", "why": "opening hours change by day and holiday"}
+{"text": "are the trains running normally this morning", "expect": "web", "slice": "live_status", "why": "live travel conditions"}
+{"text": "Did the bin collection get pushed back this week", "expect": "web", "slice": "live_status", "why": "this week's collection state"}
+{"text": "Is the pool open for lap swim tonight", "expect": "web", "slice": "live_status", "why": "today's timetable"}
+{"text": "is the car park at the community centre full", "expect": "web", "slice": "live_status", "why": "live occupancy"}
+{"text": "Whitelist back on? I can't join", "expect": "web", "slice": "live_status", "why": "current access state of the server"}
+{"text": "how much is a coffee at the new place on the corner", "expect": "web", "slice": "price_commerce", "why": "current menu price"}
+{"text": "What's a used 3080 going for these days", "expect": "web", "slice": "price_commerce", "why": "market price moves"}
+{"text": "Is the game on sale on Steam this week", "expect": "web", "slice": "price_commerce", "why": "current store promotion"}
+{"text": "how much does a replacement controller stick cost", "expect": "web", "slice": "price_commerce", "why": "current retail price"}
+{"text": "What's a monthly server plan going for at OVH now", "expect": "web", "slice": "price_commerce", "why": "current hosting price"}
+{"text": "Did the season pass price go up", "expect": "web", "slice": "price_commerce", "why": "current pricing"}
+{"text": "cheapest bag of coffee beans near me", "expect": "web", "slice": "price_commerce", "why": "live local prices and stock"}
+{"text": "how much are tickets for friday's show", "expect": "web", "slice": "price_commerce", "why": "current ticket price"}
+{"text": "what's the delivery fee on the pizza app now", "expect": "web", "slice": "price_commerce", "why": "current fee"}
+{"text": "is the gym membership still thirty a month", "expect": "web", "slice": "price_commerce", "why": "current rate, needs checking"}
+{"text": "what version is the server running now", "expect": "web", "slice": "release_version", "why": "current server build"}
+{"text": "What's the newest stable Python release", "expect": "web", "slice": "release_version", "why": "latest release changes"}
+{"text": "has 1.21.5 dropped yet", "expect": "web", "slice": "release_version", "why": "release status changes"}
+{"text": "Are we on the latest modpack or a bit behind", "expect": "ambiguous", "slice": "release_version", "why": "own pack, but 'latest' needs a live check"}
+{"text": "Latest NVIDIA driver version?", "expect": "web", "slice": "release_version", "why": "latest release changes"}
+{"text": "Which Android version is current", "expect": "web", "slice": "release_version", "why": "current platform release"}
+{"text": "Has the new Discord update rolled out to everyone", "expect": "web", "slice": "release_version", "why": "current rollout state"}
+{"text": "What's the current Node LTS", "expect": "web", "slice": "release_version", "why": "latest LTS changes"}
+{"text": "What firmware is the Switch on now", "expect": "web", "slice": "release_version", "why": "current firmware release"}
+{"text": "latest build of the map plugin", "expect": "web", "slice": "release_version", "why": "latest plugin release"}
+{"text": "what time is the match on saturday", "expect": "web", "slice": "results_schedule", "why": "fixture times change"}
+{"text": "who won last night", "expect": "web", "slice": "results_schedule", "why": "last night's result"}
+{"text": "when's the next community meeting", "expect": "web", "slice": "results_schedule", "why": "next date on the calendar"}
+{"text": "what's the bin day for our street", "expect": "web", "slice": "results_schedule", "why": "local collection timetable"}
+{"text": "When does daylight saving start this year", "expect": "web", "slice": "results_schedule", "why": "this year's date"}
+{"text": "What time does the supermarket shut tonight", "expect": "web", "slice": "results_schedule", "why": "today's hours"}
+{"text": "when's the next bank holiday", "expect": "web", "slice": "results_schedule", "why": "next holiday date"}
+{"text": "what day is the server reset this month", "expect": "web", "slice": "results_schedule", "why": "this month's reset date"}
+{"text": "when do the playoffs start", "expect": "web", "slice": "results_schedule", "why": "current season schedule"}
+{"text": "what's on at the cinema this weekend", "expect": "web", "slice": "results_schedule", "why": "this weekend's listings"}
+{"text": "is it going to rain later", "expect": "web", "slice": "weather_travel", "why": "live forecast"}
+{"text": "What's the weather in Leeds this weekend", "expect": "web", "slice": "weather_travel", "why": "live forecast"}
+{"text": "Do I need a jacket tomorrow morning", "expect": "web", "slice": "weather_travel", "why": "tomorrow's forecast"}
+{"text": "Will the storm affect the trains", "expect": "web", "slice": "weather_travel", "why": "live disruption info"}
+{"text": "How long to drive to the airport right now", "expect": "web", "slice": "weather_travel", "why": "live traffic"}
+{"text": "Is the motorway shut tonight", "expect": "web", "slice": "weather_travel", "why": "current closures"}
+{"text": "what's the temperature outside", "expect": "web", "slice": "weather_travel", "why": "live conditions"}
+{"text": "Should I take the earlier flight, forecast looks rough", "expect": "web", "slice": "weather_travel", "why": "depends on live weather data"}
+{"text": "snow forecast for friday?", "expect": "web", "slice": "weather_travel", "why": "live forecast"}
+{"text": "what time is sunset today", "expect": "web", "slice": "weather_travel", "why": "today's sunset time"}
+{"text": "Who's the mayor right now", "expect": "web", "slice": "incumbency", "why": "current office holder"}
+{"text": "Who's our MP these days", "expect": "web", "slice": "incumbency", "why": "current office holder"}
+{"text": "Who is the current prime minister", "expect": "web", "slice": "incumbency", "why": "current office holder"}
+{"text": "Is the councillor for our ward still the same person", "expect": "web", "slice": "incumbency", "why": "current office holder"}
+{"text": "Who runs the neighbourhood association now", "expect": "web", "slice": "incumbency", "why": "current post holder"}
+{"text": "Who's captaining the national team at the moment", "expect": "web", "slice": "incumbency", "why": "current appointment"}
+{"text": "Who's CEO of Mojang now", "expect": "web", "slice": "incumbency", "why": "current appointment"}
+{"text": "Who's moderating the server this month", "expect": "ambiguous", "slice": "incumbency", "why": "our own roster, but a live rota answer"}
+{"text": "Who holds the world record for that speedrun", "expect": "web", "slice": "incumbency", "why": "current record holder"}
+{"text": "Who took over as council head after the election", "expect": "web", "slice": "incumbency", "why": "current office holder"}
+{"text": "Summarise this: 'The committee agreed to move the meeting to the 14th and confirmed the budget'", "expect": "local", "slice": "supplied_text", "why": "text is supplied inline"}
+{"text": "Is this rude? 'Your build looks like a barn someone gave up on'", "expect": "local", "slice": "supplied_text", "why": "text is supplied inline"}
+{"text": "Translate to German: 'Welcome to the server, have fun'", "expect": "local", "slice": "supplied_text", "why": "text is supplied inline"}
+{"text": "Fix the grammar: 'There is three new players joined yesterday'", "expect": "local", "slice": "supplied_text", "why": "text is supplied inline"}
+{"text": "what does this mean: 'brb afk for tea'", "expect": "local", "slice": "supplied_text", "why": "text is supplied inline"}
+{"text": "Does this count as a haiku: 'Grey stone in the rain / the old bridge holds its breath / nobody crosses'", "expect": "local", "slice": "supplied_text", "why": "text is supplied inline"}
+{"text": "Make this shorter: 'We will be doing maintenance tonight from around eight and it may take an hour'", "expect": "local", "slice": "supplied_text", "why": "text is supplied inline"}
+{"text": "Rewrite politely: 'Move your base, it's in my spot'", "expect": "local", "slice": "supplied_text", "why": "text is supplied inline"}
+{"text": "Check the tone: 'No worries, take your time'", "expect": "local", "slice": "supplied_text", "why": "text is supplied inline"}
+{"text": "pull the dates out: 'signups close on the 3rd and building starts on the 10th'", "expect": "local", "slice": "supplied_text", "why": "text is supplied inline"}
+{"text": "what's 17 times 24", "expect": "local", "slice": "arithmetic", "why": "pure calculation"}
+{"text": "Five stacks of 64 plus 30, how many is that", "expect": "local", "slice": "arithmetic", "why": "pure calculation"}
+{"text": "how many hours between 9am and 4:30pm", "expect": "local", "slice": "arithmetic", "why": "pure calculation"}
+{"text": "Split 84 quid between 6 people", "expect": "local", "slice": "arithmetic", "why": "pure calculation"}
+{"text": "what's 15 percent of 260", "expect": "local", "slice": "arithmetic", "why": "pure calculation"}
+{"text": "how many 3x3 walls fit in a 24 by 18 room", "expect": "local", "slice": "arithmetic", "why": "pure calculation"}
+{"text": "Convert 12km to miles", "expect": "local", "slice": "arithmetic", "why": "fixed conversion"}
+{"text": "If the server is 12 a month what's that for a year", "expect": "local", "slice": "arithmetic", "why": "pure calculation"}
+{"text": "what's 2 to the power of 16", "expect": "local", "slice": "arithmetic", "why": "pure calculation"}
+{"text": "If today is the 9th, how many days until the 24th", "expect": "local", "slice": "arithmetic", "why": "arithmetic on a supplied date"}
+{"text": "And what about the other one you mentioned", "expect": "local", "slice": "followup", "why": "refers back to this conversation"}
+{"text": "Can you expand on that second point", "expect": "local", "slice": "followup", "why": "refers back to this conversation"}
+{"text": "What did you mean by check the logs first", "expect": "local", "slice": "followup", "why": "refers back to this conversation"}
+{"text": "Ok do that then", "expect": "local", "slice": "followup", "why": "continuation of the current exchange"}
+{"text": "Same question but for the backup server", "expect": "local", "slice": "followup", "why": "variant of the user's own earlier ask"}
+{"text": "You said it was fine earlier, why the change", "expect": "local", "slice": "followup", "why": "refers to its own earlier answer"}
+{"text": "go on", "expect": "local", "slice": "followup", "why": "continuation prompt"}
+{"text": "So which of those should I try first", "expect": "local", "slice": "followup", "why": "choosing among earlier suggestions"}
+{"text": "Remind me what we settled on for the spawn border", "expect": "local", "slice": "followup", "why": "earlier decision in this conversation"}
+{"text": "Do the same for the other channel", "expect": "local", "slice": "followup", "why": "repeat of the previous task"}
+{"text": "Did anything come of the council vote last night", "expect": "web", "slice": "news", "why": "recent event outcome"}
+{"text": "What's the latest on the road closure", "expect": "web", "slice": "news", "why": "current news"}
+{"text": "Any news about the new supermarket", "expect": "web", "slice": "news", "why": "current news"}
+{"text": "Did the server drama get sorted in the end", "expect": "ambiguous", "slice": "news", "why": "community knowledge, but the 'in the end' needs a live check"}
+{"text": "What's happening with electricity prices", "expect": "web", "slice": "news", "why": "current news"}
+{"text": "Was there a storm warning issued", "expect": "web", "slice": "news", "why": "current alert status"}
+{"text": "any news on the cat missing from our street", "expect": "web", "slice": "news", "why": "current situation"}
+{"text": "What did they announce at the town meeting", "expect": "web", "slice": "news", "why": "recent event"}
+{"text": "Any news about the expansion", "expect": "web", "slice": "news", "why": "current announcement state"}
+{"text": "Did they catch whoever was breaking into sheds", "expect": "web", "slice": "news", "why": "developing story"}

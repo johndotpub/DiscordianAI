@@ -2,45 +2,84 @@
 
 ## Overview
 
-DiscordianAI features a sophisticated AI orchestration system with intelligent routing, conversation consistency, and three flexible operation modes:
+DiscordianAI features an AI orchestration system with evidence-based routing, conversation consistency,
+and three flexible operation modes:
 
 1. **OpenAI Only** - Use GPT-6 for all responses
 2. **Perplexity Only** - Use `perplexity/sonar` with web search for all responses
-3. **Smart Hybrid** - Automatically choose the best AI for each message with conversation consistency
+3. **Smart Hybrid** - Choose the best AI for each message with an evidence model
 
-## AI Service Consistency System 🔄
+Hybrid routing is not a list of word patterns. The router asks whether a message refers to something whose
+value can change and whose answer is expected to be verifiable. If it does, the message needs the live web.
+If it does not, the local model answers it.
 
-DiscordianAI reuses the previous AI service only for genuine anaphora within the
-same conversation. A follow-up pattern must match, and a recent assistant turn
-must exist in that conversation's history; the router then reuses that turn's
-service. A matched follow-up with no recent assistant turn is routed to OpenAI
-rather than being treated as a web-search query.
+## Evidence-Based Routing
 
-### How It Works
+Each message is scored once by `src/routing/` before any provider is called. The score is a signed trace of
+two evidence classes:
 
-1. **Metadata Tracking**: Every AI response records the service and model that generated it
-2. **Conversation Scope**: History is keyed per DM user or per guild channel/thread, so another channel or user cannot supply the previous service
-3. **Follow-up Detection**: Only genuine anaphora match: whole-message continuations (bare "more", "continue", "go on", or "keep going"), "tell/show/give me more", "what/how about", ordinal references such as "the second one", whole-message "and then", "then what", or "what now", a bare pronoun ("it", "that", "they", ...), or a bare "yes", "no", "ok", or "okay"
-4. **Consistent Routing**: If the lookback window contains a recent assistant turn, the router reuses its service; otherwise the message falls through to the normal routing heuristics
+- **Bearing** — a mutable referent: a status predicate, a change or outcome event, a price or quantity
+  shape, a version shape, a volatile topic noun. Bearing may decide the route.
+- **Framing** — the shape of the request: question, imperative, opinion, creative, social, greeting, or a
+  proper name. Framing is multiplied by `lambda_framing < 1` and never decides alone.
 
-A word such as "also" or "more" inside a fresh question does not turn that
-question into a follow-up.
+There are no early returns and no branch order that can hide a live-data cue. The pipeline is:
 
-### Example Flow
+```
+views    = normalise surface + folded text (case preserved for entities)
+overrides= URL, "search the web", "from memory", and similar explicit instructions
+cues     = bearing and framing evidence
+score    = sum(bearing) + lambda_framing * sum(framing)
+p_web    = sigmoid((score - t_mid) / temperature)
+route    = web     if p_web >= tau
+           local   if p_web <= tau_local
+           unsure  otherwise
+if no bearing cue and no override: route = local
+```
+
+Two rules keep the model honest:
+
+- **No bearing cue means no web route.** A question mark or a proper name is not enough. *"What is the
+  capital of France?"* stays local because the answer does not change.
+- **Framing cannot decide alone.** Social text such as "thanks" or "best regards" carries negative framing
+  weight and will not turn into a search.
+
+The bundled English lexicon supplies topic terms; structural shapes supply status, change, release,
+version, money, time, code, and URL cues. Adding a term is a lexicon data change, not a code change.
+
+### What routes where
+
+| Message | Route | Why |
+|---|---|---|
+| "What's the latest news?" | Web | Volatile topic plus current-time deixis |
+| "Is github down?" | Web | Status predicate about a live service |
+| "What's $AAPL trading at right now?" | Web | Money shape plus current-time framing |
+| "Write a poem about winter" | Local | Creative framing, no bearing cue |
+| "What is the capital of France?" | Local | Stable fact; question framing alone cannot decide |
+| "Here is a traceback, what is wrong?" | Local | Supplied code artefact cancels volatile cues |
+
+### Follow-up inheritance
+
+A follow-up is a short message (at most six tokens) that is an anaphor, a bare continuation, or begins with
+a coordinator, and it must have an assistant turn at gap <= 1 in the same conversation. The previous route
+then applies at +2/-2. A bearing cue in the new message wins, and a topic shift cancels inheritance.
+
+A word such as "also" or "more" inside a fresh question does not turn that question into an early return.
+There is no separate follow-up regex list; inheritance is one cue in the same score.
+
+### Example flow
+
 ```
 User: "What's the weather in Tokyo today?"
-→ 🌐 Routed to Perplexity (time-sensitive, current data needed)
-→ Response: "Tokyo is currently 22°C with light rain..." + metadata
+→ Web decision (volatile topic + time deixis)
+→ Perplexity answer with citations
 
 User: "Tell me more"
-→ 🔄 Detected as anaphora in the same conversation, checks recent AI service used
-→ 🌐 Routed to Perplexity for consistency
-→ User gets a detailed forecast from the same service with full context
+→ Follow-up inherits the web route from the same conversation
+→ Perplexity answers with the earlier turn in view
 ```
 
 ## Message Flow Architecture
-
-The following diagram shows how messages flow through the DiscordianAI system:
 
 ```mermaid
 flowchart TD
@@ -48,48 +87,25 @@ flowchart TD
     B -->|No| Z[Ignore Message]
     B -->|Yes| C[Rate Limit + Guardrails]
     C -->|Failed| D[Send Rate Limit Message]
-    C -->|Passed| E[Smart Orchestrator Analysis]
+    C -->|Passed| E[Build AIRequest]
 
-    E --> L[Model Guard\n(GPT-6 + Agent API)]
-    L --> F{Mode Selector}
-
+    E --> F{Mode Selector}
     F -->|OpenAI Only| G[OpenAI Processing\n(GPT-6 family)]
     F -->|Perplexity Only| H[Perplexity Processing\n(Agent API)]
-    F -->|Hybrid| I[Check Conversation Context]
+    F -->|Hybrid| R[Build RouterInput\n+ one route decision]
 
-    I --> J{Follow-up Detected?}
-    J -->|Yes| K[Reuse Previous AI Service]
-    J -->|No| M[Analyze Message Content]
+    R -->|web| H
+    R -->|local| G
 
-    M --> SR[Sanitize for routing]
-    SR --> SI{Search Intent?}
-    SI -->|Yes| H
-    SI -->|No| N{URLs Detected?}
-    N -->|Yes| H
-    N -->|No| O{Time-sensitive or Entities?}
-    O -->|Yes| H
-    O -->|No| P{Conversational/Creative?}
-    P -->|Yes| G
-    P -->|No| Q{Factual Query?}
-    Q -->|Yes| H
-    Q -->|No| G
-
-    K --> T{Previous Service}
-    T -->|OpenAI| G
-    T -->|Perplexity| H
-
-    G --> R[GPT-6 Response Payload]
+    G --> OW[OpenAI Response]
+    OW --> WI{Indicates web-inability?}
+    WI -->|Yes, Perplexity not tried| H
+    WI -->|Yes, Perplexity already failed| U[Return local answer]
+    WI -->|No| U
     H --> PR[Agent API Response + Citations]
 
-    %% OpenAI response path includes in-line web-inability detection and fallback
-    R --> OW[OpenAI Response]
-    OW --> WI{Indicates web-inability?}
-    WI -->|Yes| H
-    WI -->|No| U[Message Processor Formatting]
-
-    PR --> V[Citation Embed Formatter]
-
     U --> W[send_formatted_message]
+    PR --> V[Citation Embed Formatter]
     V --> W
 
     W --> X{Contains Embeds?}
@@ -102,265 +118,186 @@ flowchart TD
     DD --> BB
 ```
 
-### Key Anti-Duplication Features
+### Key anti-duplication features
 
-The diagram above shows the **critical control flow fix** that prevents duplicate messages:
+1. **Single entry point**: all responses go through `send_formatted_message`.
+2. **Explicit returns**: each successful send exits the function.
+3. **Embed priority**: Perplexity answers with citations try the embed first, then a regular message.
+4. **One attempt per provider**: an `AttemptLedger` prevents a second Perplexity call in the same request.
 
-1. **Single Entry Point**: All responses go through `send_formatted_message` 
-2. **Explicit Returns**: Each successful send has a `return` statement to exit the function
-3. **Embed Priority**: Perplexity responses with citations try embed first, fallback to regular message only on failure
-4. **No Fallthrough**: Fixed the bug where embed success still continued to regular message logic
+### Model guardrails
 
-This ensures **exactly one message** is sent per user query, eliminating the duplicate message issue.
+- `api_validation.validate_openai_config()` warns when `GPT_MODEL` falls outside the documented GPT model
+  families; unknown names do not block startup.
+- Perplexity calls send `model`, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool.
+  `perplexity/sonar` is the default, sampling is handled by the API, and no `temperature` is sent.
+- Citations come from the Agent API `search_results` item: each result's 1-based `id` maps to the `[n]`
+  marker in the answer text.
 
-### Model Guardrails
-
-- `api_validation.validate_openai_config()` warns when `GPT_MODEL` falls outside the documented GPT model families; unknown names do not block startup.
-- Perplexity calls send `model`, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool. `perplexity/sonar` is the default, sampling is handled by the API, and no `temperature` is sent.
-- Citations come from the Agent API `search_results` item: each result's 1-based `id` maps to the `[n]` marker in the answer text.
-
-## Smart Detection (No Manual Triggers Required!)
-
-The bot uses advanced semantic analysis to automatically determine when web search would be beneficial:
-
-### Smart Detection Criteria
-
-**Uses Web Search When:**
-- Time-sensitive questions ("today", "recently", "latest")
-- Factual queries about changeable information (weather, stocks, news)
-- Questions about specific companies, people, or current events
-- Longer, detailed questions that suggest need for current data
-
-**Uses Regular AI When:**
-- Creative requests (stories, poems, jokes)
-- Technical/coding help
-- Philosophical discussions
-- Personal conversations and greetings
-- General knowledge that doesn't change
-
-### Example Auto-Detection
-
-**Automatically Uses Perplexity:**
-- "What's happening in AI today?" ← Time-sensitive
-- "How's Tesla's stock doing?" ← Financial data
-- "What's the weather like?" ← Current information
-- "Tell me about the recent SpaceX launch" ← Current events
-
-**Automatically Uses GPT-6:**
-- "Write me a poem about robots" ← Creative
-- "How do I fix this Python error?" ← Technical
-- "What do you think about philosophy?" ← Opinion/conversation
-- "Hello! How are you?" ← Greeting
-
-## Discord Citation Features
-
-### Citations
-- Message text keeps bare numbered markers such as `[1]` and `[2]`. Production calls the formatter with `linkify=False`, so the message body does not contain clickable citation links.
-- Clickable citations exist only in the citation embed, where a marker renders as `[[1]](https://full-url)`.
-- A citation URL is left intact only when it is allowlisted and safely renderable; other links are neutralised by the output sanitiser.
-
-### Smart Embed Suppression
-- Automatically suppresses link previews when there are multiple citations
-- Prevents chat from being cluttered with preview images
-- Keeps messages readable and focused
-
-## Configuration Modes
-
-### Mode 1: Smart Hybrid (Recommended)
-Uses both APIs and automatically chooses the best one:
-
-```ini
-# Both APIs configured
-OPENAI_API_KEY=your_openai_api_key_here
-PERPLEXITY_API_KEY=your_perplexity_api_key_here
-```
-
-### Mode 2: OpenAI Only
-Uses only GPT-6 for all responses:
-
-```ini
-# Only OpenAI configured
-OPENAI_API_KEY=your_openai_api_key_here
-PERPLEXITY_API_KEY=
-```
-
-### Mode 3: Perplexity Only
-Uses only Perplexity with web search for all responses:
-
-```ini
-# Only Perplexity configured  
-OPENAI_API_KEY=
-PERPLEXITY_API_KEY=your_perplexity_api_key_here
-```
-
-## Advanced Configuration: AI Orchestrator Settings ⚙️
-
-Fine-tune the AI service selection behavior with these advanced configuration options in your `config.ini`:
+## Routing Configuration
 
 ```ini
 [Orchestrator]
-# AI Orchestrator Configuration for advanced routing and optimization
-# How many recent messages to check for AI service consistency
+# heuristic (default) or model; the Clef model router is not implemented yet
+ROUTER_MODE=heuristic
+
+# Web-route probability thresholds by channel kind
+ROUTER_WEB_THRESHOLD_CHANNEL=0.10
+ROUTER_WEB_THRESHOLD_ANNOUNCE=0.07
+ROUTER_WEB_THRESHOLD_DM=0.20
+
+# How many recent messages a follow-up may inspect
 LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
-
-# Maximum conversation entries per user before pruning
-MAX_HISTORY_PER_USER=50
-
-# How often to clean up inactive user locks (seconds) - default 1 hour
-USER_LOCK_CLEANUP_INTERVAL=3600
 ```
 
-### Configuration Explained
-
 | Setting | Default | Description |
-|---------|---------|-------------|
-| `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | 6 | How many recent messages to check when determining AI service consistency for follow-ups |
-| `MAX_HISTORY_PER_USER` | 50 | Maximum conversation entries stored per user (older entries are automatically pruned) |
-| `USER_LOCK_CLEANUP_INTERVAL` | 3600 | How often to clean up memory from inactive users (in seconds) |
+|---|---|---|
+| `ROUTER_MODE` | `heuristic` | Selects the router implementation. `model` raises until the Clef seam is built. |
+| `ROUTER_WEB_THRESHOLD_CHANNEL` | 0.10 | Web-route probability threshold in ordinary channels. |
+| `ROUTER_WEB_THRESHOLD_ANNOUNCE` | 0.07 | Web-route probability threshold in announcement channels. |
+| `ROUTER_WEB_THRESHOLD_DM` | 0.20 | Web-route probability threshold in direct messages. |
+| `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | 6 | How many recent messages a follow-up may inspect; `0` disables the lookup. |
+| `MAX_HISTORY_PER_USER` | 50 | Maximum conversation entries stored per user. |
+| `USER_LOCK_CLEANUP_INTERVAL` | 3600 | How often to clean up inactive user locks, in seconds. |
 
-`ENTITY_DETECTION_MIN_WORDS=10` is parsed into config and available for routing; messages shorter than the threshold can be excluded from entity-heavy processing. Note: this setting is not yet wired into the current routing implementation and has no runtime effect.
+`ENTITY_DETECTION_MIN_WORDS=10` is parsed into config but is not consulted by the current router; changing
+it has no runtime effect.
 
-### Performance Impact
-- **Higher `LOOKBACK_MESSAGES_FOR_CONSISTENCY`**: More accurate consistency but slightly more processing
-- **Higher `MAX_HISTORY_PER_USER`**: Better long-term context but more memory usage
-- **Lower `USER_LOCK_CLEANUP_INTERVAL`**: More frequent memory cleanup but slight CPU overhead
+### Threshold selection
+
+The router always uses the threshold for the current channel kind: DM (`ROUTER_WEB_THRESHOLD_DM`),
+announcement channel (`ROUTER_WEB_THRESHOLD_ANNOUNCE`), or ordinary channel
+(`ROUTER_WEB_THRESHOLD_CHANNEL`). Lowering a threshold makes borderline bearing messages more likely to
+search; raising it makes them more likely to stay local.
+
+## Caching and Degradation
+
+- The route decision is built even when a response comes from cache.
+- Cache keys include the service (`openai` or `perplexity`), router id, policy version, decision source,
+  function, route salt, and degraded flag. A web answer and a local answer never share an entry.
+- An unsure decision is not cached. A local decision that carried bearing evidence is not cached. A URL
+  instruction is not cached.
+- A degraded fallback (web failed, local answer returned) is stored with `degraded=true` and is reachable
+  only from the fallback path.
+- A missing conversation manager or a history lookup that raises still produces a decision with empty
+  context, and the model answer is delivered normally.
 
 ## Setup Instructions
 
-### 1. Get API Keys (as needed)
+### 1. Get API keys (as needed)
 
-**OpenAI API Key** (for GPT-6):
+**OpenAI API key** (for GPT-6):
 - Go to https://platform.openai.com/api-keys
 - Create a new API key
 
-**Perplexity API Key** (for web search):
+**Perplexity API key** (for web search):
 - Go to https://www.perplexity.ai/settings/api
 - Generate an API key
 
-### 2. Choose Your Configuration
+### 2. Choose your configuration
 
 Copy `config.ini.example` to `config.ini` and toggle the keys for your desired mode:
 - **Hybrid**: Provide both `OPENAI_API_KEY` and `PERPLEXITY_API_KEY`.
 - **OpenAI Only**: Set `PERPLEXITY_API_KEY` blank.
 - **Perplexity Only**: Set `OPENAI_API_KEY` blank.
 
-Environment variables with the same names override `config.ini`, so production deployments can keep secrets out of the file system.
+Environment variables with the same names override `config.ini`, so production deployments can keep
+secrets out of the file system.
 
-### 3. Test It
+### 3. Test it
 
-Start your bot and try these examples:
-
-- "Hello!" ← Uses GPT-6
-- "What's the latest AI news?" ← Uses Perplexity
-- "Tell me about today's weather" ← Uses Perplexity
-- "How do I learn Python?" ← Uses GPT-6
+- "Hello!" -> local GPT-6
+- "What's the latest AI news?" -> Perplexity
+- "Tell me about today's weather" -> Perplexity
+- "How do I learn Python?" -> local GPT-6
 
 ## Fallback Behavior
 
-The hybrid orchestrator (`smart_orchestrator.py`) provides bidirectional fallback between services:
+The hybrid orchestrator (`smart_orchestrator.py`) provides bounded fallback between services:
 
-- **OpenAI failure → Perplexity**: When OpenAI returns no response (quota exhaustion, auth errors, timeouts), the orchestrator automatically retries with Perplexity for web-enabled fallback.
-- **Perplexity failure → OpenAI**: When Perplexity fails (network errors, timeouts), the orchestrator falls back to OpenAI for standard completion.
-- **Web-inability reroute**: If OpenAI responds but indicates it cannot browse the web (e.g., "I can't browse the internet"), the orchestrator detects this and reroutes to Perplexity.
+- **OpenAI failure -> Perplexity**: When the local answer is empty, the orchestrator may try Perplexity
+  once for a web-enabled fallback.
+- **Perplexity failure -> OpenAI**: When the web answer fails, the orchestrator falls back to OpenAI for a
+  standard completion and marks the answer degraded.
+- **Web-inability reroute**: If OpenAI says it cannot browse the web and Perplexity has not been tried in
+  this request, the orchestrator reroutes once. If Perplexity already failed, the local answer is returned
+  with a warning instead of a second Perplexity call.
 - **Both unavailable**: Returns the `both_services_unavailable` message
   (`"🔧 All AI services are temporarily unavailable. Please try again later."`).
 
-Both services share identical retry policy via `retry_with_backoff`:
-- 2 attempts max (1 initial + 1 retry) for transient errors (network/connection errors, connect timeouts, 429, 5xx)
-- `insufficient_quota`, authentication errors, and read timeouts bail immediately — no wasted retries
-- The single retry waits a random 0–1s (full jitter over the base delay); a 429 can instead honour `Retry-After` up to 30s
+Both services share the same retry policy via `retry_with_backoff`:
+
+- 2 attempts max (1 initial + 1 retry) for transient errors (network/connection errors, connect timeouts,
+  429, 5xx)
+- `insufficient_quota`, authentication errors, and read timeouts bail immediately
+- The single retry waits a random 0-1s (full jitter over the base delay); a 429 can instead honour
+  `Retry-After` up to 30s
 - A 90s `max_elapsed` deadline stops retries even when an attempt remains
 - SDK-level `max_retries=0` prevents nested retry multiplication
 
 ## Cost Considerations
 
-- **GPT-6**: Higher cost per token but excellent reasoning
-- **Perplexity**: Lower cost for web search, includes citations
-- The bot automatically chooses the most cost-effective option based on the query type
+**Routing has no cost cap.** The router decides whether a message needs live data on the strength of the
+message itself — there is no budget, no per-hour search allowance and no price model in the decision. Search
+volume therefore follows what people ask, not how much you are willing to spend. If you need a ceiling, it
+belongs at the Discord or provider level, not in the router, because a router that stops searching when a
+counter runs out answers live questions from stale weights and cannot tell you it did so.
 
-## Monitoring & Debugging 🔍
+## Cost Considerations
 
-Check your logs to see the AI orchestration system in action:
+- **GPT-6**: Higher cost per token but strong reasoning on stable knowledge and code.
+- **Perplexity**: Includes citations and live web data but is reserved for messages that carry bearing
+  evidence.
+- The bot chooses local answers for stable knowledge and creative work, and web answers for live facts.
 
-### AI Service Selection Logs
-```
-INFO: Smart orchestrator processing message from user 123456789: What's the weather...
-INFO: Running in hybrid mode - analyzing message for optimal routing
-INFO: Message analysis suggests web search would be beneficial - trying Perplexity first
-INFO: Perplexity response generated successfully (245 chars)
-```
+## Monitoring & Debugging
 
-### Consistency System Logs  
-```
-INFO: Smart orchestrator processing message from user 123456789: Tell me more
-INFO: Running in hybrid mode - analyzing message for optimal routing
-DEBUG: Follow-up detected, using recent AI service: perplexity
-INFO: Message analysis suggests web search would be beneficial - trying Perplexity first
-INFO: Perplexity response successful in hybrid mode (312 chars)
-```
+### Routing decision logs
 
-### Conversation Management
+Each hybrid decision logs one content-free line:
+
 ```
-DEBUG: Retrieved conversation for user 123456789: 8 messages
-DEBUG: Generated conversation summary for user 123456789: 6 messages
-INFO: Added assistant message for user 123456789: 245 chars, total history: 9 messages
+INFO Routing decision: {'route': 'web', 'band': 'confident', 'service': 'perplexity', 'score': 4.2,
+'threshold': 0.1, 'reasons': ['topic.volatile', 'time.deixis'], 'router_id': 'heuristic@1',
+'policy_version': '1', 'latency_ms': 0.14}
 ```
 
-### Performance Monitoring
+Message text and matched entity text are not logged.
+
+### Provider logs
+
 ```
-INFO: Cleaned up 3 inactive user locks for memory optimization
-DEBUG: Rate limit check successful for User123 (ID: 123456789)
-```
-
-## Thread-Safe Architecture 🔒
-
-DiscordianAI uses a robust thread-safe architecture that handles concurrent users safely:
-
-### Features
-- **Per-User Locking**: Each user has their own conversation lock to prevent race conditions
-- **Thread-Safe Conversation Management**: All conversation operations are atomic and thread-safe  
-- **Memory Management**: Automatic cleanup of inactive user locks to prevent memory leaks
-- **Metadata Tracking**: AI service information stored with each message for consistency
-
-### Benefits
-- **Concurrent Users**: Multiple users can chat simultaneously without data corruption
-- **Consistent State**: Conversation state remains consistent even under high load
-- **Memory Efficiency**: Automatic cleanup prevents memory bloat in long-running deployments
-- **Production Ready**: Designed for high-availability production environments
-
-## Customization & Advanced Usage 🛠️
-
-### Detection Pattern Customization
-Adjust the AI service selection patterns in `src/config.py`:
-
-```python
-# Time-sensitive patterns (raw patterns from config.py; one representative entry)
-TIME_SENSITIVITY_PATTERNS = [
-    r"\b(today|yesterday|this week|this month|this year|recently|latest|current)\b",
-]
-
-# Follow-up detection patterns (raw patterns from config.py)
-FOLLOW_UP_PATTERNS = [
-    r"^\s*(more|continue|go on|keep going)(\s+please)?\s*[.!?]*\s*$",
-    r"^\s*(tell|show|give)\s+me\s+more\s*[.!?]*\s*$",
-    r"\b(what|how)\s+about\b",
-    r"\b(and|what about|how about)\s+(the\s+)?(first|second|third|last|next|other)\s+one\b",
-    r"^\s*(and|so|but)?\s*(the\s+)?(first|second|third|last|next|other)\s+one\s*[.!?]*\s*$",
-    r"^\s*(it|that|this|those|these|they|them|he|she|him|her)\s*[.!?]*\s*$",
-    r"^\s*(yes|no|ok|okay)\s*[.!?]*\s*$",
-    r"^\s*(and then|then what|what now)\s*\??\s*$",
-]
+INFO Routing to Perplexity
+INFO Perplexity response generated successfully (245 chars)
 ```
 
-### Environment Variable Override
-All configuration values can be overridden via environment variables:
-
-```bash
-export LOOKBACK_MESSAGES_FOR_CONSISTENCY=8
-export MAX_HISTORY_PER_USER=100
+```
+INFO Routing to OpenAI
+WARNING Perplexity failed, falling back to OpenAI
 ```
 
-### Production Deployment Tips
-1. **Monitor Memory**: Watch the logs for cleanup messages to ensure memory management is working
-2. **Adjust History**: Increase `MAX_HISTORY_PER_USER` for better long-term context
-3. **Tune Consistency**: Adjust `LOOKBACK_MESSAGES_FOR_CONSISTENCY` based on your user conversation patterns
+```
+WARNING Perplexity already failed in this request; returning the local answer without a second attempt
+```
+
+## Thread-Safe Architecture
+
+DiscordianAI uses a thread-safe architecture for concurrent users:
+
+- **Per-conversation locking**: history operations are atomic for one DM, guild channel, or thread.
+- **Scoped state**: history and cache keys are keyed per conversation, never per user.
+- **Memory management**: inactive conversations and locks are evicted.
+- **Metadata tracking**: each assistant turn records the service and model that produced it, so follow-up
+  inheritance reads the actual route rather than guessing it.
+
+## Customization
+
+There is no runtime per-guild vocabulary. Routing changes are either configuration (thresholds and mode) or
+a release that updates the bundled lexicon in `src/routing/data/lexicon.en.json`.
+
+### Production deployment tips
+
+1. **Monitor memory**: watch cleanup logs to confirm inactive conversations are evicted.
+2. **Adjust history**: increase `MAX_HISTORY_PER_USER` for longer context.
+3. **Tune thresholds**: lower a channel-kind threshold only when missed live questions hurt more than
+   needless searches in that surface.

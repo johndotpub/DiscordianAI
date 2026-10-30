@@ -251,13 +251,12 @@ async def test_open_openai_breaker_falls_back_without_raising():
     assert response == get_error_messages()["ai_service_unavailable"]
 
     perplexity_client = _perplexity_client("Perplexity fallback")
-    with patch("src.smart_orchestrator.should_use_web_search", return_value=False):
-        response, _, _ = await _process_hybrid_mode(
-            _request("openai is broken"),
-            [],
-            AIClients(openai=openai_client, perplexity=perplexity_client),
-            AIConfig(),
-        )
+    response, _, _ = await _process_hybrid_mode(
+        _request("openai is broken"),
+        [],
+        AIClients(openai=openai_client, perplexity=perplexity_client),
+        AIConfig(),
+    )
 
     assert response == "Perplexity fallback"
     perplexity_client.responses.create.assert_awaited_once()

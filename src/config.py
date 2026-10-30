@@ -148,6 +148,12 @@ DEFAULT_MAX_HISTORY_PER_USER = 50
 DEFAULT_CONVERSATION_TTL_SECONDS = 1800  # 30 minutes
 DEFAULT_USER_LOCK_CLEANUP_INTERVAL = 3600  # 1 hour
 
+# Routing
+DEFAULT_ROUTER_MODE = "heuristic"
+DEFAULT_ROUTER_WEB_THRESHOLD_CHANNEL = 0.10
+DEFAULT_ROUTER_WEB_THRESHOLD_ANNOUNCE = 0.07
+DEFAULT_ROUTER_WEB_THRESHOLD_DM = 0.20
+
 # Token and Context Limits
 DEFAULT_INPUT_TOKENS = 120000
 DEFAULT_OUTPUT_TOKENS = 8000
@@ -158,119 +164,6 @@ DEFAULT_CONTEXT_WINDOW = 128000
 DEFAULT_MAX_URLS_PER_MESSAGE = 3
 DEFAULT_MAX_TOTAL_SCRAPED_CHARS = 60000
 DEFAULT_SCRAPE_DEADLINE_SECONDS = 20.0
-
-# ============================================================================
-# SMART ROUTING PATTERNS
-# ============================================================================
-
-# Time-sensitive query patterns for web search routing
-TIME_SENSITIVITY_PATTERNS = [
-    # Removed standalone 'now' to avoid false positives; prefer contextual matches
-    r"\b(today|yesterday|this week|this month|this year|recently|latest|current)\b",
-    r"\b(2024|2025|2026)\b",  # Recent/current years
-    r"\b(what.*happening|what.*happened)\b",
-    r"\b(current|recent|new|latest).*\b(news|update|information|data|report)\b",
-    r"\bright now\b",
-    r"\b(this morning|tonight|last night|earlier today|just now)\b",
-    r"\b(as of|at the moment|at this point)\b",
-    r"\b(breaking|live|ongoing|developing)\b",
-]
-
-# Factual query patterns for web search routing
-FACTUAL_PATTERNS = [
-    r"\b(what|who|when|where|how much|how many).*\b(is|are|was|were|will|would|cost|price)\b",
-    r"\b(weather|temperature|forecast|stock|price|market|news|events|schedule|score|game)\b",
-    r"\b(status|condition|situation|state).*of\b",
-    r"\bhow.*doing\b",
-    r"\b(better|worse|faster|slower|higher|lower|more|less).*than\b",
-]
-
-# Conversational/creative patterns for OpenAI routing
-CONVERSATIONAL_PATTERNS = [
-    r"\b(hello|hi|hey|good morning|good evening|how are you|what's up)\b",
-    r"\b(what do you think|your opinion|do you like|do you prefer)\b",
-    r"\b(write|create|make|generate|tell me).*\b(story|poem|joke|song|script)\b",
-    r"\b(how to|help me|explain|teach|show me).*\b(code|program|function|algorithm)\b",
-    r"\b(meaning|purpose|philosophy|theory|concept|idea)\b",
-    # Expanded conversational intents
-    r"\b(tell me more|elaborate|give me details|what do you mean)\b",
-    r"\b(give me a list|list the|list of|examples of)\b",
-    r"\b(what's your take|what are your thoughts|opinions on)\b",
-]
-
-# Entity detection patterns for web search routing
-# Tightened to avoid false positives from short/all-caps tokens (e.g., emoji names)
-# - Proper names: Require two capitalized words with at least 3 letters each
-# - Stock symbols: $TICKER (1-5 uppercase letters)
-ENTITY_PATTERNS = [
-    r"\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}\b",  # Proper names (e.g., John Doe)
-    r"\$[A-Z]{1,5}\b",  # Stock symbols (e.g., $AAPL)
-]
-
-# Follow-up detection patterns for conversation consistency.
-# Only genuine anaphora belong here: a bare request to continue, an explicit
-# "what about", a reference to one of the previous answers, or a pronoun-only
-# reply. Ordinary words such as "also" or "more" inside a fresh question must
-# not turn that question into a follow-up.
-FOLLOW_UP_PATTERNS = [
-    r"^\s*(more|continue|go on|keep going)(\s+please)?\s*[.!?]*\s*$",
-    r"^\s*(tell|show|give)\s+me\s+more\s*[.!?]*\s*$",
-    r"\b(what|how)\s+about\b",
-    r"\b(and|what about|how about)\s+(the\s+)?(first|second|third|last|next|other)\s+one\b",
-    r"^\s*(and|so|but)?\s*(the\s+)?(first|second|third|last|next|other)\s+one\s*[.!?]*\s*$",
-    r"^\s*(it|that|this|those|these|they|them|he|she|him|her)\s*[.!?]*\s*$",
-    r"^\s*(yes|no|ok|okay)\s*[.!?]*\s*$",
-    r"^\s*(and then|then what|what now)\s*\??\s*$",
-]
-
-# Explicit search intent phrases (users asking to "look up" or "search for" something)
-SEARCH_INTENT_PATTERNS = [
-    r"\b(search for|look up|find out|find me|find the)\b",
-    r"\b(can you find|please find|please look up|please search)\b",
-    r"\b(look up|search)\b\s+for\b",
-    # Explicit web/internet search phrases
-    r"\b(search the (web|internet|online))\b",
-    r"\b(search online|search the web|search the internet)\b",
-    r"\b(look up (online|on the web|on the internet))\b",
-    r"\b(find (it )?(on|in|via) the (web|internet|online))\b",
-    r"\b(check (online|the web|the internet))\b",
-    r"\b(browse (the )?(web|internet|online))\b",
-    r"\b(look (online|it up online))\b",
-]
-
-# OpenAI web-inability signal phrases (persona-agnostic). Used to detect
-# cases where an LLM answers with its inability to access the web, e.g.
-# "I can't browse the web", "I don't have access to the internet", or
-# mentions of training cutoff / knowledge cutoff. These are intentionally
-# broad and verb-phrase anchored so they work regardless of assistant name
-# or persona.
-OPENAI_WEB_INABILITY_PATTERNS = [
-    (
-        r"\b(can't|cannot|unable to|not able to)\s+"
-        r"(browse|search|access|look up|check)\s+"
-        r"(the\s+)?(web|internet|online|real.?time|current|live)\b"
-    ),
-    (
-        r"\b(don't|do not|doesn't|does not)\s+have\s+"
-        r"(access to|the ability to access)\s+"
-        r"(?:the\s+)?(real.?time|current|live|external|web|internet)\b"
-    ),
-    (
-        r"\b(no|without)\s+(access to|ability to access)\s+"
-        r"(the\s+)?(internet|web|real.?time|external|current)\b"
-    ),
-    r"\b(knowledge|training)\s+(cutoff|cut.?off)\b",
-    r"\bas of my (last|latest)\s+(update|training)\b",
-    r"\b(not equipped|not designed)\s+to\s+(browse|search|access)\b",
-    (
-        r"\b(can't|cannot|unable to)\s+(verify|confirm|check|provide)\s+"
-        r"(current|real.?time|up.?to.?date|live)\b"
-    ),
-    (
-        r"\b(don't|do not)\s+have\s+(real.?time|current|live|up.?to.?date)\s+"
-        r"(information|data|access)\b"
-    ),
-]
 
 # ============================================================================
 # VALIDATION THRESHOLDS
@@ -284,29 +177,6 @@ MAX_INPUT_TOKENS_THRESHOLD = 200000
 MAX_RATE_LIMIT_THRESHOLD = 100
 MAX_RECOMMENDED_REQ_PER_MIN = 60
 SECONDS_PER_MINUTE = 60
-
-# ============================================================================
-# COMPILED PATTERNS (for performance)
-# ============================================================================
-
-# Smart routing patterns (used by smart orchestrator)
-COMPILED_TIME_SENSITIVITY_PATTERNS = [
-    re.compile(pattern, re.IGNORECASE) for pattern in TIME_SENSITIVITY_PATTERNS
-]
-COMPILED_FACTUAL_PATTERNS = [re.compile(pattern, re.IGNORECASE) for pattern in FACTUAL_PATTERNS]
-COMPILED_CONVERSATIONAL_PATTERNS = [
-    re.compile(pattern, re.IGNORECASE) for pattern in CONVERSATIONAL_PATTERNS
-]
-COMPILED_ENTITY_PATTERNS = [re.compile(pattern) for pattern in ENTITY_PATTERNS]
-COMPILED_FOLLOW_UP_PATTERNS = [
-    re.compile(pattern, re.IGNORECASE) for pattern in FOLLOW_UP_PATTERNS
-]
-COMPILED_SEARCH_INTENT_PATTERNS = [
-    re.compile(pattern, re.IGNORECASE) for pattern in SEARCH_INTENT_PATTERNS
-]
-COMPILED_OPENAI_WEB_INABILITY_PATTERNS = [
-    re.compile(pattern, re.IGNORECASE) for pattern in OPENAI_WEB_INABILITY_PATTERNS
-]
 
 # ============================================================================
 # MESSAGE PROCESSING PATTERNS
@@ -325,26 +195,16 @@ DISCORD_MARKUP_PATTERN = re.compile(
 # Citation pattern
 CITATION_PATTERN = re.compile(r"\[(\d+)\]")
 
-# URL detection patterns for smart routing
+# URL and link detection used by delivery and Perplexity citation handling.
 _BARE_URL_PATTERN_STR = (
     r"(?:https?://)?[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
     r"(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}"
     r"(?:/[^\s]*)?"
 )
 
-URL_DETECTION_PATTERNS = [
-    r"https?://[^\s\[\]()]+[^\s\[\]().,;!?]",  # Standard URLs with common punctuation
-    r"\[([^\]]+)\]\(([^)]+)\)",  # Markdown links [text](url)
-    _BARE_URL_PATTERN_STR,  # Bare URLs (domain.tld/path)
-]
-
-# Compile URL detection patterns for performance
-COMPILED_URL_DETECTION_PATTERNS = [re.compile(pattern) for pattern in URL_DETECTION_PATTERNS]
-
-# Individual compiled patterns for backward compatibility and specific use cases
-URL_PATTERN = COMPILED_URL_DETECTION_PATTERNS[0]  # Standard URLs
-LINK_PATTERN = COMPILED_URL_DETECTION_PATTERNS[1]  # Markdown links
-BARE_URL_PATTERN = COMPILED_URL_DETECTION_PATTERNS[2]  # Bare URLs
+URL_PATTERN = re.compile(r"https?://[^\s\[\]()]+[^\s\[\]().,;!?]")
+LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+BARE_URL_PATTERN = re.compile(_BARE_URL_PATTERN_STR)
 
 # ============================================================================
 # ERROR MESSAGES
@@ -416,6 +276,10 @@ _CONFIG_DEFAULTS: dict[str, Any] = {
     "MAX_HISTORY_PER_USER": DEFAULT_MAX_HISTORY_PER_USER,
     "CONVERSATION_TTL_SECONDS": DEFAULT_CONVERSATION_TTL_SECONDS,
     "USER_LOCK_CLEANUP_INTERVAL": DEFAULT_USER_LOCK_CLEANUP_INTERVAL,
+    "ROUTER_MODE": DEFAULT_ROUTER_MODE,
+    "ROUTER_WEB_THRESHOLD_CHANNEL": DEFAULT_ROUTER_WEB_THRESHOLD_CHANNEL,
+    "ROUTER_WEB_THRESHOLD_ANNOUNCE": DEFAULT_ROUTER_WEB_THRESHOLD_ANNOUNCE,
+    "ROUTER_WEB_THRESHOLD_DM": DEFAULT_ROUTER_WEB_THRESHOLD_DM,
     "ENTITY_DETECTION_MIN_WORDS": 10,
     "MAX_URLS_PER_MESSAGE": DEFAULT_MAX_URLS_PER_MESSAGE,
     "MAX_TOTAL_SCRAPED_CHARS": DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
@@ -616,6 +480,10 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "MAX_HISTORY_PER_USER",
         "CONVERSATION_TTL_SECONDS",
         "USER_LOCK_CLEANUP_INTERVAL",
+        "ROUTER_MODE",
+        "ROUTER_WEB_THRESHOLD_CHANNEL",
+        "ROUTER_WEB_THRESHOLD_ANNOUNCE",
+        "ROUTER_WEB_THRESHOLD_DM",
         "ENTITY_DETECTION_MIN_WORDS",
         "MAX_URLS_PER_MESSAGE",
         "MAX_TOTAL_SCRAPED_CHARS",
@@ -658,7 +526,12 @@ def _apply_single_env_override(
         "MAX_TOTAL_SCRAPED_CHARS",
         "HEALTH_PORT",
     }
-    float_keys = {"SCRAPE_DEADLINE_SECONDS"}
+    float_keys = {
+        "SCRAPE_DEADLINE_SECONDS",
+        "ROUTER_WEB_THRESHOLD_CHANNEL",
+        "ROUTER_WEB_THRESHOLD_ANNOUNCE",
+        "ROUTER_WEB_THRESHOLD_DM",
+    }
     bool_keys = {"HEALTH_ENABLED", "DISCORDIANAI_LOG_COLOR"}
 
     if key in {"ALLOWED_CHANNELS", "ALLOWED_GUILDS"}:
@@ -802,6 +675,23 @@ def _parse_orchestrator_config(
         logger,
         section="Orchestrator",
     )
+    config_data["ROUTER_MODE"] = config.get(
+        "Orchestrator",
+        "ROUTER_MODE",
+        fallback=_CONFIG_DEFAULTS["ROUTER_MODE"],
+    )
+    for key in (
+        "ROUTER_WEB_THRESHOLD_CHANNEL",
+        "ROUTER_WEB_THRESHOLD_ANNOUNCE",
+        "ROUTER_WEB_THRESHOLD_DM",
+    ):
+        config_data[key] = _get_float_safe(
+            config,
+            key,
+            _CONFIG_DEFAULTS[key],
+            logger,
+            section="Orchestrator",
+        )
 
 
 def _parse_logging_config(

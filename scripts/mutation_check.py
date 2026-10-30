@@ -227,21 +227,14 @@ MUTATIONS = [
         ),
     ),
     Mutation(
-        name="routing-uses-raw-message",
+        name="routing-skips-markup-sanitization",
         path="src/smart_orchestrator.py",
-        test="tests/test_absolute_limits.py",
+        test="tests/test_smart_orchestrator_coverage.py",
         old=(
-            "    sanitized = _sanitize_for_routing(request.message)\n"
-            '    conversation_key = getattr(request, "conversation_key", None)\n'
-            "    needs_web = should_use_web_search(\n"
-            "        sanitized,"
+            '    cleaned = DISCORD_MARKUP_PATTERN.sub("", message)\n'
+            '    return " ".join(cleaned.split()).strip()'
         ),
-        new=(
-            "    sanitized = _sanitize_for_routing(request.message)\n"
-            '    conversation_key = getattr(request, "conversation_key", None)\n'
-            "    needs_web = should_use_web_search(\n"
-            "        request.message,"
-        ),
+        new="    return message",
     ),
 ]
 
