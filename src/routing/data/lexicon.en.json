@@ -1,0 +1,137 @@
+{
+  "version": "1",
+  "language": "en",
+  "classes": {
+    "state_adjective": {
+      "klass": "bearing",
+      "weight": 2.4,
+      "terms": [
+        "down",
+        "offline",
+        "unreachable",
+        "broken",
+        "busy",
+        "closed",
+        "degraded",
+        "sold out",
+        "in stock",
+        "out of stock",
+        "deprecated",
+        "available"
+      ]
+    },
+    "change_verb": {
+      "klass": "bearing",
+      "weight": 2.2,
+      "terms": [
+        "released",
+        "shipped",
+        "ship",
+        "changed",
+        "came out",
+        "comes out",
+        "went live",
+        "launched",
+        "rolled out",
+        "dropped",
+        "announced"
+      ]
+    },
+    "outcome_verb": {
+      "klass": "bearing",
+      "weight": 2.2,
+      "terms": [
+        "won",
+        "lost",
+        "beat",
+        "drew",
+        "elected",
+        "passed",
+        "failed",
+        "resigned"
+      ]
+    },
+    "volatile_topic": {
+      "klass": "bearing",
+      "weight": 1.8,
+      "terms": [
+        "weather",
+        "forecast",
+        "temperature",
+        "news",
+        "price",
+        "rate",
+        "score",
+        "schedule",
+        "outage",
+        "advisory",
+        "advisories",
+        "hours",
+        "flight",
+        "traffic",
+        "queue",
+        "restock",
+        "cve",
+        "changelog"
+      ]
+    },
+    "encyclopedic_relation": {
+      "klass": "framing",
+      "weight": 0.4,
+      "terms": [
+        "capital",
+        "population",
+        "author",
+        "founder",
+        "invented",
+        "discovered"
+      ]
+    },
+    "social_only": {
+      "klass": "framing",
+      "weight": -4.0,
+      "terms": [
+        "thanks",
+        "thank you",
+        "cheers",
+        "regards",
+        "best regards",
+        "goodnight",
+        "good night",
+        "congrats",
+        "well done",
+        "nice work",
+        "sorry"
+      ]
+    },
+    "greeting": {
+      "klass": "framing",
+      "weight": 0.0,
+      "terms": ["hi", "hello", "hey", "morning", "evening"]
+    },
+    "local_context": {
+      "klass": "framing",
+      "weight": -2.0,
+      "terms": [
+        "my server",
+        "my repo",
+        "my branch",
+        "my code",
+        "my machine",
+        "our ci",
+        "this loop",
+        "this function",
+        "this file"
+      ]
+    }
+  },
+  "overrides": {
+    "web_instruction": [
+      "search the (web|internet|online)",
+      "look (it )?up online",
+      "browse the web",
+      "check online"
+    ],
+    "local_instruction": ["from memory", "do not search", "don't search", "no web"]
+  }
+}

@@ -1,0 +1,74 @@
+{"text": "is github down", "route": "web", "slice": "live"}
+{"text": "is discord having an outage", "route": "web", "slice": "live"}
+{"text": "is npm down", "route": "web", "slice": "live"}
+{"text": "whts the wether in london", "route": "web", "slice": "live"}
+{"text": "is githbu down", "route": "web", "slice": "live"}
+{"text": "did python 3.13 ship", "route": "web", "slice": "live"}
+{"text": "what changed in kubernetes since 1.30", "route": "web", "slice": "live"}
+{"text": "any advisories for log4j", "route": "web", "slice": "live"}
+{"text": "what's the exchange rate for euros", "route": "web", "slice": "live"}
+{"text": "when does the iphone restock", "route": "web", "slice": "live"}
+{"text": "what's the going rate for a used road bike in san francisco", "route": "web", "slice": "live"}
+{"text": "how busy is the dmv right now", "route": "web", "slice": "live"}
+{"text": "is the bay bridge closed this morning", "route": "web", "slice": "live"}
+{"text": "what about tomorrow instead", "route": "web", "slice": "followup"}
+{"text": "search the web for the rust 2024 edition guide", "route": "web", "slice": "hard_rule"}
+{"text": "what's the latest news?", "route": "web", "slice": "live"}
+{"text": "latest score for the lakers", "route": "web", "slice": "live"}
+{"text": "is cloudflare offline right now", "route": "web", "slice": "live"}
+{"text": "how much is bitcoin today", "route": "web", "slice": "live"}
+{"text": "what time does the pharmacy close today", "route": "web", "slice": "live"}
+{"text": "any updates on the storm", "route": "web", "slice": "live"}
+{"text": "what is the schedule for the next train to boston", "route": "web", "slice": "live"}
+{"text": "is the stock market open today", "route": "web", "slice": "live"}
+{"text": "who won the election last night", "route": "web", "slice": "live"}
+{"text": "did postgres 18.0 ship", "route": "web", "slice": "live"}
+{"text": "what is the current price of a ps5", "route": "web", "slice": "live"}
+{"text": "is my flight delayed at sfo", "route": "web", "slice": "live"}
+{"text": "is the museum open today", "route": "web", "slice": "live"}
+{"text": "what's new in node 24", "route": "web", "slice": "live"}
+{"text": "how long is the wait at the dmv right now", "route": "web", "slice": "live"}
+{"text": "check online for the release date", "route": "web", "slice": "hard_rule"}
+{"text": "https://example.com/status", "route": "web", "slice": "hard_rule"}
+{"text": "is the service degraded", "route": "web", "slice": "live"}
+{"text": "did the cubs win last night", "route": "web", "slice": "live"}
+{"text": "what's the weather forecast for tomorrow", "route": "web", "slice": "live"}
+{"text": "price of eggs in california", "route": "web", "slice": "live"}
+{"text": "when was the iphone 17 released", "route": "web", "slice": "live"}
+{"text": "is the library closed today", "route": "web", "slice": "live"}
+{"text": "what is the capital of France", "route": "local", "slice": "general"}
+{"text": "what's the capital of France", "route": "local", "slice": "general"}
+{"text": "thank you", "route": "local", "slice": "social"}
+{"text": "best regards", "route": "local", "slice": "social"}
+{"text": "happy birthday", "route": "local", "slice": "social"}
+{"text": "thanks sarah that fixed it", "route": "local", "slice": "social"}
+{"text": "why does asyncio.gather swallow the first exception", "route": "local", "slice": "technical"}
+{"text": "main.py", "route": "local", "slice": "technical"}
+{"text": "package.json", "route": "local", "slice": "technical"}
+{"text": "refactor this function", "route": "local", "slice": "technical"}
+{"text": "find the bug in this loop", "route": "local", "slice": "technical"}
+{"text": "i spoke to john smith yesterday about the migration", "route": "local", "slice": "chat"}
+{"text": "work was brutal today", "route": "local", "slice": "chat"}
+{"text": "i couldn't sleep last night", "route": "local", "slice": "chat"}
+{"text": "tell me more", "route": "local", "slice": "followup"}
+{"text": "do not search, answer from memory", "route": "local", "slice": "hard_rule"}
+{"text": "hello", "route": "local", "slice": "social"}
+{"text": "good morning", "route": "local", "slice": "social"}
+{"text": "write a poem about the sea", "route": "local", "slice": "creative"}
+{"text": "explain how a hash table works", "route": "local", "slice": "technical"}
+{"text": "what do you think about tabs versus spaces", "route": "local", "slice": "opinion"}
+{"text": "can you summarize this function", "route": "local", "slice": "technical"}
+{"text": "my server keeps crashing", "route": "local", "slice": "technical"}
+{"text": "this file is too long", "route": "local", "slice": "technical"}
+{"text": "how do i reverse a list in python", "route": "local", "slice": "technical"}
+{"text": "what is a monad", "route": "local", "slice": "general"}
+{"text": "why is the sky blue", "route": "local", "slice": "general"}
+{"text": "define idempotency", "route": "local", "slice": "general"}
+{"text": "translate good morning to french", "route": "local", "slice": "general"}
+{"text": "summarize the plot of hamlet", "route": "local", "slice": "creative"}
+{"text": "recommend a good book", "route": "local", "slice": "opinion"}
+{"text": "write unit tests for this function", "route": "local", "slice": "technical"}
+{"text": "is it better to use a list or a tuple", "route": "local", "slice": "opinion"}
+{"text": "help me debug this traceback", "route": "local", "slice": "technical"}
+{"text": "thank you for the detailed explanation", "route": "local", "slice": "social"}
+{"text": "goodnight", "route": "local", "slice": "social"}
