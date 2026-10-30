@@ -1,0 +1,181 @@
+{
+  "cases": {
+    "e-empty-values": {
+      "input": [
+        {
+          "content": "",
+          "role": "user"
+        }
+      ],
+      "instructions": "",
+      "max_output_tokens": 0,
+      "model": "",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
+    },
+    "e-history-one-turn": {
+      "input": [
+        {
+          "content": "Name two novels by Frank Herbert.",
+          "role": "user"
+        },
+        {
+          "content": "And what about the second one?",
+          "role": "user"
+        }
+      ],
+      "instructions": "You are a helpful assistant with access to current web information.",
+      "max_output_tokens": 8000,
+      "model": "sonar-pro",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
+    },
+    "e-history-three-turns": {
+      "input": [
+        {
+          "content": "Name two novels by Frank Herbert.",
+          "role": "user"
+        },
+        {
+          "content": "Dune and Dune Messiah.",
+          "role": "assistant"
+        },
+        {
+          "content": "When was the first one published?",
+          "role": "user"
+        },
+        {
+          "content": "Who wrote it?",
+          "role": "user"
+        }
+      ],
+      "instructions": "You are a helpful assistant.",
+      "max_output_tokens": 2048,
+      "model": "sonar",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
+    },
+    "e-json-ish-content": {
+      "input": [
+        {
+          "content": "{\"question\": \"golden behaviour?\"}",
+          "role": "user"
+        }
+      ],
+      "instructions": "Return JSON with keys \"answer\" and \"sources\".",
+      "max_output_tokens": 777,
+      "model": "sonar",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
+    },
+    "e-large-token-budget": {
+      "input": [
+        {
+          "content": "User",
+          "role": "user"
+        }
+      ],
+      "instructions": "System",
+      "max_output_tokens": 120000,
+      "model": "sonar-pro",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
+    },
+    "e-long-system": {
+      "input": [
+        {
+          "content": "Short question",
+          "role": "user"
+        }
+      ],
+      "instructions": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur a",
+      "max_output_tokens": 4096,
+      "model": "sonar-pro",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
+    },
+    "e-multiline-system": {
+      "input": [
+        {
+          "content": "Summarise the above.",
+          "role": "user"
+        }
+      ],
+      "instructions": "Line one.\nLine two.\nLine three.",
+      "max_output_tokens": 512,
+      "model": "sonar-pro",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
+    },
+    "e-multiline-user": {
+      "input": [
+        {
+          "content": "First line\nSecond line\n\nFourth line",
+          "role": "user"
+        }
+      ],
+      "instructions": "System prompt",
+      "max_output_tokens": 2048,
+      "model": "sonar-pro",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
+    },
+    "e-standard-values": {
+      "input": [
+        {
+          "content": "What is today's news?",
+          "role": "user"
+        }
+      ],
+      "instructions": "You are a helpful assistant.",
+      "max_output_tokens": 8000,
+      "model": "sonar-pro",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
+    },
+    "e-unicode-values": {
+      "input": [
+        {
+          "content": "今天の天気は？",
+          "role": "user"
+        }
+      ],
+      "instructions": "You are helpful. 🙂",
+      "max_output_tokens": 1234,
+      "model": "sonar",
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ]
+    }
+  },
+  "surface": "build_api_params"
+}

@@ -5,6 +5,7 @@ API clients to reduce connection overhead and improve performance.
 """
 
 import contextlib
+from dataclasses import dataclass, replace
 import logging
 import threading
 import time
@@ -16,6 +17,60 @@ from openai import AsyncOpenAI
 
 PERPLEXITY_API_HOST = "api.perplexity.ai"
 PERPLEXITY_INTEGRATION_HEADERS = {"X-Pplx-Integration": "discordian-ai"}
+
+
+@dataclass(frozen=True)
+class PoolProviderSpec:
+    """Describe one provider's pool settings and client extras."""
+
+    service: str
+    label: str
+    max_connections_attr: str
+    max_keepalive_attr: str
+    read_timeout: float
+    integration_host: str | None = None
+    integration_headers: dict[str, str] | None = None
+
+
+def versioned_perplexity_client(perplexity_client: Any) -> Any:
+    """Return a client pointed at Perplexity's versioned Agent API base URL.
+
+    The SDK appends resource paths such as ``/responses`` and ``/models`` to
+    the configured base URL. Perplexity serves those at ``/v1/...``; the
+    unversioned paths return 404. ``with_options`` keeps the existing
+    credentials, headers, and HTTP connection pool. Clients without an HTTP
+    base URL (test doubles) are returned unchanged.
+    """
+    base_url = getattr(perplexity_client, "base_url", None)
+    if base_url is None or not hasattr(perplexity_client, "with_options"):
+        return perplexity_client
+
+    root = str(base_url).rstrip("/")
+    if not root.startswith(("https://", "http://")):
+        return perplexity_client
+    if root.endswith("/v1"):
+        return perplexity_client
+    return perplexity_client.with_options(base_url=f"{root}/v1")
+
+
+CONNECTION_POOL_SPECS: dict[str, PoolProviderSpec] = {
+    "openai": PoolProviderSpec(
+        service="openai",
+        label="OpenAI",
+        max_connections_attr="openai_max_connections",
+        max_keepalive_attr="openai_max_keepalive",
+        read_timeout=45.0,
+    ),
+    "perplexity": PoolProviderSpec(
+        service="perplexity",
+        label="Perplexity",
+        max_connections_attr="perplexity_max_connections",
+        max_keepalive_attr="perplexity_max_keepalive",
+        read_timeout=60.0,
+        integration_host=PERPLEXITY_API_HOST,
+        integration_headers=PERPLEXITY_INTEGRATION_HEADERS,
+    ),
+}
 
 
 class ConnectionPoolManager:
@@ -50,6 +105,7 @@ class ConnectionPoolManager:
         self._clients: dict[str, httpx.AsyncClient] = {}
         self._creation_times: dict[str, float] = {}
         self._lock = threading.Lock()
+        self._closed = False
 
     def _register_client(self, api_type: str, client: httpx.AsyncClient) -> None:
         """Track a newly created HTTP client for lifecycle management."""
@@ -66,27 +122,21 @@ class ConnectionPoolManager:
         Returns:
             httpx.AsyncClient: Configured HTTP client with connection pooling
         """
-        # Configure connection limits based on API type
-        if api_type == "openai":
-            max_connections = self.openai_max_connections
-            max_keepalive = self.openai_max_keepalive
-        else:  # perplexity
-            max_connections = self.perplexity_max_connections
-            max_keepalive = self.perplexity_max_keepalive
+        spec = CONNECTION_POOL_SPECS.get(api_type)
+        if spec is None:
+            spec = replace(CONNECTION_POOL_SPECS["perplexity"], read_timeout=45.0)
+        max_connections = getattr(self, spec.max_connections_attr)
+        max_keepalive = getattr(self, spec.max_keepalive_attr)
 
         limits = httpx.Limits(
             max_connections=max_connections,
             max_keepalive_connections=max_keepalive,
         )
 
-        # Perplexity search + citation generation can take longer than standard
-        # chat completions. Use a service-specific read timeout.
-        read_timeout = 60.0 if api_type == "perplexity" else 45.0
-
         # Configure timeouts
         timeout = httpx.Timeout(
             connect=10.0,  # Connection timeout
-            read=read_timeout,
+            read=spec.read_timeout,
             write=10.0,  # Write timeout
             pool=5.0,  # Pool timeout
         )
@@ -132,6 +182,42 @@ class ConnectionPoolManager:
         self._register_client(api_type, client)
         return client
 
+    def _create_api_client(
+        self,
+        service: str,
+        api_key: str,
+        base_url: str,
+        http_client: httpx.AsyncClient | None = None,
+    ) -> AsyncOpenAI:
+        spec = CONNECTION_POOL_SPECS[service]
+        if http_client is None:
+            http_client = self.create_http_client(service)
+
+        client_kwargs: dict[str, Any] = {}
+        if (
+            spec.integration_host is not None
+            and urlparse(base_url).hostname == spec.integration_host
+        ):
+            client_kwargs["default_headers"] = spec.integration_headers
+
+        client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            http_client=http_client,
+            max_retries=0,
+            **client_kwargs,
+        )
+
+        self._logger.debug(
+            "Created %s client with connection pooling for %s "
+            "(max_connections=%d, max_keepalive=%d, max_retries=0)",
+            spec.label,
+            base_url,
+            getattr(self, spec.max_connections_attr),
+            getattr(self, spec.max_keepalive_attr),
+        )
+        return client
+
     def create_openai_client(
         self,
         api_key: str,
@@ -148,26 +234,7 @@ class ConnectionPoolManager:
         Returns:
             AsyncOpenAI: Configured OpenAI client
         """
-        if http_client is None:
-            http_client = self.create_http_client("openai")
-
-        client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            http_client=http_client,
-            max_retries=0,
-        )
-
-        self._logger.debug(
-            (
-                "Created OpenAI client with connection pooling for %s "
-                "(max_connections=%d, max_keepalive=%d, max_retries=0)"
-            ),
-            base_url,
-            self.openai_max_connections,
-            self.openai_max_keepalive,
-        )
-        return client
+        return self._create_api_client("openai", api_key, base_url, http_client)
 
     def create_perplexity_client(
         self,
@@ -185,44 +252,7 @@ class ConnectionPoolManager:
         Returns:
             AsyncOpenAI: Configured Perplexity client
         """
-        if http_client is None:
-            http_client = self.create_http_client("perplexity")
-
-        client_kwargs: dict[str, Any] = {}
-        # Identify this bot to Perplexity only when targeting the public API host.
-        if urlparse(base_url).hostname == PERPLEXITY_API_HOST:
-            client_kwargs["default_headers"] = PERPLEXITY_INTEGRATION_HEADERS
-
-        client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            http_client=http_client,
-            max_retries=0,
-            **client_kwargs,
-        )
-
-        self._logger.debug(
-            "Created Perplexity client with connection pooling for %s "
-            "(max_connections=%d, "
-            "max_keepalive=%d, "
-            "max_retries=0)",
-            base_url,
-            self.perplexity_max_connections,
-            self.perplexity_max_keepalive,
-        )
-        return client
-
-    async def close_http_client(self, client: httpx.AsyncClient) -> None:
-        """Close an HTTP client to free resources.
-
-        Args:
-            client: HTTP client to close
-        """
-        try:
-            await client.aclose()
-            self._logger.debug("HTTP client closed successfully")
-        except (httpx.HTTPError, OSError) as e:
-            self._logger.warning("Error closing HTTP client: %s", e)
+        return self._create_api_client("perplexity", api_key, base_url, http_client)
 
     def check_pool_health(self, client: httpx.AsyncClient | None) -> dict[str, Any]:
         """Check health of connection pool.
@@ -241,10 +271,16 @@ class ConnectionPoolManager:
             if hasattr(client, "is_closed") and client.is_closed:
                 return {"status": "unhealthy", "reason": "Client is closed"}
 
-            # Get connection pool stats if available
+            # httpx stores the negotiated protocol configuration on the
+            # transport's connection pool, not on the client itself.
+            transport = getattr(client, "_transport", None)
+            pool = getattr(transport, "_pool", None)
+            http2_enabled = getattr(pool, "_http2", None)
+            if http2_enabled is None:
+                http2_enabled = getattr(client, "_http2", False)
             pool_info = {
                 "status": "healthy",
-                "http2_enabled": getattr(client, "_http2", False),
+                "http2_enabled": bool(http2_enabled),
             }
 
             # Try to get connection pool statistics (accessing internal attrs is intentional)
@@ -279,18 +315,14 @@ class ConnectionPoolManager:
 
         with self._lock:
             for api_type, client in self._clients.items():
+                spec = CONNECTION_POOL_SPECS.get(
+                    api_type,
+                    CONNECTION_POOL_SPECS["perplexity"],
+                )
                 entry: dict[str, Any] = {
                     "status": "unknown",
-                    "max_connections": (
-                        self.openai_max_connections
-                        if api_type == "openai"
-                        else self.perplexity_max_connections
-                    ),
-                    "max_keepalive": (
-                        self.openai_max_keepalive
-                        if api_type == "openai"
-                        else self.perplexity_max_keepalive
-                    ),
+                    "max_connections": getattr(self, spec.max_connections_attr),
+                    "max_keepalive": getattr(self, spec.max_keepalive_attr),
                 }
 
                 creation = self._creation_times.get(api_type)
@@ -312,12 +344,21 @@ class ConnectionPoolManager:
         return metrics
 
     async def close_all(self) -> None:
-        """Close all HTTP clients managed by this pool manager."""
-        self._logger.info("Connection pool manager shutdown requested")
+        """Close all HTTP clients managed by this pool manager.
+
+        Safe to call more than once: only the first call closes clients and
+        logs the shutdown line.
+        """
         with self._lock:
+            if self._closed:
+                return
+            self._closed = True
             clients_to_close = list(self._clients.items())
 
+        self._logger.info("Connection pool manager shutdown requested")
         for api_type, client in clients_to_close:
+            if client is None:
+                continue
             try:
                 await client.aclose()
                 self._logger.info("Closed %s HTTP client", api_type)

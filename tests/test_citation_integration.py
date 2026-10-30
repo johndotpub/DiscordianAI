@@ -13,7 +13,7 @@ from src.config import EMBED_LIMIT
 from src.conversation_manager import ThreadSafeConversationManager
 from src.discord_embeds import CitationEmbedFormatter
 from src.perplexity_processing import process_perplexity_message
-from tests.test_utils import FakePerplexityClient
+from tests.helpers import FakePerplexityClient
 
 
 class TestCitationIntegration:
@@ -48,7 +48,7 @@ class TestCitationIntegration:
             logger=logger,
         )
         config = PerplexityConfig(
-            model="sonar-pro",
+            model="perplexity/sonar",
             system_message="You are a helpful assistant with web search.",
             output_tokens=8000,
         )
@@ -212,16 +212,3 @@ class TestCitationIntegration:
 
         # Verify metadata shows truncation
         assert metadata["was_truncated"] is True
-
-    def test_no_citations_no_embed_decision(self):
-        """Test that responses without citations don't trigger embed creation."""
-        formatter = CitationEmbedFormatter()
-
-        citations = {}
-
-        should_use_embed = formatter.should_use_embed_for_response(citations)
-        assert should_use_embed is False
-
-        # Test with None citations
-        should_use_embed = formatter.should_use_embed_for_response(None)
-        assert should_use_embed is False

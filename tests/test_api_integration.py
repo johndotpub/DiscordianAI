@@ -15,6 +15,7 @@ import pytest
 
 from src.conversation_manager import ThreadSafeConversationManager
 from src.error_handling import ErrorType, classify_error, safe_discord_send
+from src.models import OpenAIConfig, PerplexityConfig
 from src.openai_processing import process_openai_message
 from src.perplexity_processing import process_perplexity_message
 
@@ -23,166 +24,87 @@ class TestOpenAIAPIIntegration:
     """Integration tests for OpenAI API interactions."""
 
     @pytest.mark.asyncio
-    async def test_openai_successful_response_integration(self):
+    async def test_openai_successful_response_integration(self, make_request, openai_response):
         """Test complete OpenAI integration with successful response."""
-        # Mock user and conversation manager
-        user = Mock()
-        user.id = 12345
-
         conversation_manager = Mock(spec=ThreadSafeConversationManager)
-
-        # Mock OpenAI response structure
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = "This is a test response from OpenAI"
-        mock_response.choices[0].finish_reason = "stop"
-        mock_response.id = "chatcmpl-test123"
-        mock_response.usage = Mock()
-        mock_response.usage.prompt_tokens = 25
-        mock_response.usage.completion_tokens = 15
-        mock_response.usage.total_tokens = 40
-
-        # Mock OpenAI client
         openai_client = Mock()
-        mock_create = AsyncMock()
-        mock_create.return_value = mock_response
-        openai_client.chat.completions.create = mock_create
-
-        logger = logging.getLogger("test")
-
-        # Test the integration
-        from src.models import AIRequest, OpenAIConfig
-
-        request = AIRequest(
-            message="Test message",
-            user=user,
-            conversation_manager=conversation_manager,
-            logger=logger,
-        )
-        config = OpenAIConfig(
-            model="gpt-5-mini",
-            system_message="You are a test assistant",
-            output_tokens=1000,
+        openai_client.chat.completions.create = AsyncMock(
+            return_value=openai_response("This is a test response from OpenAI")
         )
 
         result = await process_openai_message(
-            request=request,
+            request=make_request("Test message", conversation_manager=conversation_manager),
             conversation_summary=[],
             openai_client=openai_client,
-            config=config,
+            config=OpenAIConfig(
+                model="gpt-5-mini",
+                system_message="You are a test assistant",
+                output_tokens=1000,
+            ),
         )
 
-        # Verify results
         assert result == "This is a test response from OpenAI"
 
-        # Verify OpenAI API was called with correct parameters
         openai_client.chat.completions.create.assert_called_once()
         call_args = openai_client.chat.completions.create.call_args[1]
         assert call_args["model"] == "gpt-5-mini"
         assert call_args["max_completion_tokens"] == 1000
         assert len(call_args["messages"]) == 2  # system + user message
 
-        # Processors no longer persist history directly
         conversation_manager.add_message.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_openai_api_error_handling(self):
+    async def test_openai_api_error_handling(self, make_request):
         """Test OpenAI API error handling and classification."""
-        # Clear caches to ensure test isolation
-        from src.caching import response_cache
-
-        response_cache.cache.clear()
-
-        user = Mock()
-        user.id = 12345
-
         conversation_manager = Mock(spec=ThreadSafeConversationManager)
-
-        # Mock OpenAI client that raises an exception
         openai_client = Mock()
-        openai_client.chat.completions.create.side_effect = Exception("API rate limit exceeded")
-
-        logger = logging.getLogger("test")
-
-        # Test error handling
-        from src.models import AIRequest, OpenAIConfig
-
-        request = AIRequest(
-            message="Test message",
-            user=user,
-            conversation_manager=conversation_manager,
-            logger=logger,
+        openai_client.chat.completions.create = AsyncMock(
+            side_effect=Exception("API rate limit exceeded")
         )
-        config = OpenAIConfig(
-            model="gpt-5-mini",
-            system_message="You are a test assistant",
-            output_tokens=1000,
-        )
+        sleep = AsyncMock()
 
-        result = await process_openai_message(
-            request=request,
-            conversation_summary=[],
-            openai_client=openai_client,
-            config=config,
-        )
+        with patch("src.error_handling.asyncio.sleep", sleep):
+            result = await process_openai_message(
+                request=make_request("Test message", conversation_manager=conversation_manager),
+                conversation_summary=[],
+                openai_client=openai_client,
+                config=OpenAIConfig(
+                    model="gpt-5-mini",
+                    system_message="You are a test assistant",
+                    output_tokens=1000,
+                ),
+            )
 
-        # Should return None on failure
         assert result is None
+        assert [call.args[0] for call in sleep.await_args_list] == [30.0]
 
-        # Verify conversation history was not updated on failure
         conversation_manager.add_message.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_gpt5_parameters_integration(self):
+    async def test_gpt5_parameters_integration(self, make_request, openai_response):
         """GPT-5-specific parameters are not supported; ensure normal behavior."""
-        user = Mock()
-        user.id = 12345
-
         conversation_manager = Mock(spec=ThreadSafeConversationManager)
-
-        # Mock successful GPT-5 response
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = "GPT-5 response with reasoning"
-        mock_response.choices[0].finish_reason = "stop"
-        mock_response.id = "chatcmpl-gpt5-test"
-        mock_response.usage = Mock()
-        mock_response.usage.prompt_tokens = 30
-        mock_response.usage.completion_tokens = 20
-        mock_response.usage.total_tokens = 50
-
         openai_client = Mock()
-        mock_create = AsyncMock()
-        mock_create.return_value = mock_response
-        openai_client.chat.completions.create = mock_create
-
-        logger = logging.getLogger("test")
-
-        # Test GPT-5 model without special parameters
-        from src.models import AIRequest, OpenAIConfig
-
-        request = AIRequest(
-            message="Complex reasoning task",
-            user=user,
-            conversation_manager=conversation_manager,
-            logger=logger,
-        )
-        config = OpenAIConfig(
-            model="gpt-5",
-            system_message="You are a reasoning assistant",
-            output_tokens=2000,
+        openai_client.chat.completions.create = AsyncMock(
+            return_value=openai_response("GPT-5 response with reasoning")
         )
 
         result = await process_openai_message(
-            request=request,
+            request=make_request(
+                "Complex reasoning task",
+                conversation_manager=conversation_manager,
+            ),
             conversation_summary=[],
             openai_client=openai_client,
-            config=config,
+            config=OpenAIConfig(
+                model="gpt-5",
+                system_message="You are a reasoning assistant",
+                output_tokens=2000,
+            ),
         )
 
         assert result == "GPT-5 response with reasoning"
 
-        # Verify call did not include unsupported parameters
         call_args = openai_client.chat.completions.create.call_args[1]
         assert call_args["model"] == "gpt-5"
         assert "reasoning_effort" not in call_args
@@ -193,64 +115,41 @@ class TestPerplexityAPIIntegration:
     """Integration tests for Perplexity API interactions."""
 
     @pytest.mark.asyncio
-    async def test_perplexity_successful_response_with_citations(self):
+    async def test_perplexity_successful_response_with_citations(
+        self, make_request, perplexity_response
+    ):
         """Test complete Perplexity integration with citations."""
-        user = Mock()
-        user.id = 67890
-
         conversation_manager = Mock(spec=ThreadSafeConversationManager)
-
-        # Mock Perplexity response with citations in metadata (new format)
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = (
-            "Based on recent research [1], AI development continues to advance. "
-            "The latest findings [2] show promising results."
+        response = perplexity_response(
+            content=(
+                "Based on recent research [1], AI development continues to advance. "
+                "The latest findings [2] show promising results."
+            ),
+            citations=[
+                "https://example.com/research1",
+                "https://example.com/research2",
+            ],
         )
-        # Add citations metadata (new Perplexity API format)
-        mock_response.citations = [
-            "https://example.com/research1",
-            "https://example.com/research2",
-        ]
-        mock_response.id = "ppl-test-123"
-        mock_response.usage = Mock()
-        mock_response.usage.prompt_tokens = 35
-        mock_response.usage.completion_tokens = 45
-        mock_response.usage.total_tokens = 80
-
         perplexity_client = Mock()
-        mock_create = AsyncMock()
-        mock_create.return_value = mock_response
-        perplexity_client.chat.completions.create = mock_create
+        perplexity_client.responses.create = AsyncMock(return_value=response)
 
-        logger = logging.getLogger("test")
-
-        # Test the integration
-        from src.models import AIRequest, PerplexityConfig
-
-        request = AIRequest(
-            message="What are the latest AI developments?",
-            user=user,
+        request = make_request(
+            "What are the latest AI developments?",
             conversation_manager=conversation_manager,
-            logger=logger,
-        )
-        config = PerplexityConfig(
-            model="sonar-pro",
-            system_message="You are a web search assistant",
-            output_tokens=1500,
         )
         result = await process_perplexity_message(
             request,
             perplexity_client,
-            config,
+            PerplexityConfig(
+                model="perplexity/sonar",
+                system_message="You are a web search assistant",
+                output_tokens=1500,
+            ),
         )
 
-        # Verify results
         assert result is not None
         response_text, _suppress_embeds, embed_data = result
 
-        # When embed_data exists, response_text should contain the actual content
-        # for conversation history, while the embed displays the formatted content
         expected_text = (
             "Based on recent research [1], "
             "AI development continues to advance. "
@@ -262,57 +161,40 @@ class TestPerplexityAPIIntegration:
         assert "https://example.com/research1" not in response_text
         assert "https://example.com/research2" not in response_text
 
-        # Should have embed data since citations are present
         assert embed_data is not None
         assert "embed" in embed_data
         assert "citations" in embed_data
         assert embed_data["citations"]["1"] == "https://example.com/research1"
         assert embed_data["citations"]["2"] == "https://example.com/research2"
 
-        # The content should be in the embed, not in response_text
         embed = embed_data["embed"]
         assert "AI development continues to advance" in embed.description
 
-        # Verify API call parameters
-        call_args = perplexity_client.chat.completions.create.call_args[1]
-        assert call_args["model"] == "sonar-pro"
-        assert call_args["max_tokens"] == 1500
-        # Citations are now included by default, no special parameters needed
+        call_args = perplexity_client.responses.create.call_args[1]
+        assert call_args["model"] == "perplexity/sonar"
+        assert call_args["max_output_tokens"] == 1500
+        assert call_args["instructions"] == "You are a web search assistant"
+        assert call_args["tools"] == [{"type": "web_search"}]
+        assert "messages" not in call_args
+        assert "max_tokens" not in call_args
 
     @pytest.mark.asyncio
-    async def test_perplexity_error_handling(self):
+    async def test_perplexity_error_handling(self, make_request):
         """Test Perplexity API error handling."""
-        user = Mock()
-        user.id = 67890
-
         conversation_manager = Mock(spec=ThreadSafeConversationManager)
-
-        # Mock client that raises timeout error
         perplexity_client = Mock()
-        perplexity_client.chat.completions.create.side_effect = TimeoutError("Request timed out")
-
-        logger = logging.getLogger("test")
-
-        # Test error handling
-        from src.models import AIRequest, PerplexityConfig
-
-        request = AIRequest(
-            message="Test query",
-            user=user,
-            conversation_manager=conversation_manager,
-            logger=logger,
+        perplexity_client.responses.create = AsyncMock(
+            side_effect=TimeoutError("Request timed out")
         )
-        config = PerplexityConfig()
+
         result = await process_perplexity_message(
-            request,
+            make_request("Test query", conversation_manager=conversation_manager),
             perplexity_client,
-            config,
+            PerplexityConfig(),
         )
 
-        # Should return None on timeout
         assert result is None
 
-        # Conversation should not be updated on failure
         conversation_manager.add_message.assert_not_called()
 
 
@@ -322,11 +204,9 @@ class TestDiscordAPIIntegration:
     @pytest.mark.asyncio
     async def test_safe_discord_send_success(self):
         """Test successful Discord message sending."""
-        # Mock Discord channel
         channel = AsyncMock()
         logger = logging.getLogger("test")
 
-        # Test successful send
         result = await safe_discord_send(
             channel=channel,
             content="Test message",
@@ -340,11 +220,10 @@ class TestDiscordAPIIntegration:
     @pytest.mark.asyncio
     async def test_safe_discord_send_with_retries(self):
         """Test Discord send with retry logic."""
-        # Mock channel that fails first attempt then succeeds
         channel = AsyncMock()
         channel.send.side_effect = [
-            Exception("Rate limited"),  # First attempt fails
-            None,  # Second attempt succeeds
+            Exception("Rate limited"),
+            None,
         ]
 
         logger = logging.getLogger("test")
@@ -364,7 +243,6 @@ class TestDiscordAPIIntegration:
     @pytest.mark.asyncio
     async def test_safe_discord_send_max_retries_exceeded(self):
         """Test Discord send when max retries are exceeded."""
-        # Mock channel that always fails
         channel = AsyncMock()
         channel.send.side_effect = Exception("Persistent error")
 
@@ -426,81 +304,43 @@ class TestAPIErrorClassification:
 class TestIntegrationScenarios:
     """Test realistic end-to-end integration scenarios."""
 
-    async def test_hybrid_mode_integration_scenario(self):
+    async def test_hybrid_mode_integration_scenario(self, make_request, openai_response):
         """Test a realistic hybrid mode scenario with fallback."""
-        # This test would simulate the smart orchestrator choosing between APIs
-        # and handling fallbacks appropriately
-
-        # Mock components
-        user = Mock()
-        user.id = 99999
-
         conversation_manager = Mock(spec=ThreadSafeConversationManager)
         conversation_manager.get_conversation_summary_formatted.return_value = []
 
-        logger = logging.getLogger("test")
-
-        # Mock Perplexity failure and OpenAI success
         perplexity_client = Mock()
-        perplexity_create = AsyncMock()
-        perplexity_create.side_effect = Exception("Perplexity unavailable")
-        perplexity_client.chat.completions.create = perplexity_create
+        perplexity_client.responses.create = AsyncMock(
+            side_effect=Exception("Perplexity unavailable")
+        )
 
         openai_client = Mock()
-        openai_response = Mock()
-        openai_response.choices = [Mock()]
-        openai_response.choices[0].message.content = "Fallback response from OpenAI"
-        openai_response.choices[0].finish_reason = "stop"
-        openai_response.usage = Mock()
-        openai_response.usage.prompt_tokens = 20
-        openai_response.usage.completion_tokens = 30
-        openai_response.usage.total_tokens = 50
-        openai_create = AsyncMock()
-        openai_create.return_value = openai_response
-        openai_client.chat.completions.create = openai_create
-
-        # Test that the system can handle API failures gracefully
-        # This would be tested through the smart orchestrator integration
-        # but for this test we verify the individual components work
-
-        # Verify Perplexity fails gracefully
-        from src.models import AIRequest, OpenAIConfig, PerplexityConfig
-
-        request_p = AIRequest(
-            message="Test web search",
-            user=user,
-            conversation_manager=conversation_manager,
-            logger=logger,
+        openai_client.chat.completions.create = AsyncMock(
+            return_value=openai_response("Fallback response from OpenAI")
         )
-        config_p = PerplexityConfig()
+
         perplexity_result = await process_perplexity_message(
-            request_p,
+            make_request("Test web search", conversation_manager=conversation_manager),
             perplexity_client,
-            config_p,
+            PerplexityConfig(),
         )
         assert perplexity_result is None
 
-        # Verify OpenAI works as fallback
-        request_o = AIRequest(
-            message="Test fallback",
-            user=user,
-            conversation_manager=conversation_manager,
-            logger=logger,
-        )
-        config_o = OpenAIConfig(
-            model="gpt-5-mini",
-            system_message="Fallback assistant",
-            output_tokens=1000,
-        )
         openai_result = await process_openai_message(
-            request=request_o,
+            request=make_request(
+                "Test fallback",
+                conversation_manager=conversation_manager,
+            ),
             conversation_summary=[],
             openai_client=openai_client,
-            config=config_o,
+            config=OpenAIConfig(
+                model="gpt-5-mini",
+                system_message="Fallback assistant",
+                output_tokens=1000,
+            ),
         )
         assert openai_result == "Fallback response from OpenAI"
 
 
 if __name__ == "__main__":
-    # Run tests with verbose output
     pytest.main([__file__, "-v"])

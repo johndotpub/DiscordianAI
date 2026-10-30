@@ -214,26 +214,6 @@ class TestConcurrentUserLoad:
             assert len(conversation) == writes_per_user
 
     @pytest.mark.asyncio
-    async def test_cleanup_under_load(self):
-        """Test cleanup mechanism works under load."""
-        manager = ThreadSafeConversationManager(max_history_per_user=50, cleanup_interval=1)
-
-        # Add many users
-        num_users = 5000
-        for user_id in range(num_users):
-            manager.add_message(user_id, "user", f"Message from {user_id}")
-
-        # Verify all users exist
-        assert len(manager._conversations) == num_users
-
-        # Simulate cleanup - verify cleanup function executes without error
-        manager.cleanup_inactive_user_locks(force=True)
-
-        # Cleanup should work (exact behavior depends on implementation)
-        # At minimum, cleanup function should execute without error
-        assert hasattr(manager, "cleanup_inactive_user_locks")
-
-    @pytest.mark.asyncio
     async def test_high_concurrency_message_ordering(self):
         """Test message ordering is preserved under high concurrency."""
         manager = ThreadSafeConversationManager(max_history_per_user=150)  # Allow 100+ messages

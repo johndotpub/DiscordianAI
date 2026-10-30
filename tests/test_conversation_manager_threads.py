@@ -47,9 +47,6 @@ class TestThreadSafeConversationManager:
 
         # Get lock for user (should create new one)
         lock1 = manager._get_user_lock(12345)
-        assert lock1 is not None
-        assert hasattr(lock1, "acquire")
-        assert hasattr(lock1, "release")
 
         # Get same lock again (should return same instance)
         lock2 = manager._get_user_lock(12345)

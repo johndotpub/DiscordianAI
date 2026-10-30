@@ -1,6 +1,6 @@
 """Tests for dependency checking module."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -19,15 +19,14 @@ class TestDependencyCheck:
 
     def test_check_dependencies_missing_package(self):
         """Test that check_dependencies detects missing packages."""
-        with patch("builtins.__import__") as mock_import:
+        with patch("importlib.util.find_spec") as mock_find_spec:
 
             def side_effect(name, *args, **kwargs):
                 if name == "discord":
-                    msg = "No module named 'discord'"
-                    raise ImportError(msg)
-                return MagicMock()
+                    return None
+                return object()
 
-            mock_import.side_effect = side_effect
+            mock_find_spec.side_effect = side_effect
             success, missing = check_dependencies()
             assert success is False
             assert "discord.py" in missing

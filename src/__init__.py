@@ -19,9 +19,23 @@ Example:
 
 from __future__ import annotations
 
+from importlib import metadata
+from pathlib import Path
+import tomllib
 import warnings
 
-__version__ = "0.2.9"
+
+def _resolve_version() -> str:
+    """Read the version from installed metadata, falling back to pyproject.toml."""
+    try:
+        return metadata.version("DiscordianAI")
+    except metadata.PackageNotFoundError:
+        pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        with pyproject_path.open("rb") as pyproject_file:
+            return str(tomllib.load(pyproject_file)["project"]["version"])
+
+
+__version__ = _resolve_version()
 __author__ = "johndotpub"
 __email__ = "github@john.pub"
 

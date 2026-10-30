@@ -11,7 +11,7 @@ Located in `src/config.py`:
 MESSAGE_LIMIT = 2000        # Discord's hard limit for regular messages
 EMBED_LIMIT = 4096          # Discord's hard limit for embed descriptions
 EMBED_SAFE_LIMIT = 3840     # Safe margin for citation expansion and formatting
-MAX_SPLIT_RECURSION = 10    # Safety limit for message splitting recursion
+MAX_SPLIT_CHUNKS = 50       # Safety cap for one message's split delivery
 ```
 
 ## Why Two Embed Limits?

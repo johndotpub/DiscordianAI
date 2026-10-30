@@ -1,0 +1,104 @@
+# API contract
+
+What this bot actually sends to OpenAI and Perplexity, what those services actually
+return, and what that means for the code. Every row is either cited to a vendor page or
+**probed live** with `scripts/probe_providers.py` on 2026-10-28.
+
+Rule for contributors: if you change a request parameter, a model name, or an error
+branch, update this file and run the probe. A claim without a citation or a probe result
+is not a contract.
+
+---
+
+## OpenAI
+
+| Item | Value | Source |
+|---|---|---|
+| Endpoint used | `POST /v1/chat/completions` | `src/openai_processing.py` |
+| Model sent | whatever `GPT_MODEL` says; the shipped default is `gpt-6-luna` | `config.ini.example` |
+| Newer models accepted by the API | `gpt-5.4` answered normally at probe time, so the API is not the limit — our allowlist is | probe |
+| Chat Completions with GPT-6 | `gpt-6-luna` returned HTTP 200 at probe time with `max_completion_tokens` | probe |
+| Output cap parameter | `max_completion_tokens` (not `max_tokens`, which is deprecated and incompatible with o-series) | OpenAI Chat reference |
+| What the output cap covers | **visible output plus reasoning tokens.** A cap of 16 tokens on `gpt-5` returned HTTP 200 with `finish_reason: length` and `content: ""` — the whole budget went to reasoning | probe |
+| Maximum completion tokens on `gpt-5` | 128,000 | probe (error text) |
+| `reasoning_effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`; not every model supports every value. `gpt-6-astra` rejects `none` | OpenAI reference + changelog |
+| GPT-6 default reasoning effort | `medium`; the bot does not override it | OpenAI reference |
+| Function calling on Chat Completions | requires `reasoning_effort: none`; this bot does not use function calling | OpenAI reference |
+| `verbosity` | `low`, `medium`, `high` | OpenAI reference |
+| Oversized output cap | HTTP 400, `error.type: invalid_request_error`, `error.code: invalid_value`, message `max_tokens is too large: … This model supports at most 128000 completion tokens` | probe |
+| Prompt-too-long | code `context_length_exceeded` is the documented family, **not verified here** — probing it means paying to send a 128k-token prompt. Treat as `UNVERIFIED` until someone does | unverified |
+| Rate-limit headers on success | `x-ratelimit-limit-requests`, `x-ratelimit-remaining-requests`, `x-ratelimit-reset-requests`, `x-ratelimit-limit-tokens`, `x-ratelimit-remaining-tokens`, `x-ratelimit-reset-tokens` | probe |
+| `Retry-After` | not sent on 2xx; expected on 429, **not observed** | unverified |
+| Idempotency key | no documented header for chat completions. Retries must therefore be limited to requests that provably never reached the server | unverified |
+| Chat Completions status | "remains supported" indefinitely; Responses is recommended for new work and gives better reasoning results and 40–80% better cache utilisation | OpenAI migration guide |
+| Assistants API | sunset 2026-08-26 | OpenAI changelog |
+
+### Consequences for this codebase
+
+1. `max_completion_tokens` must never be set low "to save money": on a reasoning model the
+   reasoning budget is consumed first and the reply comes back as an empty string with
+   `finish_reason: length`. The empty-content reroute path exists — it is a safety net, not
+   a licence to set the cap small.
+2. Token budgeting must reserve headroom for reasoning, not just for the visible answer.
+3. `is_supported_openai_model` accepts the `gpt-6`, `gpt-6.1`, `gpt-5.6` and
+   `gpt-5` families, including dated snapshots, while rejecting `gpt-5-chat` and
+   other families. An unrecognised name still warns and never blocks startup.
+4. Classify `invalid_value` and `invalid_request_error` as deterministic configuration
+   faults: retrying them wastes an attempt and 2–4 seconds of the user's time.
+
+---
+
+## Perplexity
+
+The bot uses the current Agent API, not Sonar Chat Completions. The OpenAI SDK's
+`responses.create()` is pointed at the versioned alias, so the request path is
+`/v1/responses`.
+
+| Item | Value | Source |
+|---|---|---|
+| Canonical endpoint | `POST https://api.perplexity.ai/v1/agent` — **verified 200** | probe |
+| SDK path used | `POST https://api.perplexity.ai/v1/responses` — **verified 200**, same response shape | probe |
+| Unversioned SDK path | `POST https://api.perplexity.ai/responses` returned **404**; the client must include `/v1` | probe |
+| Model sent | `perplexity/sonar` | probe + `GET /v1/models` |
+| Catalogue | `GET /v1/models` lists 54 models and exactly one Sonar model, `perplexity/sonar` | probe |
+| Legacy interface | Sonar Chat Completions still answers 200 with `citations` and `search_results`; it is not the current catalogue or the interface this bot uses | probe |
+| Request fields | `model`, `instructions` (system prompt), `input` (history and current user message, no system role), `max_output_tokens`, `tools: [{"type": "web_search"}]` | probe |
+| Sampling | no `temperature` is sent | probe + code |
+| Response shape | `output` array of items | probe |
+| `search_results` item | `results[]` with `id`, `url`, `title`, `snippet`, `date`, `last_updated`, `source`; `id` is the 1-based marker number used in the answer as `[1]`, `[2]` | probe |
+| `message` item | `role: "assistant"`, `content: [{"type": "output_text", "text": "…"}]` | probe |
+| No-search response | `output` contains only the `message` item; there is no `search_results` item | probe |
+| Usage | `input_tokens`, `output_tokens`, `total_tokens`, and `cost` with input, output, tool-call, and total cost | probe |
+| Invalid model | HTTP **400** with `error.type: invalid_request`, `error.code: 400`, message `validation failed: model "…" is not supported`. The legacy path used `invalid_model`. Classify as a deterministic validation error and never retry | probe |
+| Rate limit | HTTP **429**; classified as a rate limit and handled by the shared retry policy | probe + code |
+| Attribution header | `X-Pplx-Integration: discordian-ai` accepted, 200, no behaviour change | probe |
+
+### Consequences for this codebase
+
+1. `PERPLEXITY_MODELS` now lists the current catalogue entry, `perplexity/sonar`. An unknown
+   name still only warns, because the provider may add models before the list is updated
+   here.
+2. The system prompt travels as `instructions`, not as a system message inside `input`.
+   History and the current turn travel in `input`.
+3. `max_output_tokens` replaces `max_tokens`, and `tools` always asks for `web_search`
+   because this path exists for live-data questions.
+4. Citation markers are mapped by the `search_results[].id`, not by array position, so a
+   reordered result list cannot misattribute a source.
+5. A response without `search_results` is valid: the parser returns the message text and an
+   empty citation map instead of failing.
+6. `usage.cost` is available but not logged today. Do not add a second accounting scheme to
+   report spend.
+
+---
+
+## How to re-verify
+
+```bash
+set -a && . ~/.config/environment.d/hermes.conf && set +a
+.venv/bin/python scripts/probe_providers.py
+```
+
+The probe prints status codes, header names, response key shapes and token counts. It
+never prints credentials. It makes eleven calls: six successful (small, cheap) and five
+deliberate error probes, including the Agent API, its alias, the unversioned path, and an
+invalid model. Run it after any provider upgrade, model change, or SDK bump.

@@ -1,22 +1,30 @@
-# Smart AI Mode: Advanced GPT-5 + Perplexity Integration
+# Smart AI Mode: Advanced GPT-6 + Perplexity Integration
 
 ## Overview
 
 DiscordianAI features a sophisticated AI orchestration system with intelligent routing, conversation consistency, and three flexible operation modes:
 
-1. **OpenAI Only** - Use GPT-5 for all responses
-2. **Perplexity Only** - Use Sonar-Pro with web search for all responses  
+1. **OpenAI Only** - Use GPT-6 for all responses
+2. **Perplexity Only** - Use `perplexity/sonar` with web search for all responses
 3. **Smart Hybrid** - Automatically choose the best AI for each message with conversation consistency
 
 ## AI Service Consistency System 🔄
 
-DiscordianAI features an advanced **conversation consistency system** that ensures follow-up questions are routed to the same AI service that handled the initial query, maintaining context and coherence.
+DiscordianAI reuses the previous AI service only for genuine anaphora within the
+same conversation. A follow-up pattern must match, and a recent assistant turn
+must exist in that conversation's history; the router then reuses that turn's
+service. A matched follow-up with no recent assistant turn is routed to OpenAI
+rather than being treated as a web-search query.
 
 ### How It Works
 
-1. **Metadata Tracking**: Every AI response includes metadata about which service generated it
-2. **Follow-up Detection**: Automatically detects when users ask follow-up questions using advanced pattern matching
-3. **Consistent Routing**: Routes follow-ups to the same AI service for conversational continuity
+1. **Metadata Tracking**: Every AI response records the service and model that generated it
+2. **Conversation Scope**: History is keyed per DM user or per guild channel/thread, so another channel or user cannot supply the previous service
+3. **Follow-up Detection**: Only genuine anaphora match: whole-message continuations (bare "more", "continue", "go on", or "keep going"), "tell/show/give me more", "what/how about", ordinal references such as "the second one", whole-message "and then", "then what", or "what now", a bare pronoun ("it", "that", "they", ...), or a bare "yes", "no", "ok", or "okay"
+4. **Consistent Routing**: If the lookback window contains a recent assistant turn, the router reuses its service; otherwise the message falls through to the normal routing heuristics
+
+A word such as "also" or "more" inside a fresh question does not turn that
+question into a follow-up.
 
 ### Example Flow
 ```
@@ -24,18 +32,11 @@ User: "What's the weather in Tokyo today?"
 → 🌐 Routed to Perplexity (time-sensitive, current data needed)
 → Response: "Tokyo is currently 22°C with light rain..." + metadata
 
-User: "Tell me more about the forecast"  
-→ 🔄 Detected as follow-up, checks recent AI service used
+User: "Tell me more"
+→ 🔄 Detected as anaphora in the same conversation, checks recent AI service used
 → 🌐 Routed to Perplexity for consistency
-→ User gets detailed forecast from same service with full context
+→ User gets a detailed forecast from the same service with full context
 ```
-
-### Follow-up Detection Patterns
-The system recognizes these follow-up indicators:
-- **Continuation**: "continue", "more", "tell me more", "also", "furthermore"
-- **References**: "what about", "how about", "regarding that"
-- **Connectors**: "and", "but", "however" + question mark
-- **Responses**: "yes, but...", "okay, and...", "no, what about..."
 
 ## Message Flow Architecture
 
@@ -49,11 +50,11 @@ flowchart TD
     C -->|Failed| D[Send Rate Limit Message]
     C -->|Passed| E[Smart Orchestrator Analysis]
 
-    E --> L[Model Guard\n(GPT-5 + Sonar-Pro)]
+    E --> L[Model Guard\n(GPT-6 + Agent API)]
     L --> F{Mode Selector}
 
-    F -->|OpenAI Only| G[OpenAI Processing\n(GPT-5 family)]
-    F -->|Perplexity Only| H[Perplexity Processing\n(Sonar models)]
+    F -->|OpenAI Only| G[OpenAI Processing\n(GPT-6 family)]
+    F -->|Perplexity Only| H[Perplexity Processing\n(Agent API)]
     F -->|Hybrid| I[Check Conversation Context]
 
     I --> J{Follow-up Detected?}
@@ -77,8 +78,8 @@ flowchart TD
     T -->|OpenAI| G
     T -->|Perplexity| H
 
-    G --> R[GPT-5 Response Payload]
-    H --> PR[Sonar-Pro Response + Citations]
+    G --> R[GPT-6 Response Payload]
+    H --> PR[Agent API Response + Citations]
 
     %% OpenAI response path includes in-line web-inability detection and fallback
     R --> OW[OpenAI Response]
@@ -114,9 +115,9 @@ This ensures **exactly one message** is sent per user query, eliminating the dup
 
 ### Model Guardrails
 
-- `api_utils.validate_gpt_model()` rejects anything outside the GPT-5 family and logs actionable warnings.
-- Perplexity calls only expose `model` and `max_tokens`; Sonar-Pro is the default and sampling is handled by the API.
-- Temperature toggles were removed because GPT-5 and Sonar-Pro ignore external sampling overrides.
+- `api_validation.validate_openai_config()` warns when `GPT_MODEL` falls outside the documented GPT model families; unknown names do not block startup.
+- Perplexity calls send `model`, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool. `perplexity/sonar` is the default, sampling is handled by the API, and no `temperature` is sent.
+- Citations come from the Agent API `search_results` item: each result's 1-based `id` maps to the `[n]` marker in the answer text.
 
 ## Smart Detection (No Manual Triggers Required!)
 
@@ -145,7 +146,7 @@ The bot uses advanced semantic analysis to automatically determine when web sear
 - "What's the weather like?" ← Current information
 - "Tell me about the recent SpaceX launch" ← Current events
 
-**Automatically Uses GPT-5:**
+**Automatically Uses GPT-6:**
 - "Write me a poem about robots" ← Creative
 - "How do I fix this Python error?" ← Technical
 - "What do you think about philosophy?" ← Opinion/conversation
@@ -153,10 +154,10 @@ The bot uses advanced semantic analysis to automatically determine when web sear
 
 ## Discord Citation Features
 
-### Proper Hyperlinks
-- Converts numbered citations [1], [2] into clickable Discord hyperlinks
-- Format: `[1](https://full-url)` - preserves the citation number for readability
-- No more unclickable numbers in brackets!
+### Citations
+- Message text keeps bare numbered markers such as `[1]` and `[2]`. Production calls the formatter with `linkify=False`, so the message body does not contain clickable citation links.
+- Clickable citations exist only in the citation embed, where a marker renders as `[[1]](https://full-url)`.
+- A citation URL is left intact only when it is allowlisted and safely renderable; other links are neutralised by the output sanitiser.
 
 ### Smart Embed Suppression
 - Automatically suppresses link previews when there are multiple citations
@@ -175,7 +176,7 @@ PERPLEXITY_API_KEY=your_perplexity_api_key_here
 ```
 
 ### Mode 2: OpenAI Only
-Uses only GPT-5 for all responses:
+Uses only GPT-6 for all responses:
 
 ```ini
 # Only OpenAI configured
@@ -228,7 +229,7 @@ USER_LOCK_CLEANUP_INTERVAL=3600
 
 ### 1. Get API Keys (as needed)
 
-**OpenAI API Key** (for GPT-5):
+**OpenAI API Key** (for GPT-6):
 - Go to https://platform.openai.com/api-keys
 - Create a new API key
 
@@ -249,10 +250,10 @@ Environment variables with the same names override `config.ini`, so production d
 
 Start your bot and try these examples:
 
-- "Hello!" ← Uses GPT-5
+- "Hello!" ← Uses GPT-6
 - "What's the latest AI news?" ← Uses Perplexity
 - "Tell me about today's weather" ← Uses Perplexity
-- "How do I learn Python?" ← Uses GPT-5
+- "How do I learn Python?" ← Uses GPT-6
 
 ## Fallback Behavior
 
@@ -261,17 +262,19 @@ The hybrid orchestrator (`smart_orchestrator.py`) provides bidirectional fallbac
 - **OpenAI failure → Perplexity**: When OpenAI returns no response (quota exhaustion, auth errors, timeouts), the orchestrator automatically retries with Perplexity for web-enabled fallback.
 - **Perplexity failure → OpenAI**: When Perplexity fails (network errors, timeouts), the orchestrator falls back to OpenAI for standard completion.
 - **Web-inability reroute**: If OpenAI responds but indicates it cannot browse the web (e.g., "I can't browse the internet"), the orchestrator detects this and reroutes to Perplexity.
-- **Both unavailable**: Returns a user-friendly error message (`"All AI services are temporarily unavailable"`).
+- **Both unavailable**: Returns the `both_services_unavailable` message
+  (`"🔧 All AI services are temporarily unavailable. Please try again later."`).
 
 Both services share identical retry policy via `retry_with_backoff`:
-- 2 attempts max (1 initial + 1 retry) for transient errors (network blips, 429, 5xx)
-- `insufficient_quota` and `API_TIMEOUT` errors bail immediately — no wasted retries
-- 2.0–4.0s jittered wait between retries to avoid thundering herd
+- 2 attempts max (1 initial + 1 retry) for transient errors (network/connection errors, connect timeouts, 429, 5xx)
+- `insufficient_quota`, authentication errors, and read timeouts bail immediately — no wasted retries
+- The single retry waits a random 0–1s (full jitter over the base delay); a 429 can instead honour `Retry-After` up to 30s
+- A 90s `max_elapsed` deadline stops retries even when an attempt remains
 - SDK-level `max_retries=0` prevents nested retry multiplication
 
 ## Cost Considerations
 
-- **GPT-5**: Higher cost per token but excellent reasoning
+- **GPT-6**: Higher cost per token but excellent reasoning
 - **Perplexity**: Lower cost for web search, includes citations
 - The bot automatically chooses the most cost-effective option based on the query type
 
@@ -289,7 +292,7 @@ INFO: Perplexity response generated successfully (245 chars)
 
 ### Consistency System Logs  
 ```
-INFO: Smart orchestrator processing message from user 123456789: Tell me more...
+INFO: Smart orchestrator processing message from user 123456789: Tell me more
 INFO: Running in hybrid mode - analyzing message for optimal routing
 DEBUG: Follow-up detected, using recent AI service: perplexity
 INFO: Message analysis suggests web search would be beneficial - trying Perplexity first
@@ -331,14 +334,21 @@ DiscordianAI uses a robust thread-safe architecture that handles concurrent user
 Adjust the AI service selection patterns in `src/config.py`:
 
 ```python
-# Time-sensitive patterns (compiled in config.py)
+# Time-sensitive patterns (raw patterns from config.py; one representative entry)
 TIME_SENSITIVITY_PATTERNS = [
-    re.compile(r"\b(today|yesterday|this week|recently|latest|current)\b", re.IGNORECASE),
+    r"\b(today|yesterday|this week|this month|this year|recently|latest|current)\b",
 ]
 
-# Follow-up detection patterns (compiled in config.py)
+# Follow-up detection patterns (raw patterns from config.py)
 FOLLOW_UP_PATTERNS = [
-    re.compile(r"\b(continue|more|tell me more|also|furthermore)\b", re.IGNORECASE),
+    r"^\s*(more|continue|go on|keep going)(\s+please)?\s*[.!?]*\s*$",
+    r"^\s*(tell|show|give)\s+me\s+more\s*[.!?]*\s*$",
+    r"\b(what|how)\s+about\b",
+    r"\b(and|what about|how about)\s+(the\s+)?(first|second|third|last|next|other)\s+one\b",
+    r"^\s*(and|so|but)?\s*(the\s+)?(first|second|third|last|next|other)\s+one\s*[.!?]*\s*$",
+    r"^\s*(it|that|this|those|these|they|them|he|she|him|her)\s*[.!?]*\s*$",
+    r"^\s*(yes|no|ok|okay)\s*[.!?]*\s*$",
+    r"^\s*(and then|then what|what now)\s*\??\s*$",
 ]
 ```
 

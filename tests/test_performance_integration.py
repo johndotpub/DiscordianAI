@@ -11,6 +11,7 @@ This test suite covers:
 import asyncio
 import threading
 import time
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -139,13 +140,16 @@ class TestRateLimitingUnderLoad:
                 await asyncio.sleep(0.01)
             results[user_id] = user_results
 
-        # Simulate multiple users making requests concurrently
-        tasks = []
-        for user_id in range(1001, 1004):  # 3 users
-            task = asyncio.create_task(check_rate_limit_for_user(user_id, 8))
-            tasks.append(task)
+        # Freeze the limiter clock so the one-second window cannot expire while
+        # the event loop is busy; the count, not elapsed time, is under test.
+        # Replace the module reference only, leaving asyncio's clock intact.
+        with patch("src.rate_limits.time", SimpleNamespace(monotonic=lambda: 0.0)):
+            tasks = []
+            for user_id in range(1001, 1004):  # 3 users
+                task = asyncio.create_task(check_rate_limit_for_user(user_id, 8))
+                tasks.append(task)
 
-        await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks)
 
         # Verify rate limiting worked for each user independently
         for user_id in range(1001, 1004):
@@ -162,36 +166,43 @@ class TestRateLimitingUnderLoad:
         rate_limiter = RateLimiter()
         user_id = 2001
 
-        # Make requests up to the limit
-        for _i in range(3):
-            allowed = rate_limiter.check_rate_limit(
+        # Advance a fake clock instead of sleeping, so a busy event loop cannot
+        # change the observed window boundary.
+        clock = {"now": 100.0}
+
+        def fake_monotonic():
+            return clock["now"]
+
+        with patch("src.rate_limits.time", SimpleNamespace(monotonic=fake_monotonic)):
+            # Make requests up to the limit
+            for _i in range(3):
+                allowed = rate_limiter.check_rate_limit(
+                    user_id=user_id,
+                    rate_limit=3,
+                    rate_limit_window_seconds=1,
+                    logger=Mock(),
+                )
+                assert allowed is True
+
+            # Next request should be blocked
+            blocked = rate_limiter.check_rate_limit(
                 user_id=user_id,
                 rate_limit=3,
                 rate_limit_window_seconds=1,
                 logger=Mock(),
             )
-            assert allowed is True
+            assert blocked is False
 
-        # Next request should be blocked
-        blocked = rate_limiter.check_rate_limit(
-            user_id=user_id,
-            rate_limit=3,
-            rate_limit_window_seconds=1,
-            logger=Mock(),
-        )
-        assert blocked is False
+            clock["now"] += 1.1
 
-        # Wait for window to reset
-        await asyncio.sleep(1.1)
-
-        # Should be allowed again
-        allowed_after_reset = rate_limiter.check_rate_limit(
-            user_id=user_id,
-            rate_limit=3,
-            rate_limit_window_seconds=1,
-            logger=Mock(),
-        )
-        assert allowed_after_reset is True
+            # Should be allowed again
+            allowed_after_reset = rate_limiter.check_rate_limit(
+                user_id=user_id,
+                rate_limit=3,
+                rate_limit_window_seconds=1,
+                logger=Mock(),
+            )
+            assert allowed_after_reset is True
 
     def test_rate_limiter_memory_efficiency(self):
         """Test that rate limiter doesn't leak memory with many users."""
@@ -308,19 +319,19 @@ class TestMemoryAndResourceManagement:
         """Test performance of lock cleanup process."""
         manager = ThreadSafeConversationManager(cleanup_interval=1)
 
-        # Create many user locks
-        user_ids = list(range(500))  # 500 users
+        active_ids = list(range(250))
+        inactive_ids = list(range(250, 500))
 
-        # Access locks for all users (creates them)
-        for user_id in user_ids:
-            with manager._get_user_lock(user_id):
-                manager.add_message(user_id, "user", "test message")
+        for user_id in active_ids:
+            manager.add_message(user_id, "user", "test message")
+        for user_id in inactive_ids:
+            manager._get_user_lock(user_id)
 
-        # Force cleanup
         cleaned_count = manager.cleanup_inactive_user_locks(force=True)
 
-        # Should have cleaned up some locks (or all if they're inactive)
-        assert cleaned_count >= 0
+        assert cleaned_count == len(inactive_ids)
+        assert all(user_id in manager._user_locks for user_id in active_ids)
+        assert all(user_id not in manager._user_locks for user_id in inactive_ids)
 
 
 class TestSystemIntegrationBenchmarks:

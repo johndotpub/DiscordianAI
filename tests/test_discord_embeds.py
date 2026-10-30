@@ -114,32 +114,6 @@ class TestCitationEmbedFormatter:
         assert "[2]" in formatted  # Should remain unchanged
         assert "[[2]]" not in formatted
 
-    def test_should_use_embed_for_response(self):
-        """Test embed usage decision logic."""
-        formatter = CitationEmbedFormatter()
-
-        # Should use embed when citations present
-        assert formatter.should_use_embed_for_response({"1": "url"}) is True
-
-        # Should not use embed when no citations
-        assert formatter.should_use_embed_for_response({}) is False
-        assert formatter.should_use_embed_for_response(None) is False
-
-        # Should use embed when forced
-        assert formatter.should_use_embed_for_response(None, force_embed=True) is True
-
-    def test_create_error_embed(self):
-        """Test error embed creation."""
-        formatter = CitationEmbedFormatter()
-
-        error_message = "Something went wrong"
-        embed = formatter.create_error_embed(error_message)
-
-        assert isinstance(embed, discord.Embed)
-        assert embed.title == "🔧 Error"
-        assert embed.description == error_message
-        assert embed.color.value == 0xED4245  # Discord red
-
     def test_embed_description_length_limit(self):
         """Test that embed descriptions are truncated if too long."""
         formatter = CitationEmbedFormatter()

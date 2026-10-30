@@ -13,32 +13,61 @@ DISCORD_TOKEN=your_discord_bot_token_here
 # Channels where the bot responds (comma-separated)
 ALLOWED_CHANNELS=general,bot-testing
 
+# Optional: channel IDs where the bot responds (comma-separated).
+# When set, these IDs take precedence over ALLOWED_CHANNELS names.
+# Example: ALLOWED_CHANNEL_IDS=123456789012345678,987654321098765432
+ALLOWED_CHANNEL_IDS=
+
+# Optional: narrow channel-name matching to specific guilds. Without this,
+# names match in every guild the bot is in. Names or IDs are accepted.
+# Example: ALLOWED_GUILDS=My Server
+#          ALLOWED_GUILD_IDS=123456789012345678
+ALLOWED_GUILDS=
+ALLOWED_GUILD_IDS=
+
 # Bot presence settings
 BOT_PRESENCE=online
-ACTIVITY_TYPE=watching
+ACTIVITY_TYPE=listening
 ACTIVITY_STATUS=you bite my shiny metal ass!
 
 [Default]
 # === OPENAI CONFIGURATION ===
-# Supported: gpt-5-mini (default), gpt-5, gpt-5-nano, gpt-5-chat
+# Supported: gpt-6-luna (default), gpt-6.1-sol, gpt-6.1-terra, gpt-6-astra,
+# gpt-6-sol, plus legacy gpt-5, gpt-5-mini, gpt-5-nano and gpt-5-pro until 2026-12-11
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_API_URL=https://api.openai.com/v1/
-GPT_MODEL=gpt-5-mini
+GPT_MODEL=gpt-6-luna
 
 # === PERPLEXITY CONFIGURATION ===  
-# Supported: sonar-pro (default), sonar - Leave blank to disable web search
+# Current Agent API catalogue: perplexity/sonar (default). Legacy Sonar names
+# still answer on Chat Completions but are not used by this bot.
+# Leave the API key blank to disable web search
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
 PERPLEXITY_API_URL=https://api.perplexity.ai
-PERPLEXITY_MODEL=sonar-pro
+PERPLEXITY_MODEL=perplexity/sonar
 
 # === TOKEN LIMITS ===
+# INPUT_TOKENS is the enforced prompt budget (oldest history is trimmed first).
+# OUTPUT_TOKENS caps OpenAI completions (max_completion_tokens) and includes
+# reasoning tokens as well as visible output.
+# PERPLEXITY_OUTPUT_TOKENS caps Perplexity completions (max_output_tokens),
+# which are output only. Omit it to use the same value as OUTPUT_TOKENS.
 INPUT_TOKENS=120000
 OUTPUT_TOKENS=8000
+PERPLEXITY_OUTPUT_TOKENS=8000
 CONTEXT_WINDOW=128000
 
 # === SYSTEM MESSAGE ===
 # Customize your bot's personality
 SYSTEM_MESSAGE=You are Bender, a sarcastic robot from Futurama. You're crude, selfish, and love beer, but deep down you care about your friends. You automatically know when to search for current information and when to use your existing knowledge.
+
+# === WEB SCRAPING BUDGETS ===
+# Maximum number of URLs scraped from a single message (extras are ignored)
+MAX_URLS_PER_MESSAGE=3
+# Maximum combined characters of scraped page text injected into one prompt
+MAX_TOTAL_SCRAPED_CHARS=60000
+# Deadline in seconds for the entire scrape phase of one message
+SCRAPE_DEADLINE_SECONDS=20
 
 [Limits]
 # Rate limiting to prevent spam
@@ -60,12 +89,15 @@ PERPLEXITY_MAX_KEEPALIVE=5
 
 [Orchestrator]
 # AI Orchestrator Configuration for advanced routing and optimization
-# How many recent messages to check for AI service consistency
+# How many recent messages to check for AI service consistency (0 disables)
 LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 
 
 # Maximum conversation entries per user before pruning
 MAX_HISTORY_PER_USER=50
+
+# How long a conversation may sit idle before its history and lock are dropped
+CONVERSATION_TTL_SECONDS=1800
 
 # How often to clean up inactive user locks (seconds) - default 1 hour
 USER_LOCK_CLEANUP_INTERVAL=3600
@@ -74,8 +106,10 @@ USER_LOCK_CLEANUP_INTERVAL=3600
 ENTITY_DETECTION_MIN_WORDS=10
 
 [Logging]
-LOG_FILE=bot.log
 LOG_LEVEL=INFO
+# Console colors for logs are opted into. Set this to true (or 1/yes) to enable
+# them; false keeps redirected logs plain. Also settable via the env var.
+DISCORDIANAI_LOG_COLOR=false
 
 [Health]
 # HTTP health endpoint for Kubernetes / load balancer probes
@@ -83,24 +117,26 @@ LOG_LEVEL=INFO
 HEALTH_ENABLED=true
 HEALTH_HOST=127.0.0.1
 HEALTH_PORT=8080
+# Seconds after a provider's last success before health marks it degraded
+HEALTH_PROVIDER_STALE_SECONDS=300
 
 # === CONFIGURATION EXAMPLES ===
 #
 # HYBRID MODE (Smart Auto-Selection - Recommended):
 # OPENAI_API_KEY=sk-your-openai-key
 # PERPLEXITY_API_KEY=pplx-your-perplexity-key
-# GPT_MODEL=gpt-5-mini         # Cost-effective default
-# PERPLEXITY_MODEL=sonar-pro   # Latest web search model
+# GPT_MODEL=gpt-6-luna        # Cost-effective default
+# PERPLEXITY_MODEL=perplexity/sonar   # Current Agent API Sonar model
 # 
 # OPENAI ONLY MODE:
 # OPENAI_API_KEY=sk-your-openai-key
 # PERPLEXITY_API_KEY=          # Leave blank
-# GPT_MODEL=gpt-5-mini         # Or gpt-5, gpt-5-nano, gpt-5-chat
+# GPT_MODEL=gpt-6-luna        # Or gpt-6.1-sol, gpt-6-astra, gpt-5-nano
 #
 # PERPLEXITY ONLY MODE:
 # OPENAI_API_KEY=              # Leave blank
 # PERPLEXITY_API_KEY=pplx-your-perplexity-key
-# PERPLEXITY_MODEL=sonar-pro   # Or sonar
+# PERPLEXITY_MODEL=perplexity/sonar
 #
 # === INVITE URL TEMPLATE ===
 # https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_CLIENT_ID&permissions=274945084416&scope=bot

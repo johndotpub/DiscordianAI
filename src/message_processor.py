@@ -4,13 +4,109 @@ import re
 from typing import Any
 
 import discord
+from discord import AllowedMentions
 
+from .config import (
+    DEFAULT_CONTEXT_WINDOW,
+    DEFAULT_INPUT_TOKENS,
+    DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
+    DEFAULT_MAX_URLS_PER_MESSAGE,
+    DEFAULT_PERPLEXITY_MODEL,
+    DEFAULT_SCRAPE_DEADLINE_SECONDS,
+    get_error_messages,
+)
+from .conversation_manager import (
+    MAX_CONSECUTIVE_BOT_TURNS,
+    conversation_key_for_message,
+)
 from .error_handling import classify_error, safe_discord_send
 from .logging_adapter import get_logger_with_context
-from .message_splitter import clean_message_content, error_message, send_formatted_message
+from .message_splitter import clean_message_content, send_formatted_message
 from .models import AIClients, AIConfig, AIRequest, OpenAIConfig, PerplexityConfig
 from .rate_limits import check_rate_limit
 from .smart_orchestrator import get_smart_response
+
+
+def _token_limits(
+    deps: dict[str, Any] | Any,
+) -> tuple[dict[str, Any], int, int]:
+    """Return the config mapping, prompt budget, and context window."""
+    config = deps.get("config") or {}
+    input_tokens = config.get("INPUT_TOKENS", deps.get("INPUT_TOKENS", DEFAULT_INPUT_TOKENS))
+    context_window = config.get(
+        "CONTEXT_WINDOW", deps.get("CONTEXT_WINDOW", DEFAULT_CONTEXT_WINDOW)
+    )
+    return config, input_tokens, context_window
+
+
+def _perplexity_output_tokens(deps: dict[str, Any] | Any, config: dict[str, Any]) -> int:
+    """Resolve the Perplexity cap without falling back to a false value."""
+    output_tokens = config.get("PERPLEXITY_OUTPUT_TOKENS")
+    if output_tokens is None:
+        output_tokens = deps.get("PERPLEXITY_OUTPUT_TOKENS")
+    if output_tokens is None:
+        output_tokens = deps["OUTPUT_TOKENS"]
+    return output_tokens
+
+
+def _reply_policy(
+    message: discord.Message,
+    author_is_bot: bool,
+) -> tuple[str, AllowedMentions]:
+    """Return the single reply prefix and mention allowlist for this message."""
+    prefix = "" if author_is_bot else f"{message.author.mention} "
+    users = [] if author_is_bot else [message.author]
+    return prefix, AllowedMentions(
+        users=users,
+        roles=[],
+        everyone=False,
+        replied_user=False,
+    )
+
+
+def _guard_bot_turn(
+    message: discord.Message,
+    conversation_manager: Any,
+    conversation_key: str,
+    author_is_bot: bool,
+    logger: Any,
+) -> bool:
+    """Return False when a conversation has too many consecutive bot turns."""
+    if not author_is_bot:
+        conversation_manager.reset_bot_streak(conversation_key=conversation_key)
+        return True
+
+    allowed, streak = conversation_manager.begin_bot_turn(conversation_key=conversation_key)
+    if allowed:
+        return True
+
+    logger.info(
+        "Dropping bot-authored turn from %s (%s) in conversation %s: "
+        "consecutive_bot_streak=%d exceeds limit=%d; a human message resets the streak",
+        getattr(message.author, "name", "unknown"),
+        getattr(message.author, "id", "unknown"),
+        conversation_key,
+        streak,
+        MAX_CONSECUTIVE_BOT_TURNS,
+    )
+    return False
+
+
+async def _send_empty_fallback(
+    channel: Any,
+    logger: Any,
+    allowed_mentions: AllowedMentions,
+) -> None:
+    """Send the fixed notice for a message that has no body after cleaning."""
+    logger.info("Skipping empty message after cleaning")
+    fallback = get_error_messages()["no_response_generated"]
+    if not await safe_discord_send(
+        channel,
+        fallback,
+        logger,
+        allowed_mentions=allowed_mentions,
+    ):
+        logger.error("Failed to send empty-message fallback")
 
 
 async def _process_message_core(
@@ -22,7 +118,20 @@ async def _process_message_core(
     logger = get_logger_with_context(deps["logger"], message)
     rate_limiter = deps["rate_limiter"]
     conversation_manager = deps["conversation_manager"]
-    clean_content = message.content
+    conversation_key = conversation_key_for_message(message, is_dm=is_dm)
+    clean_content = (message.content or "").strip()
+    author_is_bot = getattr(message.author, "bot", False) is True
+
+    if not _guard_bot_turn(
+        message,
+        conversation_manager,
+        conversation_key,
+        author_is_bot,
+        logger,
+    ):
+        return
+
+    reply_mention, allowed_mentions = _reply_policy(message, author_is_bot)
 
     # Prepare context-specific strings for logging and error messages
     if is_dm:
@@ -33,20 +142,20 @@ async def _process_message_core(
             "🔧 Sorry, I encountered an error while processing your message. "
             "Please try again in a moment."
         )
-        display_content = clean_message_content(message.content, 100)
+        display_content = clean_message_content(clean_content, 100)
     else:
         # Clean message content for logging (remove mentions)
-        clean_content = re.sub(r"<@\d+>", "", message.content).strip()
+        clean_content = re.sub(r"<@\d+>", "", clean_content).strip()
         logger.info(
             "Captured message for processing (ID: %s, length: %d)",
             message.id,
             len(clean_content),
         )
         rate_limit_msg = "⏱️ Rate limit exceeded! Please wait a moment before mentioning me again."
-        error_msg = error_message(
-            message.author.mention,
+        error_msg = (
+            f"{reply_mention}"
             "🔧 Sorry, I encountered an error while processing your message. "
-            "Please try again in a moment.",
+            "Please try again in a moment."
         )
         display_content = clean_message_content(clean_content, 100)
 
@@ -61,35 +170,66 @@ async def _process_message_core(
             deps["RATE_LIMIT_PER"],
             logger,
         ):
-            rate_msg = f"{message.author.mention} {rate_limit_msg}"
-            if not await safe_discord_send(message.channel, rate_msg, logger):
+            rate_msg = f"{reply_mention}{rate_limit_msg}"
+            if not await safe_discord_send(
+                message.channel,
+                rate_msg,
+                logger,
+                allowed_mentions=allowed_mentions,
+            ):
                 logger.error("Failed to send rate limit message")
             logger.warning("Rate limit exceeded")
             return
 
-        # Get conversation summary using consolidated thread-safe manager
+        # A mention-only or whitespace-only message has no body to answer. Reply
+        # with the generic fallback without calling the provider or writing history.
+        if not clean_content:
+            await _send_empty_fallback(
+                message.channel,
+                logger,
+                allowed_mentions,
+            )
+            return
+
+        # Get conversation summary for this DM/channel/thread conversation
         conversation_summary = conversation_manager.get_conversation_summary_formatted(
-            message.author.id,
+            conversation_key,
         )
 
         # Initialize config objects
+        config, input_tokens, context_window = _token_limits(deps)
         openai_config = OpenAIConfig(
             model=deps["GPT_MODEL"],
             system_message=deps["SYSTEM_MESSAGE"],
             output_tokens=deps["OUTPUT_TOKENS"],
+            input_tokens=input_tokens,
+            context_window=context_window,
         )
         perplexity_model = (
             deps.get("PERPLEXITY_MODEL")
-            or (deps.get("config") or {}).get("PERPLEXITY_MODEL")
-            or "sonar-pro"
+            or config.get("PERPLEXITY_MODEL")
+            or DEFAULT_PERPLEXITY_MODEL
         )
         perplexity_config = PerplexityConfig(
             model=perplexity_model,
             system_message=deps["SYSTEM_MESSAGE"],
-            output_tokens=deps["OUTPUT_TOKENS"],
+            output_tokens=_perplexity_output_tokens(deps, config),
+            input_tokens=input_tokens,
+            context_window=context_window,
+            max_urls_per_message=config.get(
+                "MAX_URLS_PER_MESSAGE",
+                deps.get("MAX_URLS_PER_MESSAGE", DEFAULT_MAX_URLS_PER_MESSAGE),
+            ),
+            max_total_scraped_chars=config.get(
+                "MAX_TOTAL_SCRAPED_CHARS",
+                deps.get("MAX_TOTAL_SCRAPED_CHARS", DEFAULT_MAX_TOTAL_SCRAPED_CHARS),
+            ),
+            scrape_deadline_seconds=config.get(
+                "SCRAPE_DEADLINE_SECONDS",
+                deps.get("SCRAPE_DEADLINE_SECONDS", DEFAULT_SCRAPE_DEADLINE_SECONDS),
+            ),
         )
         ai_config = AIConfig(openai=openai_config, perplexity=perplexity_config)
-        config = deps.get("config") or {}
         orchestrator_config = {
             key: config[key]
             for key in (
@@ -102,12 +242,13 @@ async def _process_message_core(
         }
 
         # Create the unified AIRequest object
-        request_message = message.content if is_dm else clean_content
+        request_message = clean_content
         ai_request = AIRequest(
             message=request_message,
             user=message.author,
             conversation_manager=conversation_manager,
             logger=logger,
+            conversation_key=conversation_key,
         )
 
         clients = AIClients(openai=deps.get("client"), perplexity=deps.get("perplexity_client"))
@@ -129,7 +270,7 @@ async def _process_message_core(
             suppress_embeds=suppress_embeds,
             embed_data=embed_data,
             original_message=message,
-            mention_prefix=f"{message.author.mention} ",
+            mention_prefix=reply_mention,
         )
         logger.info("Message processed and response sent")
 
@@ -141,13 +282,14 @@ async def _process_message_core(
             error_details = classify_error(e)
         except (AttributeError, TypeError):
             error_details = None
-        user_friendly_msg = (
-            error_details.user_message
-            if (error_details is not None and hasattr(error_details, "user_message"))
-            else error_msg
-        )
+        user_friendly_msg = getattr(error_details, "user_message", None) or error_msg
 
-        if not await safe_discord_send(message.channel, user_friendly_msg, logger):
+        if not await safe_discord_send(
+            message.channel,
+            user_friendly_msg,
+            logger,
+            allowed_mentions=allowed_mentions,
+        ):
             logger.error(  # noqa: TRY400 — intentional: exception already logged above
                 "Failed to send error message"
             )

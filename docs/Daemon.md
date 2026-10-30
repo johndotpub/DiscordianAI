@@ -89,7 +89,7 @@ This command:
 5. Runs `daemon-reload` and enables the service
 6. Prints management commands
 
-The config file name (without `.ini`) becomes the systemd instance name. `--install-systemd bot.ini` creates `discordian-bot@bot.service`, `--install-systemd production.ini` creates `discordian-bot@prod.service`.
+The config file name (without `.ini`) becomes the systemd instance name. `--install-systemd bot.ini` creates `discordian-bot@bot.service`, `--install-systemd production.ini` creates `discordian-bot@production.service`.
 
 ### Manual setup
 
@@ -126,6 +126,34 @@ A template unit file is included in `contrib/systemd/discordian-bot@.service`. T
 3. Done. The service starts and enables automatically.
 
 Both methods can coexist, but that would start two instances. Pick one.
+
+## Log rotation
+
+The bot never writes its own log file; `discordian.sh -d` and the systemd unit redirect stdout and stderr to `bot.log`. Because that file stays open for the lifetime of the process, logrotate must use `copytruncate` instead of asking the bot to reopen it. The shipped fragment in `contrib/logrotate/discordianai` does this.
+
+Install it system-wide:
+
+```bash
+sudo cp contrib/logrotate/discordianai /etc/logrotate.d/discordianai
+```
+
+Then edit `/etc/logrotate.d/discordianai` and replace `/path/to/DiscordianAI/bot.log` with the actual log path. The fragment rotates at 50 MB, keeps five compressed generations, skips missing or empty files, and enables `copytruncate`.
+
+> **`copytruncate` caveat**: logrotate copies `bot.log` and then truncates the original so the running process can keep writing to the same file descriptor. Any log lines written between the copy and the truncate can be lost. This is the only option here because the supervisor owns the open file and the bot cannot be signalled to reopen it. Keep the log and its rotated copies on the same filesystem so the copy window is as short as possible.
+
+Check the configuration without rotating anything:
+
+```bash
+sudo logrotate --debug /etc/logrotate.d/discordianai
+```
+
+For non-systemd installs, use the same fragment with a plain shell redirect. For example, start the bot in the background:
+
+```bash
+nohup .venv/bin/python -m src.main --conf bot.ini >> bot.log 2>&1 &
+```
+
+Point the fragment at that `bot.log`, install it as above, and logrotate will rotate the file the same way. `./discordian.sh -d -c bot.ini` already performs this redirect for you.
 
 ## Process Management
 

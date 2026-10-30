@@ -3,8 +3,8 @@
 Configures structlog with a hybrid renderer that outputs human-readable
 logs to the console (for development) and JSON-structured logs when
 environment variable ``DISCORDIANAI_LOG_JSON=1`` is set (for production
-observability). Console color output is enabled by default and can be
-disabled with ``DISCORDIANAI_LOG_COLOR``.
+observability). Console color output follows TTY detection by default,
+but can be forced on or off with ``DISCORDIANAI_LOG_COLOR``.
 
 All existing ``logging.getLogger()`` calls are automatically enriched
 with structlog processors via the stdlib integration layer. No changes
@@ -56,24 +56,49 @@ def _drop_record(
     return event_dict
 
 
-def _env_flag(name: str) -> bool | None:
-    """Parse a tri-state boolean environment variable."""
-    raw_value = os.environ.get(name)
+def _parse_flag(raw_value: str | None) -> bool | None:
+    """Parse a tri-state boolean flag value."""
     if raw_value is None:
         return None
 
     normalized = raw_value.strip().lower()
-    if normalized in ("1", "true", "yes"):
+    if normalized in ("1", "true", "yes", "on"):
         return True
-    if normalized in ("0", "false", "no"):
+    if normalized in ("0", "false", "no", "off"):
         return False
     return None
+
+
+def _env_flag(name: str) -> bool | None:
+    """Parse a tri-state boolean environment variable."""
+    return _parse_flag(os.environ.get(name))
+
+
+def _stream_is_tty(stream: Any) -> bool:
+    """Return whether the stream reports itself as a terminal."""
+    isatty = getattr(stream, "isatty", None)
+    if not callable(isatty):
+        return False
+    try:
+        return bool(isatty())
+    except (OSError, ValueError):
+        return False
+
+
+def _resolve_colours(force_colors: bool | None, stream: Any) -> tuple[bool, str]:
+    """Return whether to colour output and the reason for the decision."""
+    if force_colors is not None:
+        return force_colors, "forced by setting"
+    if _stream_is_tty(stream):
+        return True, "tty"
+    return False, "disabled because the stream is not a terminal"
 
 
 def configure_structlog(
     *,
     json_logs: bool | None = None,
     log_level: str | None = None,
+    log_colors: bool | None = None,
     stream: Any | None = None,
 ) -> None:
     """Configure structlog with stdlib integration.
@@ -84,6 +109,9 @@ def configure_structlog(
             ``False``).
         log_level: Set the root logger level. If ``None``, reads
             ``DISCORDIANAI_LOG_LEVEL`` (defaults to ``INFO``).
+        log_colors: Force console colors on or off. If ``None``, reads the
+            ``DISCORDIANAI_LOG_COLOR`` environment variable and otherwise
+            enables colors only when ``stream`` is a TTY.
         stream: Optional stream for the root handler, used by tests and
             as the output target for the root logging handler.
     """
@@ -91,7 +119,11 @@ def configure_structlog(
         json_logs = _env_flag("DISCORDIANAI_LOG_JSON") is True
     if log_level is None:
         log_level = os.environ.get("DISCORDIANAI_LOG_LEVEL", "INFO").upper()
-    force_colors = _env_flag("DISCORDIANAI_LOG_COLOR")
+    force_colors = log_colors
+    if isinstance(force_colors, str):
+        force_colors = _parse_flag(force_colors)
+    if force_colors is None:
+        force_colors = _env_flag("DISCORDIANAI_LOG_COLOR")
 
     level = getattr(logging, log_level, logging.INFO)
     shared_processors: list[Any] = [
@@ -102,15 +134,14 @@ def configure_structlog(
         _drop_record,
     ]
 
+    color_reason: str | None = None
     if json_logs:
         renderer = structlog.processors.JSONRenderer()
     else:
         if stream is None:
             stream = sys.stderr
-        if force_colors is False:
-            renderer = structlog.dev.ConsoleRenderer(colors=False, pad_event_to=0)
-        else:
-            renderer = structlog.dev.ConsoleRenderer(colors=True, pad_event_to=0)
+        colors_enabled, color_reason = _resolve_colours(force_colors, stream)
+        renderer = structlog.dev.ConsoleRenderer(colors=colors_enabled, pad_event_to=0)
 
     structlog.configure(
         processors=[
@@ -140,6 +171,9 @@ def configure_structlog(
     root_logger.handlers.clear()
     root_logger.addHandler(handler)
     root_logger.setLevel(level)
+
+    if color_reason is not None:
+        logging.getLogger(__name__).debug("Log colour decision: %s", color_reason)
 
 
 def get_structured_logger(name: str, **initial_context: Any) -> structlog.stdlib.BoundLogger:

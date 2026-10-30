@@ -21,6 +21,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from .config import (
+    DEFAULT_ACTIVITY_TYPE,
+    DEFAULT_CONTEXT_WINDOW,
+    DEFAULT_INPUT_TOKENS,
+    DEFAULT_OPENAI_MODEL,
+    DEFAULT_OUTPUT_TOKENS,
+    DEFAULT_PERPLEXITY_MODEL,
+)
+
 if TYPE_CHECKING:
     import asyncio
     import logging
@@ -49,6 +58,7 @@ class BotDependencies:
         rate_limiter: Per-user rate limiter.
         conversation_manager: Thread-safe conversation history store.
         health_server: Health endpoint server (or ``None``).
+        circuit_breakers: Per-provider circuit breakers for health reporting.
         allowed_channels: Channel names the bot responds in (used as fallback if no
             IDs are configured).
         bot_presence: Discord presence status string.
@@ -60,7 +70,10 @@ class BotDependencies:
         gpt_model: OpenAI GPT model identifier.
         perplexity_model: Perplexity model identifier.
         system_message: System prompt for AI interactions.
-        output_tokens: Maximum output tokens per response.
+        output_tokens: Maximum OpenAI output tokens per response.
+        perplexity_output_tokens: Maximum Perplexity output tokens per response.
+        input_tokens: Maximum prompt tokens per request.
+        context_window: Total model context window in tokens.
         health_task: Asyncio task for the health server (set at runtime).
     """
 
@@ -74,20 +87,27 @@ class BotDependencies:
     rate_limiter: RateLimiter | None = None
     conversation_manager: ThreadSafeConversationManager | None = None
     health_server: HealthServer | None = None
+    circuit_breakers: dict[str, Any] = field(default_factory=dict)
 
     # Configuration scalars (extracted from config for convenience)
     allowed_channels: list[str] = field(default_factory=list)
     allowed_channel_ids: list[int] = field(default_factory=list)
+    allowed_guilds: list[str] = field(default_factory=list)
+    allowed_guild_ids: list[int] = field(default_factory=list)
+    resolved_allowed_channel_ids: list[int] | None = None
     bot_presence: str = "online"
-    activity_type: str = "watching"
+    activity_type: str = DEFAULT_ACTIVITY_TYPE
     activity_status: str = ""
     discord_token: str = ""
     rate_limit: int = 10
     rate_limit_period: int = 60
-    gpt_model: str = "gpt-5-mini"
-    perplexity_model: str = "sonar-pro"
+    gpt_model: str = DEFAULT_OPENAI_MODEL
+    perplexity_model: str = DEFAULT_PERPLEXITY_MODEL
     system_message: str = ""
-    output_tokens: int = 8000
+    output_tokens: int = DEFAULT_OUTPUT_TOKENS
+    perplexity_output_tokens: int = DEFAULT_OUTPUT_TOKENS
+    input_tokens: int = DEFAULT_INPUT_TOKENS
+    context_window: int = DEFAULT_CONTEXT_WINDOW
 
     # Runtime-only
     health_task: asyncio.Task | None = field(default=None, repr=False)
@@ -112,8 +132,12 @@ class BotDependencies:
             "rate_limiter": self.rate_limiter,
             "conversation_manager": self.conversation_manager,
             "health_server": self.health_server,
+            "circuit_breakers": self.circuit_breakers,
             "ALLOWED_CHANNELS": self.allowed_channels,
             "ALLOWED_CHANNEL_IDS": self.allowed_channel_ids,
+            "ALLOWED_GUILDS": self.allowed_guilds,
+            "ALLOWED_GUILD_IDS": self.allowed_guild_ids,
+            "RESOLVED_ALLOWED_CHANNEL_IDS": self.resolved_allowed_channel_ids,
             "BOT_PRESENCE": self.bot_presence,
             "ACTIVITY_TYPE": self.activity_type,
             "ACTIVITY_STATUS": self.activity_status,
@@ -124,6 +148,9 @@ class BotDependencies:
             "PERPLEXITY_MODEL": self.perplexity_model,
             "SYSTEM_MESSAGE": self.system_message,
             "OUTPUT_TOKENS": self.output_tokens,
+            "PERPLEXITY_OUTPUT_TOKENS": self.perplexity_output_tokens,
+            "INPUT_TOKENS": self.input_tokens,
+            "CONTEXT_WINDOW": self.context_window,
             "_health_task": self.health_task,
         }
 
@@ -137,6 +164,9 @@ class BotDependencies:
         field_name = {
             "ALLOWED_CHANNELS": "allowed_channels",
             "ALLOWED_CHANNEL_IDS": "allowed_channel_ids",
+            "ALLOWED_GUILDS": "allowed_guilds",
+            "ALLOWED_GUILD_IDS": "allowed_guild_ids",
+            "RESOLVED_ALLOWED_CHANNEL_IDS": "resolved_allowed_channel_ids",
             "BOT_PRESENCE": "bot_presence",
             "ACTIVITY_TYPE": "activity_type",
             "ACTIVITY_STATUS": "activity_status",
@@ -147,6 +177,9 @@ class BotDependencies:
             "PERPLEXITY_MODEL": "perplexity_model",
             "SYSTEM_MESSAGE": "system_message",
             "OUTPUT_TOKENS": "output_tokens",
+            "PERPLEXITY_OUTPUT_TOKENS": "perplexity_output_tokens",
+            "INPUT_TOKENS": "input_tokens",
+            "CONTEXT_WINDOW": "context_window",
             "_health_task": "health_task",
         }.get(key)
         if field_name:

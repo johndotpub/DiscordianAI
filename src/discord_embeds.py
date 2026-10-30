@@ -8,11 +8,12 @@ import logging
 
 import discord
 
+from .citation_formatting import format_citations, renderable_citations
 from .config import (
-    CITATION_PATTERN,
     EMBED_LIMIT,
     EMBED_SAFE_LIMIT,
 )
+from .truncation import truncate_with_notice
 
 
 class CitationEmbedFormatter:
@@ -43,7 +44,9 @@ class CitationEmbedFormatter:
 
         Args:
             content: Main response content with citation markers like [1], [2]
-            citations: Dictionary mapping citation numbers to URLs
+            citations: Dictionary mapping citation numbers to URLs. Entries in
+                an optional ``untrusted_urls`` set stay as plain labels and are
+                never rendered as links.
             title: Optional embed title
             footer_text: Optional footer text
 
@@ -63,8 +66,7 @@ class CitationEmbedFormatter:
         # Discord embed description has a character limit
         was_truncated = original_formatted_length > EMBED_LIMIT
         if was_truncated:
-            # Truncate and add notice
-            formatted_content = formatted_content[:EMBED_SAFE_LIMIT] + "..."
+            formatted_content, _ = truncate_with_notice(formatted_content, EMBED_SAFE_LIMIT, "...")
             self.logger.warning(
                 "Embed description truncated from %d to %d chars",
                 original_formatted_length,
@@ -93,6 +95,18 @@ class CitationEmbedFormatter:
         self.logger.debug("Created citation embed with %d citations", len(citations))
         return embed, metadata
 
+    def render_description(self, content: str, citations: dict[str, str]) -> str:
+        """Render an embed description with citations, without truncating it.
+
+        Args:
+            content: Response text with citation markers such as ``[1]``.
+            citations: Mapping of citation numbers to source URLs.
+
+        Returns:
+            The description exactly as citation formatting would render it.
+        """
+        return self._format_citations_for_embed_description(content, citations)
+
     def _format_citations_for_embed_description(self, text: str, citations: dict[str, str]) -> str:
         """Format citation numbers as clickable hyperlinks for Discord embed description.
 
@@ -103,58 +117,11 @@ class CitationEmbedFormatter:
         Returns:
             str: Text with citations formatted as Discord hyperlinks
         """
-        if not citations:
-            return text
+        safe_citations = renderable_citations(citations)
+        formatted_text = format_citations(text, safe_citations, style="embed")
 
-        def replace_citation(match):
-            citation_num = match.group(1)
-            if citation_num in citations:
-                url = citations[citation_num]
-                # Format as clickable hyperlink for Discord embed
-                return f"[[{citation_num}]]({url})"
-            return match.group(0)  # Return original if no URL found
-
-        # Replace [1], [2], etc. with clickable hyperlinks
-        formatted_text = CITATION_PATTERN.sub(replace_citation, text)
-
-        self.logger.debug("Formatted %d citations for embed description", len(citations))
+        self.logger.debug("Formatted %d citations for embed description", len(safe_citations))
         return formatted_text
-
-    def should_use_embed_for_response(
-        self,
-        citations: dict[str, str] | None = None,
-        force_embed: bool = False,
-    ) -> bool:
-        """Determine if a response should be formatted as an embed.
-
-        Args:
-            citations: Optional citation dictionary
-            force_embed: Force embed usage regardless of other factors
-
-        Returns:
-            bool: True if response should use embed formatting
-        """
-        if force_embed:
-            return True
-
-        # Use embed if citations are present (primary use case)
-        return bool(citations)
-
-    def create_error_embed(self, error_message: str, title: str = "Error") -> discord.Embed:
-        """Create an error embed for consistent error messaging.
-
-        Args:
-            error_message: Error description
-            title: Error title
-
-        Returns:
-            discord.Embed: Formatted error embed
-        """
-        return discord.Embed(
-            title=f"🔧 {title}",
-            description=error_message,
-            color=0xED4245,  # Discord red
-        )
 
 
 # Global instance for easy access

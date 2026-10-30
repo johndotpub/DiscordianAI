@@ -7,6 +7,8 @@ including activity status management and bot presence configuration.
 # Third-party imports
 import discord
 
+from .config import DEFAULT_ACTIVITY_TYPE
+
 
 def set_activity_status(activity_type: str, activity_status: str) -> discord.Activity:
     """Create a Discord Activity object with the specified type and status.
@@ -44,8 +46,9 @@ def set_activity_status(activity_type: str, activity_status: str) -> discord.Act
         "competing": discord.ActivityType.competing,
     }
 
-    # Get the activity type, defaulting to 'listening' if invalid
-    selected_type = activity_types.get(activity_type.lower(), discord.ActivityType.listening)
+    # Get the activity type, defaulting to the configured default if invalid
+    default_type = getattr(discord.ActivityType, DEFAULT_ACTIVITY_TYPE)
+    selected_type = activity_types.get(activity_type.lower(), default_type)
 
     return discord.Activity(
         type=selected_type,

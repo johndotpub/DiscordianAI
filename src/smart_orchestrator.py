@@ -5,7 +5,10 @@ and orchestrates the response generation with comprehensive error handling,
 logging, and thread-safe conversation management.
 """
 
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 import logging
+import re
 from typing import Any
 
 from .config import (
@@ -21,6 +24,7 @@ from .config import (
     get_error_messages,
 )
 from .conversation_manager import ThreadSafeConversationManager
+from .error_handling import get_circuit_breaker
 from .models import AIClients, AIConfig, AIRequest
 from .openai_processing import process_openai_message
 from .perplexity_processing import process_perplexity_message
@@ -28,8 +32,60 @@ from .perplexity_processing import process_perplexity_message
 # Get centralized error messages
 ERROR_MESSAGES = get_error_messages()
 
+
+async def _invoke_openai(request, client, service_config, summary):
+    return await process_openai_message(request, summary, client, service_config)
+
+
+async def _invoke_perplexity(request, client, service_config, summary):
+    return await process_perplexity_message(request, client, service_config, summary)
+
+
+@dataclass(frozen=True)
+class _OnlyModeSpec:
+    """Describe how to run one provider in single-provider mode."""
+
+    service: str
+    label: str
+    config_attr: str
+    invoke: Callable[..., Awaitable[Any]]
+    normalize: Callable[[Any], tuple[str, bool, dict | None]]
+    no_response_error: str
+    exception_error: str
+    breaker_error: str | None = None
+
+
+_ONLY_MODE_SPECS: dict[str, _OnlyModeSpec] = {
+    "perplexity": _OnlyModeSpec(
+        service="perplexity",
+        label="Perplexity",
+        config_attr="perplexity",
+        invoke=_invoke_perplexity,
+        normalize=lambda result: result,
+        no_response_error=ERROR_MESSAGES["no_response_generated"],
+        exception_error=ERROR_MESSAGES["web_search_unavailable"],
+    ),
+    "openai": _OnlyModeSpec(
+        service="openai",
+        label="OpenAI",
+        config_attr="openai",
+        invoke=_invoke_openai,
+        normalize=lambda result: (result, False, None),
+        no_response_error=ERROR_MESSAGES["no_response_generated"],
+        exception_error=ERROR_MESSAGES["ai_service_unavailable"],
+        breaker_error=ERROR_MESSAGES["ai_service_unavailable"],
+    ),
+}
+
 # Constants for magic values
 DEFAULT_LOOKBACK = 6
+_EARLY_WEB_INABILITY_WINDOW = 300
+_QUOTED_SPAN_PATTERN = re.compile(r'"[^"\n]*"|“[^”\n]*”|`[^`\n]*`')
+_NARRATIVE_MARKERS_PATTERN = re.compile(
+    r"\b(poem|story|verse|tale|fiction|imagine|imagined|imagination|dream|"
+    r"dreamed|dreamt|pretend|narrator|character|once upon a time)\b",
+    re.IGNORECASE,
+)
 
 
 def _record_conversation_turn(
@@ -39,9 +95,17 @@ def _record_conversation_turn(
     model: str,
 ) -> None:
     """Record the user prompt and assistant response in conversation history."""
-    request.conversation_manager.add_message(request.user.id, "user", request.message)
+    if not (request.message or "").strip() or not (response_text or "").strip():
+        request.logger.warning("Skipping incomplete conversation turn")
+        return
+
+    conversation_key = getattr(request, "conversation_key", None)
+    if conversation_key is None:
+        conversation_key = request.user.id
+
+    request.conversation_manager.add_message(conversation_key, "user", request.message)
     request.conversation_manager.add_message(
-        request.user.id,
+        conversation_key,
         "assistant",
         response_text,
         metadata={"ai_service": ai_service, "model": model},
@@ -80,23 +144,91 @@ def has_time_sensitivity(message: str) -> bool:
     return any(pattern.search(message) for pattern in COMPILED_TIME_SENSITIVITY_PATTERNS)
 
 
-def _detect_openai_web_inability(response_text: str) -> bool:
-    """Detect if an OpenAI response indicates it cannot access the web.
+def _query_requires_live_data(message: str) -> bool:
+    """Return True when a query plausibly needs current or web-sourced data."""
+    if not message:
+        return False
+    return (
+        any(p.search(message) for p in COMPILED_URL_DETECTION_PATTERNS)
+        or any(p.search(message) for p in COMPILED_SEARCH_INTENT_PATTERNS)
+        or has_time_sensitivity(message)
+    )
 
-    This is persona-agnostic and searches for common verb-phrase signals
-    indicating the model explicitly states an inability to browse/look up
-    current information. Returns True when a reroute to Perplexity is
-    recommended.
+
+def _is_quoted_text(response_text: str, position: int) -> bool:
+    """Return True when a position falls inside quotes, code, or a blockquote."""
+    quoted = _QUOTED_SPAN_PATTERN.finditer(response_text)
+    if any(match.start() <= position < match.end() for match in quoted):
+        return True
+
+    line_start = response_text.rfind("\n", 0, position) + 1
+    line_end = response_text.find("\n", position)
+    if line_end == -1:
+        line_end = len(response_text)
+    if response_text[line_start:line_end].lstrip().startswith(">"):
+        return True
+
+    return response_text.count("```", 0, position) % 2 == 1
+
+
+def _is_narrative_context(response_text: str, position: int) -> bool:
+    """Return True when the phrase sits inside creative or quoted narrative."""
+    sentence_start = (
+        max(
+            response_text.rfind(".", 0, position),
+            response_text.rfind("!", 0, position),
+            response_text.rfind("?", 0, position),
+            response_text.rfind("\n", 0, position),
+        )
+        + 1
+    )
+    endings = [
+        index
+        for index in (
+            response_text.find(".", position),
+            response_text.find("!", position),
+            response_text.find("?", position),
+            response_text.find("\n", position),
+        )
+        if index != -1
+    ]
+    sentence_end = min(endings) + 1 if endings else len(response_text)
+    context = response_text[max(0, sentence_start - 120) : sentence_end]
+    return bool(_NARRATIVE_MARKERS_PATTERN.search(context))
+
+
+def _detect_openai_web_inability(
+    response_text: str,
+    query: str | None = None,
+) -> bool:
+    """Detect a genuine early web-inability admission in an OpenAI response.
+
+    The phrase must be near the start of the response and outside quoted or
+    narrative text. When a query is supplied, it must also plausibly need live
+    data; otherwise a creative answer that merely mentions the internet is kept.
 
     Args:
         response_text: The assistant's response text from OpenAI.
+        query: Optional original user query used to check live-data intent.
 
     Returns:
-        True if the response signals web-inability, False otherwise.
+        True if a reroute to Perplexity is recommended, False otherwise.
     """
     if not response_text:
         return False
-    return any(p.search(response_text) for p in COMPILED_OPENAI_WEB_INABILITY_PATTERNS)
+    if query is not None and not _query_requires_live_data(query):
+        return False
+
+    for pattern in COMPILED_OPENAI_WEB_INABILITY_PATTERNS:
+        for match in pattern.finditer(response_text):
+            if match.start() > _EARLY_WEB_INABILITY_WINDOW:
+                continue
+            if _is_quoted_text(response_text, match.start()):
+                continue
+            if _is_narrative_context(response_text, match.start()):
+                continue
+            return True
+    return False
 
 
 def is_factual_query(message: str) -> bool:
@@ -114,6 +246,7 @@ def should_use_web_search(
     conversation_manager: ThreadSafeConversationManager | None = None,
     user_id: int | None = None,
     lookback_messages: int = DEFAULT_LOOKBACK,
+    conversation_key: str | None = None,
 ) -> bool:
     """Intelligently determine if a message needs a web-enabled model.
 
@@ -126,9 +259,12 @@ def should_use_web_search(
         message: The raw message text to evaluate.
         conversation_manager: Optional `ThreadSafeConversationManager` used
             to consult recent AI service usage for consistency-based routing.
-        user_id: Optional user id used with `conversation_manager`.
+        user_id: Optional user id used with `conversation_manager` when no
+            conversation key is available.
         lookback_messages: How many recent messages to inspect for
             consistency checks.
+        conversation_key: Optional DM/channel conversation key used to look up
+            recent service usage in the correct conversation.
 
     Returns:
         True if the message should be routed to a web-enabled model,
@@ -142,7 +278,11 @@ def should_use_web_search(
     # catching broad exceptions. If it fails, fall back to an empty list.
     try:
         triggers = _identify_routing_triggers(
-            message, conversation_manager, user_id, lookback_messages
+            message,
+            conversation_manager,
+            user_id,
+            lookback_messages,
+            conversation_key,
         )
     except Exception as exc:  # pragma: no cover - defensive fallback  # noqa: BLE001
         logger.debug("should_use_web_search: trigger identification failed: %s", exc)
@@ -156,16 +296,19 @@ def should_use_web_search(
     if any(p.search(message) for p in COMPILED_SEARCH_INTENT_PATTERNS):
         return True
 
-    # Check conversation context
-    if conversation_manager and user_id:
-        has_follow_up = any(pattern.search(message) for pattern in COMPILED_FOLLOW_UP_PATTERNS)
-        if has_follow_up:
+    # Check conversation context. A follow-up only inherits the previous
+    # service when there is a real prior turn in this same conversation.
+    scope_key = conversation_key if conversation_key is not None else user_id
+    if any(pattern.search(message) for pattern in COMPILED_FOLLOW_UP_PATTERNS):
+        recent_ai_service = None
+        if conversation_manager and scope_key:
             recent_ai_service = conversation_manager.get_recent_ai_service(
-                user_id,
+                scope_key,
                 lookback_messages=lookback_messages,
             )
-            if recent_ai_service:
-                return recent_ai_service == "perplexity"
+        if recent_ai_service:
+            return recent_ai_service == "perplexity"
+        return False
 
     # If it's clearly conversational or creative, don't use web search
     if is_conversational_or_creative(message):
@@ -184,6 +327,7 @@ def _identify_routing_triggers(
     conversation_manager: ThreadSafeConversationManager | None = None,
     user_id: int | None = None,
     lookback_messages: int = DEFAULT_LOOKBACK,
+    conversation_key: str | None = None,
 ) -> list[str]:
     """Return human-readable list of routing trigger reasons for telemetry.
 
@@ -193,6 +337,7 @@ def _identify_routing_triggers(
     and must be cheap to compute.
     """
     triggers: list[str] = []
+    scope_key = conversation_key if conversation_key is not None else user_id
 
     if any(p.search(message) for p in COMPILED_URL_DETECTION_PATTERNS):
         triggers.append("url")
@@ -202,10 +347,10 @@ def _identify_routing_triggers(
 
     if (
         conversation_manager
-        and user_id
+        and scope_key
         and any(p.search(message) for p in COMPILED_FOLLOW_UP_PATTERNS)
     ):
-        recent = conversation_manager.get_recent_ai_service(user_id, lookback_messages)
+        recent = conversation_manager.get_recent_ai_service(scope_key, lookback_messages)
         if recent:
             triggers.append(f"consistency:{recent}")
 
@@ -227,26 +372,47 @@ def _identify_routing_triggers(
     return triggers
 
 
+async def _process_only_mode(
+    request: AIRequest,
+    service: str,
+    client: Any,
+    config: AIConfig,
+    conversation_summary: list[dict] | None = None,
+) -> tuple[str, bool, dict | None]:
+    spec = _ONLY_MODE_SPECS[service]
+    request.logger.info("Running in %s-only mode", spec.label)
+    service_config = getattr(config, spec.config_attr)
+    try:
+        result = await spec.invoke(request, client, service_config, conversation_summary)
+        if result:
+            content, suppress, embed = spec.normalize(result)
+            _record_conversation_turn(request, content, spec.service, service_config.model)
+            request.logger.info("%s success (%d chars)", spec.label, len(content))
+            return content, suppress, embed
+
+        request.logger.error("%s returned no response", spec.label)
+        if spec.breaker_error is not None and get_circuit_breaker(spec.service).state == "OPEN":
+            return spec.breaker_error, False, None
+    except Exception:
+        request.logger.exception("%s processing failed", spec.label)
+        return spec.exception_error, False, None
+    return spec.no_response_error, False, None
+
+
 async def _process_perplexity_only_mode(
     request: AIRequest,
     perplexity_client: Any,
     config: AIConfig,
+    conversation_summary: list[dict] | None = None,
 ) -> tuple[str, bool, dict | None]:
     """Process message using Perplexity-only mode."""
-    request.logger.info("Running in Perplexity-only mode")
-    try:
-        result = await process_perplexity_message(request, perplexity_client, config.perplexity)
-        if result:
-            res_content, suppress, embed = result
-            _record_conversation_turn(request, res_content, "perplexity", config.perplexity.model)
-            request.logger.info("Perplexity success (%d chars)", len(res_content))
-            return res_content, suppress, embed
-
-        request.logger.error("Perplexity returned no response")
-        return ERROR_MESSAGES["no_response_generated"], False, None
-    except Exception:
-        request.logger.exception("Perplexity processing failed")
-        return ERROR_MESSAGES["web_search_unavailable"], False, None
+    return await _process_only_mode(
+        request,
+        "perplexity",
+        perplexity_client,
+        config,
+        conversation_summary,
+    )
 
 
 async def _process_openai_only_mode(
@@ -256,21 +422,13 @@ async def _process_openai_only_mode(
     config: AIConfig,
 ) -> tuple[str, bool, dict | None]:
     """Process message using OpenAI-only mode."""
-    request.logger.info("Running in OpenAI-only mode")
-    try:
-        response_content = await process_openai_message(
-            request, conversation_summary, openai_client, config.openai
-        )
-        if response_content:
-            _record_conversation_turn(request, response_content, "openai", config.openai.model)
-            request.logger.info("OpenAI success (%d chars)", len(response_content))
-            return response_content, False, None
-
-        request.logger.error("OpenAI returned no response")
-        return ERROR_MESSAGES["no_response_generated"], False, None
-    except Exception:
-        request.logger.exception("OpenAI processing failed")
-        return ERROR_MESSAGES["ai_service_unavailable"], False, None
+    return await _process_only_mode(
+        request,
+        "openai",
+        openai_client,
+        config,
+        conversation_summary,
+    )
 
 
 async def get_smart_response(
@@ -313,7 +471,9 @@ async def get_smart_response(
 
         # Mode 1: Perplexity only
         if clients.perplexity and not clients.openai:
-            return await _process_perplexity_only_mode(request, clients.perplexity, config)
+            return await _process_perplexity_only_mode(
+                request, clients.perplexity, config, conversation_summary
+            )
 
         # Mode 2: OpenAI only
         if clients.openai and not clients.perplexity:
@@ -348,16 +508,22 @@ async def _process_hybrid_mode(
         lookback = orchestrator_config.get("LOOKBACK_MESSAGES_FOR_CONSISTENCY", DEFAULT_LOOKBACK)
 
     sanitized = _sanitize_for_routing(request.message)
+    conversation_key = getattr(request, "conversation_key", None)
     needs_web = should_use_web_search(
         sanitized,
         request.conversation_manager,
         request.user.id,
         lookback_messages=lookback,
+        conversation_key=conversation_key,
     )
 
     # Routing telemetry: identify and log the reasons that influenced routing
     triggers = _identify_routing_triggers(
-        sanitized, request.conversation_manager, request.user.id, lookback
+        sanitized,
+        request.conversation_manager,
+        request.user.id,
+        lookback,
+        conversation_key,
     )
     request.logger.info(
         "Routing decision: needs_web=%s; triggers=%s; sanitized=%s",
@@ -368,7 +534,9 @@ async def _process_hybrid_mode(
 
     if needs_web:
         request.logger.info("Routing to Perplexity")
-        res = await process_perplexity_message(request, clients.perplexity, config.perplexity)
+        res = await process_perplexity_message(
+            request, clients.perplexity, config.perplexity, conversation_summary
+        )
         if res:
             res_content, suppress, embed = res
             _record_conversation_turn(request, res_content, "perplexity", config.perplexity.model)
@@ -382,7 +550,12 @@ async def _process_hybrid_mode(
     if res_content:
         # If OpenAI explicitly says it cannot browse/look up current web data,
         # detect that and reroute to Perplexity (persona-agnostic detection).
-        if _detect_openai_web_inability(res_content):
+        if _detect_openai_web_inability(res_content, request.message):
+            request.logger.debug(
+                "Discarding OpenAI answer after web-inability reroute: length=%d excerpt=%r",
+                len(res_content),
+                res_content[:80],
+            )
             request.logger.warning(
                 "OpenAI response indicates web-inability; rerouting to Perplexity"
             )
@@ -390,6 +563,7 @@ async def _process_hybrid_mode(
                 request,
                 clients.perplexity,
                 config.perplexity,
+                conversation_summary,
             )
             if per_res:
                 per_text, per_suppress, per_embed = per_res
@@ -407,7 +581,9 @@ async def _process_hybrid_mode(
 
     # If OpenAI returned no response (None/empty), attempt Perplexity as a fallback
     request.logger.info("OpenAI returned no response; attempting Perplexity fallback")
-    per_res = await process_perplexity_message(request, clients.perplexity, config.perplexity)
+    per_res = await process_perplexity_message(
+        request, clients.perplexity, config.perplexity, conversation_summary
+    )
     if per_res:
         per_text, per_suppress, per_embed = per_res
         _record_conversation_turn(request, per_text, "perplexity", config.perplexity.model)

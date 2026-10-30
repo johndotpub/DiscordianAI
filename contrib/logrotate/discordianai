@@ -1,0 +1,16 @@
+# DiscordianAI log rotation fragment.
+#
+# Install it as /etc/logrotate.d/discordianai and replace the placeholder
+# path below with the bot.log location used by your installation.
+#
+# copytruncate is required because the bot holds bot.log open through the
+# supervisor's append redirection and cannot be asked to reopen it.
+
+/path/to/DiscordianAI/bot.log {
+    size 50M
+    rotate 5
+    compress
+    missingok
+    notifempty
+    copytruncate
+}

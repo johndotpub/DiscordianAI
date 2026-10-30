@@ -169,21 +169,6 @@ class TestRoutingFunctions:
         assert not should_use_web_search("How are you feeling today?")
         assert not should_use_web_search("Write a poem about winter")
 
-    def test_should_use_web_search_with_consistency(self):
-        """Test web search function with conversation manager."""
-        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
-
-        # Test that function accepts conversation manager parameter
-        result = should_use_web_search(
-            "What is Python?",
-            conversation_manager=conversation_manager,
-            user_id=12345,
-            lookback_messages=6,
-        )
-
-        # Function should complete without error
-        assert isinstance(result, bool)
-
     def test_should_use_web_search_short_message(self):
         """Test that short messages use appropriate routing."""
         short_message = "Hi there"  # Less than default min words
@@ -279,7 +264,7 @@ class TestRoutingFunctions:
         user = MagicMock()
         user.id = 1
         logger = logging.getLogger("src.smart_orchestrator.test")
-        request = AIRequest("Tell me about X", user, cm, logger)
+        request = AIRequest("What is the latest news about X?", user, cm, logger)
 
         clients = AIClients(openai=object(), perplexity=object())
         cfg = AIConfig()
@@ -287,7 +272,7 @@ class TestRoutingFunctions:
         async def fake_openai(req, conv, client, cfg):
             return "Sorry, I can't access the internet to look that up."
 
-        async def fake_perp(req, client, cfg):
+        async def fake_perp(req, client, cfg, conversation_summary=None):
             return ("Perplexity result", False, None)
 
         with (
@@ -299,6 +284,46 @@ class TestRoutingFunctions:
         # Should have a reroute warning/info
         msgs = [r.getMessage() for r in caplog.records]
         assert any("rerouting to Perplexity" in m or "Routing to Perplexity" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_reroute_log_does_not_dump_the_discarded_answer(self, caplog):
+        """A reroute logs the answer length and a short excerpt, never the whole answer."""
+        caplog.set_level(logging.DEBUG)
+
+        cm = MagicMock()
+        user = MagicMock()
+        user.id = 7
+        logger = logging.getLogger("src.smart_orchestrator.test")
+        request = AIRequest("What is the latest news about X?", user, cm, logger)
+
+        clients = AIClients(openai=object(), perplexity=object())
+        cfg = AIConfig()
+        marker = "UNIQUE_REROUTE_MARKER_" + ("x" * 1980)
+        answer = f"I can't access the internet. {marker}"
+
+        async def fake_openai(req, conv, client, cfg):
+            return answer
+
+        async def fake_perp(req, client, cfg, conversation_summary=None):
+            return ("Perplexity result", False, None)
+
+        with (
+            patch("src.smart_orchestrator.should_use_web_search", return_value=False),
+            patch("src.smart_orchestrator.process_openai_message", fake_openai),
+            patch("src.smart_orchestrator.process_perplexity_message", fake_perp),
+        ):
+            await _process_hybrid_mode(request, [], clients, cfg, orchestrator_config=None)
+
+        reroute_records = [
+            record
+            for record in caplog.records
+            if "Discarding OpenAI answer" in record.getMessage()
+        ]
+        assert reroute_records, "Expected a debug line for the discarded answer"
+        logged = reroute_records[0].getMessage()
+        assert marker not in logged
+        assert len(logged) < 300
+        assert str(len(answer)) in logged
 
     @pytest.mark.asyncio
     async def test_perplexity_fallback_logs(self, caplog):
@@ -318,7 +343,7 @@ class TestRoutingFunctions:
         clients = AIClients(openai=object(), perplexity=object())
         cfg = AIConfig()
 
-        async def failing_perp(req, client, cfg):
+        async def failing_perp(req, client, cfg, conversation_summary=None):
             return None
 
         async def success_openai(req, conv, client, cfg):
@@ -375,7 +400,7 @@ class TestProcessingModes:
                 12345,
                 "assistant",
                 "Perplexity response",
-                metadata={"ai_service": "perplexity", "model": "sonar-pro"},
+                metadata={"ai_service": "perplexity", "model": "perplexity/sonar"},
             )
             assert conversation_manager.add_message.call_count == 2
 
@@ -451,7 +476,7 @@ class TestProcessingModes:
                 12345,
                 "assistant",
                 "OpenAI response",
-                metadata={"ai_service": "openai", "model": "gpt-5-mini"},
+                metadata={"ai_service": "openai", "model": "gpt-6-luna"},
             )
             assert conversation_manager.add_message.call_count == 2
 
@@ -531,7 +556,7 @@ class TestProcessingModes:
                 12345,
                 "assistant",
                 "Web search result",
-                metadata={"ai_service": "perplexity", "model": "sonar-pro"},
+                metadata={"ai_service": "perplexity", "model": "perplexity/sonar"},
             )
             assert conversation_manager.add_message.call_count == 2
 
@@ -554,15 +579,31 @@ class TestProcessingModes:
         clients = AIClients(openai=openai_client, perplexity=perplexity_client)
         ai_config = AIConfig()
 
-        response, _suppress_embeds, _embed_data = await _process_hybrid_mode(
-            request=request,
-            conversation_summary=[],
-            clients=clients,
-            config=ai_config,
-        )
+        with (
+            patch("src.smart_orchestrator.should_use_web_search", return_value=False),
+            patch(
+                "src.smart_orchestrator.process_openai_message",
+                return_value="OpenAI response",
+            ) as mock_openai,
+        ):
+            response, _suppress_embeds, _embed_data = await _process_hybrid_mode(
+                request=request,
+                conversation_summary=[],
+                clients=clients,
+                config=ai_config,
+            )
 
-        assert response is not None
-        assert isinstance(_suppress_embeds, bool)
+        assert response == "OpenAI response"
+        assert _suppress_embeds is False
+        assert _embed_data is None
+        mock_openai.assert_awaited_once()
+        conversation_manager.add_message.assert_any_call(
+            12345,
+            "assistant",
+            "OpenAI response",
+            metadata={"ai_service": "openai", "model": "gpt-6-luna"},
+        )
+        assert conversation_manager.add_message.call_count == 2
 
     @pytest.mark.asyncio
     async def test_process_hybrid_mode_fallback_chain(self):
@@ -604,7 +645,7 @@ class TestProcessingModes:
                 12345,
                 "assistant",
                 "OpenAI fallback response",
-                metadata={"ai_service": "openai", "model": "gpt-5-mini"},
+                metadata={"ai_service": "openai", "model": "gpt-6-luna"},
             )
             assert conversation_manager.add_message.call_count == 2
 
@@ -655,7 +696,7 @@ class TestProcessingModes:
                 12345,
                 "assistant",
                 "Perplexity result",
-                metadata={"ai_service": "perplexity", "model": "sonar-pro"},
+                metadata={"ai_service": "perplexity", "model": "perplexity/sonar"},
             )
             assert conversation_manager.add_message.call_count == 2
 

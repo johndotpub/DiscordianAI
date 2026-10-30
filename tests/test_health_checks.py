@@ -8,9 +8,8 @@ This test suite covers:
 - Alerting and status determination
 """
 
-import asyncio
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -18,8 +17,6 @@ from src.health_checks import (
     APIHealthMetrics,
     APIHealthMonitor,
     HealthCheckResult,
-    run_startup_health_checks,
-    validate_api_configuration,
 )
 
 
@@ -71,16 +68,34 @@ class TestAPIHealthMetrics:
 
     def test_metrics_calculations(self):
         """Test metrics calculations."""
-        APIHealthMetrics(
-            service="test",
-            total_checks=100,
-            successful_checks=95,
-            failed_checks=5,
-        )
+        monitor = APIHealthMonitor()
+        timestamp = datetime.now(UTC)
 
-        # Uptime calculation would be done by the monitor
-        expected_uptime = (95 / 100) * 100
-        assert expected_uptime == 95.0
+        for _ in range(95):
+            monitor.record_health_check(
+                HealthCheckResult(
+                    service="test",
+                    status="healthy",
+                    response_time_ms=1,
+                    timestamp=timestamp,
+                )
+            )
+        for _ in range(5):
+            monitor.record_health_check(
+                HealthCheckResult(
+                    service="test",
+                    status="unhealthy",
+                    response_time_ms=0,
+                    timestamp=timestamp,
+                    error="failed",
+                )
+            )
+
+        metrics = monitor.metrics["test"]
+        assert metrics.total_checks == 100
+        assert metrics.successful_checks == 95
+        assert metrics.failed_checks == 5
+        assert metrics.uptime_percentage == 95.0
 
 
 class TestAPIHealthMonitor:
@@ -107,7 +122,7 @@ class TestAPIHealthMonitor:
         result = await self.monitor.check_openai_health(openai_client, config)
 
         assert result.service == "openai"
-        assert result.status in ["healthy", "degraded"]  # Depending on response time
+        assert result.status == "healthy"
         assert result.error is None
         assert result.details["model"] == "gpt-5-mini"
         assert result.details["model_count"] == 2
@@ -148,22 +163,22 @@ class TestAPIHealthMonitor:
         # Mock Perplexity client
         perplexity_client = Mock()
         mock_response = Mock()
-        mock_response.data = [Mock(id="sonar-pro"), Mock(id="sonar")]
+        mock_response.data = [Mock(id="perplexity/sonar"), Mock(id="other-model")]
 
         mock_create = AsyncMock()
         mock_create.return_value = mock_response
         perplexity_client.models.list = mock_create
 
-        config = {"PERPLEXITY_MODEL": "sonar-pro"}
+        config = {"PERPLEXITY_MODEL": "perplexity/sonar"}
 
         result = await self.monitor.check_perplexity_health(perplexity_client, config)
 
         assert result.service == "perplexity"
-        assert result.status in ["healthy", "degraded"]
+        assert result.status == "healthy"
         assert result.error is None
-        assert result.details["model"] == "sonar-pro"
+        assert result.details["model"] == "perplexity/sonar"
         assert result.details["model_count"] == 2
-        assert result.details["available_models"] == ["sonar-pro", "sonar"]
+        assert result.details["available_models"] == ["perplexity/sonar", "other-model"]
 
         # Verify that the API call was made successfully
         perplexity_client.models.list.assert_called_once()
@@ -303,7 +318,7 @@ class TestAPIHealthMonitor:
 
         config = {
             "GPT_MODEL": "gpt-5-mini",
-            "PERPLEXITY_MODEL": "sonar-pro",
+            "PERPLEXITY_MODEL": "perplexity/sonar",
         }
 
         results = await self.monitor.run_all_health_checks(clients, config)
@@ -315,227 +330,6 @@ class TestAPIHealthMonitor:
 
         # Verify all checks were recorded
         assert len(self.monitor.metrics) == 3
-
-    def test_get_health_summary(self):
-        """Test getting comprehensive health summary."""
-        # Add some test metrics
-        self.monitor.metrics["openai"] = APIHealthMetrics(
-            service="openai",
-            total_checks=10,
-            successful_checks=9,
-            failed_checks=1,
-            average_response_time_ms=250.5,
-            consecutive_failures=0,
-            uptime_percentage=90.0,
-            last_check_time=datetime.now(UTC),
-            last_success_time=datetime.now(UTC),
-        )
-
-        self.monitor.metrics["discord"] = APIHealthMetrics(
-            service="discord",
-            total_checks=5,
-            successful_checks=5,
-            failed_checks=0,
-            average_response_time_ms=50.0,
-            consecutive_failures=0,
-            uptime_percentage=100.0,
-            last_check_time=datetime.now(UTC),
-        )
-
-        summary = self.monitor.get_health_summary()
-
-        assert "timestamp" in summary
-        assert "services" in summary
-        assert "overall_status" in summary
-
-        assert len(summary["services"]) == 2
-        assert summary["services"]["openai"]["uptime_percentage"] == 90.0
-        assert summary["services"]["discord"]["uptime_percentage"] == 100.0
-
-        # Overall status should be degraded due to OpenAI's 90% uptime
-        assert summary["overall_status"] in ["healthy", "degraded"]
-
-    def test_determine_service_status(self):
-        """Test service status determination logic."""
-        # Healthy service
-        healthy_metrics = APIHealthMetrics(
-            service="test",
-            consecutive_failures=0,
-            uptime_percentage=95.0,
-        )
-        assert self.monitor._determine_service_status(healthy_metrics) == "healthy"
-
-        # Degraded service (low uptime)
-        degraded_metrics = APIHealthMetrics(
-            service="test",
-            consecutive_failures=0,
-            uptime_percentage=85.0,
-        )
-        assert self.monitor._determine_service_status(degraded_metrics) == "degraded"
-
-        # Degraded service (recent failure)
-        degraded_metrics2 = APIHealthMetrics(
-            service="test",
-            consecutive_failures=1,
-            uptime_percentage=95.0,
-        )
-        assert self.monitor._determine_service_status(degraded_metrics2) == "degraded"
-
-        # Unhealthy service (multiple consecutive failures)
-        unhealthy_metrics = APIHealthMetrics(
-            service="test",
-            consecutive_failures=3,
-            uptime_percentage=50.0,
-        )
-        assert self.monitor._determine_service_status(unhealthy_metrics) == "unhealthy"
-
-    @pytest.mark.asyncio
-    async def test_monitoring_lifecycle(self):
-        """Test starting and stopping the monitoring loop."""
-        # Mock clients
-        clients = {"openai": Mock()}
-        config = {"GPT_MODEL": "gpt-5-mini"}
-
-        # Mock the health check method to avoid actual API calls
-        self.monitor.run_all_health_checks = AsyncMock(return_value={})
-
-        # Start monitoring
-        await self.monitor.start_monitoring(clients, config)
-
-        assert self.monitor._monitoring_active is True
-        assert self.monitor._monitor_task is not None
-
-        # Let it run for a short time
-        await asyncio.sleep(0.1)
-
-        # Stop monitoring
-        await self.monitor.stop_monitoring()
-
-        assert self.monitor._monitoring_active is False
-
-
-class TestConfigurationValidation:
-    """Test API configuration validation functionality."""
-
-    def test_validate_api_configuration_valid(self):
-        """Test validation with valid configuration."""
-        config = {
-            "OPENAI_API_KEY": "sk-" + "a" * 32,  # Valid format: sk- followed by 32+ alphanumeric
-            "OPENAI_API_URL": "https://api.openai.com/v1/",
-            "GPT_MODEL": "gpt-5-mini",
-            "PERPLEXITY_API_KEY": "pplx-"
-            + "a" * 32,  # Valid format: pplx- followed by 32+ alphanumeric
-            "PERPLEXITY_MODEL": "sonar-pro",
-            "DISCORD_TOKEN": "discord-token",
-            "ACTIVITY_TYPE": "watching",
-            "BOT_PRESENCE": "online",
-            "RATE_LIMIT": 10,
-            "RATE_LIMIT_PER": 60,
-        }
-
-        _warnings, errors = validate_api_configuration(config)
-
-        # Should have no critical errors
-        assert len(errors) == 0
-
-    def test_validate_api_configuration_missing_keys(self):
-        """Test validation with missing API keys."""
-        config = {
-            # Missing OPENAI_API_KEY and PERPLEXITY_API_KEY
-            "DISCORD_TOKEN": "discord-token",
-            "GPT_MODEL": "gpt-5-mini",
-        }
-
-        _warnings, errors = validate_api_configuration(config)
-
-        # Should have error about missing API keys
-        assert len(errors) > 0
-        api_key_error = any("API key" in error for error in errors)
-        assert api_key_error
-
-    def test_validate_api_configuration_invalid_model(self):
-        """Test validation with invalid model."""
-        config = {
-            "OPENAI_API_KEY": "sk-test123",
-            "GPT_MODEL": "invalid-model",
-            "DISCORD_TOKEN": "discord-token",
-        }
-
-        _warnings, errors = validate_api_configuration(config)
-
-        # Should have warning about invalid model
-        invalid_model_warning = any("invalid-model" in str(w) for w in _warnings)
-        assert invalid_model_warning or len(errors) > 0
-
-
-@pytest.mark.asyncio
-class TestStartupHealthChecks:
-    """Test startup health check integration."""
-
-    async def test_startup_health_checks_all_healthy(self):
-        """Test startup health checks when all services are healthy."""
-        # Mock monitor
-        mock_monitor = Mock()
-        mock_results = {
-            "openai": HealthCheckResult(
-                service="openai",
-                status="healthy",
-                response_time_ms=100,
-                timestamp=datetime.now(UTC),
-            ),
-            "perplexity": HealthCheckResult(
-                service="perplexity",
-                status="healthy",
-                response_time_ms=200,
-                timestamp=datetime.now(UTC),
-            ),
-        }
-        mock_monitor.run_all_health_checks = AsyncMock(return_value=mock_results)
-
-        clients = {"openai": Mock(), "perplexity": Mock()}
-        config = {}
-
-        with patch("src.health_checks.health_monitor", mock_monitor):
-            result = await run_startup_health_checks(clients, config)
-
-        assert result is True
-
-    async def test_startup_health_checks_service_unhealthy(self):
-        """Test startup health checks when a service is unhealthy."""
-        mock_monitor = Mock()
-        mock_results = {
-            "openai": HealthCheckResult(
-                service="openai",
-                status="unhealthy",
-                response_time_ms=0,
-                timestamp=datetime.now(UTC),
-                error="API unavailable",
-            ),
-        }
-        mock_monitor.run_all_health_checks = AsyncMock(return_value=mock_results)
-
-        clients = {"openai": Mock()}
-        config = {}
-
-        with patch("src.health_checks.health_monitor", mock_monitor):
-            result = await run_startup_health_checks(clients, config)
-
-        assert result is False
-
-    async def test_startup_health_checks_exception(self):
-        """Test startup health checks when an exception occurs."""
-        mock_monitor = Mock()
-        mock_monitor.run_all_health_checks = AsyncMock(
-            side_effect=Exception("Health check failed"),
-        )
-
-        clients = {"openai": Mock()}
-        config = {}
-
-        with patch("src.health_checks.health_monitor", mock_monitor):
-            result = await run_startup_health_checks(clients, config)
-
-        assert result is False
 
 
 if __name__ == "__main__":

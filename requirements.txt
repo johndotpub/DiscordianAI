@@ -1,7 +1,7 @@
 discord.py>=2.7.1
-aiohttp>=3.13.5
-openai>=2.41.0
-websockets>=16.0
+# Tested with openai 3.40.0. Keep <4: custom httpx clients rely on the
+# runtime-only legacy escape hatch on the HTTPX2 line and may vanish in 4.x.
+openai>=2.41,<4
 beautifulsoup4>=4.14.3
 httpx[http2]>=0.28.1
 h2>=4.3.0
