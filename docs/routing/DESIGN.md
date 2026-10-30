@@ -3,6 +3,18 @@
 Status: accepted design, implementation in progress. Supersedes the regex chain in
 `src/smart_orchestrator.py`.
 
+Scope decisions taken with the project owner:
+
+- **English only.** No language switch, no per-language data, no start-up refusal for other scripts. One
+  lexicon, tuned for English; other input routes as best it can.
+- **No cost cap, no budget logic.** Routing decides on the message's need for live data, not on spend.
+  There is no token bucket, no forced-local-on-budget, no price model in the router.
+- **No per-guild lexicon overrides.** One lexicon ships with the release; operators do not extend it at
+  runtime.
+- **Outright replacement.** This replaces the regex router in one step — no shadow mode, no A/B arms, no
+  percentage ramp, no canary guild. The old path is deleted, and reverting means reverting the commit.
+
+
 ## Why
 
 Routing decides whether a message is answered by a local model or by a web-searching one. The current
@@ -167,8 +179,8 @@ Adding a term is one JSON line, no release and no tuning. Load-time validation f
 key: unknown class, weight outside [−10, 10], a term in two classes, an uncompilable regex, a version
 mismatch.
 
-`ROUTING_LEXICON_FILE` merges an operator overlay by class (one guild tracking GPU stock, one specific
-flight). Additive only; the bundled lexicon must stand alone.
+One global lexicon ships with the release. There is no operator overlay and no per-guild extension: the
+    bundled file is the whole vocabulary, and changing it is a release.
 
 ## Caching
 
@@ -187,26 +199,26 @@ becomes keyword-only with **no default**, so a call site cannot forget it.
 
 One structured line per decision, content-free: `ts, evt=route, req_id, guild_hash, channel_hash,
 conv_hash, service, score, threshold, source, reasons (≤5 feature ids), rules_version, config_fp,
-latency_us, budget_remaining`.
+latency_us`.
 
 Three log statements currently leak message content and are removed: the sanitised message in
 `smart_orchestrator`, the raw message, and `entity:<matched text>`.
 
 Counters survive restarts (absolute totals, hourly flush and on SIGTERM, boot id gap on crash) and surface
-in `/health` as a `router` block: web share, false-local count, budget remaining, fallback count,
-rules_version.
+in `/health` as a `router` block: web share, false-local count, fallback count, rules_version.
 
 ## Rollout
 
-`ROUTER_MODE=heuristic|model` (default heuristic — the product), `ROUTER_KILL_SWITCH`,
-`ROUTER_*_THRESHOLD` per channel kind (0.10 channel, 0.07 announcement, 0.20 DM), `ROUTER_BUDGET_*`
-(token bucket that forces local when empty), `ROUTER_SHADOW_MODE`, `ROUTER_ROLLOUT_PERCENT` (stable guild
-hash), `ROUTER_GUILD_OVERRIDES`, `ROUTER_RUNTIME_OVERRIDE_FILE` (polled, so the kill switch needs no
-deploy).
+This is a replacement, not a migration with arms. The new router is wired in, the old chain is deleted in
+the same release, and there is no shadow mode, no percentage ramp and no canary guild.
 
-Sequence: instrumentation only → shadow scoring beside the old boolean → canary guild → hashed ramp 5/10/
-25/50/100 → optional model. Each step gated on false-local rate, web share, spend per message and p95
-latency.
+The only runtime switch is `ROUTER_MODE=heuristic|model`, which selects the implementation and defaults to
+`heuristic`. Per-channel-kind thresholds (`ROUTER_WEB_THRESHOLD_CHANNEL` 0.10,
+`ROUTER_WEB_THRESHOLD_ANNOUNCE` 0.07, `ROUTER_WEB_THRESHOLD_DM` 0.20) are tuning, not rollout: they exist
+because a public channel and a DM have different costs of being wrong, not to stage the change.
+
+Reverting means reverting the commit — the old router is gone rather than dormant, which is why the
+evaluation floors below are a release gate rather than a monitoring exercise.
 
 ## Evaluation
 
@@ -223,9 +235,9 @@ embarrassment that a technical false positive is not.
 | Technical / code | — | ≥ 0.60 |
 | Overall | ≥ 0.90 (target 0.92) | ≥ 0.75 |
 
-Plus: hard-rule cases exact (URL, explicit search, creative-only); projected cost per 1k messages within
-budget; two runs identical and hermetic (sockets blocked); 20 labels flipped with a fixed seed must fail
-the suite; every production misroute gets a corpus row before it is fixed.
+Plus: hard-rule cases exact (URL, explicit search, creative-only); two runs identical and hermetic
+(sockets blocked); 20 labels flipped with a fixed seed must fail the suite; every production misroute gets
+a corpus row before it is fixed.
 
 ## Clef seam
 
@@ -246,12 +258,12 @@ Constraints that keep it optional:
 
 | Step | Change | Behaviour |
 |---|---|---|
-| 0 | Counters and decision logging | none |
 | 1 | `src/routing/` contracts, features, scoring, heuristic, lexicon + unit tests | none (not wired) |
-| 2 | Parity harness: new score beside the old boolean, logged, old decision still taken | none |
-| 3 | Wire the router in; delete `_identify_routing_triggers`; fix the cache key, the double Perplexity attempt, the manager-None crash | intended |
-| 4 | Delete the old pattern lists and the truth-test entries they dragged in; docs | none |
-| 5 | Optional model behind `ROUTER_MODE` | none when off |
+| 2 | Wire the router in; delete `_identify_routing_triggers`; fix the cache key, the double Perplexity attempt, the manager-None crash | intended |
+| 3 | Delete the old pattern lists and the truth-test entries they dragged in; docs | none |
+| 4 | Optional model behind `ROUTER_MODE` | none when off |
 
-Steps 0–2 are provably behaviour-preserving, so a regression at step 3 is attributable to the router rather
-than to the refactor.
+Step 1 is behaviour-preserving by construction because nothing calls it. Step 2 is the replacement, and it
+carries the evaluation gate: the corpus floors are checked before the commit that wires it in, not after.
+There is no parity stage — comparing two routers side by side is the shadow mode this design does not
+have.
