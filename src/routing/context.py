@@ -29,8 +29,10 @@ def build_router_input(
         return _input_for(request, text, ConversationContext())
 
     try:
+        lookback = _coerce_lookback(lookback)
         service = _recent_service(conversation_manager, conversation_key, lookback)
         history = _history(conversation_manager, conversation_key)
+        turns = _turns(history, lookback)
     except Exception as exc:  # noqa: BLE001 - history is optional and caller-owned
         _LOGGER.warning(
             "Conversation history unavailable; routing with empty context (%s)",
@@ -38,7 +40,6 @@ def build_router_input(
         )
         return _input_for(request, text, ConversationContext())
 
-    turns = _turns(history, lookback)
     last_route = _service_route(service)
     if last_route is None:
         last_route = next(
@@ -57,6 +58,14 @@ def _request_text(request: Any) -> str:
     if not isinstance(text, str):
         text = getattr(request, "text", "")
     return text if isinstance(text, str) else ""
+
+
+def _coerce_lookback(lookback: Any) -> int:
+    """Coerce ``lookback`` to an integer, disabling history on bad input."""
+    try:
+        return int(lookback)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _recent_service(manager: Any, conversation_key: str, lookback: int) -> str | None:

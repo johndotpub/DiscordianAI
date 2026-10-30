@@ -78,3 +78,32 @@ def test_history_and_recent_service_become_turns_and_last_route() -> None:
     assert result.context.last_route == "web"
     assert [turn.route for turn in result.context.turns] == [None, "web"]
     assert result.context.turns[-1].role == "assistant"
+
+
+class _StringHistoryManager(_Manager):
+    def get_conversation(self, user_id=None, *, conversation_key=None):
+        _ = (user_id, conversation_key)
+        return "not a list of messages"
+
+
+def test_string_history_returns_an_empty_context_without_raising() -> None:
+    result = build_router_input(_request(), _StringHistoryManager(), 6)
+
+    assert result.text == "tell me more"
+    assert result.context.turns == ()
+    assert result.context.last_route is None
+
+
+def test_float_lookback_is_coerced_before_slicing_history() -> None:
+    manager = _Manager(
+        service=None,
+        history=[
+            {"role": "user", "content": "first"},
+            {"role": "assistant", "content": "second"},
+            {"role": "user", "content": "third"},
+        ],
+    )
+
+    result = build_router_input(_request(), manager, 2.9)
+
+    assert [turn.text for turn in result.context.turns] == ["second", "third"]

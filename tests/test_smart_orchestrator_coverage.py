@@ -177,7 +177,7 @@ class TestRoutingBehaviour:
         user = MagicMock()
         user.id = 1
         logger = logging.getLogger("src.smart_orchestrator.test")
-        request = AIRequest("Tell me something interesting", user, cm, logger)
+        request = AIRequest("What is the capital of France?", user, cm, logger)
 
         clients = AIClients(openai=object(), perplexity=object())
         cfg = AIConfig()
@@ -206,7 +206,7 @@ class TestRoutingBehaviour:
         user = MagicMock()
         user.id = 7
         logger = logging.getLogger("src.smart_orchestrator.test")
-        request = AIRequest("Tell me something interesting", user, cm, logger)
+        request = AIRequest("What is the capital of France?", user, cm, logger)
 
         clients = AIClients(openai=object(), perplexity=object())
         cfg = AIConfig()
@@ -564,7 +564,7 @@ class TestProcessingModes:
         perplexity_client = MagicMock()
 
         request = AIRequest(
-            message="Tell me something interesting",
+            message="What is the capital of France?",
             user=user,
             conversation_manager=conversation_manager,
             logger=logger,
@@ -593,7 +593,7 @@ class TestProcessingModes:
             assert response == "Perplexity result"
             mock_perplexity.assert_called_once()
             conversation_manager.add_message.assert_any_call(
-                12345, "user", "Tell me something interesting"
+                12345, "user", "What is the capital of France?"
             )
             conversation_manager.add_message.assert_any_call(
                 12345,

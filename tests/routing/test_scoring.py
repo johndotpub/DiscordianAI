@@ -135,3 +135,45 @@ def test_cache_is_disabled_for_empty_and_mention_only_input() -> None:
         assert decision.route == "local"
         assert decision.band == "confident"
         assert not decision.cache.cacheable
+
+
+def test_decision_source_follows_override_inherited_lexicon_structural_precedence() -> None:
+    structural = Cue(
+        signal="frame.question",
+        klass="framing",
+        span=None,
+        detail="question",
+        source="structural",
+        weight=0.35,
+    )
+    lexicon = Cue(
+        signal="pred.status",
+        klass="bearing",
+        span=None,
+        detail="down",
+        source="lexicon",
+        weight=2.4,
+    )
+    inherited = Cue(
+        signal="inherit.web",
+        klass="override",
+        span=None,
+        detail="web",
+        source="inherited",
+        weight=2.0,
+    )
+    override = Cue(
+        signal="override.url",
+        klass="override",
+        span=None,
+        detail="https://example.com",
+        source="override",
+        weight=0.0,
+    )
+
+    assert decide((), RouterConfig(), text="hello").source == "structural"
+    assert decide((structural,), RouterConfig(), text="hello").source == "structural"
+    assert decide((structural, lexicon), RouterConfig(), text="is it down").source == "lexicon"
+    inherited_source = decide((lexicon, inherited), RouterConfig(), text="and the second one")
+    assert inherited_source.source == "inherited"
+    assert decide((inherited, override), RouterConfig(), text="check it").source == "override"

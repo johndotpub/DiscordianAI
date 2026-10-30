@@ -119,7 +119,7 @@ def decide(
     scored = score(cues, config)
     resolved_router_id = config.router_id
     resolved_policy_version = config.policy_version
-    decision_source: Source = "structural"
+    decision_source = _decision_source(scored.evidence)
 
     if scored.has_local_override:
         route, band, threshold, confidence = "local", "confident", config.tau_local, 1.0
@@ -174,6 +174,23 @@ def decide(
         text=text,
         source=decision_source,
     )
+
+
+_SOURCE_PRECEDENCE: tuple[Source, ...] = (
+    "override",
+    "inherited",
+    "lexicon",
+    "structural",
+)
+
+
+def _decision_source(evidence: Iterable[Evidence]) -> Source:
+    """Return the strongest evidence source in precedence order."""
+    sources = {item.source for item in evidence}
+    for source in _SOURCE_PRECEDENCE:
+        if source in sources:
+            return source
+    return "structural"
 
 
 def _sigmoid(value: float) -> float:

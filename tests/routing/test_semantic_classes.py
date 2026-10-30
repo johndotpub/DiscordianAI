@@ -222,6 +222,6 @@ def test_question_prefix_routes_by_its_content() -> None:
     decision = _decide("?status is github down")
 
     assert decision.route == "web"
-    assert decision.source == "structural"
+    assert decision.source == "lexicon"
     assert decision.text == "?status is github down"
     assert any(item.signal == "pred.status" for item in decision.evidence)

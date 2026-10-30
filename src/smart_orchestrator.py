@@ -21,9 +21,10 @@ from .error_handling import get_circuit_breaker
 from .models import AIClients, AIConfig, AIRequest, RoutingMetadata
 from .openai_processing import process_openai_message
 from .perplexity_processing import process_perplexity_message
-from .routing import build_router, decision_log_fields
+from .routing import RouterConfig, build_router, decide, decision_log_fields
 from .routing.context import build_router_input
 from .routing.contracts import RouteDecision
+from .routing.lexicon import LexiconError
 
 # Get centralized error messages
 ERROR_MESSAGES = get_error_messages()
@@ -115,6 +116,13 @@ _OPENAI_WEB_INABILITY_PATTERNS = [
     )
 ]
 
+_REROUTE_EVIDENCE_SIGNALS = frozenset({"cue.lookup", "override.url"})
+_MODEL_SELF_REFERENCE_PATTERN = re.compile(
+    r"\byour\b[^.!?\n]{0,40}\b(?:knowledge|training|cutoff|cut.?off|model|version|update)\b"
+    r"|\bwhat\s+(?:model|version)\s+(?:are|is)\s+you\b",
+    re.IGNORECASE,
+)
+
 _CHANNEL_THRESHOLD_KEYS = {
     "channel": "ROUTER_WEB_THRESHOLD_CHANNEL",
     "announcement": "ROUTER_WEB_THRESHOLD_ANNOUNCE",
@@ -162,13 +170,20 @@ def _record_conversation_turn(
     if conversation_key is None:
         conversation_key = request.user.id
 
-    manager.add_message(conversation_key, "user", request.message)
-    manager.add_message(
-        conversation_key,
-        "assistant",
-        response_text,
-        metadata={"ai_service": ai_service, "model": model},
-    )
+    try:
+        manager.add_message(conversation_key, "user", request.message)
+        manager.add_message(
+            conversation_key,
+            "assistant",
+            response_text,
+            metadata={"ai_service": ai_service, "model": model},
+        )
+    except Exception as exc:  # noqa: BLE001 - history is optional; the answer is already paid for
+        request.logger.warning(
+            "Failed to record conversation turn for %s (%s); returning the answer",
+            conversation_key,
+            type(exc).__name__,
+        )
 
 
 def _sanitize_for_routing(message: str) -> str:
@@ -251,6 +266,39 @@ def _detect_openai_web_inability(response_text: str) -> bool:
     return False
 
 
+def _web_inability_reroute_allowed(decision: RouteDecision, query: str) -> bool:
+    """Return True when the router's decision leaves room for a web reroute.
+
+    A confident local decision is only overridden when the user explicitly
+    asked for a lookup or supplied a URL. Questions about the model's own
+    knowledge or training are not live-data requests, even though the lookup
+    cue pattern also matches their ``what is`` opener.
+    """
+    if _MODEL_SELF_REFERENCE_PATTERN.search(query or ""):
+        return False
+    if decision.band == "unsure":
+        return True
+    return any(item.signal in _REROUTE_EVIDENCE_SIGNALS for item in decision.evidence)
+
+
+def _reroute_decision(decision: RouteDecision) -> RouteDecision:
+    """Return the decision metadata for the one Perplexity reroute attempt."""
+    return replace(
+        decision,
+        route="web",
+        cache=replace(
+            decision.cache,
+            cacheable=True,
+            salt=f"web:{decision.router_id}:{decision.policy_version}:reroute",
+        ),
+    )
+
+
+def _local_fallback_decision(request: AIRequest) -> RouteDecision:
+    """Return a deterministic local decision that needs no lexicon or history."""
+    return decide((), RouterConfig(), text=getattr(request, "message", "") or "")
+
+
 def _web_threshold(orchestrator_config: dict | None, channel_kind: str) -> float:
     """Return the configured web threshold for one channel kind."""
     kind = channel_kind if channel_kind in _CHANNEL_THRESHOLD_KEYS else "channel"
@@ -276,23 +324,30 @@ async def _build_route_decision(
     orchestrator_config: dict | None,
 ) -> RouteDecision:
     """Build one router input and ask the configured router for one decision."""
-    router = build_router(orchestrator_config)
-    router_input = build_router_input(
-        request,
-        getattr(request, "conversation_manager", None),
-        _lookback(orchestrator_config),
-    )
-    channel_kind = getattr(request, "channel_kind", "channel")
-    router_input = replace(
-        router_input,
-        text=_sanitize_for_routing(router_input.text),
-        context=replace(router_input.context, channel_kind=channel_kind),
-        config=replace(
-            router_input.config,
-            tau=_web_threshold(orchestrator_config, channel_kind),
-        ),
-    )
-    decision = await router.decide(router_input)
+    try:
+        router = build_router(orchestrator_config)
+        router_input = build_router_input(
+            request,
+            getattr(request, "conversation_manager", None),
+            _lookback(orchestrator_config),
+        )
+        channel_kind = getattr(request, "channel_kind", "channel")
+        router_input = replace(
+            router_input,
+            text=_sanitize_for_routing(router_input.text),
+            context=replace(router_input.context, channel_kind=channel_kind),
+            config=replace(
+                router_input.config,
+                tau=_web_threshold(orchestrator_config, channel_kind),
+            ),
+        )
+        decision = await router.decide(router_input)
+    except LexiconError as exc:
+        request.logger.exception(
+            "Routing lexicon failed; falling back to a deterministic local decision (%s)",
+            type(exc).__name__,
+        )
+        decision = _local_fallback_decision(request)
     request.logger.info("Routing decision: %s", decision_log_fields(decision))
     return decision
 
@@ -436,7 +491,7 @@ async def _process_openai_only_mode(
     )
 
 
-async def get_smart_response(
+async def get_smart_response(  # noqa: PLR0911 - explicit failure and fallback branches
     request: AIRequest,
     conversation_summary: list[dict],
     clients: AIClients,
@@ -494,6 +549,19 @@ async def get_smart_response(
         request.logger.critical("No AI clients available")
         return ERROR_MESSAGES["configuration_error"], False, None
 
+    except LexiconError:
+        request.logger.exception(
+            "Routing lexicon unavailable; falling back to a direct local response"
+        )
+        if clients.openai is not None:
+            return await _process_only_mode(
+                request,
+                "openai",
+                clients.openai,
+                config,
+                conversation_summary,
+            )
+        return ERROR_MESSAGES["configuration_error"], False, None
     except (NotImplementedError, ValueError):
         request.logger.exception("Routing configuration error")
         raise
@@ -547,6 +615,13 @@ async def _process_hybrid_mode(  # noqa: PLR0911 - one return per fallback outco
     )
     if res_content:
         if _detect_openai_web_inability(res_content):
+            if not _web_inability_reroute_allowed(decision, request.message):
+                request.logger.info(
+                    "OpenAI response mentions web-inability, but the routing decision "
+                    "holds; keeping the local answer"
+                )
+                _record_conversation_turn(request, res_content, "openai", config.openai.model)
+                return res_content, False, None
             request.logger.debug(
                 "Discarding OpenAI answer after web-inability reroute: length=%d",
                 len(res_content),
@@ -563,11 +638,12 @@ async def _process_hybrid_mode(  # noqa: PLR0911 - one return per fallback outco
             )
             per_res = await _call_perplexity(
                 request,
-                decision,
+                _reroute_decision(decision),
                 clients,
                 config,
                 conversation_summary,
                 ledger,
+                degraded=True,
             )
             if per_res:
                 per_text, per_suppress, per_embed = per_res

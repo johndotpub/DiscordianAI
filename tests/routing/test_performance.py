@@ -14,6 +14,8 @@ FIXED_NOW = datetime(2026, 10, 30, tzinfo=UTC)
 ITERATIONS = 300
 P50_BUDGET_MS = 5.0
 P99_BUDGET_MS = 25.0
+COVERED_P50_BUDGET_MS = 12.0
+COVERED_P99_BUDGET_MS = 60.0
 PATHOLOGICAL_INPUTS = {
     "dots": "a." * 1000,
     "letters": "a" * 2000,
@@ -38,10 +40,6 @@ def _percentile(samples: list[float], quantile: float) -> float:
     return samples[index]
 
 
-@pytest.mark.skipif(
-    "coverage" in sys.modules,
-    reason="coverage instrumentation distorts latency measurements",
-)
 @pytest.mark.parametrize(("label", "text"), INPUTS.items(), ids=tuple(INPUTS))
 def test_p99_latency_for_every_input_shape(label: str, text: str) -> None:
     """Separate the router's own cost from noise on the machine running it.
@@ -54,7 +52,17 @@ def test_p99_latency_for_every_input_shape(label: str, text: str) -> None:
     to catch the return of a complexity regression rather than to benchmark.
     The input once took about 260 ms per decision, so 25 ms still catches that
     quadratic blowup by an order of magnitude.
+
+    Coverage instrumentation adds per-line bookkeeping to every decision. The
+    looser 12 ms/60 ms pair keeps the same shape of assertion in the CI run
+    that always enables ``--cov`` while still failing far below the former
+    260 ms regression. The pair that ran is printed with each measurement.
     """
+    covered = "coverage" in sys.modules
+    p50_budget = COVERED_P50_BUDGET_MS if covered else P50_BUDGET_MS
+    p99_budget = COVERED_P99_BUDGET_MS if covered else P99_BUDGET_MS
+    budget_name = "coverage-instrumented" if covered else "uninstrumented"
+
     router = HeuristicRouter()
     request = RouterInput(text=text, now=FIXED_NOW)
     for _ in range(5):
@@ -69,6 +77,9 @@ def test_p99_latency_for_every_input_shape(label: str, text: str) -> None:
     samples.sort()
     p50 = _percentile(samples, 0.50)
     p99 = _percentile(samples, 0.99)
-    sys.stdout.write(f"{label}: p50={p50:.4f} ms p99={p99:.4f} ms over {ITERATIONS} decisions\n")
-    assert p50 < P50_BUDGET_MS, f"{label}: p50={p50:.4f} ms exceeds {P50_BUDGET_MS} ms"
-    assert p99 < P99_BUDGET_MS, f"{label}: p99={p99:.4f} ms exceeds {P99_BUDGET_MS} ms"
+    sys.stdout.write(
+        f"{label}: p50={p50:.4f} ms p99={p99:.4f} ms over {ITERATIONS} decisions "
+        f"({budget_name} budgets: p50<{p50_budget} ms, p99<{p99_budget} ms)\n"
+    )
+    assert p50 < p50_budget, f"{label}: p50={p50:.4f} ms exceeds {p50_budget} ms"
+    assert p99 < p99_budget, f"{label}: p99={p99:.4f} ms exceeds {p99_budget} ms"

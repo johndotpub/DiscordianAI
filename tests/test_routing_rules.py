@@ -9,8 +9,9 @@ import pytest
 from src import message_router
 from src.conversation_manager import ThreadSafeConversationManager
 from src.models import AIClients, AIConfig, AIRequest
-from src.routing import HeuristicRouter
+from src.routing import HeuristicRouter, RouterConfig, decide
 from src.routing.context import build_router_input
+from src.routing.features import Cue
 from src.smart_orchestrator import (
     _detect_openai_web_inability,
     _process_hybrid_mode,
@@ -391,3 +392,166 @@ async def test_poem_mentioning_internet_keeps_openai_answer():
 
     assert response == poem
     perplexity.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_knowledge_cutoff_question_keeps_its_local_answer(caplog):
+    query = "what is your knowledge cutoff?"
+    answer = "My knowledge cutoff is March 2025, so I may miss later events."
+    assert _detect_openai_web_inability(answer)
+    caplog.set_level(logging.INFO, logger="src.smart_orchestrator")
+
+    request = AIRequest(
+        query,
+        SimpleNamespace(id=789),
+        MagicMock(),
+        logging.getLogger("src.smart_orchestrator.knowledge-cutoff"),
+        conversation_key="dm:789",
+    )
+    clients = AIClients(openai=object(), perplexity=object())
+
+    with (
+        patch(
+            "src.smart_orchestrator.process_openai_message",
+            new=AsyncMock(return_value=answer),
+        ),
+        patch(
+            "src.smart_orchestrator.process_perplexity_message",
+            new=AsyncMock(return_value=("replacement", False, None)),
+        ) as perplexity,
+    ):
+        response, _suppress_embeds, _embed_data = await _process_hybrid_mode(
+            request,
+            [],
+            clients,
+            AIConfig(),
+        )
+
+    assert response == answer
+    perplexity.assert_not_awaited()
+    assert any("decision holds" in record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_haiku_mentioning_browsing_is_kept() -> None:
+    query = "Write a haiku about a robot"
+    answer = "Here is a haiku about a robot that cannot browse the web."
+    assert _detect_openai_web_inability(answer)
+
+    request = AIRequest(
+        query,
+        SimpleNamespace(id=790),
+        MagicMock(),
+        logging.getLogger("haiku-routing-test"),
+        conversation_key="dm:790",
+    )
+    clients = AIClients(openai=object(), perplexity=object())
+
+    with (
+        patch(
+            "src.smart_orchestrator.process_openai_message",
+            new=AsyncMock(return_value=answer),
+        ),
+        patch(
+            "src.smart_orchestrator.process_perplexity_message",
+            new=AsyncMock(return_value=("replacement", False, None)),
+        ) as perplexity,
+    ):
+        response, _suppress_embeds, _embed_data = await _process_hybrid_mode(
+            request,
+            [],
+            clients,
+            AIConfig(),
+        )
+
+    assert response == answer
+    perplexity.assert_not_awaited()
+
+
+def _unsure_live_decision():
+    cue = Cue(
+        signal="pred.status",
+        klass="bearing",
+        span=None,
+        detail="down",
+        weight=-0.3,
+    )
+    decision = decide((cue,), RouterConfig(), text="is it down")
+    assert decision.band == "unsure"
+    return decision
+
+
+@pytest.mark.asyncio
+async def test_unsure_live_question_still_reroutes_to_perplexity() -> None:
+    request = AIRequest(
+        "is it down",
+        SimpleNamespace(id=791),
+        MagicMock(),
+        logging.getLogger("unsure-routing-test"),
+        conversation_key="dm:791",
+    )
+    clients = AIClients(openai=object(), perplexity=object())
+
+    with (
+        patch(
+            "src.smart_orchestrator._build_route_decision",
+            new=AsyncMock(return_value=_unsure_live_decision()),
+        ),
+        patch(
+            "src.smart_orchestrator.process_openai_message",
+            new=AsyncMock(return_value="I cannot access the internet to check."),
+        ),
+        patch(
+            "src.smart_orchestrator.process_perplexity_message",
+            new=AsyncMock(return_value=("replacement", False, None)),
+        ) as perplexity,
+    ):
+        response, _suppress_embeds, _embed_data = await _process_hybrid_mode(
+            request,
+            [],
+            clients,
+            AIConfig(),
+        )
+
+    assert response == "replacement"
+    perplexity.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_reroute_perplexity_call_is_stamped_as_a_web_reroute() -> None:
+    request = AIRequest(
+        "is it down",
+        SimpleNamespace(id=792),
+        MagicMock(),
+        logging.getLogger("reroute-metadata-test"),
+        conversation_key="dm:792",
+    )
+    clients = AIClients(openai=object(), perplexity=object())
+    captured = {}
+
+    async def fake_perplexity(routed_request, _client, _config, _summary=None):
+        captured["routing"] = routed_request.routing
+        return "replacement", False, None
+
+    with (
+        patch(
+            "src.smart_orchestrator._build_route_decision",
+            new=AsyncMock(return_value=_unsure_live_decision()),
+        ),
+        patch(
+            "src.smart_orchestrator.process_openai_message",
+            new=AsyncMock(return_value="I cannot access the internet to check."),
+        ),
+        patch(
+            "src.smart_orchestrator.process_perplexity_message",
+            new=fake_perplexity,
+        ),
+    ):
+        await _process_hybrid_mode(request, [], clients, AIConfig())
+
+    routing = captured["routing"]
+    assert routing.service == "perplexity"
+    assert routing.route == "web"
+    assert routing.degraded is True
+    assert routing.cacheable is True
+    assert routing.salt == "web:heuristic@1:1:reroute"

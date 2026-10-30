@@ -7,7 +7,8 @@ import pytest
 
 from src.conversation_manager import ThreadSafeConversationManager
 from src.models import AIClients, AIConfig, AIRequest
-from src.smart_orchestrator import _process_hybrid_mode
+from src.routing.lexicon import LexiconError
+from src.smart_orchestrator import _process_hybrid_mode, get_smart_response
 
 
 def _request(message, manager):
@@ -105,3 +106,93 @@ async def test_model_router_mode_raises_with_the_design_pointer():
             AIConfig(),
             {"ROUTER_MODE": "model"},
         )
+
+
+class _WriteFailingManager:
+    """History reads succeed, but every write to the store fails."""
+
+    def get_recent_ai_service(self, conversation_key, lookback_messages=6):
+        _ = (conversation_key, lookback_messages)
+
+    def get_conversation(self, user_id=None, *, conversation_key=None):
+        _ = (user_id, conversation_key)
+        return []
+
+    def add_message(self, *args, **kwargs):
+        _ = (args, kwargs)
+        msg = "history store unavailable"
+        raise RuntimeError(msg)
+
+
+@pytest.mark.asyncio
+async def test_failing_history_write_still_returns_the_hybrid_answer(caplog):
+    caplog.set_level(logging.WARNING, logger="src.smart_orchestrator")
+    manager = _WriteFailingManager()
+    request = _request("Tell me something interesting", manager)
+    clients = AIClients(openai=object(), perplexity=object())
+
+    with (
+        patch(
+            "src.smart_orchestrator.process_openai_message",
+            new=AsyncMock(return_value="A successful local answer"),
+        ),
+        patch("src.smart_orchestrator.process_perplexity_message", new=AsyncMock()),
+    ):
+        response, _suppress, _embed = await _process_hybrid_mode(request, [], clients, AIConfig())
+
+    assert response == "A successful local answer"
+    assert any(
+        "Failed to record conversation turn for g:1:c:1" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_failing_history_write_still_returns_the_openai_only_answer(caplog):
+    caplog.set_level(logging.WARNING, logger="src.smart_orchestrator")
+    manager = _WriteFailingManager()
+    request = _request("Tell me something interesting", manager)
+    clients = AIClients(openai=object(), perplexity=None)
+
+    with patch(
+        "src.smart_orchestrator.process_openai_message",
+        new=AsyncMock(return_value="A successful local answer"),
+    ):
+        response, _suppress, _embed = await get_smart_response(request, [], clients, AIConfig())
+
+    assert response == "A successful local answer"
+    assert any(
+        "Failed to record conversation turn for g:1:c:1" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_lexicon_failure_falls_back_to_a_local_answer(caplog):
+    caplog.set_level(logging.ERROR, logger="src.smart_orchestrator")
+    request = _request("Tell me something interesting", MagicMock())
+    clients = AIClients(openai=object(), perplexity=object())
+    captured = {}
+
+    async def fake_openai(routed_request, _summary, _client, _config):
+        captured["routing"] = routed_request.routing
+        return "A successful local answer"
+
+    with (
+        patch(
+            "src.smart_orchestrator.build_router",
+            side_effect=LexiconError("lexicon is missing"),
+        ),
+        patch("src.smart_orchestrator.process_openai_message", new=fake_openai),
+        patch("src.smart_orchestrator.process_perplexity_message", new=AsyncMock()),
+    ):
+        response, _suppress, _embed = await get_smart_response(request, [], clients, AIConfig())
+
+    assert response == "A successful local answer"
+    assert captured["routing"].route == "local"
+    errors = [
+        record
+        for record in caplog.records
+        if record.levelno == logging.ERROR and "lexicon" in record.getMessage()
+    ]
+    assert len(errors) == 1

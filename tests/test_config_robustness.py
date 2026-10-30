@@ -145,6 +145,29 @@ def test_health_environment_overrides_are_coerced(monkeypatch):
     assert config["HEALTH_PORT"] == 9123
 
 
+@pytest.mark.parametrize(
+    ("key", "value", "expected"),
+    [
+        ("ROUTER_MODE", "model", "model"),
+        ("ROUTER_WEB_THRESHOLD_CHANNEL", "0.10", 0.10),
+        ("ROUTER_WEB_THRESHOLD_ANNOUNCE", "0.07", 0.07),
+        ("ROUTER_WEB_THRESHOLD_DM", "0.20", 0.20),
+    ],
+)
+def test_router_environment_overrides_use_the_documented_parser(
+    monkeypatch, caplog, key, value, expected
+):
+    caplog.set_level(logging.WARNING, logger="src.config")
+    monkeypatch.setenv(key, value)
+
+    config = load_config()
+
+    assert config[key] == expected
+    if key != "ROUTER_MODE":
+        assert isinstance(config[key], float)
+    assert not any("Invalid integer for" in record.getMessage() for record in caplog.records)
+
+
 def test_allowed_channel_ids_documented_in_sample_config():
     sample = (REPO_ROOT / "config.ini.example").read_text(encoding="utf-8")
     parser = configparser.ConfigParser()
