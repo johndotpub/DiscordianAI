@@ -18,7 +18,7 @@ def test_openai_config_defaults_and_frozen():
     """OpenAIConfig should expose defaults and be immutable."""
     config = OpenAIConfig()
 
-    assert config.model == "gpt-5-mini"
+    assert config.model == "gpt-6-luna"
     assert config.system_message == "You are a helpful assistant."
     assert config.output_tokens == 8000
 

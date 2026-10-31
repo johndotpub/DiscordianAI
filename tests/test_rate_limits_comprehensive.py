@@ -3,7 +3,6 @@
 This test suite covers:
 - RateLimiter class initialization and thread safety
 - check_rate_limit method with various scenarios
-- get_user_status method for monitoring
 - async check_rate_limit function wrapper
 - Edge cases and error handling
 - Thread safety verification
@@ -139,7 +138,7 @@ class TestRateLimiterCheckRateLimit:
         logger = Mock()
         user_id = 12345
 
-        with patch("src.rate_limits.time.time", side_effect=[0.0, 0.1, 0.2, 0.3, 1.5]):
+        with patch("src.rate_limits.time.monotonic", side_effect=[0.0, 0.1, 0.2, 0.3, 1.5]):
             # Use up the rate limit
             for _i in range(3):
                 rate_limiter.check_rate_limit(user_id, 3, 1, logger)
@@ -211,115 +210,6 @@ class TestRateLimiterCheckRateLimit:
         assert successful_requests == 5
         assert failed_requests == 5
         assert len(results) == 10
-
-
-class TestRateLimiterGetUserStatus:
-    """Test the get_user_status method."""
-
-    def test_get_user_status_new_user(self):
-        """Test getting status for a user with no previous requests."""
-        rate_limiter = RateLimiter()
-        user_id = 12345
-
-        status = rate_limiter.get_user_status(user_id, 5, 60)
-
-        assert status["user_id"] == user_id
-        assert status["current_count"] == 0
-        assert status["remaining"] == 5
-        assert status["window_reset_in"] == 0
-        assert status["window_expired"] is True
-
-    def test_get_user_status_within_window(self):
-        """Test getting status for a user within the rate limit window."""
-        rate_limiter = RateLimiter()
-        logger = Mock()
-        user_id = 12345
-
-        # Make some requests first
-        for _i in range(3):
-            rate_limiter.check_rate_limit(user_id, 5, 60, logger)
-
-        status = rate_limiter.get_user_status(user_id, 5, 60)
-
-        assert status["user_id"] == user_id
-        assert status["current_count"] == 3
-        assert status["remaining"] == 2
-        assert status["window_reset_in"] > 0
-        assert status["window_reset_in"] <= 60
-        assert status["window_expired"] is False
-
-    def test_get_user_status_window_expired(self):
-        """Test getting status when the rate limit window has expired."""
-        rate_limiter = RateLimiter()
-        logger = Mock()
-        user_id = 12345
-
-        with patch("src.rate_limits.time.time", side_effect=[0.0, 0.1, 0.2, 1.5]):
-            # Make requests with a short window
-            for _i in range(3):
-                rate_limiter.check_rate_limit(user_id, 5, 1, logger)
-
-            status = rate_limiter.get_user_status(user_id, 5, 1)
-
-        assert status["user_id"] == user_id
-        assert status["current_count"] == 0
-        assert status["remaining"] == 5
-        assert status["window_reset_in"] == 0
-        assert status["window_expired"] is True
-
-    def test_get_user_status_at_limit(self):
-        """Test getting status when user is at the rate limit."""
-        rate_limiter = RateLimiter()
-        logger = Mock()
-        user_id = 12345
-
-        # Use up the rate limit
-        for _i in range(5):
-            rate_limiter.check_rate_limit(user_id, 5, 60, logger)
-
-        status = rate_limiter.get_user_status(user_id, 5, 60)
-
-        assert status["user_id"] == user_id
-        assert status["current_count"] == 5
-        assert status["remaining"] == 0
-        assert status["window_reset_in"] > 0
-        assert status["window_expired"] is False
-
-    def test_get_user_status_thread_safety(self):
-        """Test that get_user_status is thread-safe."""
-        rate_limiter = RateLimiter()
-        logger = Mock()
-        user_id = 12345
-        statuses = []
-
-        # Make some initial requests
-        for _i in range(3):
-            rate_limiter.check_rate_limit(user_id, 5, 60, logger)
-
-        def get_status():
-            status = rate_limiter.get_user_status(user_id, 5, 60)
-            statuses.append(status)
-
-        # Create multiple threads getting status concurrently
-        threads = []
-        for _i in range(5):
-            thread = threading.Thread(target=get_status)
-            threads.append(thread)
-
-        # Start all threads
-        for thread in threads:
-            thread.start()
-
-        # Wait for all threads to complete
-        for thread in threads:
-            thread.join()
-
-        # All statuses should be consistent
-        assert len(statuses) == 5
-        for status in statuses:
-            assert status["user_id"] == user_id
-            assert status["current_count"] == 3
-            assert status["remaining"] == 2
 
 
 @pytest.mark.asyncio
@@ -444,64 +334,33 @@ class TestRateLimiterIntegration:
     """Integration tests combining multiple rate limiter features."""
 
     def test_rate_limiter_comprehensive_workflow(self):
-        """Test complete rate limiter workflow with status checking."""
+        """Test complete rate limiter workflow using the public check method."""
         rate_limiter = RateLimiter()
         logger = Mock()
         user_id = 12345
 
-        # Check initial status
-        initial_status = rate_limiter.get_user_status(user_id, 3, 60)
-        assert initial_status["current_count"] == 0
-        assert initial_status["remaining"] == 3
-
-        # Make requests up to limit
         for i in range(3):
-            result = rate_limiter.check_rate_limit(user_id, 3, 60, logger)
-            assert result is True
+            assert rate_limiter.check_rate_limit(user_id, 3, 60, logger) is True
+            assert rate_limiter.last_command_count[user_id] == i + 1
 
-            # Check status after each request
-            status = rate_limiter.get_user_status(user_id, 3, 60)
-            assert status["current_count"] == i + 1
-            assert status["remaining"] == 3 - (i + 1)
-
-        # Final status should show limit reached
-        final_status = rate_limiter.get_user_status(user_id, 3, 60)
-        assert final_status["current_count"] == 3
-        assert final_status["remaining"] == 0
-
-        # Next request should fail
-        result = rate_limiter.check_rate_limit(user_id, 3, 60, logger)
-        assert result is False
+        assert rate_limiter.check_rate_limit(user_id, 3, 60, logger) is False
+        assert rate_limiter.last_command_count[user_id] == 3
 
     @pytest.mark.asyncio
     async def test_sync_async_integration(self):
-        """Test that sync and async methods work together correctly."""
+        """Test that sync and async methods share the same user window."""
         rate_limiter = RateLimiter()
         mock_user = Mock()
         mock_user.id = 12345
         mock_user.name = "TestUser"
         logger = Mock()
 
-        # Make some requests via sync method
         for _i in range(2):
-            result = rate_limiter.check_rate_limit(mock_user.id, 5, 60, logger)
-            assert result is True
+            assert rate_limiter.check_rate_limit(mock_user.id, 5, 60, logger) is True
+        assert rate_limiter.last_command_count[mock_user.id] == 2
 
-        # Check status
-        status = rate_limiter.get_user_status(mock_user.id, 5, 60)
-        assert status["current_count"] == 2
-        assert status["remaining"] == 3
-
-        # Make more requests via async method
         for _i in range(3):
-            result = await check_rate_limit(mock_user, rate_limiter, 5, 60, logger)
-            assert result is True
+            assert await check_rate_limit(mock_user, rate_limiter, 5, 60, logger) is True
+        assert rate_limiter.last_command_count[mock_user.id] == 5
 
-        # Final status should show limit reached
-        final_status = rate_limiter.get_user_status(mock_user.id, 5, 60)
-        assert final_status["current_count"] == 5
-        assert final_status["remaining"] == 0
-
-        # Next async request should fail
-        result = await check_rate_limit(mock_user, rate_limiter, 5, 60, logger)
-        assert result is False
+        assert await check_rate_limit(mock_user, rate_limiter, 5, 60, logger) is False

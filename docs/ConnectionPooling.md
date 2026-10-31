@@ -56,9 +56,14 @@ PERPLEXITY_MAX_KEEPALIVE=5
 - **HTTP/2 multiplexing**: Multiple requests over single connections
 
 ### Memory Efficiency
-- **10k users**: ~100MB total conversation memory
+- **Conversation history**: Memory scales with the number of active conversations and
+  `MAX_HISTORY_PER_USER`; no fixed per-user or ten-thousand-user total is claimed here
+  because it has not been measured.
 - **Connection overhead**: Minimal with shared pools
-- **Scalable**: Supports large user bases efficiently
+- **Scalable**: Supports large user bases efficiently, subject to the history limits above
+
+Measure conversation memory against your own message sizes and history limits before
+sizing a deployment; add a benchmark before publishing a total.
 
 ## Monitoring and Tuning
 
@@ -137,7 +142,7 @@ Each API client uses service-specific read timeouts tuned for their response cha
 | **Perplexity** | 10s | 60s | 10s | 5s |
 
 **Rationale:**
-- **OpenAI 45s read**: Handles GPT-5 reasoning on long context without timing out prematurely.
+- **OpenAI 45s read**: Handles GPT-6 reasoning on long context without timing out prematurely.
 - **Perplexity 60s read**: Accommodates the full search → analyze → cite pipeline, which can take 30-55s for complex queries.
 - **Connect/write unchanged (10s)**: Network-level operations complete quickly; only inference needs the longer window.
 - **SDK retries disabled**: The OpenAI SDK's built-in `max_retries` is set to `0` on both clients. Application-level retry with jittered backoff is handled by `error_handling.py`'s `retry_with_backoff`, preventing nested retry multiplication.

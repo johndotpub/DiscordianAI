@@ -11,7 +11,7 @@ import time
 import discord
 
 FAIL_OPEN_LIMIT = 3
-STALE_CLEANUP_INTERVAL = 100
+MAINTENANCE_INTERVAL_SECONDS = 300
 
 
 class RateLimiter:
@@ -32,7 +32,7 @@ class RateLimiter:
         self.last_command_count: dict[int, int] = {}
         self._fail_open_errors = 0
         self._fail_open_cooldown_until = 0.0
-        self._cleanup_checks = 0
+        self._last_rate_limit_window_seconds: int | None = None
         self._lock = threading.RLock()  # Use RLock for consistency with conversation manager
         self._logger = logging.getLogger(f"{__name__}.RateLimiter")
 
@@ -43,11 +43,29 @@ class RateLimiter:
             stale_users = [
                 user_id
                 for user_id, last_timestamp in self.last_command_timestamps.items()
-                if last_timestamp < stale_cutoff
+                if last_timestamp is not None and last_timestamp < stale_cutoff
             ]
             for user_id in stale_users:
                 self.last_command_timestamps.pop(user_id, None)
                 self.last_command_count.pop(user_id, None)
+
+    def run_maintenance(
+        self,
+        rate_limit_window_seconds: int | None = None,
+        now: float | None = None,
+    ) -> None:
+        """Sweep stale entries from a periodic maintenance task.
+
+        This is deliberately separate from :meth:`check_rate_limit`: the sweep
+        scans every tracked user, so it must not run on the request path.
+        """
+        if rate_limit_window_seconds is None:
+            rate_limit_window_seconds = self._last_rate_limit_window_seconds
+        if rate_limit_window_seconds is None:
+            return
+
+        current_time = time.monotonic() if now is None else now
+        self.cleanup_stale_entries(current_time, rate_limit_window_seconds)
 
     def record_fail_open_error(self, now: float) -> tuple[int, bool, bool]:
         """Record a fail-open error and update cooldown state atomically."""
@@ -59,6 +77,7 @@ class RateLimiter:
             cooldown_until = self._fail_open_cooldown_until
             if not isinstance(cooldown_until, (int, float)):
                 cooldown_until = 0.0
+                self._fail_open_cooldown_until = cooldown_until
 
             fail_open_errors += 1
             self.fail_open_errors = fail_open_errors
@@ -88,7 +107,7 @@ class RateLimiter:
 
     @property
     def fail_open_cooldown_until(self) -> float:
-        """Unix timestamp until fail-open cooldown expires."""
+        """Monotonic timestamp until fail-open cooldown expires."""
         return self._fail_open_cooldown_until
 
     @fail_open_cooldown_until.setter
@@ -118,7 +137,7 @@ class RateLimiter:
             Uses threading.Lock to ensure atomic operations on user data,
             preventing race conditions in concurrent message processing.
         """
-        current_time = time.time()
+        current_time = time.monotonic()
         log_method = None
         log_message = None
         log_args: tuple[object, ...] = ()
@@ -126,16 +145,14 @@ class RateLimiter:
 
         # Acquire lock to prevent race conditions
         with self._lock:
-            last_timestamp = self.last_command_timestamps.get(user_id, 0)
+            last_timestamp = self.last_command_timestamps.get(user_id)
             current_count = self.last_command_count.get(user_id, 0)
+            self._last_rate_limit_window_seconds = rate_limit_window_seconds
 
-            self._cleanup_checks += 1
-            if self._cleanup_checks >= STALE_CLEANUP_INTERVAL:
-                self.cleanup_stale_entries(current_time, rate_limit_window_seconds)
-                self._cleanup_checks = 0
-
-            # Check if rate limit window has expired - reset if so
-            if current_time - last_timestamp > rate_limit_window_seconds:
+            # Check if rate limit window has expired - reset if so. A missing
+            # timestamp means the window has never started, even when the
+            # monotonic clock is younger than the window.
+            if last_timestamp is None or current_time - last_timestamp > rate_limit_window_seconds:
                 self.last_command_timestamps[user_id] = current_time
                 self.last_command_count[user_id] = 1
                 log_method = logger.info
@@ -174,48 +191,6 @@ class RateLimiter:
             log_method(log_message, *log_args)
 
         return result
-
-    def get_user_status(
-        self,
-        user_id: int,
-        rate_limit: int,
-        rate_limit_window_seconds: int,
-    ) -> dict:
-        """Get detailed rate limit status for a user (for debugging/monitoring).
-
-        Args:
-            self: Rate limiter instance.
-            user_id: The Discord user ID to check.
-            rate_limit: Maximum allowed commands per time period.
-            rate_limit_window_seconds: Time period in seconds.
-
-        Returns:
-            Status information including current count, remaining, and reset time.
-        """
-        current_time = time.time()
-        with self._lock:
-            last_timestamp = self.last_command_timestamps.get(user_id, 0)
-            current_count = self.last_command_count.get(user_id, 0)
-
-            if current_time - last_timestamp > rate_limit_window_seconds:
-                # Window expired
-                return {
-                    "user_id": user_id,
-                    "current_count": 0,
-                    "remaining": rate_limit,
-                    "window_reset_in": 0,
-                    "window_expired": True,
-                }
-            return {
-                "user_id": user_id,
-                "current_count": current_count,
-                "remaining": max(0, rate_limit - current_count),
-                "window_reset_in": max(
-                    0,
-                    rate_limit_window_seconds - (current_time - last_timestamp),
-                ),
-                "window_expired": False,
-            }
 
 
 async def check_rate_limit(
@@ -260,11 +235,12 @@ async def check_rate_limit(
             user.name,
             user.id,
         )
-        now = time.time()
+        now = time.monotonic()
         fail_open_result = rate_limiter.record_fail_open_error(now)
+        # record_fail_open_error always returns a 3-tuple; this guards only custom limiters.
         try:
             _, cooldown_active, entering_cooldown = fail_open_result
-        except (TypeError, ValueError):
+        except (TypeError, ValueError):  # pragma: no cover
             cooldown_until = getattr(rate_limiter, "fail_open_cooldown_until", 0.0)
             if not isinstance(cooldown_until, (int, float)):
                 cooldown_until = 0.0

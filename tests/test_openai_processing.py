@@ -1,231 +1,120 @@
 """Tests for OpenAI message processing functionality."""
 
-import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.conversation_manager import ThreadSafeConversationManager
-from src.models import AIRequest, OpenAIConfig
+from src.models import OpenAIConfig
 from src.openai_processing import process_openai_message
+
+
+def _config(model="gpt-5", system_message="Test"):
+    return OpenAIConfig(model=model, system_message=system_message, output_tokens=1000)
+
+
+def _client_returning(response):
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(return_value=response)
+    return client
 
 
 class TestProcessOpenAIMessageBasic:
     @pytest.mark.asyncio
-    async def test_success(self):
-        user = MagicMock()
-        user.id = 12345
-
+    async def test_success(self, make_request, openai_response):
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
-
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "Test response from OpenAI"
-        mock_response.choices[0].finish_reason = "stop"
-        mock_response.id = "test-response-id"
-        mock_response.usage = MagicMock()
-        mock_response.usage.prompt_tokens = 50
-        mock_response.usage.completion_tokens = 20
-        mock_response.usage.total_tokens = 70
-
-        openai_client = MagicMock()
-
-        # Mock the async client call
-        async def mock_create(*args, **kwargs):
-            return mock_response
-
-        openai_client.chat.completions.create = mock_create
-
-        from src.models import AIRequest, OpenAIConfig
-
-        request = AIRequest(
-            message="Hello OpenAI",
-            user=user,
-            conversation_manager=conversation_manager,
-            logger=logging.getLogger("test"),
-        )
-        config = OpenAIConfig(
-            model="gpt-5-mini",
-            system_message="You are a helpful assistant",
-            output_tokens=1000,
-        )
+        openai_client = _client_returning(openai_response("Test response from OpenAI"))
 
         result = await process_openai_message(
-            request=request,
+            request=make_request(
+                "Hello OpenAI",
+                conversation_manager=conversation_manager,
+            ),
             conversation_summary=[],
             openai_client=openai_client,
-            config=config,
+            config=_config(model="gpt-5-mini", system_message="You are a helpful assistant"),
         )
 
         assert result == "Test response from OpenAI"
         conversation_manager.add_message.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_basic_gpt5_processing(self):
-        user = MagicMock()
-        user.id = 12345
+    async def test_basic_gpt5_processing(self, make_request, openai_response):
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
+        openai_client = _client_returning(openai_response("Response"))
 
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "Response"
-        mock_response.id = "test-id"
-
-        openai_client = MagicMock()
-
-        # Mock the async client call
-        async def mock_create(*args, **kwargs):
-            return mock_response
-
-        openai_client.chat.completions.create = mock_create
-        logger = logging.getLogger("test")
-
-        if True:
-            from src.models import AIRequest, OpenAIConfig
-
-            request = AIRequest(
-                message="Test",
-                user=user,
-                conversation_manager=conversation_manager,
-                logger=logger,
-            )
-            config = OpenAIConfig(
-                model="gpt-5",
-                system_message="Test",
-                output_tokens=1000,
-            )
-            result = await process_openai_message(
-                request=request,
-                conversation_summary=[],
-                openai_client=openai_client,
-                config=config,
-            )
-            assert result == "Response"
-
-    @pytest.mark.asyncio
-    async def test_empty_response(self):
-        from src.caching import response_cache
-
-        response_cache.cache.clear()
-
-        user = MagicMock()
-        user.id = 12345
-        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
-
-        mock_response = MagicMock()
-        mock_response.choices = []
-        openai_client = MagicMock()
-
-        # Mock the async client call
-        async def mock_create(*args, **kwargs):
-            return mock_response
-
-        openai_client.chat.completions.create = mock_create
-        logger = MagicMock()
-
-        from src.models import AIRequest, OpenAIConfig
-
-        request = AIRequest(
-            message="Test",
-            user=user,
-            conversation_manager=conversation_manager,
-            logger=logger,
-        )
-        config = OpenAIConfig(
-            model="gpt-5",
-            system_message="Test",
-            output_tokens=1000,
-        )
         result = await process_openai_message(
-            request=request,
+            request=make_request("Test", conversation_manager=conversation_manager),
             conversation_summary=[],
             openai_client=openai_client,
-            config=config,
+            config=_config(),
         )
+
+        assert result == "Response"
+
+    @pytest.mark.asyncio
+    async def test_empty_response(self, make_request, openai_response):
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
+        response = openai_response()
+        response.choices = []
+        openai_client = _client_returning(response)
+        logger = MagicMock()
+
+        result = await process_openai_message(
+            request=make_request(
+                "Test",
+                conversation_manager=conversation_manager,
+                logger=logger,
+            ),
+            conversation_summary=[],
+            openai_client=openai_client,
+            config=_config(),
+        )
+
         assert result is None
         logger.error.assert_called()
         conversation_manager.add_message.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_timeout_error(self):
-        from src.caching import response_cache
-
-        response_cache.cache.clear()
-
-        user = MagicMock()
-        user.id = 12345
+    async def test_timeout_error(self, make_request):
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
         openai_client = MagicMock()
-
-        # Mock the async client call to raise TimeoutError
-        async def mock_create(*args, **kwargs):
-            msg = "Timeout"
-            raise TimeoutError(msg)
-
-        openai_client.chat.completions.create = mock_create
+        openai_client.chat.completions.create = AsyncMock(side_effect=TimeoutError("Timeout"))
         logger = MagicMock()
 
-        from src.models import AIRequest, OpenAIConfig
-
-        request = AIRequest(
-            message="Test",
-            user=user,
-            conversation_manager=conversation_manager,
-            logger=logger,
-        )
-        config = OpenAIConfig(
-            model="gpt-5",
-            system_message="Test",
-            output_tokens=1000,
-        )
         result = await process_openai_message(
-            request=request,
+            request=make_request(
+                "Test",
+                conversation_manager=conversation_manager,
+                logger=logger,
+            ),
             conversation_summary=[],
             openai_client=openai_client,
-            config=config,
+            config=_config(),
         )
+
         assert result is None
         logger.exception.assert_called()
         conversation_manager.add_message.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_generic_error(self):
-        from src.caching import response_cache
-
-        response_cache.cache.clear()
-
-        user = MagicMock()
-        user.id = 12345
+    async def test_generic_error(self, make_request):
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
         openai_client = MagicMock()
-
-        # Mock the async client call to raise Exception
-        async def mock_create(*args, **kwargs):
-            msg = "Generic error"
-            raise Exception(msg)
-
-        openai_client.chat.completions.create = mock_create
+        openai_client.chat.completions.create = AsyncMock(side_effect=Exception("Generic error"))
         logger = MagicMock()
 
-        from src.models import AIRequest, OpenAIConfig
-
-        request = AIRequest(
-            message="Test",
-            user=user,
-            conversation_manager=conversation_manager,
-            logger=logger,
-        )
-        config = OpenAIConfig(
-            model="gpt-5",
-            system_message="Test",
-            output_tokens=1000,
-        )
         result = await process_openai_message(
-            request=request,
+            request=make_request(
+                "Test",
+                conversation_manager=conversation_manager,
+                logger=logger,
+            ),
             conversation_summary=[],
             openai_client=openai_client,
-            config=config,
+            config=_config(),
         )
+
         assert result is None
         logger.exception.assert_called()
         conversation_manager.add_message.assert_not_called()
@@ -233,28 +122,9 @@ class TestProcessOpenAIMessageBasic:
 
 class TestProcessOpenAIMessageAdditionalCoverage:
     @pytest.mark.asyncio
-    async def test_internal_api_call_logic(self):
-        user = MagicMock()
-        user.id = 12345
+    async def test_internal_api_call_logic(self, make_request, openai_response):
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
-
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "Test response"
-        mock_response.choices[0].finish_reason = "stop"
-        mock_response.id = "test-response-id"
-        mock_response.usage = MagicMock()
-        mock_response.usage.prompt_tokens = 50
-        mock_response.usage.completion_tokens = 25
-        mock_response.usage.total_tokens = 75
-
-        openai_client = MagicMock()
-
-        # Mock the async client call
-        async def mock_create(*args, **kwargs):
-            return mock_response
-
-        openai_client.chat.completions.create = mock_create
+        openai_client = _client_returning(openai_response("Test response"))
         logger = MagicMock()
 
         with patch("src.openai_processing.retry_with_backoff") as mock_retry:
@@ -264,49 +134,24 @@ class TestProcessOpenAIMessageAdditionalCoverage:
 
             mock_retry.side_effect = call_function_directly
 
-            request = AIRequest(
-                message="Test message for internal logic",
-                user=user,
-                conversation_manager=conversation_manager,
-                logger=logger,
-            )
-            config = OpenAIConfig(
-                model="gpt-5",
-                system_message="System message",
-                output_tokens=1000,
-            )
             result = await process_openai_message(
-                request=request,
+                request=make_request(
+                    "Test message for internal logic",
+                    conversation_manager=conversation_manager,
+                    logger=logger,
+                ),
                 conversation_summary=[{"role": "user", "content": "Previous message"}],
                 openai_client=openai_client,
-                config=config,
+                config=_config(system_message="System message"),
             )
+
             assert result == "Test response"
             assert logger.debug.call_count >= 1
 
     @pytest.mark.asyncio
-    async def test_usage_logging(self):
-        user = MagicMock()
-        user.id = 12345
+    async def test_usage_logging(self, make_request, openai_response):
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
-
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "Response with detailed usage"
-        mock_response.choices[0].finish_reason = "stop"
-        mock_response.id = "usage-test-id"
-        mock_response.usage = MagicMock()
-        mock_response.usage.prompt_tokens = 150
-        mock_response.usage.completion_tokens = 75
-        mock_response.usage.total_tokens = 225
-
-        openai_client = MagicMock()
-
-        # Mock the async client call
-        async def mock_create(*args, **kwargs):
-            return mock_response
-
-        openai_client.chat.completions.create = mock_create
+        openai_client = _client_returning(openai_response("Response with detailed usage"))
         logger = MagicMock()
 
         with patch("src.openai_processing.retry_with_backoff") as mock_retry:
@@ -316,45 +161,23 @@ class TestProcessOpenAIMessageAdditionalCoverage:
 
             mock_retry.side_effect = call_function_directly
 
-            request = AIRequest(
-                message="Test message with usage tracking",
-                user=user,
-                conversation_manager=conversation_manager,
-                logger=logger,
-            )
-            config = OpenAIConfig(
-                model="gpt-5",
-                system_message="System message",
-                output_tokens=1000,
-            )
             result = await process_openai_message(
-                request=request,
+                request=make_request(
+                    "Test message with usage tracking",
+                    conversation_manager=conversation_manager,
+                    logger=logger,
+                ),
                 conversation_summary=[],
                 openai_client=openai_client,
-                config=config,
+                config=_config(system_message="System message"),
             )
+
             assert result == "Response with detailed usage"
 
     @pytest.mark.asyncio
-    async def test_whitespace_only_response(self):
-        user = MagicMock()
-        user.id = 12345
+    async def test_whitespace_only_response(self, make_request, openai_response):
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
-
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "   \n\t   "
-        mock_response.choices[0].finish_reason = "stop"
-        mock_response.id = "whitespace-id"
-        mock_response.usage = MagicMock()
-
-        openai_client = MagicMock()
-
-        # Mock the async client call
-        async def mock_create(*args, **kwargs):
-            return mock_response
-
-        openai_client.chat.completions.create = mock_create
+        openai_client = _client_returning(openai_response("   \n\t   "))
         logger = MagicMock()
 
         with patch("src.openai_processing.retry_with_backoff") as mock_retry:
@@ -364,45 +187,23 @@ class TestProcessOpenAIMessageAdditionalCoverage:
 
             mock_retry.side_effect = call_function_directly
 
-            request = AIRequest(
-                message="Test message",
-                user=user,
-                conversation_manager=conversation_manager,
-                logger=logger,
-            )
-            config = OpenAIConfig(
-                model="gpt-5",
-                system_message="System message",
-                output_tokens=1000,
-            )
             result = await process_openai_message(
-                request=request,
+                request=make_request(
+                    "Test message",
+                    conversation_manager=conversation_manager,
+                    logger=logger,
+                ),
                 conversation_summary=[],
                 openai_client=openai_client,
-                config=config,
+                config=_config(system_message="System message"),
             )
+
             assert result is None
 
     @pytest.mark.asyncio
-    async def test_response_logging_message_counts(self):
-        user = MagicMock()
-        user.id = 12345
+    async def test_response_logging_message_counts(self, make_request, openai_response):
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
-
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "A" * 300
-        mock_response.choices[0].finish_reason = "stop"
-        mock_response.id = "logging-test-id"
-        mock_response.usage = MagicMock()
-
-        openai_client = MagicMock()
-
-        # Mock the async client call
-        async def mock_create(*args, **kwargs):
-            return mock_response
-
-        openai_client.chat.completions.create = mock_create
+        openai_client = _client_returning(openai_response("A" * 300))
         logger = MagicMock()
 
         with patch("src.openai_processing.retry_with_backoff") as mock_retry:
@@ -412,42 +213,26 @@ class TestProcessOpenAIMessageAdditionalCoverage:
 
             mock_retry.side_effect = call_function_directly
 
-            request = AIRequest(
-                message="Test message for logging",
-                user=user,
-                conversation_manager=conversation_manager,
-                logger=logger,
-            )
-            config = OpenAIConfig(
-                model="gpt-5",
-                system_message="System message",
-                output_tokens=1000,
-            )
             result = await process_openai_message(
-                request=request,
+                request=make_request(
+                    "Test message for logging",
+                    conversation_manager=conversation_manager,
+                    logger=logger,
+                ),
                 conversation_summary=[],
                 openai_client=openai_client,
-                config=config,
+                config=_config(system_message="System message"),
             )
+
             assert result == "A" * 300
             conversation_manager.add_message.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_invalid_response_structure(self):
-        user = MagicMock()
-        user.id = 12345
+    async def test_invalid_response_structure(self, make_request, openai_response):
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
-
-        mock_response = MagicMock()
-        mock_response.choices = None
-        mock_response.id = "invalid-structure-id"
-        openai_client = MagicMock()
-
-        # Mock the async client call
-        async def mock_create(*args, **kwargs):
-            return mock_response
-
-        openai_client.chat.completions.create = mock_create
+        response = openai_response()
+        response.choices = None
+        openai_client = _client_returning(response)
         logger = MagicMock()
 
         with patch("src.openai_processing.retry_with_backoff") as mock_retry:
@@ -457,21 +242,15 @@ class TestProcessOpenAIMessageAdditionalCoverage:
 
             mock_retry.side_effect = call_function_directly
 
-            request = AIRequest(
-                message="Test message",
-                user=user,
-                conversation_manager=conversation_manager,
-                logger=logger,
-            )
-            config = OpenAIConfig(
-                model="gpt-5",
-                system_message="System message",
-                output_tokens=1000,
-            )
             result = await process_openai_message(
-                request=request,
+                request=make_request(
+                    "Test message",
+                    conversation_manager=conversation_manager,
+                    logger=logger,
+                ),
                 conversation_summary=[],
                 openai_client=openai_client,
-                config=config,
+                config=_config(system_message="System message"),
             )
+
             assert result is None

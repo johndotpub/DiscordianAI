@@ -4,6 +4,32 @@ from dataclasses import dataclass, field
 import logging
 from typing import Any
 
+from .config import (
+    DEFAULT_CONTEXT_WINDOW,
+    DEFAULT_INPUT_TOKENS,
+    DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
+    DEFAULT_MAX_URLS_PER_MESSAGE,
+    DEFAULT_OPENAI_MODEL,
+    DEFAULT_OUTPUT_TOKENS,
+    DEFAULT_PERPLEXITY_MODEL,
+    DEFAULT_PERPLEXITY_OUTPUT_TOKENS,
+    DEFAULT_SCRAPE_DEADLINE_SECONDS,
+)
+
+
+@dataclass(frozen=True)
+class RoutingMetadata:
+    """Routing facts carried into cache and deduplication keys."""
+
+    service: str
+    router_id: str
+    policy_version: str
+    decision_source: str
+    route: str
+    salt: str
+    cacheable: bool = True
+    degraded: bool = False
+
 
 @dataclass(frozen=True)
 class AIRequest:
@@ -13,27 +39,37 @@ class AIRequest:
     user: Any
     conversation_manager: Any
     logger: logging.Logger
+    conversation_key: str | None = None
+    channel_kind: str = "channel"
+    routing: RoutingMetadata | None = None
 
 
 @dataclass(frozen=True)
 class OpenAIConfig:
     """Configuration for OpenAI specific parameters."""
 
-    model: str = "gpt-5-mini"
+    model: str = DEFAULT_OPENAI_MODEL
     system_message: str = "You are a helpful assistant."
-    output_tokens: int = 8000
+    output_tokens: int = DEFAULT_OUTPUT_TOKENS
+    input_tokens: int = DEFAULT_INPUT_TOKENS
+    context_window: int = DEFAULT_CONTEXT_WINDOW
 
 
 @dataclass(frozen=True)
 class PerplexityConfig:
     """Configuration for Perplexity specific parameters."""
 
-    model: str = "sonar-pro"
+    model: str = DEFAULT_PERPLEXITY_MODEL
     system_message: str = (
         "You are a helpful assistant with access to current web information. "
         "When providing citations, include source URLs when available."
     )
-    output_tokens: int = 8000
+    output_tokens: int = DEFAULT_PERPLEXITY_OUTPUT_TOKENS
+    max_urls_per_message: int = DEFAULT_MAX_URLS_PER_MESSAGE
+    max_total_scraped_chars: int = DEFAULT_MAX_TOTAL_SCRAPED_CHARS
+    scrape_deadline_seconds: float = DEFAULT_SCRAPE_DEADLINE_SECONDS
+    input_tokens: int = DEFAULT_INPUT_TOKENS
+    context_window: int = DEFAULT_CONTEXT_WINDOW
 
 
 @dataclass(frozen=True)

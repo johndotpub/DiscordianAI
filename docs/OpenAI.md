@@ -1,14 +1,21 @@
 # OpenAI Integration Guide
 
-DiscordianAI provides comprehensive OpenAI integration with support for GPT-5 series models, including advanced features like conversation consistency and metadata tracking.
+DiscordianAI provides comprehensive OpenAI integration with support for the current GPT-6 generation and legacy GPT-5 series models, including advanced features like conversation consistency and metadata tracking.
 
 ## Supported Models
 
-### GPT-5 Series
+### GPT-6 Series (current)
+- **GPT-6-luna**: Cost-effective default for general use
+- **GPT-6.1-sol** / **GPT-6.1-terra**: GPT-6.1 point releases
+- **GPT-6-astra** / **GPT-6-sol**: GPT-6 variants
+
+### GPT-5 Series (retired by the provider on 2026-12-11)
 - **GPT-5**: High-quality reasoning and complex tasks
 - **GPT-5-mini**: Cost-effective option for general use
 - **GPT-5-nano**: High-speed processing with low latency
-- **GPT-5-chat**: Advanced conversational interactions
+- **GPT-5-pro**: Higher-capability GPT-5 variant
+
+`gpt-5-chat` has already been retired and is rejected.
 
 ## Configuration
 
@@ -18,7 +25,7 @@ DiscordianAI provides comprehensive OpenAI integration with support for GPT-5 se
 # OpenAI API configuration
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_API_URL=https://api.openai.com/v1/
-GPT_MODEL=gpt-5-mini
+GPT_MODEL=gpt-6-luna
 
 # Token limits
 OUTPUT_TOKENS=8000
@@ -29,8 +36,8 @@ CONTEXT_WINDOW=128000
 SYSTEM_MESSAGE=You are a helpful AI assistant with access to current information.
 ```
 
-### GPT-5 Notes
-OpenAI models use the standard Chat Completions API parameters. Only officially supported parameters are used (e.g., `model`, `messages`, `max_completion_tokens`). GPT-5 frontier models enforce their own sampling so temperature overrides are ignored.
+### GPT-6 Notes
+OpenAI models use the standard Chat Completions API parameters. Only officially supported parameters are used (e.g., `model`, `messages`, `max_completion_tokens`). GPT-6 reasoning models enforce their own sampling so temperature overrides are ignored.
 
 ## Operation Modes
 
@@ -93,10 +100,10 @@ INPUT_TOKENS=60000    # Adjust based on conversation length
 ```
 
 ### Model Selection
-- **GPT-5**: Best quality, highest cost - for complex reasoning tasks
-- **GPT-5-mini**: Cost-effective default - best balance of quality and cost
-- **GPT-5-nano**: High-speed processing - for low-latency responses
-- **GPT-5-chat**: Advanced conversational interactions
+- **GPT-6-luna**: Cost-effective default - best balance of quality and cost
+- **GPT-6.1-terra** / **GPT-6.1-sol**: GPT-6.1 point releases for more demanding work
+- **GPT-6-astra** / **GPT-6-sol**: GPT-6 variants
+- **GPT-5**, **GPT-5-mini**, **GPT-5-nano**, **GPT-5-pro**: legacy models selectable until 2026-12-11
 
 ### Parameter support
 - This project does not use unofficial parameters. There is no `reasoning_effort` or `verbosity`.
@@ -124,7 +131,7 @@ WARNING: OpenAI returned no response, trying fallback
 ## Cost Optimization Tips
 
 ### Smart Usage
-1. **Use GPT-5-mini** for simple queries to reduce costs (default)
+1. **Use GPT-6-luna** for simple queries to reduce costs (default)
 2. **Set appropriate OUTPUT_TOKENS** limit based on your needs
 3. **Monitor token usage** in logs to track spending
 4. Keep `max_tokens` conservative for cost control
@@ -155,13 +162,13 @@ MAX_HISTORY_PER_USER=30  # Reduce to save tokens on context
 - Implement appropriate rate limiting in bot configuration
 
 **"Model not found"**:
-- Verify the model name is correct (examples: `gpt-5-mini`, `gpt-5`, `gpt-5-nano`, `gpt-5-chat`)
+- Verify the model name is correct (examples: `gpt-6-luna`, `gpt-6.1-sol`, `gpt-6-astra`, `gpt-5-nano`)
 - Check if you have access to the specified model
 
 **High costs**:
 - Lower `OUTPUT_TOKENS` setting
-- Use `gpt-5-mini` for cost-effective responses (default)
-- Use `gpt-5` for enhanced capabilities when needed
+- Use `gpt-6-luna` for cost-effective responses (default)
+- Use `gpt-6.1-terra` or `gpt-6.1-sol` for enhanced capabilities when needed
 - Reduce `MAX_HISTORY_PER_USER` to minimize context tokens
 
 ### Getting Help

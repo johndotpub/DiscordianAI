@@ -20,7 +20,10 @@ Create and configure your Discord bot:
 2. **Configure Bot Settings**
    - Click "Add Bot" to create the bot user
    - **Copy the bot token** - you'll need this for configuration
-   - Enable "Message Content Intent" under Privileged Gateway Intents (required for message processing)
+   - The bot requests `discord.Intents.default()` with typing and presences
+     disabled, so the privileged Message Content intent is not required. Discord
+     still sends content for messages that mention the bot and for DMs; a guild
+     message that does not mention it is ignored.
 
 3. **Set Bot Permissions**
    - Go to the "OAuth2" > "URL Generator" section
@@ -42,7 +45,7 @@ Create and configure your Discord bot:
 ### Option A: Smart Hybrid Mode (Recommended) 🧠
 Get both API keys for intelligent automatic service selection:
 
-**OpenAI API Key** (for GPT-5):
+**OpenAI API Key** (for GPT-6):
 - Go to [OpenAI Platform](https://platform.openai.com/api-keys)
 - Create new API key
 - Copy the key (starts with `sk-`)
@@ -139,10 +142,21 @@ Send these messages to your bot to verify it's working:
 2. **Web Search**: `What's the latest AI news?` (should use Perplexity if available)
 3. **Follow-up Consistency**: 
    - First: `What's the weather today?` (→ Perplexity)
-   - Then: `Tell me more about that` (→ Should stay with Perplexity)
+   - Then: `Tell me more` (→ Should stay with Perplexity)
 
 ### Check Logs
-Monitor `bot.log` for these messages:
+
+The bot writes logs to stderr. Where they end up depends on how you started it:
+
+- `./discordian.sh -d ...` redirects both stdout and stderr to `bot.log` in the project directory (`>> bot.log 2>&1`).
+- The systemd unit redirects stdout and stderr to `bot.log` (see [Daemon.md](Daemon.md)).
+- Running `python -m src.main` directly prints to the terminal. To keep a file, redirect both streams; redirecting stdout alone produces an empty file:
+
+  ```bash
+  python -m src.main --conf config.ini >> bot.log 2>&1
+  ```
+
+When `bot.log` is being written by the supervisor or your redirect, monitor it for these messages:
 ```
 INFO: Bot logged in successfully as YourBotName
 INFO: Running in HYBRID mode (OpenAI + Perplexity) - Smart AI orchestration enabled
@@ -169,7 +183,7 @@ INFO: Message analysis suggests web search would be beneficial - trying Perplexi
 - **Consider Docker deployment** for isolation and scalability
 
 ### Monitoring & Maintenance
-- **Log rotation**: Ensure log files don't grow too large
+- **Log rotation**: Ensure supervisor-managed or redirected log files don't grow too large
 - **API usage tracking**: Monitor token consumption and costs
 - **Error monitoring**: Set up alerts for critical errors
 - **Regular updates**: Keep dependencies updated for security
@@ -197,7 +211,7 @@ INFO: Message analysis suggests web search would be beneficial - trying Perplexi
 - Adjust `LOOKBACK_MESSAGES_FOR_CONSISTENCY` based on usage patterns
 
 ### Getting Help
-- Check the logs first: `tail -f bot.log`
+- Check the logs first. If output is redirected to `bot.log`, use `tail -f bot.log`; under systemd, use `journalctl --user -u discordian-bot@bot -f`
 - Review configuration examples in `config.ini.example`
 - Consult the [Configuration Guide](Configuration.md) for detailed parameter explanations
 - See [HybridMode.md](HybridMode.md) for advanced AI orchestration features

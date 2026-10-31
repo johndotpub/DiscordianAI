@@ -13,7 +13,7 @@ def deps():
     return BotDependencies(
         bot=MagicMock(),
         logger=MagicMock(),
-        config={"GPT_MODEL": "gpt-5-mini"},
+        config={"GPT_MODEL": "gpt-6-luna"},
         allowed_channels=["general"],
     )
 
@@ -21,7 +21,7 @@ def deps():
 def test_dict_access(deps):
     """BotDependencies supports dict-style bracket access."""
     assert deps["logger"] is deps.logger
-    assert deps["GPT_MODEL"] == "gpt-5-mini"
+    assert deps["GPT_MODEL"] == "gpt-6-luna"
 
 
 def test_contains(deps):
@@ -48,7 +48,7 @@ def test_to_dict_roundtrip(deps):
 
 def test_attribute_access(deps):
     """BotDependencies supports attribute access."""
-    assert deps.gpt_model == "gpt-5-mini"
+    assert deps.gpt_model == "gpt-6-luna"
     assert deps.allowed_channels == ["general"]
 
 

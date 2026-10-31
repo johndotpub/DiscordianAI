@@ -5,10 +5,81 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-10-28
+
+### Behaviour changes
+
+- **Routing is now an evidence model, and the old regex chain is gone.** Each message gets one decision
+  from `src/routing/`: bearing evidence (a status, price, version, event, or other mutable value) may
+  route to Perplexity, while framing (question shape, opinion, creative, social, proper names) can never
+  decide alone. The ordered regex chain and its pattern lists were deleted rather than left dormant, so
+  there is no flag to restore the old behaviour. Measured on the corpora committed under
+  `tests/routing/corpora/`: recall **0.728**, precision **0.716**, accuracy 0.778 over 289 scored rows,
+  against the deleted chain's 0.526 / 0.682 / 0.716 on the same rows. On ordinary traffic the router is
+  0.722 / 0.897; on a set deliberately built from surface-wording traps it is 0.738 / **0.534**, still
+  ahead of the incumbent's 0.405 / 0.486. Precision on trap-heavy input is the known cost of preferring a
+  wasted search to a confidently stale answer, and it is stated rather than averaged away.
+- **Cache entries carry the routing decision.** Keys now include the service, router id, policy version,
+  decision source, function, route salt, and degraded flag, so a web-routed message cannot receive a
+  cached local answer and an unsure decision is not stored at all.
+- **A degraded fallback stays degraded.** When a web attempt fails and the local answer is returned, the
+  entry is marked `degraded=true` and cannot be replayed as a successful web answer.
+- **Each provider is attempted at most once per request.** If Perplexity already failed, an OpenAI
+  web-inability response returns the local answer with a warning instead of calling Perplexity again.
+- **Missing history no longer discards the answer.** A missing conversation manager or a history lookup
+  that raises now routes with empty context and still delivers a successful model response.
+- **The default model is now `gpt-6-luna`; GPT-5 series models are retired by the provider on 2026-12-11 and remain selectable until then.**
+- **Perplexity now uses the Agent API.** Requests go to `/v1/agent` (the SDK uses the `/v1/responses` alias) with `instructions`, `input`, `max_output_tokens`, and the `web_search` tool; answers come from `output` items and citations from `search_results`. `PERPLEXITY_MODEL` defaults to `perplexity/sonar`. Sonar Chat Completions is still supported by the provider but is no longer what this bot uses. **Upgrading: a config that sets `PERPLEXITY_MODEL` to a legacy Sonar id — `sonar`, `sonar-pro`, `sonar-reasoning-pro`, `sonar-deep-research` — must change it to `perplexity/sonar`. The Agent API does not accept the old ids; startup warns and requests fail until the value is updated.**
+- **Conversation memory is per channel, not per user.** A DM can no longer be replayed into a public reply, and two channels no longer share context. History already held in memory under the old per-user keys is not reused.
+- **Web-search follow-ups keep their thread.** The Perplexity path now receives the conversation history it always claimed to have, so a follow-up is answered with the earlier turns in view.
+- **Answers are no longer shared between users through a response cache.** Cache and request-deduplication keys are scoped to the conversation key plus a digest of the conversation, with the requester as a fallback when no conversation key is given, so the same words from two people no longer return one person's answer.
+- **Long conversations are trimmed, not failed.** A conversation that outgrows the configured `INPUT_TOKENS` budget has its oldest history dropped; a single oversized message is truncated with a visible `[truncated to fit the token budget]` marker.
+- **Threads follow their parent channel.** The bot answers in a thread when the parent channel is allowed.
+- **Channel-name allowlists apply in every guild.** `ALLOWED_CHANNELS` names now resolve in every guild the bot is in. `ALLOWED_GUILDS` or `ALLOWED_GUILD_IDS` narrow the search, and `ALLOWED_CHANNEL_IDS` takes precedence when both forms are set.
+- **Bot authors are answered without a mention loop.** A bot that addresses the bot is answered like any other sender, but the reply never mentions that bot and never authorises it in `allowed_mentions`. After two consecutive bot-authored turns in one conversation, further bot turns are dropped until a human message resets the streak.
+- **Retries are limited to failures a retry can fix.** Connection failures, rate limits and server errors are retried. Read timeouts and deterministic client errors are not.
+- **A provider outage fails fast.** Repeated failures open the provider's circuit breaker, so later messages fail over immediately instead of paying another full timeout.
+- **`/health` reports observed provider state.** Provider entries include the circuit-breaker state and last success/failure times; a health port that is already in use disables the endpoint without stopping the bot.
+- **Error messages separate request failures from configuration faults.** A too-long prompt, a content-filter rejection and a permissions failure are reported as request or authentication errors rather than as a configuration problem.
+- **`LOG_FILE` is deprecated and ignored.** It is still parsed for compatibility and logs one startup note, but the bot writes no log file; the supervisor or shell redirect owns log output.
+- **Log color follows the terminal unless configured.** When `DISCORDIANAI_LOG_COLOR` is absent, ANSI color is emitted only when the output stream is a terminal. An explicit setting forces colour on or off; the sample `config.ini.example` sets it to `false`, so redirected logs stay plain unless an operator opts in.
+- **The package installs as a package.** The wheel contains `src/` instead of scattering top-level modules, and the `discordianai` command works.
+- **Some configuration errors now stop startup.** A malformed `OPENAI_API_URL` or `PERPLEXITY_API_URL`, or an output-token cap above 128,000, is fatal. An operator upgrading with one of those settings must fix it before the bot can boot.
+- **Citations and mention handling are hardened.** Citations survive to the wire, non-allowlisted links are reduced to their label, bare URLs and autolinks are broken with a zero-width space after the scheme, and a reply's allowed mentions can no longer ping `@everyone` or a role.
 
 ### Added ✨
+
 - **Perplexity attribution**: the Perplexity client sends an `X-Pplx-Integration: discordian-ai` header when its base URL host is `api.perplexity.ai`; custom hosts are unchanged.
+
+### Operations ⚙️
+
+- **Log rotation**: `contrib/logrotate/discordianai` is a ready-to-edit `copytruncate` fragment for supervisor-owned `bot.log`; `docs/Daemon.md` explains installation and the copy window.
+- **`PERPLEXITY_OUTPUT_TOKENS`**: sets Perplexity's `max_output_tokens` independently of OpenAI's `OUTPUT_TOKENS`; when unset it follows `OUTPUT_TOKENS`.
+- **`CONVERSATION_TTL_SECONDS`**: idle seconds before a conversation and its lock are evicted (default 1800).
+- **Scrape budgets**: `MAX_URLS_PER_MESSAGE` (default 3), `MAX_TOTAL_SCRAPED_CHARS` (default 60000) and `SCRAPE_DEADLINE_SECONDS` (default 20) bound the work one message can cause.
+- **SSRF caveat for HTTPS**: `docs/Security.md` now documents that plain HTTP is pinned to a vetted address while HTTPS relies on a pre-request DNS check, leaving a small DNS-rebinding window in exchange for correct TLS verification.
+
+### Fixed 🔧
+
+- **Cross-routing cache hits**: a web answer and a local answer can no longer share a cache entry, and a
+  degraded local fallback is never served as a web answer.
+- **Double Perplexity attempts**: the web-inability reroute consults an attempt ledger, so one request no
+  longer calls the same failed provider twice.
+- **Long answers are delivered completely**: message splitting is iterative and bounded by a 50-chunk runaway cap, so an answer within the provider's output budget is no longer cut off by a recursion-depth guard.
+- **Conversation transcript integrity**: answers stay attached to the question that produced them, and a zero consistency lookback now disables lookback instead of reading the whole transcript.
+- **Shutdown**: `SIGTERM` and `SIGINT` now stop the bot once, with a bounded wait, instead of crashing or being killed after the launcher's grace period.
+- **Rate limiting**: windows are measured with a monotonic clock, so system clock steps no longer refuse valid users or let bursts through.
+- **Provider plumbing**: OpenAI and Perplexity share one request-building and error-classification path while keeping separate output caps; startup checks the packages the code imports.
+- **Citations and delivery**: one citation formatter and one reply path replace the per-provider duplicates, with consistent splitting for long responses.
+- **Documentation truth**: README and docs now match the code for logging, routing, retries, health, provider contracts and deprecated settings, with tests that fail on drift.
+
+### Security 🛡️
+
+- **Scraped pages are data**: page text is wrapped in an explicit untrusted block and delimiters are escaped. Model output is neutralised so scraped pages cannot inject mentions or markdown links, bare URLs, or autolinks into Discord: non-allowlisted links are reduced to their label or broken with a zero-width space after the scheme. A URL that appears inside an allowlisted citation is left intact.
+
+### Tests ✅
+
+- **Coverage**: new regression tests cover channel-scoped conversations, Perplexity history, token budgets, retry policy, SSRF and redirect checks, routing rules, health truth, validation honesty, documentation drift and the changelog/version contract.
 
 ## [0.2.9.9] - 2026-06-06
 

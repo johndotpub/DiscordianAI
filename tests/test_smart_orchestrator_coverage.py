@@ -6,16 +6,15 @@ import pytest
 
 from src.conversation_manager import ThreadSafeConversationManager
 from src.models import AIClients, AIConfig, AIRequest, OpenAIConfig, PerplexityConfig
+from src.routing import HeuristicRouter
+from src.routing.context import build_router_input
+from src.routing.contracts import RouterInput
 from src.smart_orchestrator import (
     _process_hybrid_mode,
     _process_openai_only_mode,
     _process_perplexity_only_mode,
     _sanitize_for_routing,
     get_smart_response,
-    has_time_sensitivity,
-    is_conversational_or_creative,
-    is_factual_query,
-    should_use_web_search,
 )
 
 
@@ -90,8 +89,8 @@ class TestSanitizeForRouting:
         """The root cause of HACKERMANS misroute — uppercase emoji names."""
         msg = "Going to bed <a:HACKERMANS:123456789>"
         sanitized = _sanitize_for_routing(msg)
-        # After sanitization, should NOT route to web search
-        assert not should_use_web_search(sanitized)
+        decision = HeuristicRouter().decide_sync(RouterInput(text=sanitized))
+        assert decision.route == "local"
 
     def test_now_in_plain_text_still_works(self):
         """Sanitization should not affect non-markup text."""
@@ -100,186 +99,85 @@ class TestSanitizeForRouting:
         assert "now" in _sanitize_for_routing(msg)
 
 
-class TestRoutingFunctions:
-    def test_has_time_sensitivity_current_events(self):
-        """Test time sensitivity detection for current events."""
-        assert has_time_sensitivity("What's happening in the news today?")
-        assert has_time_sensitivity("Current stock prices for AAPL")
-        assert has_time_sensitivity("Latest weather forecast")
-        assert has_time_sensitivity("Today's sports scores")
+class TestRoutingBehaviour:
+    """Routing decisions are exercised through the real heuristic router."""
 
-    def test_has_time_sensitivity_no_time_sensitivity(self):
-        """Test messages without time sensitivity."""
-        assert not has_time_sensitivity("What is Python?")
-        assert not has_time_sensitivity("How do I write a function?")
-        assert not has_time_sensitivity("Explain quantum mechanics")
+    @staticmethod
+    def _route(message: str) -> str:
+        return HeuristicRouter().decide_sync(RouterInput(text=message)).route
 
-    def test_is_factual_query_factual(self):
-        """Test factual query detection."""
-        assert is_factual_query("What is the capital of France?")
-        assert is_factual_query("How many planets are in the solar system?")
-        assert is_factual_query("When was Python created?")
+    def test_time_sensitive_queries_route_to_web(self):
+        assert self._route("What's the latest news?") == "web"
+        assert self._route("Current stock prices") == "web"
+        assert self._route("Today's weather forecast") == "web"
+        assert self._route("What's happening right now?") == "web"
 
-    def test_is_factual_query_not_factual(self):
-        """Test non-factual queries."""
-        assert not is_factual_query("Tell me a story")
-        assert not is_factual_query("Write a poem about cats")
-        assert not is_factual_query("How are you feeling?")
-        assert not is_factual_query("What's your opinion on politics?")
+    def test_standalone_now_is_not_time_sensitive(self):
+        assert self._route("Now you're just fucking with me.") == "local"
 
-    def test_is_conversational_or_creative_conversational(self):
-        """Test conversational/creative content detection."""
-        assert is_conversational_or_creative("Tell me a joke")
-        assert is_conversational_or_creative("Write a story about dragons")
-        assert is_conversational_or_creative("How are you today?")
-        assert is_conversational_or_creative("Create a poem")
+    def test_conversational_and_creative_queries_stay_local(self):
+        assert self._route("Tell me a funny story") == "local"
+        assert self._route("How are you feeling?") == "local"
+        assert self._route("Write a poem about winter") == "local"
+        assert self._route("Hi there") == "local"
 
-    def test_is_conversational_or_creative_not_conversational(self):
-        """Test non-conversational content."""
-        assert not is_conversational_or_creative("What is 2+2?")
-        assert not is_conversational_or_creative("Define photosynthesis")
-        assert not is_conversational_or_creative("Current weather in London")
+    def test_explicit_web_instruction_routes_to_web(self):
+        assert self._route("Please search the web for best laptops") == "web"
+        assert self._route("Search the internet for the population of Japan") == "web"
 
-    def test_should_use_web_search_time_sensitive(self):
-        """Test web search routing for time-sensitive queries."""
-        assert should_use_web_search("What's the latest news?")
-        assert should_use_web_search("Current stock prices")
-        assert should_use_web_search("Today's weather forecast")
+    def test_entity_only_question_stays_local_under_the_bearing_gate(self):
+        assert self._route("Tell me about John Doe") == "local"
+        assert self._route("HACKERMANS is a cool emoji") == "local"
 
-    def test_now_false_positive(self):
-        """Standalone 'now' should not trigger web search (false positive fix)."""
-        assert not should_use_web_search("Now you're just fucking with me.")
+    def test_stock_shape_routes_to_web(self):
+        assert self._route("What's $AAPL trading at right now?") == "web"
+        assert self._route("We use JSON for serialization") == "local"
 
-    def test_right_now_positive(self):
-        """Contextual 'right now' should still be detected as time-sensitive."""
-        assert should_use_web_search("What's happening right now?")
-
-    def test_should_use_web_search_factual_with_entities(self):
-        """Test web search routing for factual queries with entities."""
-        # Long enough message with entities should use web search
-        long_factual = (
-            "What are the recent developments in artificial intelligence research "
-            "and how are they impacting the technology industry?"
-        )
-        assert should_use_web_search(long_factual)
-
-    def test_should_use_web_search_conversational(self):
-        """Test that conversational queries don't use web search."""
-        assert not should_use_web_search("Tell me a funny story")
-        assert not should_use_web_search("How are you feeling today?")
-        assert not should_use_web_search("Write a poem about winter")
-
-    def test_should_use_web_search_with_consistency(self):
-        """Test web search function with conversation manager."""
-        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
-
-        # Test that function accepts conversation manager parameter
-        result = should_use_web_search(
-            "What is Python?",
-            conversation_manager=conversation_manager,
-            user_id=12345,
-            lookback_messages=6,
-        )
-
-        # Function should complete without error
-        assert isinstance(result, bool)
-
-    def test_should_use_web_search_short_message(self):
-        """Test that short messages use appropriate routing."""
-        short_message = "Hi there"  # Less than default min words
-        assert not should_use_web_search(short_message)
-
-    def test_should_use_web_search_consistency_override(self):
-        """Test that recent Perplexity usage overrides other heuristic checks."""
-        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
-        # Mock that the last service used was Perplexity
-        conversation_manager.get_recent_ai_service.return_value = "perplexity"
-
-        # A message that normally wouldn't trigger web search (ambiguous/short)
-        message = "tell me more"
-
-        result = should_use_web_search(
-            message,
-            conversation_manager=conversation_manager,
-            user_id=12345,
-            lookback_messages=5,
-        )
-
-        # Force fail with details if not called, to debug
-        if not conversation_manager.get_recent_ai_service.called:
-            pytest.fail(
-                "conversation_manager.get_recent_ai_service was NOT called. Regex match failed?",
-            )
-
-        # Should be True because of consistency
-        assert result is True
-
-        # Verify it checked the history
-        conversation_manager.get_recent_ai_service.assert_called_with(12345, lookback_messages=5)
-
-    def test_search_intent_triggers_web_search(self):
-        """Explicit search intent phrases should force web search routing."""
-        assert should_use_web_search("Can you look up the population of Japan?")
-        assert should_use_web_search("Please search for best laptops 2025")
-        assert should_use_web_search("Find me the latest research on transformers")
-
-    def test_follow_up_triggers_consistency(self):
-        """Follow-up fragments should consult conversation history for routing."""
+    def test_follow_up_inherits_perplexity_from_conversation(self):
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
         conversation_manager.get_recent_ai_service.return_value = "perplexity"
-
-        msg = "And what about the latest updates?"
-        result = should_use_web_search(
-            msg,
+        request = AIRequest(
+            message="tell me more",
+            user=MagicMock(id=12345),
             conversation_manager=conversation_manager,
-            user_id=999,
-            lookback_messages=3,
+            logger=logging.getLogger("test"),
+            conversation_key="dm:12345",
         )
-        assert result is True
 
-    def test_expanded_conversational_patterns(self):
-        """New conversational phrases should be classified as conversational."""
-        assert is_conversational_or_creative("Tell me more about that idea")
-        assert is_conversational_or_creative("Give me a list of examples")
-        assert is_conversational_or_creative("What's your take on AI?")
+        router_input = build_router_input(request, conversation_manager, 5)
+        decision = HeuristicRouter().decide_sync(router_input)
 
-    def test_tightened_entity_patterns(self):
-        """Ensure entity pattern tightening avoids false positives for all-caps tokens."""
-        # Proper name should trigger web search
-        assert should_use_web_search("Tell me about John Doe")
+        assert decision.route == "web"
+        conversation_manager.get_recent_ai_service.assert_called_with(
+            "dm:12345", lookback_messages=5
+        )
 
-        # All-caps single token (emoji-like) should NOT trigger entity match now
-        assert not should_use_web_search("HACKERMANS is a cool emoji")
+    def test_follow_up_without_history_stays_local(self):
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
+        conversation_manager.get_recent_ai_service.return_value = None
+        request = AIRequest(
+            message="tell me more",
+            user=MagicMock(id=999),
+            conversation_manager=conversation_manager,
+            logger=logging.getLogger("test"),
+            conversation_key="dm:999",
+        )
 
-        # Stock symbol should still trigger
-        assert should_use_web_search("What's $AAPL trading at right now?")
+        router_input = build_router_input(request, conversation_manager, 3)
+        decision = HeuristicRouter().decide_sync(router_input)
 
-        # Common tech acronyms should not cause routing by themselves
-        assert not should_use_web_search("We use JSON for serialization")
-
-    def test_should_use_web_search_logs_triggers(self, caplog):
-        """should_use_web_search should emit trigger-identifying debug logs."""
-        import logging
-
-        caplog.set_level(logging.DEBUG, logger="src.smart_orchestrator")
-        should_use_web_search("What's happening right now?")
-        found = any("should_use_web_search" in rec.message for rec in caplog.records)
-        assert found, "Expected debug log from should_use_web_search"
+        assert decision.route == "local"
 
     @pytest.mark.asyncio
     async def test_openai_web_inability_reroute_logs(self, caplog):
         """Hybrid mode logs reroute when OpenAI indicates web-inability."""
-        import logging
-        from unittest.mock import MagicMock, patch
-
         caplog.set_level(logging.INFO, logger="src.smart_orchestrator")
 
-        # Build request
         cm = MagicMock()
         user = MagicMock()
         user.id = 1
         logger = logging.getLogger("src.smart_orchestrator.test")
-        request = AIRequest("Tell me about X", user, cm, logger)
+        request = AIRequest("What is the capital of France?", user, cm, logger)
 
         clients = AIClients(openai=object(), perplexity=object())
         cfg = AIConfig()
@@ -287,7 +185,7 @@ class TestRoutingFunctions:
         async def fake_openai(req, conv, client, cfg):
             return "Sorry, I can't access the internet to look that up."
 
-        async def fake_perp(req, client, cfg):
+        async def fake_perp(req, client, cfg, conversation_summary=None):
             return ("Perplexity result", False, None)
 
         with (
@@ -296,29 +194,63 @@ class TestRoutingFunctions:
         ):
             await _process_hybrid_mode(request, [], clients, cfg, orchestrator_config=None)
 
-        # Should have a reroute warning/info
         msgs = [r.getMessage() for r in caplog.records]
         assert any("rerouting to Perplexity" in m or "Routing to Perplexity" in m for m in msgs)
 
     @pytest.mark.asyncio
+    async def test_reroute_log_does_not_dump_the_discarded_answer(self, caplog):
+        """A reroute logs the answer length, never the whole answer."""
+        caplog.set_level(logging.DEBUG)
+
+        cm = MagicMock()
+        user = MagicMock()
+        user.id = 7
+        logger = logging.getLogger("src.smart_orchestrator.test")
+        request = AIRequest("What is the capital of France?", user, cm, logger)
+
+        clients = AIClients(openai=object(), perplexity=object())
+        cfg = AIConfig()
+        marker = "UNIQUE_REROUTE_MARKER_" + ("x" * 1980)
+        answer = f"I can't access the internet. {marker}"
+
+        async def fake_openai(req, conv, client, cfg):
+            return answer
+
+        async def fake_perp(req, client, cfg, conversation_summary=None):
+            return ("Perplexity result", False, None)
+
+        with (
+            patch("src.smart_orchestrator.process_openai_message", fake_openai),
+            patch("src.smart_orchestrator.process_perplexity_message", fake_perp),
+        ):
+            await _process_hybrid_mode(request, [], clients, cfg, orchestrator_config=None)
+
+        reroute_records = [
+            record
+            for record in caplog.records
+            if "Discarding OpenAI answer" in record.getMessage()
+        ]
+        assert reroute_records, "Expected a debug line for the discarded answer"
+        logged = reroute_records[0].getMessage()
+        assert marker not in logged
+        assert len(logged) < 300
+        assert str(len(answer)) in logged
+
+    @pytest.mark.asyncio
     async def test_perplexity_fallback_logs(self, caplog):
         """If Perplexity fails initially, hybrid mode logs fallback to OpenAI."""
-        import logging
-        from unittest.mock import MagicMock, patch
-
         caplog.set_level(logging.INFO, logger="src.smart_orchestrator")
 
         cm = MagicMock()
         user = MagicMock()
         user.id = 2
         logger = logging.getLogger("src.smart_orchestrator.test")
-        # Message includes a URL to force Perplexity routing
         request = AIRequest("http://example.com/page", user, cm, logger)
 
         clients = AIClients(openai=object(), perplexity=object())
         cfg = AIConfig()
 
-        async def failing_perp(req, client, cfg):
+        async def failing_perp(req, client, cfg, conversation_summary=None):
             return None
 
         async def success_openai(req, conv, client, cfg):
@@ -375,7 +307,7 @@ class TestProcessingModes:
                 12345,
                 "assistant",
                 "Perplexity response",
-                metadata={"ai_service": "perplexity", "model": "sonar-pro"},
+                metadata={"ai_service": "perplexity", "model": "perplexity/sonar"},
             )
             assert conversation_manager.add_message.call_count == 2
 
@@ -451,7 +383,7 @@ class TestProcessingModes:
                 12345,
                 "assistant",
                 "OpenAI response",
-                metadata={"ai_service": "openai", "model": "gpt-5-mini"},
+                metadata={"ai_service": "openai", "model": "gpt-6-luna"},
             )
             assert conversation_manager.add_message.call_count == 2
 
@@ -507,7 +439,6 @@ class TestProcessingModes:
         ai_config = AIConfig()
 
         with (
-            patch("src.smart_orchestrator.should_use_web_search", return_value=True),
             patch("src.smart_orchestrator.process_perplexity_message") as mock_perplexity,
             patch("src.smart_orchestrator.process_openai_message") as mock_openai,
         ):
@@ -531,7 +462,7 @@ class TestProcessingModes:
                 12345,
                 "assistant",
                 "Web search result",
-                metadata={"ai_service": "perplexity", "model": "sonar-pro"},
+                metadata={"ai_service": "perplexity", "model": "perplexity/sonar"},
             )
             assert conversation_manager.add_message.call_count == 2
 
@@ -554,15 +485,28 @@ class TestProcessingModes:
         clients = AIClients(openai=openai_client, perplexity=perplexity_client)
         ai_config = AIConfig()
 
-        response, _suppress_embeds, _embed_data = await _process_hybrid_mode(
-            request=request,
-            conversation_summary=[],
-            clients=clients,
-            config=ai_config,
-        )
+        with patch(
+            "src.smart_orchestrator.process_openai_message",
+            return_value="OpenAI response",
+        ) as mock_openai:
+            response, _suppress_embeds, _embed_data = await _process_hybrid_mode(
+                request=request,
+                conversation_summary=[],
+                clients=clients,
+                config=ai_config,
+            )
 
-        assert response is not None
-        assert isinstance(_suppress_embeds, bool)
+        assert response == "OpenAI response"
+        assert _suppress_embeds is False
+        assert _embed_data is None
+        mock_openai.assert_awaited_once()
+        conversation_manager.add_message.assert_any_call(
+            12345,
+            "assistant",
+            "OpenAI response",
+            metadata={"ai_service": "openai", "model": "gpt-6-luna"},
+        )
+        assert conversation_manager.add_message.call_count == 2
 
     @pytest.mark.asyncio
     async def test_process_hybrid_mode_fallback_chain(self):
@@ -575,7 +519,7 @@ class TestProcessingModes:
         perplexity_client = MagicMock()
 
         request = AIRequest(
-            message="Complex query",
+            message="http://example.com/status",
             user=user,
             conversation_manager=conversation_manager,
             logger=logger,
@@ -584,7 +528,6 @@ class TestProcessingModes:
         ai_config = AIConfig()
 
         with (
-            patch("src.smart_orchestrator.should_use_web_search", return_value=True),
             patch("src.smart_orchestrator.process_perplexity_message", return_value=None),
             patch("src.smart_orchestrator.process_openai_message") as mock_openai,
         ):
@@ -599,12 +542,14 @@ class TestProcessingModes:
 
             assert response == "OpenAI fallback response"
             mock_openai.assert_called_once()
-            conversation_manager.add_message.assert_any_call(12345, "user", "Complex query")
+            conversation_manager.add_message.assert_any_call(
+                12345, "user", "http://example.com/status"
+            )
             conversation_manager.add_message.assert_any_call(
                 12345,
                 "assistant",
                 "OpenAI fallback response",
-                metadata={"ai_service": "openai", "model": "gpt-5-mini"},
+                metadata={"ai_service": "openai", "model": "gpt-6-luna"},
             )
             assert conversation_manager.add_message.call_count == 2
 
@@ -619,7 +564,7 @@ class TestProcessingModes:
         perplexity_client = MagicMock()
 
         request = AIRequest(
-            message="Tell me the latest news",
+            message="What is the capital of France?",
             user=user,
             conversation_manager=conversation_manager,
             logger=logger,
@@ -628,7 +573,6 @@ class TestProcessingModes:
         ai_config = AIConfig()
 
         with (
-            patch("src.smart_orchestrator.should_use_web_search", return_value=False),
             patch("src.smart_orchestrator.process_openai_message") as mock_openai,
             patch("src.smart_orchestrator.process_perplexity_message") as mock_perplexity,
         ):
@@ -649,13 +593,13 @@ class TestProcessingModes:
             assert response == "Perplexity result"
             mock_perplexity.assert_called_once()
             conversation_manager.add_message.assert_any_call(
-                12345, "user", "Tell me the latest news"
+                12345, "user", "What is the capital of France?"
             )
             conversation_manager.add_message.assert_any_call(
                 12345,
                 "assistant",
                 "Perplexity result",
-                metadata={"ai_service": "perplexity", "model": "sonar-pro"},
+                metadata={"ai_service": "perplexity", "model": "perplexity/sonar"},
             )
             assert conversation_manager.add_message.call_count == 2
 

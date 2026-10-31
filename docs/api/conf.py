@@ -1,16 +1,16 @@
 """Sphinx configuration for DiscordianAI API reference."""
 
-import os
+from pathlib import Path
 import sys
 
-sys.path.insert(0, os.path.abspath("../.."))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 project = "DiscordianAI"
 copyright = "2025-2026, johndotpub"
 author = "johndotpub"
 
-release = "0.2.9.9"
-version = "0.2.9.9"
+release = "0.4.0"
+version = "0.4.0"
 
 extensions = [
     "sphinx.ext.autodoc",

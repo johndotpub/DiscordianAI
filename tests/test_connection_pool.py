@@ -1,5 +1,6 @@
 """Tests for connection pooling functionality."""
 
+import logging
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -331,23 +332,6 @@ class TestPoolMetrics:
         assert result["status"] == "unknown"
 
     @pytest.mark.asyncio
-    async def test_close_http_client_success(self):
-        """close_http_client closes a client successfully."""
-        mock_client = AsyncMock()
-        mock_client.aclose = AsyncMock()
-        manager = ConnectionPoolManager()
-        await manager.close_http_client(mock_client)
-        mock_client.aclose.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_close_http_client_error(self):
-        """close_http_client logs warning on close error."""
-        mock_client = AsyncMock()
-        mock_client.aclose.side_effect = OSError("connection reset")
-        manager = ConnectionPoolManager()
-        await manager.close_http_client(mock_client)
-
-    @pytest.mark.asyncio
     async def test_close_all(self):
         """close_all closes all tracked HTTP clients."""
         mock_client1 = AsyncMock()
@@ -359,6 +343,27 @@ class TestPoolMetrics:
         mock_client2.aclose.assert_awaited_once()
         assert manager._clients["openai"] is None
         assert manager._clients["perplexity"] is None
+
+    @pytest.mark.asyncio
+    async def test_close_all_is_idempotent_and_logs_once(self, caplog):
+        """A second close_all is a no-op and does not close or log again."""
+        caplog.set_level(logging.INFO, logger="src.connection_pool")
+        mock_client1 = AsyncMock()
+        mock_client2 = AsyncMock()
+        manager = ConnectionPoolManager()
+        manager._clients = {"openai": mock_client1, "perplexity": mock_client2}
+
+        await manager.close_all()
+        await manager.close_all()
+
+        mock_client1.aclose.assert_awaited_once()
+        mock_client2.aclose.assert_awaited_once()
+        shutdown_logs = [
+            record
+            for record in caplog.records
+            if "Connection pool manager shutdown requested" in record.getMessage()
+        ]
+        assert len(shutdown_logs) == 1
 
     @pytest.mark.asyncio
     async def test_close_all_handles_error(self):

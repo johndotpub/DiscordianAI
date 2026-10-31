@@ -5,7 +5,6 @@ This module provides:
 - LRU cache for conversation contexts
 - Request deduplication for identical API calls
 - Connection pooling optimizations
-- Performance monitoring and metrics
 """
 
 import asyncio
@@ -14,6 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
 import hashlib
+import json
 import logging
 import re
 import threading
@@ -68,22 +68,178 @@ def _extract_message_context(
     return message, model, system_message
 
 
+def _extract_user_identity(user: Any) -> str | None:
+    """Return a stable identity for a request owner, if one is available."""
+    if user is None:
+        return None
+
+    if isinstance(user, dict):
+        candidate = user.get("id")
+    elif isinstance(user, (str, int)):
+        candidate = user
+    else:
+        candidate = getattr(user, "id", None)
+
+    if candidate is None:
+        return None
+
+    return str(candidate)
+
+
+def _extract_conversation_summary(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    """Extract ordered conversation history from decorated calls."""
+    if len(args) > 1 and isinstance(args[1], (list, tuple, dict)):
+        return args[1]
+
+    for key in ("conversation_summary", "conversation_history", "history"):
+        if key in kwargs:
+            return kwargs[key]
+
+    return []
+
+
+def _conversation_digest(conversation_summary: Any) -> str:
+    """Hash ordered conversation history without losing message order."""
+    if not conversation_summary:
+        payload = "[]"
+    else:
+        try:
+            payload = json.dumps(
+                conversation_summary,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            )
+        except (TypeError, ValueError):
+            payload = repr(conversation_summary)
+
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _extract_request_scope(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Extract owner and conversation identity for cache and dedup keys."""
+    request = args[0] if args and hasattr(args[0], "message") else kwargs.get("request")
+
+    user = getattr(request, "user", None) if request is not None else None
+    user_id = _extract_user_identity(user)
+    conversation_key = getattr(request, "conversation_key", None) if request is not None else None
+
+    if user_id is None and "user_id" in kwargs:
+        user_id = _extract_user_identity(kwargs["user_id"])
+    if user_id is None and "user" in kwargs:
+        user_id = _extract_user_identity(kwargs["user"])
+    if conversation_key is None and "conversation_key" in kwargs:
+        conversation_key = kwargs["conversation_key"]
+
+    conversation_summary = _extract_conversation_summary(args, kwargs)
+
+    return {
+        "user_id": user_id,
+        "conversation_key": conversation_key,
+        "conversation_digest": _conversation_digest(conversation_summary),
+        "has_conversation": bool(conversation_summary),
+    }
+
+
+def _generate_scoped_key(message: str, context: dict[str, Any], *, salt: str) -> str | None:
+    """Build a key scoped to the conversation, history, and routing decision."""
+    user_id = context.get("user_id")
+    conversation_key = context.get("conversation_key")
+    conversation_digest = context.get("conversation_digest")
+    has_conversation = bool(context.get("has_conversation"))
+
+    if conversation_digest is None:
+        conversation_summary = context.get("conversation_summary")
+        if conversation_summary is None:
+            conversation_summary = context.get("history", [])
+        conversation_digest = _conversation_digest(conversation_summary)
+        has_conversation = has_conversation or bool(conversation_summary)
+
+    scope_id = conversation_key if conversation_key is not None else user_id
+    if has_conversation and scope_id is None:
+        return None
+
+    normalized_message = str(message).strip()
+
+    context_key = {
+        "model": context.get("model", "unknown"),
+        "system_message_hash": hashlib.sha256(
+            str(context.get("system_message") or "").encode(),
+        ).hexdigest()[:8],
+        "conversation_scope": "" if scope_id is None else str(scope_id),
+        "conversation_digest": conversation_digest,
+        "service": context.get("service", "unknown"),
+        "router_id": context.get("router_id", "unknown"),
+        "policy_version": context.get("policy_version", "unknown"),
+        "decision_source": context.get("decision_source", "unknown"),
+        "function": context.get("function", "unknown"),
+        "route": context.get("route", ""),
+        "degraded": bool(context.get("degraded", False)),
+        "salt": salt,
+    }
+
+    key_data = (normalized_message, context_key)
+    return hashlib.sha256(str(key_data).encode()).hexdigest()
+
+
+def _extract_routing_context(request: Any, func_name: str) -> dict[str, Any]:
+    """Return routing fields for a cache key, with explicit legacy defaults."""
+    routing = getattr(request, "routing", None) if request is not None else None
+
+    def read(name: str, default: Any) -> Any:
+        if routing is None:
+            return default
+        if isinstance(routing, dict):
+            return routing.get(name, default)
+        return getattr(routing, name, default)
+
+    salt = read("salt", None)
+    if not isinstance(salt, str) or not salt:
+        salt = f"{func_name}:unrouted"
+    return {
+        "service": read("service", "unknown"),
+        "router_id": read("router_id", "unknown"),
+        "policy_version": read("policy_version", "unknown"),
+        "decision_source": read("decision_source", "unknown"),
+        "route": read("route", ""),
+        "degraded": bool(read("degraded", False)),
+        "cacheable": bool(read("cacheable", True)),
+        "salt": salt,
+    }
+
+
+def _cache_context(
+    func_name: str,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> tuple[Any, dict[str, Any], str]:
+    """Build the cache context and required salt for one decorated call."""
+    message, model, system_message = _extract_message_context(args, kwargs)
+    request = args[0] if args and hasattr(args[0], "message") else kwargs.get("request")
+    routing = _extract_routing_context(request, func_name)
+    salt = routing.pop("salt")
+    context = {
+        "function": func_name,
+        "model": model,
+        "system_message": system_message,
+        **_extract_request_scope(args, kwargs),
+        **routing,
+    }
+    return message, context, salt
+
+
 @dataclass
 class CacheEntry:
     """Cache entry with metadata."""
 
     value: Any
     timestamp: float
-    access_count: int = 0
     ttl: float = 300.0  # 5 minutes default
 
     def is_expired(self) -> bool:
         """Check if cache entry has expired."""
         return time.time() - self.timestamp > self.ttl
-
-    def touch(self):
-        """Update access count and timestamp."""
-        self.access_count += 1
 
 
 class ThreadSafeLRUCache:
@@ -128,7 +284,6 @@ class ThreadSafeLRUCache:
 
             # Move to end (most recently used)
             self._cache.move_to_end(key)
-            entry.touch()
             self._stats["hits"] += 1
 
             return entry.value
@@ -158,17 +313,6 @@ class ThreadSafeLRUCache:
         """Clear all cache entries."""
         with self._lock:
             self._cache.clear()
-
-    def cleanup_expired(self) -> int:
-        """Remove expired entries and return count removed."""
-        with self._lock:
-            expired_keys = [key for key, entry in self._cache.items() if entry.is_expired()]
-
-            for key in expired_keys:
-                del self._cache[key]
-
-            self._stats["expired"] += len(expired_keys)
-            return len(expired_keys)
 
     def get_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
@@ -222,27 +366,32 @@ class ResponseCache:
 
         return not any(re.search(pattern, response_lower) for pattern in time_indicators)
 
-    def _generate_cache_key(self, message: str, context: dict[str, Any]) -> str:
-        """Generate cache key for message and context."""
-        # Normalize message for better cache hits
-        normalized_message = message.strip().lower()
+    def _generate_cache_key(
+        self,
+        message: str,
+        context: dict[str, Any],
+        *,
+        salt: str,
+    ) -> str | None:
+        """Generate cache key scoped to the request identity and routing decision."""
+        return _generate_scoped_key(message, context, salt=salt)
 
-        # Include relevant context in key
-        context_key = {
-            "model": context.get("model", "unknown"),
-            "system_message_hash": hashlib.sha256(
-                context.get("system_message", "").encode(),
-            ).hexdigest()[:8],
-            # Don't include conversation history in key for broader cache hits
-        }
-
-        key_data = (normalized_message, context_key)
-        return hashlib.sha256(str(key_data).encode()).hexdigest()
-
-    def get_cached_response(self, message: str, context: dict[str, Any]) -> str | None:
+    def get_cached_response(
+        self,
+        message: str,
+        context: dict[str, Any],
+        *,
+        salt: str,
+    ) -> str | None:
         """Get cached response if available."""
         try:
-            cache_key = self._generate_cache_key(message, context)
+            if context.get("cacheable", True) is False:
+                return None
+
+            cache_key = self._generate_cache_key(message, context, salt=salt)
+            if cache_key is None:
+                return None
+
             cached_response = self.cache.get(cache_key)
 
             if cached_response:
@@ -261,13 +410,19 @@ class ResponseCache:
         context: dict[str, Any],
         response: str,
         ttl: float | None = None,
+        *,
+        salt: str,
     ) -> None:
         """Cache response if appropriate."""
         try:
+            if context.get("cacheable", True) is False:
+                return
             if not self._should_cache_response(response):
                 return
 
-            cache_key = self._generate_cache_key(message, context)
+            cache_key = self._generate_cache_key(message, context, salt=salt)
+            if cache_key is None:
+                return
 
             # Use shorter TTL for potentially time-sensitive content
             if ttl is None:
@@ -287,10 +442,6 @@ class ResponseCache:
         """Get cache statistics."""
         return self.cache.get_stats()
 
-    def cleanup(self) -> int:
-        """Clean up expired entries."""
-        return self.cache.cleanup_expired()
-
 
 class RequestDeduplicator:
     """Deduplicates identical API requests to prevent redundant calls.
@@ -302,7 +453,7 @@ class RequestDeduplicator:
     def __init__(self):
         """Initialize deduplicator state and locks."""
         self._pending_requests: dict[str, asyncio.Future] = {}
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
         self.logger = logging.getLogger(__name__)
 
     async def deduplicate_request(self, request_key: str, request_func: Callable) -> Any:
@@ -315,32 +466,36 @@ class RequestDeduplicator:
         Returns:
             Result from the request function
         """
-        async with self._lock:
-            # Check if request is already pending
-            if request_key in self._pending_requests:
+        with self._lock:
+            future = self._pending_requests.get(request_key)
+            if future is not None:
                 self.logger.debug("Deduplicating request: %s...", request_key[:20])
-                future = self._pending_requests[request_key]
-                # Wait for the existing request to complete
-                return await future
+                is_leader = False
+            else:
+                future = asyncio.get_running_loop().create_future()
+                self._pending_requests[request_key] = future
+                is_leader = True
 
-            # Create new future for this request
-            future = asyncio.Future()
-            self._pending_requests[request_key] = future
+        if not is_leader:
+            return await asyncio.shield(future)
 
         try:
-            # Execute the request
             result = await request_func()
+        except asyncio.CancelledError:
+            if not future.done():
+                future.cancel()
+            raise
         except Exception as e:
-            future.set_exception(e)
+            if not future.done():
+                future.set_exception(e)
             raise
         else:
-            future.set_result(result)
+            if not future.done():
+                future.set_result(result)
             return result
-
         finally:
-            # Clean up the pending request
-            async with self._lock:
-                if request_key in self._pending_requests:
+            with self._lock:
+                if self._pending_requests.get(request_key) is future:
                     del self._pending_requests[request_key]
 
 
@@ -362,20 +517,13 @@ def cached_response(ttl: float = 300.0, cache_instance: ResponseCache | None = N
 
         @wraps(func)
         async def wrapper(*args, **kwargs) -> Any:
-            # Generate cache key from function name and arguments
+            # Generate cache key from function name, arguments, and routing.
             func_name = func.__name__
-
-            message, model, system_message = _extract_message_context(args, kwargs)
-
-            context = {
-                "function": func_name,
-                "model": model,
-                "system_message": system_message,
-            }
+            message, context, salt = _cache_context(func_name, args, kwargs)
 
             # Try to get cached response
             if isinstance(message, str) and message:
-                cached = cache.get_cached_response(message, context)
+                cached = cache.get_cached_response(message, context, salt=salt)
                 if cached is not None:
                     return cached
 
@@ -384,7 +532,7 @@ def cached_response(ttl: float = 300.0, cache_instance: ResponseCache | None = N
 
             # Cache successful responses
             if isinstance(result, str) and isinstance(message, str):
-                cache.cache_response(message, context, result, ttl)
+                cache.cache_response(message, context, result, ttl, salt=salt)
 
             return result
 
@@ -407,10 +555,13 @@ def deduplicated_request(key_func: Callable | None = None):
             if key_func:
                 request_key = key_func(*args, **kwargs)
             else:
-                # Default key generation
-                message, model, _ = _extract_message_context(args, kwargs)
+                # Default key generation uses the same routing fields as the cache.
+                message, context, salt = _cache_context(func.__name__, args, kwargs)
+                scoped_key = _generate_scoped_key(message, context, salt=salt)
+                if scoped_key is None:
+                    return await func(*args, **kwargs)
 
-                request_key = f"{func.__name__}:{model}:{hash(repr(message))}"
+                request_key = f"{func.__name__}:{scoped_key}"
 
             # Execute with deduplication
             async def request_func():
@@ -421,106 +572,3 @@ def deduplicated_request(key_func: Callable | None = None):
         return wrapper
 
     return decorator
-
-
-class PerformanceMonitor:
-    """Monitor and report performance metrics."""
-
-    def __init__(self):
-        """Initialize metrics and synchronization primitives."""
-        self.metrics = {
-            "api_calls": 0,
-            "cache_hits": 0,
-            "cache_misses": 0,
-            "total_response_time": 0.0,
-            "deduplicated_requests": 0,
-        }
-        self._lock = threading.Lock()
-
-    def record_api_call(self, response_time: float, cache_hit: bool = False):
-        """Record API call metrics."""
-        with self._lock:
-            self.metrics["api_calls"] += 1
-            self.metrics["total_response_time"] += response_time
-
-            if cache_hit:
-                self.metrics["cache_hits"] += 1
-            else:
-                self.metrics["cache_misses"] += 1
-
-    def record_deduplication(self):
-        """Record request deduplication event."""
-        with self._lock:
-            self.metrics["deduplicated_requests"] += 1
-
-    def get_stats(self) -> dict[str, Any]:
-        """Get performance statistics."""
-        with self._lock:
-            total_requests = self.metrics["api_calls"]
-            avg_response_time = (
-                self.metrics["total_response_time"] / total_requests if total_requests > 0 else 0
-            )
-
-            cache_hit_rate = (
-                self.metrics["cache_hits"]
-                / (self.metrics["cache_hits"] + self.metrics["cache_misses"])
-                * 100
-                if (self.metrics["cache_hits"] + self.metrics["cache_misses"]) > 0
-                else 0
-            )
-
-            return {
-                "total_api_calls": total_requests,
-                "average_response_time_ms": round(avg_response_time * 1000, 2),
-                "cache_hit_rate": round(cache_hit_rate, 2),
-                "deduplicated_requests": self.metrics["deduplicated_requests"],
-                **self.metrics,
-            }
-
-    def reset_stats(self):
-        """Reset all performance statistics."""
-        with self._lock:
-            self.metrics = {
-                "api_calls": 0,
-                "cache_hits": 0,
-                "cache_misses": 0,
-                "total_response_time": 0.0,
-                "deduplicated_requests": 0,
-            }
-
-
-async def cleanup_caches():
-    """Clean up expired cache entries."""
-    try:
-        response_expired = response_cache.cleanup()
-
-        if response_expired > 0:
-            logger.info("Cleaned up %d expired response cache entries", response_expired)
-
-    except Exception:
-        logger.exception("Cache cleanup failed")
-        return 0
-    else:
-        return response_expired
-
-
-async def _cache_cleanup_tick(interval: int, logger: logging.Logger) -> None:
-    """Execute a single cleanup tick with error handling."""
-    try:
-        await asyncio.sleep(interval)
-        await cleanup_caches()
-    except asyncio.CancelledError:
-        logger.info("Cache cleanup task cancelled")
-        raise
-    except Exception:
-        logger.exception("Error in cache cleanup task")
-        await asyncio.sleep(60)  # Wait 1 minute before retrying
-
-
-# Background cache cleanup task
-async def start_cache_cleanup_task(interval: int = 300):  # 5 minutes
-    """Start background cache cleanup task."""
-    logger.info("Starting cache cleanup background task")
-
-    while True:
-        await _cache_cleanup_tick(interval, logger)

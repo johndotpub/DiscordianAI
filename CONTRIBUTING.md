@@ -2,6 +2,13 @@
 
 Thank you for your interest in contributing! This project follows modern Python best practices for code quality, testing, and documentation.
 
+## Engineering Standards
+
+[`AGENTS.md`](AGENTS.md) is the engineering contract for this repository: invariants, testing,
+documentation parity, security, commit format, and the verification gates. It wins where it
+disagrees with this file on engineering standards; this file covers the community process.
+Read it before making a change.
+
 ## Development Setup
 
 ### Prerequisites
@@ -69,12 +76,19 @@ pytest
 
 ### Full Workflow
 
-To run all checks and tests:
+Run every gate (format, lint, tests, docs build, and wheel build) with:
+
+```bash
+bash scripts/preflight.sh
+```
+
+The script stops at the first failure. To run the individual checks:
 
 ```bash
 black --check .
 ruff check .
 pytest
+python -m sphinx -b html docs/api docs/api/_build -W
 ```
 
 To auto-fix formatting and linting:

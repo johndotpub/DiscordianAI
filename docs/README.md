@@ -20,7 +20,7 @@ Welcome to the DiscordianAI documentation! This guide covers everything you need
 - **[Embed Limits](EmbedLimits.md)** - Discord embed size limits and strategies
 - **Conversational UX**
     - Bot shows typing indicators while AI responses are being generated
-    - All replies are threaded (reply-to) and start with the requesting user's mention for clarity
+    - All replies are threaded (reply-to) and start with the requesting human's mention for clarity; bot authors are answered without a mention prefix
 
 ### 🔧 Infrastructure
 - **[Architecture](Architecture.md)** - System design, patterns, and components
@@ -41,45 +41,30 @@ Welcome to the DiscordianAI documentation! This guide covers everything you need
 
 ## 🤖 AI Service Selection
 
-The bot intelligently chooses between OpenAI and Perplexity based on message content:
+The bot builds one evidence-based routing decision per message before calling a provider:
 
 ```mermaid
 flowchart TD
-    A[User Message] --> S[Sanitize for routing]
-    S --> B{Follow-up to previous?}
-    B -->|Yes| C[Use same AI service]
-    B -->|No| D[Check conversation context]
+    A[User Message] --> S[Build RouterInput
+message + channel kind + history]
+    S --> D[Score bearing vs framing evidence]
+    D --> G{No bearing cue
+and no override?}
+    G -->|Yes| J[Use OpenAI]
+    G -->|No| T{p_web >= channel threshold?}
+    T -->|Yes| F[Use Perplexity]
+    T -->|No| L{p_web <= tau_local?}
+    L -->|Yes| J
+    L -->|No| U[Unsure: local answer,
+not cached]
 
-    D --> SI{Search intent detected?}
-    SI -->|Yes| F[Use Perplexity]
-    SI -->|No| E{URLs detected?}
-
-    E -->|Yes| F[Use Perplexity]
-    E -->|No| G{Time-sensitive keywords?}
-
-    G -->|Yes| F
-    G -->|No| H{Entities detected?}
-
-    H -->|Yes| F
-    H -->|No| I{Conversational/Creative?}
-
-    I -->|Yes| J[Use OpenAI]
-    I -->|No| K{Factual query?}
-
-    K -->|Yes| F
-    K -->|No| J
-
-    %% OpenAI path includes a web-inability check that can reroute to Perplexity
+    %% OpenAI path includes a web-inability check that can reroute to Perplexity once
     J --> O[OpenAI Response]
     O --> WI{OpenAI indicates web-inability?}
-    WI -->|Yes| F
-    WI -->|No| M[Conversational AI]
+    WI -->|Yes, Perplexity not tried| F
+    WI -->|No or already tried| M[Local answer]
 
-    F --> L[Web search + Citations]
-    M --> X[Conversational AI Output]
-    C --> N{Previous service}
-    N -->|OpenAI| J
-    N -->|Perplexity| F
+    F --> L2[Web search + Citations]
 ```
 
 | Topic | Reference |

@@ -32,6 +32,21 @@ python scripts/debug_perplexity_citations.py my_bot.ini
 - Internet connection
 - All project dependencies installed
 
+### `router_eval.py`
+Score the routing heuristic on a labelled JSONL corpus, overall and per slice.
+
+**Usage:**
+```bash
+python scripts/router_eval.py --corpus corpus.jsonl [--json] [--slice FIELD]
+```
+
+**What it does:**
+- Reads rows with `text`, `expect` (`web`, `local`, `ambiguous`), optional `slice` and `why`
+- Excludes ambiguous rows and reports how many were excluded
+- Prints recall first, with a 95% Wilson interval, then precision and accuracy
+- Reports TP/FP/TN/FN for the whole corpus and for each slice
+- With `--json`, emits the same report for CI
+
 ### Other Debug Scripts
 Additional debugging utilities for response analysis and API testing.
 

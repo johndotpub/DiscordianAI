@@ -25,9 +25,7 @@ from src.error_handling import (
     RetryConfig,
     calculate_backoff_delay,
     classify_error,
-    create_graceful_fallback,
     error_tracker,
-    handle_api_error,
     retry_with_backoff,
     safe_discord_send,
 )
@@ -548,55 +546,6 @@ class TestSafeDiscordSend:
         mock_sleep.assert_called_once_with(1)  # 2^0 = 1 for first retry
 
 
-@pytest.mark.asyncio
-class TestHandleAPIError:
-    """Test handle_api_error decorator functionality."""
-
-    async def test_handle_api_error_decorator(self):
-        """Test handle_api_error decorator with successful function."""
-
-        @handle_api_error
-        async def test_func():
-            return "success"
-
-        result = await test_func()
-        assert result == "success"
-
-    async def test_handle_api_error_decorator_with_retries(self):
-        """Test handle_api_error decorator with retries."""
-        call_count = 0
-
-        @handle_api_error
-        async def test_func():
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                msg = "Temporary failure"
-                raise Exception(msg)
-            return "success"
-
-        result = await test_func()
-        assert result == "success"
-        assert call_count == 2
-
-    async def test_handle_api_error_decorator_failure(self):
-        """Test handle_api_error decorator with persistent failure."""
-        call_count = 0
-
-        @handle_api_error
-        async def test_func():
-            nonlocal call_count
-            call_count += 1
-            msg = "Persistent failure"
-            raise Exception(msg)
-
-        with pytest.raises(Exception, match="Persistent failure"):
-            await test_func()
-
-        # Should have attempted retries
-        assert call_count >= 2
-
-
 class TestErrorTracker:
     """Test ErrorTracker functionality."""
 
@@ -617,26 +566,6 @@ class TestErrorTracker:
         assert len(tracker.error_history) == 1
         assert tracker.error_counts["api_rate_limit_high"] == 1
 
-    def test_error_tracker_summary(self):
-        """Test getting error summary."""
-        tracker = ErrorTracker()
-
-        # Add some test errors
-        for i in range(3):
-            error_details = ErrorDetails(
-                error_type=ErrorType.API_TIMEOUT,
-                severity=ErrorSeverity.HIGH,
-                message=f"Timeout {i}",
-                user_message="Timeout occurred",
-            )
-            tracker.record_error(error_details)
-
-        summary = tracker.get_error_summary()
-
-        assert summary["total_errors"] == 3
-        assert summary["error_types"]["api_timeout"] == 3
-        assert summary["high_count"] == 3
-
     def test_error_tracker_history_limit(self):
         """Test error history size limit."""
         tracker = ErrorTracker()
@@ -654,55 +583,6 @@ class TestErrorTracker:
 
         # Should only keep the last max_history items
         assert len(tracker.error_history) == 5
-
-
-class TestCreateGracefulFallback:
-    """Test create_graceful_fallback decorator."""
-
-    @pytest.mark.asyncio
-    async def test_graceful_fallback_success(self):
-        """Test fallback when main function succeeds."""
-
-        async def fallback_func():
-            return "fallback"
-
-        @create_graceful_fallback(fallback_func)
-        async def main_func():
-            return "success"
-
-        result = await main_func()
-        assert result == "success"
-
-    @pytest.mark.asyncio
-    async def test_graceful_fallback_main_fails(self):
-        """Test fallback when main function fails."""
-
-        async def fallback_func():
-            return "fallback"
-
-        @create_graceful_fallback(fallback_func)
-        async def main_func():
-            msg = "Main failed"
-            raise Exception(msg)
-
-        result = await main_func()
-        assert result == "fallback"
-
-    @pytest.mark.asyncio
-    async def test_graceful_fallback_both_fail(self):
-        """Test fallback when both functions fail."""
-
-        async def fallback_func():
-            msg = "Fallback failed"
-            raise Exception(msg)
-
-        @create_graceful_fallback(fallback_func, "Default message")
-        async def main_func():
-            msg = "Main failed"
-            raise Exception(msg)
-
-        result = await main_func()
-        assert result == "Default message"
 
 
 class TestCalculateBackoffDelay:
@@ -733,14 +613,12 @@ class TestCalculateBackoffDelay:
         assert delay2 == 15.0  # capped at max_delay (would be 90.0)
 
     def test_calculate_backoff_delay_with_jitter(self):
-        """Test backoff delay with jitter."""
+        """Test backoff delay with full jitter."""
         config = RetryConfig(base_delay=2.0, exponential_base=2.0, jitter=True)
 
-        # With jitter, delay should be between 50% and 100% of calculated value
-        delay = calculate_backoff_delay(1, config)  # Should be around 2.0 * 2^1 = 4.0
+        delay = calculate_backoff_delay(1, config)  # Upper bound is 2.0 * 2^1 = 4.0
 
-        # With jitter, should be between 2.0 and 4.0
-        assert 2.0 <= delay <= 4.0
+        assert 0.0 <= delay <= 4.0
 
     def test_calculate_backoff_delay_without_jitter(self):
         """Test backoff delay without jitter gives exact values."""
@@ -977,10 +855,11 @@ class TestRetryLogicScenarios:
     @pytest.mark.asyncio
     async def test_retry_exponential_backoff_delay(self):
         """Test that retry uses exponential backoff."""
-        attempt_times = []
+        attempt_count = 0
 
         async def failing_function():
-            attempt_times.append(time.time())
+            nonlocal attempt_count
+            attempt_count += 1
             msg = "Failure"
             raise ConnectionError(msg)
 
@@ -992,25 +871,24 @@ class TestRetryLogicScenarios:
         )
         logger = Mock()
 
-        with pytest.raises(ConnectionError):
+        with (
+            patch("src.error_handling.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+            pytest.raises(ConnectionError),
+        ):
             await retry_with_backoff(failing_function, retry_config, logger)
 
-        # Check that delays increase exponentially
-        assert len(attempt_times) == 3
-        delay1 = attempt_times[1] - attempt_times[0]
-        delay2 = attempt_times[2] - attempt_times[1]
-
-        # Allow some tolerance for async timing
-        assert 0.15 < delay1 < 0.25  # ~0.2s
-        assert 0.35 < delay2 < 0.45  # ~0.4s (0.2 * 2)
+        # The recorded sleep durations are the backoff, without waiting on the clock.
+        assert attempt_count == 3
+        assert [call.args[0] for call in mock_sleep.await_args_list] == [0.2, 0.4]
 
     @pytest.mark.asyncio
     async def test_retry_respects_max_delay(self):
         """Test that retry respects max_delay configuration."""
-        attempt_times = []
+        attempt_count = 0
 
         async def failing_function():
-            attempt_times.append(time.time())
+            nonlocal attempt_count
+            attempt_count += 1
             msg = "Failure"
             raise ConnectionError(msg)
 
@@ -1023,40 +901,21 @@ class TestRetryLogicScenarios:
         )
         logger = Mock()
 
-        with pytest.raises(ConnectionError):
+        with (
+            patch("src.error_handling.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+            pytest.raises(ConnectionError),
+        ):
             await retry_with_backoff(failing_function, retry_config, logger)
 
-        # Check that delays are capped at max_delay
-        # Note: In parallel test execution, timing can vary significantly
-        # so we use a generous tolerance
-        assert len(attempt_times) >= 3
-        for i in range(1, len(attempt_times)):
-            delay = attempt_times[i] - attempt_times[i - 1]
-            assert delay <= 3.0  # Allow generous tolerance for parallel execution overhead
+        # Each computed delay is capped at max_delay; no wall clock is read.
+        assert attempt_count >= 3
+        delays = [call.args[0] for call in mock_sleep.await_args_list]
+        assert delays
+        assert all(delay <= 0.5 for delay in delays)
 
 
 class TestErrorRecoveryIntegration:
     """Test error recovery in integrated scenarios."""
-
-    @pytest.mark.asyncio
-    async def test_handle_api_error_with_circuit_breaker_and_retry(self):
-        """Test handle_api_error decorator with both circuit breaker and retry."""
-        call_count = 0
-
-        @handle_api_error
-        async def flaky_api_call():
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                msg = "Temporary failure"
-                raise ConnectionError(msg)
-            return "success"
-
-        logger = Mock()
-        result = await flaky_api_call(logger=logger)
-
-        assert result == "success"
-        assert call_count == 3  # Retried until success
 
     @pytest.mark.asyncio
     async def test_circuit_breaker_with_multiple_concurrent_requests(self):

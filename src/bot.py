@@ -18,9 +18,16 @@ from typing import Any
 import discord
 
 from .bot_manager import DiscordBotManager
+from .config import (
+    DEFAULT_CONTEXT_WINDOW,
+    DEFAULT_CONVERSATION_TTL_SECONDS,
+    DEFAULT_INPUT_TOKENS,
+    DEFAULT_PERPLEXITY_MODEL,
+)
 from .connection_pool import get_connection_pool_manager
 from .conversation_manager import ThreadSafeConversationManager
 from .dependencies import BotDependencies
+from .error_handling import get_circuit_breaker
 from .health_server import HealthServer
 from .rate_limits import RateLimiter
 
@@ -109,8 +116,16 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
 
     # Initialize thread-safe components
     max_history = config.get("MAX_HISTORY_PER_USER", 50)
+    conversation_ttl = config.get(
+        "CONVERSATION_TTL_SECONDS",
+        DEFAULT_CONVERSATION_TTL_SECONDS,
+    )
     cleanup_interval = config.get("USER_LOCK_CLEANUP_INTERVAL", 3600)
     logger.info("Health checks will run after bot startup")
+
+    circuit_breakers = {
+        provider: get_circuit_breaker(provider) for provider in ("openai", "perplexity")
+    }
 
     deps = BotDependencies(
         bot=discord.Client(intents=intents),
@@ -119,8 +134,11 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
         client=client,
         perplexity_client=perplexity_client,
         connection_pool_manager=pool_manager,
+        circuit_breakers=circuit_breakers,
         allowed_channels=config["ALLOWED_CHANNELS"],
         allowed_channel_ids=config.get("ALLOWED_CHANNEL_IDS", []),
+        allowed_guilds=config.get("ALLOWED_GUILDS", []),
+        allowed_guild_ids=config.get("ALLOWED_GUILD_IDS", []),
         bot_presence=config["BOT_PRESENCE"],
         activity_type=config["ACTIVITY_TYPE"],
         activity_status=config["ACTIVITY_STATUS"],
@@ -128,13 +146,17 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
         rate_limit=config["RATE_LIMIT"],
         rate_limit_period=config["RATE_LIMIT_PER"],
         gpt_model=config["GPT_MODEL"],
-        perplexity_model=config.get("PERPLEXITY_MODEL", "sonar-pro"),
+        perplexity_model=config.get("PERPLEXITY_MODEL", DEFAULT_PERPLEXITY_MODEL),
         system_message=config["SYSTEM_MESSAGE"],
         output_tokens=config["OUTPUT_TOKENS"],
+        perplexity_output_tokens=config.get("PERPLEXITY_OUTPUT_TOKENS", config["OUTPUT_TOKENS"]),
+        input_tokens=config.get("INPUT_TOKENS", DEFAULT_INPUT_TOKENS),
+        context_window=config.get("CONTEXT_WINDOW", DEFAULT_CONTEXT_WINDOW),
         rate_limiter=RateLimiter(),
         conversation_manager=ThreadSafeConversationManager(
             max_history_per_user=max_history,
             cleanup_interval=cleanup_interval,
+            conversation_ttl_seconds=conversation_ttl,
         ),
     )
 

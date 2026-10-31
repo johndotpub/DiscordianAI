@@ -11,6 +11,8 @@ This module provides robust error handling patterns including:
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from enum import Enum
 import functools
 import logging
@@ -19,6 +21,18 @@ import secrets
 import threading
 import time
 from typing import Any
+
+import discord
+from discord import AllowedMentions
+import httpx
+import openai
+
+from .config import ERROR_MESSAGES
+
+try:
+    import httpx2
+except ImportError:  # pragma: no cover
+    httpx2 = None
 
 
 class ErrorSeverity(Enum):
@@ -44,44 +58,15 @@ class ErrorType(Enum):
     UNKNOWN = "unknown"
 
 
-ERROR_CLASSIFICATION_PATTERNS = {
-    "quota": ("insufficient_quota", "exceeded your current quota"),
-    "rate_limit": ("rate limit", "429"),
-    "timeout": ("timeout", "timed out"),
-    "auth": ("401", "unauthorized"),
-    "server": ("500", "502", "503", "504"),
-    "network": ("connection", "network", "dns"),
-    "discord": ("discord", "websocket", "gateway"),
-    "config": ("config", "missing", "invalid"),
-}
+class CircuitBreakerOpenError(RuntimeError):
+    """Raised when a request is rejected because the circuit is open."""
 
-
-def classify_error_message(error_msg: str) -> dict[str, bool]:
-    """Classify a raw error message using shared string-matching rules."""
-    lowered = error_msg.lower()
-    return {
-        "is_quota_exhausted": any(
-            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["quota"]
-        ),
-        "is_rate_limit": any(
-            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["rate_limit"]
-        ),
-        "is_timeout": any(term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["timeout"]),
-        "is_auth_error": any(term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["auth"]),
-        "is_server_error": any(
-            re.search(rf"(?<!\d){code}(?!\d)", error_msg)
-            for code in ERROR_CLASSIFICATION_PATTERNS["server"]
-        ),
-        "is_network_error": any(
-            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["network"]
-        ),
-        "is_discord_error": any(
-            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["discord"]
-        ),
-        "is_config_error": any(
-            term in lowered for term in ERROR_CLASSIFICATION_PATTERNS["config"]
-        ),
-    }
+    def __init__(self, provider: str, operation: str | None = None):
+        """Build a typed fast-fail error for the provider circuit."""
+        self.provider = provider
+        self.operation = operation
+        detail = f" for {operation}" if operation else ""
+        super().__init__(f"Circuit breaker OPEN for {provider}{detail}")
 
 
 @dataclass
@@ -92,7 +77,7 @@ class ErrorDetails:
     severity: ErrorSeverity
     message: str
     user_message: str
-    retry_after: int | None = None
+    retry_after: float | None = None
     context: dict[str, Any] | None = None
 
 
@@ -110,8 +95,10 @@ class CircuitBreaker:
         failure_threshold: int = 5,
         timeout: int = 60,
         expected_exception: type[Exception] = Exception,
+        name: str = "provider",
     ):
         """Initialize circuit breaker parameters."""
+        self.name = name
         self.failure_threshold = failure_threshold
         self.timeout = timeout
         self.expected_exception = expected_exception
@@ -119,6 +106,7 @@ class CircuitBreaker:
         self.last_failure_time = 0.0
         self.last_success_time = 0.0
         self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
+        self._probe_in_flight = False
         self._lock = asyncio.Lock()
 
     def _should_attempt_reset(self) -> bool:
@@ -135,58 +123,117 @@ class CircuitBreaker:
 
         return now_monotonic - self.last_failure_time
 
+    async def _acquire(self, operation: str | None = None) -> None:
+        async with self._lock:
+            if self.state == "OPEN":
+                if not self._should_attempt_reset():
+                    raise CircuitBreakerOpenError(self.name, operation)
+                self.state = "HALF_OPEN"
+
+            if self.state == "HALF_OPEN":
+                if self._probe_in_flight:
+                    raise CircuitBreakerOpenError(self.name, operation)
+                self._probe_in_flight = True
+
+    async def _record_failure(self) -> None:
+        async with self._lock:
+            if self.state == "CLOSED" and self._seconds_since_last_failure() > self.timeout:
+                self.failure_count = 0
+            self.failure_count += 1
+            self.last_failure_time = time.monotonic()
+            self._probe_in_flight = False
+
+            if self.state == "HALF_OPEN" or self.failure_count >= self.failure_threshold:
+                self.state = "OPEN"
+
+    async def _record_success(self) -> None:
+        async with self._lock:
+            if self.state == "HALF_OPEN":
+                self.state = "CLOSED"
+                self.failure_count = 0
+            self._probe_in_flight = False
+            self.last_success_time = time.monotonic()
+
+    async def _release_probe(self) -> None:
+        async with self._lock:
+            self._probe_in_flight = False
+
+    async def call(self, func, *args, **kwargs):
+        """Run one logical operation through the breaker."""
+        operation = getattr(func, "__name__", None)
+        await self._acquire(operation)
+
+        try:
+            result = await func(*args, **kwargs)
+        except self.expected_exception:
+            await self._record_failure()
+            raise
+        except BaseException:
+            await self._release_probe()
+            raise
+        else:
+            await self._record_success()
+            return result
+
     def __call__(self, func):
         """Decorator to wrap a function with circuit breaker logic."""
 
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
-            async with self._lock:
-                if self.state == "OPEN":
-                    if self._should_attempt_reset():
-                        self.state = "HALF_OPEN"
-                    else:
-                        open_msg = f"Circuit breaker OPEN for {func.__name__}"
-                        raise RuntimeError(open_msg)
-
-            try:
-                result = await func(*args, **kwargs)
-            except self.expected_exception:
-                async with self._lock:
-                    if self.state == "CLOSED" and (
-                        self._seconds_since_last_failure() > self.timeout
-                    ):
-                        self.failure_count = 0
-                    self.failure_count += 1
-                    self.last_failure_time = time.monotonic()
-
-                    # If in HALF_OPEN state, any failure should open the circuit
-                    if self.state == "HALF_OPEN" or self.failure_count >= self.failure_threshold:
-                        self.state = "OPEN"
-
-                raise
-            else:
-                async with self._lock:
-                    if self.state == "HALF_OPEN":
-                        self.state = "CLOSED"
-                        self.failure_count = 0
-                    self.last_success_time = time.monotonic()
-                # In CLOSED state, don't reset failure_count on success
-                # (only reset in HALF_OPEN to CLOSED transition)
-                return result
+            return await self.call(func, *args, **kwargs)
 
         return wrapper
+
+    def snapshot(self) -> dict[str, Any]:
+        """Return the breaker state for status and health reporting."""
+        return {
+            "provider": self.name,
+            "state": self.state,
+            "failure_count": self.failure_count,
+            "consecutive_failures": self.failure_count,
+            "last_failure_time": self.last_failure_time,
+            "last_success_time": self.last_success_time,
+        }
+
+
+PROVIDER_CIRCUIT_BREAKERS: dict[str, CircuitBreaker] = {
+    provider: CircuitBreaker(name=provider) for provider in ("openai", "perplexity")
+}
+
+
+def get_circuit_breaker(provider: str) -> CircuitBreaker:
+    """Return the shared breaker for a provider, creating it once on first use."""
+    breaker = PROVIDER_CIRCUIT_BREAKERS.get(provider)
+    if breaker is None:
+        breaker = CircuitBreaker(name=provider)
+        PROVIDER_CIRCUIT_BREAKERS[provider] = breaker
+    return breaker
+
+
+def get_circuit_breaker_states() -> dict[str, dict[str, Any]]:
+    """Return per-provider breaker state for the health endpoint."""
+    return {
+        provider: breaker.snapshot() for provider, breaker in PROVIDER_CIRCUIT_BREAKERS.items()
+    }
+
+
+RetryPredicate = Callable[[ErrorDetails, Exception], bool]
+RetryDelayPolicy = Callable[[int, "RetryConfig", ErrorDetails, Exception], float]
 
 
 class RetryConfig:
     """Configuration for retry behavior."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913, PLR0917
         self,
         max_attempts: int = 3,
         base_delay: float = 1.0,
         max_delay: float = 60.0,
         exponential_base: float = 2.0,
         jitter: bool = True,
+        max_elapsed: float | None = 90.0,
+        retry_if: RetryPredicate | None = None,
+        delay_for: RetryDelayPolicy | None = None,
     ):
         """Initialize retry configuration values."""
         self.max_attempts = max_attempts
@@ -194,14 +241,18 @@ class RetryConfig:
         self.max_delay = max_delay
         self.exponential_base = exponential_base
         self.jitter = jitter
+        self.max_elapsed = max_elapsed
+        self.retry_if = retry_if
+        self.delay_for = delay_for
 
 
 DEFAULT_API_RETRY_CONFIG = RetryConfig(
     max_attempts=2,
-    base_delay=4.0,
-    max_delay=4.0,
-    exponential_base=1.0,
+    base_delay=1.0,
+    max_delay=30.0,
+    exponential_base=2.0,
     jitter=True,
+    max_elapsed=90.0,
 )
 
 
@@ -228,6 +279,7 @@ async def retry_with_backoff(
         Last exception if all retries exhausted
     """
     last_exception = None
+    started_at = time.monotonic()
 
     for attempt in range(retry_config.max_attempts):
         try:
@@ -235,13 +287,9 @@ async def retry_with_backoff(
         except Exception as e:
             last_exception = e
             error_details = classify_error(e)
+            retry_if = retry_config.retry_if or _is_retryable_error
 
-            # Don't retry certain error types
-            if error_details.error_type in [
-                ErrorType.API_AUTH_ERROR,
-                ErrorType.API_TIMEOUT,
-                ErrorType.CONFIG_ERROR,
-            ]:
+            if not retry_if(error_details, e):
                 logger.exception("Non-retryable error in %s", func.__name__)
                 raise
 
@@ -253,7 +301,26 @@ async def retry_with_backoff(
                 )
                 break
 
-            delay = calculate_backoff_delay(attempt, retry_config)
+            remaining = _remaining_time(started_at, retry_config)
+            if remaining is not None and remaining <= 0:
+                logger.exception(
+                    "Retry deadline of %.1fs exceeded for %s",
+                    retry_config.max_elapsed,
+                    func.__name__,
+                )
+                break
+
+            delay_policy = retry_config.delay_for or _retry_delay
+            delay = delay_policy(attempt, retry_config, error_details, e)
+            if remaining is not None and delay >= remaining:
+                logger.exception(
+                    "Retry delay of %.1fs would exceed deadline of %.1fs for %s",
+                    delay,
+                    retry_config.max_elapsed,
+                    func.__name__,
+                )
+                break
+
             logger.warning(
                 "Attempt %d/%d failed for %s: %s. Retrying in %.1fs",
                 attempt + 1,
@@ -272,15 +339,266 @@ async def retry_with_backoff(
 
 
 def calculate_backoff_delay(attempt: int, config: RetryConfig) -> float:
-    """Calculate delay with exponential backoff and jitter."""
+    """Calculate exponential backoff with full jitter."""
     delay = min(config.base_delay * (config.exponential_base**attempt), config.max_delay)
 
     if config.jitter:
-        # Add random jitter to prevent thundering herd
-        # Use cryptographically secure random for jitter
-        delay *= 0.5 + secrets.SystemRandom().random() * 0.5
+        delay = secrets.SystemRandom().uniform(0, delay)
 
     return delay
+
+
+_HTTP_STATUS_BAD_REQUEST = 400
+_HTTP_STATUS_REQUEST_TIMEOUT = 408
+HTTP_STATUS_TOO_MANY_REQUESTS = 429
+_HTTP_STATUS_SERVER_ERROR = 500
+
+_RATE_LIMIT_MAX_RETRY_AFTER = 30.0
+_HTTP_4XX_IN_MESSAGE_PATTERN = re.compile(r"(?<!\d)(4\d{2})(?!\d)")
+
+_HTTPX_TIMEOUT_ERRORS: tuple[type[Exception], ...] = (httpx.TimeoutException,)
+_HTTPX_TRANSPORT_ERRORS: tuple[type[Exception], ...] = (httpx.TransportError,)
+_HTTPX_CONNECT_TIMEOUT_ERRORS: tuple[type[Exception], ...] = (httpx.ConnectTimeout,)
+
+if httpx2 is not None:
+    _HTTPX_TIMEOUT_ERRORS += (httpx2.TimeoutException,)
+    _HTTPX_TRANSPORT_ERRORS += (httpx2.TransportError,)
+    _HTTPX_CONNECT_TIMEOUT_ERRORS += (httpx2.ConnectTimeout,)
+
+
+def _status_code_from_exception(exception: Exception) -> int | None:
+    for source in (exception, getattr(exception, "response", None)):
+        if source is None:
+            continue
+        for attribute in ("status_code", "status"):
+            value = getattr(source, attribute, None)
+            if isinstance(value, int):
+                return value
+
+    match = _HTTP_4XX_IN_MESSAGE_PATTERN.search(str(exception))
+    return int(match.group(1)) if match else None
+
+
+def is_retryable_status(status: int | None) -> bool:
+    """Return whether an HTTP status is a transient failure worth retrying."""
+    if status is None:
+        return False
+    return status == HTTP_STATUS_TOO_MANY_REQUESTS or status >= _HTTP_STATUS_SERVER_ERROR
+
+
+def _is_retryable_error(error_details: ErrorDetails, exception: Exception) -> bool:
+    if isinstance(exception, CircuitBreakerOpenError):
+        return False
+
+    status_code = _status_code_from_exception(exception)
+
+    if (
+        status_code is not None
+        and _HTTP_STATUS_BAD_REQUEST <= status_code < _HTTP_STATUS_SERVER_ERROR
+    ):
+        return is_retryable_status(status_code)
+    if is_retryable_status(status_code):
+        return True
+
+    if isinstance(exception, _HTTPX_CONNECT_TIMEOUT_ERRORS):
+        return True
+
+    return error_details.error_type not in {
+        ErrorType.API_AUTH_ERROR,
+        ErrorType.API_TIMEOUT,
+        ErrorType.CONFIG_ERROR,
+        ErrorType.VALIDATION_ERROR,
+    }
+
+
+def _retry_delay(
+    attempt: int,
+    config: RetryConfig,
+    error_details: ErrorDetails,
+    exception: Exception,
+) -> float:
+    is_rate_limit = (
+        error_details.error_type == ErrorType.API_RATE_LIMIT
+        or _status_code_from_exception(exception) == HTTP_STATUS_TOO_MANY_REQUESTS
+    )
+    if is_rate_limit:
+        retry_after = error_details.retry_after
+        if retry_after is None:
+            retry_after = retry_after_seconds(
+                getattr(getattr(exception, "response", None), "headers", None)
+            )
+        if retry_after is not None:
+            return min(max(float(retry_after), 0.0), _RATE_LIMIT_MAX_RETRY_AFTER)
+
+    return calculate_backoff_delay(attempt, config)
+
+
+def _remaining_time(started_at: float, config: RetryConfig) -> float | None:
+    if config.max_elapsed is None:
+        return None
+    return config.max_elapsed - (time.monotonic() - started_at)
+
+
+def _error_details(
+    error_type: ErrorType,
+    severity: ErrorSeverity,
+    exception: Exception,
+    user_message: str,
+    retry_after: float | None = None,
+) -> ErrorDetails:
+    return ErrorDetails(
+        error_type=error_type,
+        severity=severity,
+        message=str(exception),
+        user_message=user_message,
+        retry_after=retry_after,
+        context={"exception_type": type(exception).__name__},
+    )
+
+
+def _header_value(headers: Any, name: str) -> Any:
+    if headers is None:
+        return None
+
+    try:
+        value = headers.get(name)
+    except (AttributeError, TypeError):
+        return None
+
+    if value is not None:
+        return value
+
+    try:
+        for key in headers:
+            if str(key).lower() == name.lower():
+                return headers[key]
+    except (AttributeError, TypeError):
+        return None
+
+    return None
+
+
+def retry_after_seconds(headers: Any) -> float | None:
+    """Parse a Retry-After header and bound it to the retry policy maximum."""
+    value = _header_value(headers, "Retry-After")
+    if value is None:
+        return None
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    try:
+        delay = float(text)
+    except (TypeError, ValueError, OverflowError):
+        pass
+    else:
+        return min(max(delay, 0.0), _RATE_LIMIT_MAX_RETRY_AFTER)
+
+    try:
+        retry_at = parsedate_to_datetime(text)
+    except (TypeError, ValueError):
+        return None
+
+    if retry_at.tzinfo is None:
+        retry_at = retry_at.replace(tzinfo=UTC)
+
+    return min(
+        max((retry_at - datetime.now(UTC)).total_seconds(), 0.0),
+        _RATE_LIMIT_MAX_RETRY_AFTER,
+    )
+
+
+def _classify_api_status_error(exception: openai.APIStatusError) -> ErrorDetails:
+    status_code = exception.status_code
+    retry_after = retry_after_seconds(getattr(exception.response, "headers", None))
+
+    if status_code == HTTP_STATUS_TOO_MANY_REQUESTS:
+        return _error_details(
+            ErrorType.API_RATE_LIMIT,
+            ErrorSeverity.MEDIUM,
+            exception,
+            "⏱️ Service is busy. Please try again in a moment.",
+            retry_after if retry_after is not None else 30,
+        )
+
+    if status_code in {401, 403}:
+        return _error_details(
+            ErrorType.API_AUTH_ERROR,
+            ErrorSeverity.HIGH,
+            exception,
+            "🔐 Authentication issue. Please contact administrator.",
+            retry_after,
+        )
+
+    if status_code == _HTTP_STATUS_REQUEST_TIMEOUT:
+        return _error_details(
+            ErrorType.API_TIMEOUT,
+            ErrorSeverity.MEDIUM,
+            exception,
+            "🔧 Request timed out. Please try again.",
+            retry_after if retry_after is not None else 10,
+        )
+
+    if status_code >= _HTTP_STATUS_SERVER_ERROR:
+        return _error_details(
+            ErrorType.API_SERVER_ERROR,
+            ErrorSeverity.HIGH,
+            exception,
+            "🔧 Service temporarily unavailable. Please try again later.",
+            retry_after if retry_after is not None else 60,
+        )
+
+    return _error_details(
+        ErrorType.VALIDATION_ERROR,
+        ErrorSeverity.MEDIUM,
+        exception,
+        "An unexpected error occurred. Please try again.",
+        retry_after,
+    )
+
+
+def _classify_typed_error(exception: Exception) -> ErrorDetails | None:
+    if isinstance(exception, CircuitBreakerOpenError):
+        return _error_details(
+            ErrorType.API_SERVER_ERROR,
+            ErrorSeverity.HIGH,
+            exception,
+            ERROR_MESSAGES["ai_service_unavailable"],
+            60,
+        )
+
+    if isinstance(exception, (openai.APITimeoutError, *_HTTPX_TIMEOUT_ERRORS)):
+        return _error_details(
+            ErrorType.API_TIMEOUT,
+            ErrorSeverity.MEDIUM,
+            exception,
+            "🔧 Request timed out. Please try again.",
+            10,
+        )
+
+    if isinstance(exception, (openai.APIConnectionError, *_HTTPX_TRANSPORT_ERRORS)):
+        return _error_details(
+            ErrorType.NETWORK_ERROR,
+            ErrorSeverity.HIGH,
+            exception,
+            "🌐 Connection issue. Please check your network.",
+            15,
+        )
+
+    if isinstance(exception, openai.APIStatusError):
+        return _classify_api_status_error(exception)
+
+    if isinstance(exception, discord.HTTPException):
+        return _error_details(
+            ErrorType.DISCORD_CONNECTION,
+            ErrorSeverity.HIGH,
+            exception,
+            "🤖 Bot connection issue. Reconnecting...",
+            retry_after_seconds(getattr(getattr(exception, "response", None), "headers", None)),
+        )
+
+    return None
 
 
 def classify_error(exception: Exception) -> ErrorDetails:
@@ -292,6 +610,10 @@ def classify_error(exception: Exception) -> ErrorDetails:
     Returns:
         ErrorDetails with classification and handling info
     """
+    typed_details = _classify_typed_error(exception)
+    if typed_details is not None:
+        return typed_details
+
     error_msg = str(exception)
     error_type = ErrorType.UNKNOWN
     severity = ErrorSeverity.MEDIUM
@@ -354,14 +676,7 @@ def classify_error(exception: Exception) -> ErrorDetails:
         severity = ErrorSeverity.CRITICAL
         user_message = "⚙️ Configuration issue. Please contact administrator."
 
-    return ErrorDetails(
-        error_type=error_type,
-        severity=severity,
-        message=error_msg,
-        user_message=user_message,
-        retry_after=retry_after,
-        context={"exception_type": type(exception).__name__},
-    )
+    return _error_details(error_type, severity, exception, user_message, retry_after)
 
 
 class ErrorTracker:
@@ -394,132 +709,50 @@ class ErrorTracker:
             if len(self.error_history) > self.max_history:
                 self.error_history = self.error_history[-self.max_history :]
 
-    def get_error_summary(self, time_window: int = 3600) -> dict[str, Any]:
-        """Get error summary for the specified time window (seconds)."""
-        with self._lock:
-            cutoff_time = time.time() - time_window
-            recent_errors = [e for e in self.error_history if e["timestamp"] > cutoff_time]
-
-            summary = {
-                "total_errors": len(recent_errors),
-                "error_types": {},
-                "critical_count": 0,
-                "high_count": 0,
-            }
-
-            for error in recent_errors:
-                error_type = error["error_type"]
-                severity = error["severity"]
-
-                summary["error_types"][error_type] = summary["error_types"].get(error_type, 0) + 1
-
-                if severity == "critical":
-                    summary["critical_count"] += 1
-                elif severity == "high":
-                    summary["high_count"] += 1
-
-            return summary
-
 
 # Global error tracker instance
 error_tracker = ErrorTracker()
 
 
-def handle_api_error(func):
-    """Decorator for enhanced API error handling with retries and circuit breaking.
+def _is_retryable_discord_error(_error_details: ErrorDetails, exception: Exception) -> bool:
+    if isinstance(exception, CircuitBreakerOpenError):
+        return False
+    if isinstance(exception, discord.Forbidden):
+        return False
 
-    Example::
+    status_code = _status_code_from_exception(exception)
+    if status_code is not None:
+        return is_retryable_status(status_code)
 
-        @handle_api_error
-        async def my_api_call():
-            # API call code
-            pass
-    """
-
-    @CircuitBreaker(failure_threshold=3, timeout=30)
-    @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
-        func_logger = logging.getLogger(func.__module__)
-        retry_config = RetryConfig(
-            max_attempts=3,
-            base_delay=0.1,
-        )  # 3 attempts with short delay for tests
-
-        # Use the original logger if it exists in kwargs without removing it.
-        original_logger = kwargs.get("logger", func_logger)
-        func_kwargs = dict(kwargs)
-        func_kwargs.pop("logger", None)
-
-        try:
-            return await retry_with_backoff(
-                func,
-                retry_config,
-                original_logger,
-                *args,
-                **func_kwargs,
-            )
-
-        except Exception as e:
-            error_details = classify_error(e)
-            error_tracker.record_error(error_details, {"function": func.__name__})
-
-            # Log with appropriate level based on severity
-            log_level = {
-                ErrorSeverity.LOW: logging.INFO,
-                ErrorSeverity.MEDIUM: logging.WARNING,
-                ErrorSeverity.HIGH: logging.ERROR,
-                ErrorSeverity.CRITICAL: logging.CRITICAL,
-            }[error_details.severity]
-
-            original_logger.log(
-                log_level,
-                "API error in %s: %s (Type: %s, Severity: %s)",
-                func.__name__,
-                error_details.message,
-                error_details.error_type.value,
-                error_details.severity.value,
-                exc_info=error_details.severity in [ErrorSeverity.HIGH, ErrorSeverity.CRITICAL],
-            )
-
-            raise
-
-    return wrapper
+    return True
 
 
-def create_graceful_fallback(
-    fallback_func: Callable,
-    fallback_message: str = "Service temporarily unavailable",
-):
-    """Create a decorator that provides graceful fallback when main function fails.
+def _discord_retry_delay(
+    attempt: int,
+    config: RetryConfig,
+    error_details: ErrorDetails,
+    exception: Exception,
+) -> float:
+    retry_after = getattr(exception, "retry_after", None)
+    if retry_after is None and isinstance(exception, discord.HTTPException):
+        retry_after = error_details.retry_after
+    if retry_after is not None:
+        return min(max(float(retry_after), 0.0), _RATE_LIMIT_MAX_RETRY_AFTER)
 
-    Args:
-        fallback_func: Function to call if main function fails
-        fallback_message: Message to use if both main and fallback fail
-    """
+    return calculate_backoff_delay(attempt, config)
 
-    def decorator(main_func):
-        @functools.wraps(main_func)
-        async def wrapper(*args, **kwargs):
-            logger = logging.getLogger(main_func.__module__)
 
-            try:
-                return await main_func(*args, **kwargs)
-            except Exception as e:  # noqa: BLE001
-                logger.warning(
-                    "Main function %s failed: %s, trying fallback",
-                    main_func.__name__,
-                    e,
-                )
-
-                try:
-                    return await fallback_func(*args, **kwargs)
-                except Exception:
-                    logger.exception("Both main and fallback failed for %s", main_func.__name__)
-                    return fallback_message
-
-        return wrapper
-
-    return decorator
+def _discord_retry_config(max_retries: int) -> RetryConfig:
+    return RetryConfig(
+        max_attempts=max_retries,
+        base_delay=1.0,
+        max_delay=float("inf"),
+        exponential_base=2.0,
+        jitter=False,
+        max_elapsed=None,
+        retry_if=_is_retryable_discord_error,
+        delay_for=_discord_retry_delay,
+    )
 
 
 async def safe_discord_send(
@@ -527,6 +760,8 @@ async def safe_discord_send(
     content: str,
     logger: logging.Logger,
     max_retries: int = 3,
+    *,
+    allowed_mentions: AllowedMentions | None = None,
 ) -> bool:
     """Safely send message to Discord with retry logic and error handling.
 
@@ -535,30 +770,21 @@ async def safe_discord_send(
         content: Message content
         logger: Logger instance
         max_retries: Maximum retry attempts
+        allowed_mentions: Optional mention allowlist for the send
 
     Returns:
         bool: True if message sent successfully, False otherwise
     """
-    for attempt in range(max_retries):
-        try:
-            await channel.send(content)
-        except Exception as e:
-            error_details = classify_error(e)
 
-            if attempt >= max_retries - 1:
-                logger.exception("Failed to send Discord message after %s attempts", max_retries)
-                error_tracker.record_error(error_details, {"channel": str(channel)})
-                break
+    async def _send_once() -> None:
+        kwargs: dict[str, Any] = {}
+        if allowed_mentions is not None:
+            kwargs["allowed_mentions"] = allowed_mentions
+        await channel.send(content, **kwargs)
 
-            delay = 2**attempt  # Simple exponential backoff
-            logger.warning(
-                "Discord send failed (attempt %d/%d): %s. Retrying in %ds",
-                attempt + 1,
-                max_retries,
-                e,
-                delay,
-            )
-            await asyncio.sleep(delay)
-        else:
-            return True
-    return False
+    try:
+        await retry_with_backoff(_send_once, _discord_retry_config(max_retries), logger)
+    except Exception as exc:  # noqa: BLE001 — safe_discord_send must never raise
+        error_tracker.record_error(classify_error(exc), {"channel": str(channel)})
+        return False
+    return True

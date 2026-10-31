@@ -70,19 +70,30 @@ The web scraper uses intelligent content extraction:
 The web scraping feature requires additional Python packages:
 
 ```txt
-requests>=2.31.0
-beautifulsoup4>=4.12.2
+beautifulsoup4>=4.14.3
+httpx[http2]>=0.28.1
 ```
 
 These are automatically included in `requirements.txt` and installed with the bot.
 
 ### Scraping Settings
 
-Web scraping behavior is controlled by constants in `src/web_scraper.py`:
+Batch limits come from `src/config.py`, and per-page limits from
+`src/web_scraper.py`:
+
+```ini
+[Default]
+MAX_URLS_PER_MESSAGE=3              # URLs beyond this are ignored
+MAX_TOTAL_SCRAPED_CHARS=60000       # Combined text injected into one prompt
+SCRAPE_DEADLINE_SECONDS=20          # Deadline for the whole scrape phase
+```
 
 ```python
-DEFAULT_TIMEOUT = 10  # Request timeout in seconds
-MAX_CONTENT_LENGTH = 50000  # Maximum content to extract (~12-15k tokens)
+# Per-request and per-page limits in src/web_scraper.py
+DEFAULT_TIMEOUT = 15  # Per-URL fetch timeout in seconds, including retries
+MAX_CONTENT_LENGTH = 50000  # Maximum extracted text per page (~12-15k tokens)
+MAX_DOWNLOAD_SIZE = 1000000  # Raw HTML download cap (1MB)
+REQUEST_RETRIES = 2  # Two retries after the first attempt
 ```
 
 ### Browser Headers
@@ -100,39 +111,40 @@ DEFAULT_HEADERS = {
 
 ## Logging and Debugging
 
-### Comprehensive Logging
-
-The web scraper provides detailed logging at multiple levels:
-
-```python
-# Info level - successful operations
-logger.info(f"Successfully scraped {len(content)} characters from {url}")
-
-# Debug level - detailed process information  
-logger.debug(f"Scraped content preview: {content[:200]}...")
-logger.debug(f"Found content using selector: {selector}")
-
-# Warning level - issues that don't prevent operation
-logger.warning(f"Content too large ({size} bytes), skipping: {url}")
-
-# Error level - failures that prevent scraping
-logger.error(f"HTTP error {status_code} for URL: {url}")
-```
-
 ### What Gets Logged
 
-**For Each URL Processing Attempt:**
-- URL validation and scrapability check
-- HTTP request details and response status
-- Content extraction method used
-- Final content length and preview
-- Any errors or fallbacks encountered
+The web scraper logs diagnostics about the fetch, not the page body:
 
-**For Scraped Content:**
-- **Yes, scraped content is logged** for debugging purposes
-- Content preview (first 200 characters) in debug logs
-- Full content length for token management
-- Truncation notices if content was too long
+```python
+# URL and lifecycle
+logger.info("Starting web scraping for URL: %s", url)
+logger.info("Scraped %d chars from %s", original_len, url)
+
+# Status and failures
+logger.error("HTTP %s for %s", status, url)
+logger.warning("Attempt %d failed for %s: %s", attempt + 1, url, str(e))
+
+# Budgets and truncation
+logger.warning(
+    "Scraped content capped at %d characters "
+    "(MAX_TOTAL_SCRAPED_CHARS); truncated or omitted %d page(s)",
+    max_total_chars,
+    affected,
+)
+```
+
+**For Each URL Processing Attempt:**
+- The URL being requested and any redirects followed
+- The HTTP status or error and the retry attempt
+- Refused, timed-out, or over-budget scrapes
+- The extracted content length and any truncation notice
+
+**Never Logged:**
+- Page text or content previews
+- The extraction selector or extraction method
+- Response bodies
+
+Scraped text is used only to build the prompt; it is not written to the log.
 
 ## Error Handling
 
@@ -144,6 +156,15 @@ The web scraper implements comprehensive error handling:
 2. **HTTP Errors** - 404, 403, 500, etc.
 3. **Content Errors** - Malformed HTML, empty responses
 4. **Size Limits** - Content too large for processing
+
+### Retry Policy
+
+Each URL is attempted up to three times (`REQUEST_RETRIES=2`). Only transient
+failures are retried: HTTP 429 and 5xx responses, connect timeouts, and other
+transport errors. Other 4xx responses and non-connect timeouts stop
+immediately. Retry waits are 1s, then 2s; a 429 may instead honour
+`Retry-After` up to 30s. The per-URL 15-second fetch timeout and the 20-second
+batch deadline still apply.
 
 ### Fallback Strategy
 
@@ -158,22 +179,22 @@ When web scraping fails, the bot:
 
 ### Asynchronous Processing
 
-- Web scraping runs in thread pools to avoid blocking
-- Multiple URLs are processed concurrently
-- Timeout limits prevent hanging requests
+- Scraping uses asynchronous HTTP and DNS-offload APIs, so it does not block the bot's event loop
+- Distinct hosts are scraped concurrently under a two-host semaphore; requests to the same host are serialized with a 1–3 second politeness delay
+- A 15-second per-URL fetch timeout and a 20-second batch deadline prevent hanging requests
 
 ### Content Limits
 
-- **50KB maximum** raw content extraction (~12-15k tokens)
-- **Automatic truncation** with clear indicators
-- **Size checks** before downloading large files
+- **3 URLs per message** by default; extras are ignored
+- **60,000-character aggregate budget** for scraped page text injected into one prompt by default
+- **50,000 characters per page** of extracted text (~12-15k tokens)
+- **1MB raw HTML** download cap with automatic truncation indicators
 
 ### Caching
 
-Web scraping integrates with the existing caching system:
-- Scraped content can be cached to avoid repeated requests
-- Cache keys include URL and processing parameters
-- TTL-based expiration for time-sensitive content
+The scraper does not cache pages, and Perplexity requests are not
+response-cached, so a repeated URL message is scraped again. The response cache
+with TTL-based expiry applies to OpenAI responses only.
 
 ## Usage Examples
 
@@ -234,7 +255,8 @@ Response: "I searched for information about this document...
 - Rate limiting by the target website
 
 **Large content handling:**
-- Content over 50KB is automatically truncated
+- Extracted text over 50,000 characters per page is automatically truncated
+- Total injected scraped text is capped at `MAX_TOTAL_SCRAPED_CHARS` (default 60,000)
 - Truncation notices are added to responses
 - Token limits prevent API overload
 

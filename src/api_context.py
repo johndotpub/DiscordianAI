@@ -23,17 +23,6 @@ from .models import AIRequest
 
 
 @dataclass
-class APICallResult:
-    """Structured result from an API call context."""
-
-    value: Any = None
-    error: Exception | None = None
-    elapsed_seconds: float = 0.0
-    service: str = ""
-    success: bool = False
-
-
-@dataclass
 class APICallContext:
     """Mutable context passed to callers inside ``api_call``.
 

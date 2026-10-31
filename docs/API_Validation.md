@@ -1,78 +1,93 @@
-# API Parameter Validation Report
+# API Parameter Validation
 
 ## Overview
-This document validates the API parameters used in DiscordianAI against current API specifications.
 
-## OpenAI API Validation
+`src/api_validation.py` checks configuration before the bot starts. It reports
+findings as either **errors** or **warnings**:
 
-### Parameters Used
-- **API URL**: `https://api.openai.com/v1/` ✅ **VALID**
-- **Parameter**: `max_completion_tokens` ✅ **VALID** (GPT-5 uses this)
-- **Supported Models**: 
-  - `gpt-5-mini` ✅ **VALID** (Default - cost-effective)
-  - `gpt-5` ✅ **VALID** (Standard - complex tasks)
-  - `gpt-5-nano` ✅ **VALID** (High-speed - low latency)
-  - `gpt-5-chat` ✅ **VALID** (Conversational - advanced chat)
+- **Errors stop startup.** They cover missing credentials, malformed base URLs,
+  non-positive limits, and output caps above the documented maximum.
+- **Warnings are logged and startup continues.** They cover values a provider
+  may still accept, such as an unknown model name or a non-standard gateway URL.
 
-**Status**: Parameters are correctly implemented with proper validation and fallbacks.
+Every error names the failing key and the accepted value or range. The module
+does not certify a configuration beyond the constraints it can actually verify.
+The live provider behaviour behind these checks is recorded in
+[API-CONTRACT.md](API-CONTRACT.md).
 
-## Perplexity API Validation
+## Errors That Abort Startup
 
-### Parameters Used  
-- **API URL**: `https://api.perplexity.ai` ✅ **VALID**
-- **Supported Models**: 
-  - `sonar-pro` ✅ **VALID** (Default - latest with web access)
-  - `sonar` ✅ **VALID** (General model with web access)
-- **Parameter**: `max_tokens` ✅ **VALID**
-- **Sampling Parameters**: Managed by Perplexity (temperature overrides are not supported)
+- A missing `DISCORD_TOKEN`.
+- A provider selected by its settings but missing its API key
+  (`OPENAI_API_KEY` or `PERPLEXITY_API_KEY`).
+- An API key that does not match the documented `sk-` or `pplx-` shape.
+- A base URL that is not an absolute `http(s)` URL with a host.
+- `OUTPUT_TOKENS` or `PERPLEXITY_OUTPUT_TOKENS` that is not an integer, is
+  non-positive, or exceeds the documented maximum of **128,000**.
+- Non-positive `INPUT_TOKENS`, `CONTEXT_WINDOW`, `RATE_LIMIT`, or
+  `RATE_LIMIT_PER` values.
 
-**Status**: All parameters are current and properly validated.
+## Warnings That Do Not Abort Startup
 
-## Discord.py API Validation
+- An unknown `PERPLEXITY_MODEL`. The warning lists the known Agent API model
+  set, currently `perplexity/sonar`. The provider may add models before this
+  list is updated, so the name is not fatal; legacy Sonar names still answer on
+  Chat Completions but warn here.
+- An unknown `GPT_MODEL`. OpenAI accepts model names beyond any list shipped
+  with the bot; only the shape is known locally, not the full catalogue.
+- A well-formed base URL that is not the provider's documented endpoint. A
+  compatible gateway may still work.
+- An OpenAI `OUTPUT_TOKENS` value below **512**. OpenAI's
+  `max_completion_tokens` covers reasoning tokens as well as visible output, so
+  a small cap can be spent entirely on reasoning. The API can then return HTTP
+  200 with an empty message and `finish_reason: length`. Startup continues, but
+  the warning explains why the value is risky.
+- High token or rate limits that are legal but likely to increase cost or abuse.
+- No configured channels.
 
-### Parameters Used
-- **Version**: `>=2.7.1` (from requirements.txt) ✅ **CURRENT**
-- **Intents**: `default()` with typing/presences disabled ✅ **OPTIMAL**
-- **Activity Types**: `['playing', 'streaming', 'listening', 'watching', 'custom', 'competing']` ✅ **VALID**
+## OpenAI
 
-## Recommendations
+- The output cap is sent as `max_completion_tokens`, not `max_tokens`.
+- That cap covers **visible output plus reasoning tokens**.
+- The documented maximum is **128,000** completion tokens. A larger value is an
+  error; it is not silently clamped.
+- GPT-generation-specific parameter validation does **not** exist in this codebase. The
+  old check was removed, and this document no longer claims otherwise.
+- Model names are not an allowlist gate. A name outside the documented list
+  produces a warning because the provider may already support it.
 
-### High Priority
-1. **Model Selection**: Use `gpt-5-mini` for cost-effective default, `gpt-5` for advanced reasoning
-2. **Update discord.py**: Consider updating to latest version for security and features
+## Perplexity
 
-### Medium Priority  
-3. **GPT-5 Parameters**: Monitor OpenAI announcements for GPT-5 parameter changes  
-4. **API Monitoring**: Set up alerts for API endpoint changes and model deprecations
+- The output cap is sent as `max_output_tokens` to the Agent API, which covers
+  output only.
+- The documented range is **1..128,000**. Values outside that range are errors.
+- The current Agent API catalogue has one Sonar model, `perplexity/sonar`. A
+  different name produces a warning that lists the known set; it does not
+  prevent startup. Legacy names such as `sonar-pro` still answer on Chat
+  Completions but are not the current catalogue.
 
-### Low Priority
-5. **Performance Tuning**: Adjust token limits based on usage patterns
-6. **Integration Testing**: Expand API parameter validation test coverage
+## Discord
 
-## Validation Tests Needed
+- `ACTIVITY_TYPE` and `BOT_PRESENCE` are checked against the enums exposed by
+  discord.py.
+- The client uses `discord.Intents.default()` with typing and presences
+  disabled. That is a deliberate configuration choice, not a validation verdict
+  for every deployment.
 
-1. **OpenAI API Parameter Test**
-2. **Perplexity Model Availability Test** 
-3. **Discord.py Version Compatibility Test**
-4. **API Error Handling Test**
-
-## Configuration Recommendations
+## Token and Rate Settings
 
 ```ini
-# Recommended API configuration
 [Default]
-OPENAI_API_URL=https://api.openai.com/v1/
-PERPLEXITY_API_URL=https://api.perplexity.ai
-GPT_MODEL=gpt-5-mini       # Cost-effective default
-PERPLEXITY_MODEL=sonar-pro # Latest with web access
-INPUT_TOKENS=120000        # Safe context window
-OUTPUT_TOKENS=8000         # Conservative for cost control
+INPUT_TOKENS=120000
+OUTPUT_TOKENS=8000                # OpenAI max_completion_tokens, includes reasoning
+PERPLEXITY_OUTPUT_TOKENS=8000     # Perplexity max_output_tokens, output only
+CONTEXT_WINDOW=128000
+
+[Limits]
+RATE_LIMIT=10
+RATE_LIMIT_PER=60
 ```
 
-## Error Handling Status ✅
-
-The codebase properly handles:
-- Invalid GPT-5 parameters (warns and ignores)
-- API client initialization failures
-- Model-specific parameter validation
-- Graceful degradation when services are unavailable
+`PERPLEXITY_OUTPUT_TOKENS` is independent of `OUTPUT_TOKENS`. If it is omitted,
+it defaults to the configured `OUTPUT_TOKENS` value, preserving older
+configurations.

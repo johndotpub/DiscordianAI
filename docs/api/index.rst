@@ -26,6 +26,7 @@ DiscordianAI API Reference
    message_processor
    message_router
    message_splitter
+   message_builder
    conversation_manager
 
 .. toctree::
@@ -57,3 +58,5 @@ DiscordianAI API Reference
    web_scraper
    discord_bot
    discord_embeds
+   citation_formatting
+   truncation

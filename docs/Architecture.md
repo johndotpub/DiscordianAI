@@ -12,56 +12,32 @@ This document provides a comprehensive overview of the DiscordianAI system archi
                                                  ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │ Entry & Routing                                                                         │
-│ ┌──────────────────────────┬──────────────────────────┬──────────────────────────┐     │
-│ │ main.py                  │ bot.py                   │ bot_manager.py           │     │
-│ │ message_router.py        │ message_processor.py     │ discord_bot.py           │     │
-│ │ dependencies.py          │ logging_adapter.py       │ __init__.py              │     │
-│ │ models.py                │                          │                          │     │
-│ └──────────────────────────┴──────────────────────────┴──────────────────────────┘     │
+│   entry point · event handlers · message router · dependency container · shared models  │
 └────────────────────────────────────────────────┬───────────────────────────────────────┘
                                                  │
                                                  ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │ Discord Presentation                                                                    │
-│ ┌──────────────────────────┬──────────────────────────┬──────────────────────────┐     │
-│ │ discord_embeds.py        │ message_splitter.py      │ web_scraper.py           │     │
-│ │ api_validation.py        │                          │                          │     │
-│ │                          │                          │                          │     │
-│ │                          │                          │                          │     │
-│ └──────────────────────────┴──────────────────────────┴──────────────────────────┘     │
+│   embeds and citations · message splitting and sanitization · URL validation and scraping│
 └────────────────────────────────────────────────┬───────────────────────────────────────┘
                                                  │
                                                  ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │ Orchestration & AI Selection                                                            │
-│ ┌──────────────────────────┬──────────────────────────┬──────────────────────────┐     │
-│ │ smart_orchestrator.py    │ openai_processing.py     │ perplexity_processing.py │     │
-│ │                          │                          │                          │     │
-│ │                          │                          │                          │     │
-│ │                          │                          │                          │     │
-│ └──────────────────────────┴──────────────────────────┴──────────────────────────┘     │
+│   evidence-based routing · OpenAI processing · Perplexity processing                      │
 └────────────────────────────────────────────────┬───────────────────────────────────────┘
                                                  │
                                                  ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │ Infrastructure & Resilience                                                             │
-│ ┌──────────────────────────┬──────────────────────────┬──────────────────────────┐     │
-│ │ connection_pool.py       │ caching.py               │ error_handling.py        │     │
-│ │ conversation_manager.py  │ rate_limits.py           │ health_checks.py         │     │
-│ │ health_server.py         │ api_context.py           │ structured_logging.py    │     │
-│ │ dependency_check.py      │                          │                          │     │
-│ └──────────────────────────┴──────────────────────────┴──────────────────────────┘     │
+│   connection pooling · caching · error handling and circuit breakers · conversations     │
+│   rate limits · health probes · API context · structured logging · dependency checks     │
 └────────────────────────────────────────────────┬───────────────────────────────────────┘
                                                  │
                                                  ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │ Shared Support & Packaging                                                              │
-│ ┌──────────────────────────┬──────────────────────────┬──────────────────────────┐     │
-│ │ config.py                │ py.typed                 │                          │     │
-│ │                          │                          │                          │     │
-│ │                          │                          │                          │     │
-│ │                          │                          │                          │     │
-│ └──────────────────────────┴──────────────────────────┴──────────────────────────┘     │
+│   configuration · type hints                                                            │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -78,8 +54,9 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| **Smart Orchestrator** | `smart_orchestrator.py` | AI service selection logic based on message analysis |
-| **OpenAI Processing** | `openai_processing.py` | GPT-5 API interactions, response formatting |
+| **Router** | `routing/` | Decides whether a message needs live web data. Evidence model: *bearing* cues (a mutable referent) may decide, *framing* cues (the shape of the request) are scaled and can never decide alone. Owns the lexicon, the thresholds and the cache policy. |
+| **Smart Orchestrator** | `smart_orchestrator.py` | Executes the router's decision against the providers, applies fallbacks, and records conversation turns |
+| **OpenAI Processing** | `openai_processing.py` | GPT API interactions, response formatting |
 | **Perplexity Processing** | `perplexity_processing.py` | Web search, citation extraction |
 | **Web Scraper** | `web_scraper.py` | URL content extraction for context enrichment |
 
@@ -87,7 +64,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| **Config** | `config.py` | Configuration loading, constants, patterns |
+| **Config** | `config.py` | Configuration loading and constants |
 | **Connection Pool** | `connection_pool.py` | HTTP/2 connection pooling for API clients |
 | **Caching** | `caching.py` | Response caching, request deduplication |
 | **Error Handling** | `error_handling.py` | Circuit breaker, retry logic, error classification |
@@ -112,9 +89,9 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 ## ⚙️ Operational Features
 
 - **Rate Limiting** (`rate_limits.py`): Per-user buckets enforce `[Limits]` from config.ini so spam never overwhelms upstream APIs.
-- **Conversation History** (`conversation_manager.py`): Thread-safe per-user transcripts preserve context while pruning automatically.
+- **Conversation History** (`conversation_manager.py`): Thread-safe per-conversation transcripts preserve context while pruning automatically. A conversation key is `g:<guild>:c:<channel>` for a guild channel or thread, or `dm:<user>` for a direct message; a thread uses its own channel id, so it never shares history with its parent.
 - **Activity & Presence** (`discord_bot.py` + config): Status text, presence state, and activity type are configurable at runtime.
-- **Direct Messages** (`bot.py`): DM sessions bypass mention requirements but still honor rate limits and consistency checks.
+- **Direct Messages** (`bot.py`): DM sessions bypass mention requirements but still honour rate limits, and follow-ups inherit the previous service through the router.
 - **Channel Targeting** (`message_router.py`): `ALLOWED_CHANNELS` gating ensures the bot only replies where it is expected.
 - **Smart Message Splitting** (`message_splitter.py`): Discord-safe splitting protects code blocks, embeds, and citations from truncation.
 - **Global Exception Handling** (`error_handling.py` + `bot.py`): Centralized logging and graceful fallbacks keep the process alive after faults.
@@ -139,12 +116,11 @@ sequenceDiagram
     MP->>MP: Rate limit & guardrail checks
     MP->>CM: Fetch conversation history
     MP->>O: Route message
-    O->>O: Analyze message patterns
-    O->>O: Sanitize for routing (routing-only)
-    O->>O: Search-intent check
-    O->>O: Select AI service
+    O->>O: Build one RouterInput (message, channel kind, history)
+    O->>O: Score bearing and framing evidence
+    O->>O: Select AI service from the route decision
     O->>C: Check cache
-    alt Cache hit
+    alt Cache hit for this route
         C-->>O: Cached response
     else Cache miss
         O->>AI: API call with retry
@@ -196,33 +172,44 @@ The dataclass supports dict-style access (`deps["logger"]`, `deps.get("key")`, `
 
 ### 2. Circuit Breaker Pattern
 
-Implemented in `error_handling.py` to prevent cascade failures:
+The breaker lives in `error_handling.py`. `get_circuit_breaker()` returns one
+shared `CircuitBreaker` per provider (`openai`, `perplexity`), and the provider
+processing modules wrap the whole retry sequence for one logical API call in
+`breaker.call(...)`:
 
 ```python
 class CircuitBreaker:
     """States: CLOSED → OPEN → HALF_OPEN → CLOSED"""
-    
-    def __init__(self, failure_threshold=5, timeout=60):
+
+    def __init__(self, failure_threshold=5, timeout=60, ...):
         self.failure_threshold = failure_threshold
         self.timeout = timeout
         self.state = "CLOSED"
 ```
 
 **State Transitions:**
-- **CLOSED**: Normal operation, requests pass through
-- **OPEN**: After N failures, reject requests immediately
-- **HALF_OPEN**: After timeout, allow one test request
+- **CLOSED**: Normal operation, requests pass through.
+- **OPEN**: After 5 failed logical calls, reject requests immediately. Retries
+  inside one call do not add to the count: one call that exhausts its attempts
+  is one failure. A stale count is reset when the next failure arrives more
+  than 60 seconds after the previous one.
+- **HALF_OPEN**: After the 60-second timeout, admit one probe request. Other
+  calls fail fast until it finishes; success closes the breaker and resets the
+  count, failure reopens it.
+
+The health server publishes each breaker's state through
+`get_circuit_breaker_states()`.
 
 ### 3. Decorator-Based Caching
 
 ```python
 @cached_response(ttl=300)
 @deduplicated_request()
-async def process_openai_message(...):
+async def _fetch_openai_response(...):
     ...
 ```
 
-`_extract_message_context()` has been extracted as a shared helper, but the full decorator stack shown here is still aspirational; the codebase currently uses explicit caching and deduplication helpers.
+These decorators wrap `_fetch_openai_response()` in `src/openai_processing.py`; `_extract_message_context()` is the shared helper that supplies the cache and deduplication scope.
 
 **Features:**
 - TTL-based expiration
@@ -244,17 +231,22 @@ class ThreadSafeConversationManager:
 - Automatic history pruning
 - Deep copy returns to prevent external modification
 
-### 5. Retry with Flat Jittered Delay
+### 5. Retry with Exponential Backoff and Jitter
 
 ```python
-@dataclass
-class RetryConfig:
-    max_attempts: int = 2
-    base_delay: float = 4.0
-    max_delay: float = 4.0
-    exponential_base: float = 1.0
-    jitter: bool = True  # Prevents thundering herd
+DEFAULT_API_RETRY_CONFIG = RetryConfig(
+    max_attempts=2,
+    base_delay=1.0,
+    max_delay=30.0,
+    exponential_base=2.0,
+    jitter=True,
+    max_elapsed=90.0,
+)
 ```
+
+`max_attempts=2` means one initial request plus one retry. The exponential
+delay is capped at 30 seconds, then full jitter picks a random value below it;
+a 90-second overall deadline stops retries even when attempts remain.
 
 ## 🔐 Security Architecture
 
@@ -275,7 +267,7 @@ class RetryConfig:
 
 ### Logging
 - Structured logging with configurable levels
-- Separate file and console handlers
+- Exactly one stream handler on the root logger; the supervisor owns any file redirection
 - Request/response metadata logging
 
 ### Health Checks
@@ -296,7 +288,8 @@ class RetryConfig:
 from src.connection_pool import ConnectionPoolManager
 
 pool = ConnectionPoolManager()
-client = pool.get_openai_client()
+openai_client = pool.create_openai_client(openai_api_key, openai_base_url)
+perplexity_client = pool.create_perplexity_client(perplexity_api_key, perplexity_base_url)
 ```
 
 ### Caching Strategy
@@ -313,15 +306,13 @@ client = pool.get_openai_client()
 
 ```
 tests/
-├── test_bot.py                    # Bot initialization tests
-├── test_config.py                 # Configuration loading tests
-├── test_api_validation.py         # API validation tests
-├── test_error_handling.py         # Circuit breaker, retry tests
-├── test_conversation_manager.py   # Thread safety tests
-├── test_load_stress.py            # High concurrency tests
-├── test_message_splitting.py      # Discord message handling
-└── ...
+├── fixtures/              # Shared configuration fixtures
+└── test_*.py              # Unit, integration, security, and documentation contract tests
 ```
+
+The suite is organised by behaviour: configuration and startup, routing and
+conversation scope, provider and retry policy, scraper security and budgets,
+message delivery, health, and documentation truth.
 
 **Coverage Target:** 84%+ (enforced by CI)
 
@@ -329,41 +320,16 @@ tests/
 
 ```
 DiscordianAI/
-├── src/
-│   ├── __init__.py              # Package exports
-│   ├── health_checks.py         # API monitoring
-│   ├── api_validation.py        # Configuration validation
-│   ├── message_processor.py     # Discord event normalization
-│   ├── rate_limits.py           # Rate limiting
-│   ├── bot.py                   # Discord bot core
-│   ├── web_scraper.py           # URL content extraction
-│   ├── smart_orchestrator.py    # AI routing logic
-│   ├── openai_processing.py     # OpenAI integration
-│   ├── structured_logging.py    # structlog configuration
-│   ├── caching.py               # Response caching
-│   ├── health_server.py         # HTTP liveness/readiness probes
-│   ├── dependency_check.py      # Dependency validation
-│   ├── api_context.py           # API call context managers
-│   ├── message_router.py        # Mention and DM routing
-│   ├── conversation_manager.py  # Thread-safe conversations
-│   ├── error_handling.py        # Resilience patterns
-│   ├── logging_adapter.py       # Structured logging adapter
-│   ├── perplexity_processing.py # Perplexity integration
-│   ├── main.py                  # Entry point
-│   ├── connection_pool.py       # HTTP connection management
-│   ├── discord_embeds.py        # Citation embed formatting
-│   ├── discord_bot.py           # Activity / presence management
-│   ├── models.py                # Shared data models
-│   ├── dependencies.py          # BotDependencies dataclass (DI)
-│   ├── config.py                # Configuration (single source of truth)
-│   ├── message_splitter.py      # Message splitting and formatting
-│   ├── py.typed                 # PEP 561 type hints marker
-│   └── bot_manager.py           # Lifecycle management
-├── tests/                    # Test suite
-├── docs/                     # Documentation
-├── pyproject.toml            # Build & tool configuration
-├── tox.ini                   # Test automation
-└── docker-compose.yml        # Container orchestration
+├── src/                    # Application modules
+├── tests/                  # Test suite
+├── docs/                   # Documentation and Sphinx API pages
+├── scripts/                # Operational helper scripts
+├── contrib/                # Service and logrotate assets
+├── config.ini.example      # Configuration template
+├── Dockerfile              # Container image
+├── docker-compose.yml      # Container orchestration
+├── pyproject.toml          # Build and tool configuration
+└── requirements.txt        # Runtime dependencies
 ```
 
 ## 🔮 Future Considerations

@@ -16,23 +16,26 @@ if sys.version_info < (3, 12):  # noqa: UP036
     )
     sys.exit(1)
 
+import configparser
 import logging
+import os
+from pathlib import Path
 from typing import NoReturn
 
-from .api_validation import log_validation_results
+import discord
+
+from .api_validation import log_validation_results, validate_output_token_limits
 from .bot import run_bot
 from .config import (
+    DEFAULT_ACTIVITY_TYPE,
+    DEFAULT_BOT_PRESENCE,
     DEFAULT_RATE_LIMIT,
     DEFAULT_RATE_LIMIT_PER,
-    MAX_OUTPUT_TOKENS_THRESHOLD,
     load_config,
     parse_arguments,
 )
 from .dependency_check import check_dependencies
 from .structured_logging import configure_structlog
-
-# Constants for validation
-DEFAULT_OUTPUT_TOKENS_VAL = 8000
 
 
 def setup_early_logging() -> logging.Logger:
@@ -51,15 +54,73 @@ def setup_early_logging() -> logging.Logger:
     return logger
 
 
+def _log_color_is_explicit(config_file: str | None, base_folder: str | None) -> bool:
+    """Return whether the operator explicitly set ``DISCORDIANAI_LOG_COLOR``.
+
+    The loaded configuration always carries a value for the key, so the
+    default cannot be distinguished from an explicit setting after parsing.
+    Check the environment and the config file itself instead.
+
+    Args:
+        config_file: Config file path that was passed to ``load_config``.
+        base_folder: Optional base folder used to resolve a relative path.
+
+    Returns:
+        True when the environment or the ``[Logging]`` section sets the key.
+    """
+    if "DISCORDIANAI_LOG_COLOR" in os.environ:
+        return True
+    if not config_file:
+        return False
+
+    path = Path(config_file)
+    if base_folder and not path.is_absolute():
+        path = Path(base_folder) / path
+    if not path.is_file():
+        return False
+
+    parser = configparser.ConfigParser(interpolation=None)
+    try:
+        parser.read(path, encoding="utf-8")
+    except (configparser.Error, OSError):
+        return False
+    return parser.has_option("Logging", "DISCORDIANAI_LOG_COLOR")
+
+
+def _require_existing_config_file(
+    config_file: str | None,
+    base_folder: str | None,
+    logger: logging.Logger,
+) -> None:
+    """Exit when an explicitly requested config file is missing or not a file.
+
+    The container entrypoint always passes ``--conf config.ini``, so a missing
+    mount or the directory Docker creates for a missing bind source must fail
+    clearly instead of being silently ignored.
+    """
+    if not config_file:
+        return
+
+    path = Path(config_file)
+    if base_folder and not path.is_absolute():
+        path = Path(base_folder) / path
+    if not path.is_file():
+        logger.critical(
+            "Configuration file %s is missing or not a regular file; create it before starting",
+            path,
+        )
+        sys.exit(1)
+
+
 def setup_production_logging(config: dict, logger: logging.Logger) -> None:
     """Configure production logging based on loaded configuration.
 
-    Reconfigures logging to use the settings from the config file,
-    including log file location and verbosity level. Uses structlog
-    for structured, machine-readable output.
+    Reconfigures logging to use the verbosity level from the config file.
+    Uses structlog for structured, machine-readable output.
 
     Args:
-        config (dict): Configuration dictionary with LOG_FILE and LOG_LEVEL
+        config (dict): Configuration dictionary with LOG_LEVEL, plus the
+            deprecated LOG_FILE key for backwards compatibility
         logger (logging.Logger): Early logger to log the transition
 
     Raises:
@@ -75,16 +136,60 @@ def setup_production_logging(config: dict, logger: logging.Logger) -> None:
             log_level = "INFO"
 
         # Configure structlog for production
-        configure_structlog(json_logs=False, log_level=log_level)
+        log_colors = config.get("DISCORDIANAI_LOG_COLOR")
+        if not config.get("_LOG_COLOR_EXPLICIT", True):
+            log_colors = None
+        configure_structlog(
+            json_logs=False,
+            log_level=log_level,
+            log_colors=log_colors,
+        )
 
         # The process supervisor or launcher owns bot.log redirection.
         # Keep a single structured stream here to avoid duplicate lines.
+        configured_log_file = config.get("LOG_FILE")
+        if configured_log_file:
+            logger.info(
+                "LOG_FILE is ignored (configured as %r); logs go to stdout. "
+                "Redirect stdout or let the process supervisor capture the output.",
+                configured_log_file,
+            )
 
         logger.info("Production logging configured with level %s", log_level)
 
     except Exception:
         logger.exception("Failed to configure production logging")
         logger.warning("Continuing with basic logging configuration")
+
+
+def _credential_errors(config: dict) -> list[str]:
+    """Return missing-token or missing-provider-key errors."""
+    errors = []
+    if not config.get("DISCORD_TOKEN"):
+        errors.append("DISCORD_TOKEN is required but not provided")
+
+    has_openai = bool(config.get("OPENAI_API_KEY"))
+    has_perplexity = bool(config.get("PERPLEXITY_API_KEY"))
+
+    if "_OPENAI_CONFIGURED" in config:
+        openai_selected = bool(config.get("_OPENAI_CONFIGURED"))
+    else:
+        openai_selected = any(
+            key in config for key in ("OPENAI_API_URL", "GPT_MODEL", "OPENAI_API_KEY")
+        )
+
+    if not has_openai and openai_selected:
+        errors.append(
+            "OPENAI_API_KEY is required because OpenAI is configured. Accepted: "
+            "a non-empty OpenAI API key, or remove the OpenAI settings to run in "
+            "Perplexity-only mode",
+        )
+    elif not has_openai and not has_perplexity:
+        errors.append(
+            "At least one API key is required: provide either OPENAI_API_KEY (OpenAI) "
+            "or PERPLEXITY_API_KEY (Perplexity) or both",
+        )
+    return errors
 
 
 def validate_critical_config(config: dict, logger: logging.Logger) -> None:
@@ -100,22 +205,8 @@ def validate_critical_config(config: dict, logger: logging.Logger) -> None:
     Raises:
         ValueError: If critical configuration is missing or invalid
     """
-    errors = []
+    errors = _credential_errors(config)
     warnings = []
-
-    # Check Discord token
-    if not config.get("DISCORD_TOKEN"):
-        errors.append("DISCORD_TOKEN is required but not provided")
-
-    # Check API keys - at least one must be present
-    has_openai = bool(config.get("OPENAI_API_KEY"))
-    has_perplexity = bool(config.get("PERPLEXITY_API_KEY"))
-
-    if not has_openai and not has_perplexity:
-        errors.append(
-            "At least one API key is required: provide either OPENAI_API_KEY (OpenAI) "
-            "or PERPLEXITY_API_KEY (Perplexity) or both",
-        )
 
     # Validate rate limiting settings
     try:
@@ -126,22 +217,39 @@ def validate_critical_config(config: dict, logger: logging.Logger) -> None:
     except (ValueError, TypeError):
         errors.append("RATE_LIMIT and RATE_LIMIT_PER must be valid integers")
 
-    # Validate token limits
-    try:
-        output_tokens = int(config.get("OUTPUT_TOKENS", DEFAULT_OUTPUT_TOKENS_VAL))
-        if output_tokens <= 0:
-            errors.append("OUTPUT_TOKENS must be positive")
-        if output_tokens > MAX_OUTPUT_TOKENS_THRESHOLD:
-            warnings.append(
-                f"OUTPUT_TOKENS is very high ({output_tokens}) - may cause API costs/limits"
-            )
-    except (ValueError, TypeError):
-        errors.append("OUTPUT_TOKENS must be a valid integer")
+    # Validate the separate OpenAI and Perplexity output-token caps.
+    for issue in validate_output_token_limits(config):
+        if issue.startswith("ERROR:"):
+            errors.append(issue.removeprefix("ERROR:").strip())
+        else:
+            warnings.append(issue.removeprefix("WARNING:").strip())
 
-    # Check allowed channels
+    # Validate Discord presence and activity types against discord.py's enums.
+    # These are operator typos: reject them now instead of failing inside on_ready.
+    valid_presence = [status.name for status in discord.Status]
+    bot_presence = config.get("BOT_PRESENCE", DEFAULT_BOT_PRESENCE)
+    if bot_presence not in valid_presence:
+        presence_values = ", ".join(valid_presence)
+        errors.append(f"BOT_PRESENCE must be one of: {presence_values} (got {bot_presence!r})")
+
+    valid_activity_types = [
+        activity.name
+        for activity in discord.ActivityType
+        if activity is not discord.ActivityType.unknown
+    ]
+    activity_type = config.get("ACTIVITY_TYPE", DEFAULT_ACTIVITY_TYPE)
+    if activity_type not in valid_activity_types:
+        activity_values = ", ".join(valid_activity_types)
+        errors.append(f"ACTIVITY_TYPE must be one of: {activity_values} (got {activity_type!r})")
+
+    # Check allowed channels; ID-based targeting is just as valid as names.
     allowed_channels = config.get("ALLOWED_CHANNELS", [])
-    if not allowed_channels:
-        warnings.append("No ALLOWED_CHANNELS configured - bot will not respond in any channels")
+    allowed_channel_ids = config.get("ALLOWED_CHANNEL_IDS", [])
+    if not allowed_channels and not allowed_channel_ids:
+        warnings.append(
+            "No ALLOWED_CHANNELS or ALLOWED_CHANNEL_IDS configured - "
+            "bot will not respond in any channels"
+        )
 
     # Log warnings
     for warning in warnings:
@@ -220,10 +328,14 @@ def main() -> NoReturn:
             args.conf,
             getattr(args, "folder", None),
         )
+        _require_existing_config_file(args.conf, getattr(args, "folder", None), early_logger)
 
         # Step 3: Load configuration (with early logging available for errors)
         early_logger.info("Loading configuration")
         config = load_config(args.conf, getattr(args, "folder", None))
+        config["_LOG_COLOR_EXPLICIT"] = _log_color_is_explicit(
+            args.conf, getattr(args, "folder", None)
+        )
         early_logger.info("Configuration loaded")
 
         # Step 4: Set up production logging based on config
@@ -242,7 +354,11 @@ def main() -> NoReturn:
         logger.info("Validating API parameters")
         api_validation_passed = log_validation_results(config, logger)
         if not api_validation_passed:
-            logger.warning("API validation found issues, continuing startup")
+            logger.critical(
+                "API configuration validation failed; fix the errors logged above "
+                "before starting the bot"
+            )
+            sys.exit(1)
 
         # Health checks will run after bot initialization since we need the clients
         logger.info("Health checks will run after bot initialization")

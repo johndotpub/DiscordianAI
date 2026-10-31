@@ -136,14 +136,18 @@ async def test_graceful_shutdown_closes_resources(base_deps):
 
 
 @pytest.mark.asyncio
-async def test_disconnect_and_resume_handlers(base_deps):
+async def test_disconnect_and_resume_handlers(base_deps, caplog):
     manager = DiscordBotManager(base_deps)
     manager.register_events()
 
-    await manager.bot.event_handlers["on_disconnect"]()
-    await manager.bot.event_handlers["on_resumed"]()
+    with caplog.at_level(logging.WARNING, logger="bot-manager-test"):
+        await manager.bot.event_handlers["on_disconnect"]()
+    assert any("disconnected" in record.message.lower() for record in caplog.records)
 
-    # No exceptions means handlers executed successfully
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="bot-manager-test"):
+        await manager.bot.event_handlers["on_resumed"]()
+    assert any("resumed" in record.message.lower() for record in caplog.records)
 
 
 def test_setup_signal_handlers(monkeypatch, base_deps):
@@ -161,7 +165,7 @@ def test_setup_signal_handlers(monkeypatch, base_deps):
 
 
 @pytest.mark.asyncio
-async def test_signal_handler_requests_graceful_shutdown(monkeypatch, base_deps):
+async def test_signal_handler_with_real_client_schedules_one_shutdown(monkeypatch, base_deps):
     captured_handlers = []
 
     def fake_signal(_sig, handler):
@@ -169,14 +173,11 @@ async def test_signal_handler_requests_graceful_shutdown(monkeypatch, base_deps)
 
     monkeypatch.setattr("signal.signal", fake_signal)
 
+    base_deps["bot"] = discord.Client(intents=discord.Intents.default())
     manager = DiscordBotManager(base_deps)
     manager.graceful_shutdown = AsyncMock()
-    loop = asyncio.get_running_loop()
-    manager.bot.loop = SimpleNamespace(
-        is_closed=lambda: False,
-        call_soon_threadsafe=lambda callback, coro: callback(coro),
-        create_task=loop.create_task,
-    )
+    manager.register_events()
+    await manager.bot.setup_hook()
     manager.setup_signal_handlers()
 
     assert len(captured_handlers) == 2
