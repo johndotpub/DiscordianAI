@@ -87,6 +87,10 @@ Advanced configuration for intelligent AI service routing.
 - **`CONVERSATION_TTL_SECONDS`**: Idle seconds before a conversation and its lock are evicted *(default: 1800)*
 - **`USER_LOCK_CLEANUP_INTERVAL`**: Memory cleanup interval in seconds *(default: 3600)*
 - **`ENTITY_DETECTION_MIN_WORDS`**: Minimum message length intended for entity detection *(default: 10)*. Note: this setting is parsed into config but not yet wired into the current routing implementation; changing it has no runtime effect in this release.
+- **`ROUTER_MODE`**: Router implementation, `heuristic` or `model` *(default: "heuristic")*. The `model` (Clef) implementation is not built yet and selecting it stops the response path with an error naming `docs/routing/DESIGN.md`.
+- **`ROUTER_WEB_THRESHOLD_CHANNEL`**: Web-route probability threshold in ordinary guild channels *(default: 0.10)*.
+- **`ROUTER_WEB_THRESHOLD_ANNOUNCE`**: Web-route probability threshold in announcement channels *(default: 0.07)*.
+- **`ROUTER_WEB_THRESHOLD_DM`**: Web-route probability threshold in direct messages *(default: 0.20)*.
 
 ### Logging
 
@@ -104,6 +108,11 @@ Lightweight HTTP health checks for Docker and Kubernetes deployments.
 - **`HEALTH_HOST`**: Bind address for the health server *(default: `127.0.0.1`)*
 - **`HEALTH_PORT`**: Port for readiness/liveness probes *(default: `8080`)*
 - **`HEALTH_PROVIDER_STALE_SECONDS`**: Seconds after a provider's last success before health marks it degraded *(default: `300`)*
+
+> **No cost cap.** These thresholds decide how readily the router searches; none of them is a
+> budget. There is no allowance, counter or price model in the routing path, so spend follows the
+> message mix rather than a configured ceiling. Measured precision also falls on trap-heavy input
+> (pleasantries that contain a date or a state word); the numbers are in `docs/routing/DESIGN.md`.
 
 ## Operation Modes
 
@@ -214,6 +223,14 @@ USER_LOCK_CLEANUP_INTERVAL=3600
 # Minimum words required before entity detection runs
 ENTITY_DETECTION_MIN_WORDS=10
 
+# Router implementation: heuristic (default) or model (not implemented yet)
+ROUTER_MODE=heuristic
+
+# Web-route probability thresholds by channel kind
+ROUTER_WEB_THRESHOLD_CHANNEL=0.10
+ROUTER_WEB_THRESHOLD_ANNOUNCE=0.07
+ROUTER_WEB_THRESHOLD_DM=0.20
+
 [Logging]
 LOG_LEVEL=INFO
 DISCORDIANAI_LOG_COLOR=false
@@ -268,6 +285,10 @@ export MAX_HISTORY_PER_USER="50"
 export CONVERSATION_TTL_SECONDS="1800"
 export USER_LOCK_CLEANUP_INTERVAL="3600"
 export ENTITY_DETECTION_MIN_WORDS="10"
+export ROUTER_MODE="heuristic"
+export ROUTER_WEB_THRESHOLD_CHANNEL="0.10"
+export ROUTER_WEB_THRESHOLD_ANNOUNCE="0.07"
+export ROUTER_WEB_THRESHOLD_DM="0.20"
 
 # Web scraping budgets
 export MAX_URLS_PER_MESSAGE="3"

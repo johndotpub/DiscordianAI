@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Behaviour changes
 
+- **Routing is now an evidence model, and the old regex chain is gone.** Each message gets one decision
+  from `src/routing/`: bearing evidence (a status, price, version, event, or other mutable value) may
+  route to Perplexity, while framing (question shape, opinion, creative, social, proper names) can never
+  decide alone. The ordered regex chain and its pattern lists were deleted rather than left dormant, so
+  there is no flag to restore the old behaviour. Measured on the corpora committed under
+  `tests/routing/corpora/`: recall **0.728**, precision **0.716**, accuracy 0.778 over 289 scored rows,
+  against the deleted chain's 0.526 / 0.682 / 0.716 on the same rows. On ordinary traffic the router is
+  0.722 / 0.897; on a set deliberately built from surface-wording traps it is 0.738 / **0.534**, still
+  ahead of the incumbent's 0.405 / 0.486. Precision on trap-heavy input is the known cost of preferring a
+  wasted search to a confidently stale answer, and it is stated rather than averaged away.
+- **Cache entries carry the routing decision.** Keys now include the service, router id, policy version,
+  decision source, function, route salt, and degraded flag, so a web-routed message cannot receive a
+  cached local answer and an unsure decision is not stored at all.
+- **A degraded fallback stays degraded.** When a web attempt fails and the local answer is returned, the
+  entry is marked `degraded=true` and cannot be replayed as a successful web answer.
+- **Each provider is attempted at most once per request.** If Perplexity already failed, an OpenAI
+  web-inability response returns the local answer with a warning instead of calling Perplexity again.
+- **Missing history no longer discards the answer.** A missing conversation manager or a history lookup
+  that raises now routes with empty context and still delivers a successful model response.
 - **The default model is now `gpt-6-luna`; GPT-5 series models are retired by the provider on 2026-12-11 and remain selectable until then.**
 - **Perplexity now uses the Agent API.** Requests go to `/v1/agent` (the SDK uses the `/v1/responses` alias) with `instructions`, `input`, `max_output_tokens`, and the `web_search` tool; answers come from `output` items and citations from `search_results`. `PERPLEXITY_MODEL` defaults to `perplexity/sonar`. Sonar Chat Completions is still supported by the provider but is no longer what this bot uses. **Upgrading: a config that sets `PERPLEXITY_MODEL` to a legacy Sonar id — `sonar`, `sonar-pro`, `sonar-reasoning-pro`, `sonar-deep-research` — must change it to `perplexity/sonar`. The Agent API does not accept the old ids; startup warns and requests fail until the value is updated.**
 - **Conversation memory is per channel, not per user.** A DM can no longer be replayed into a public reply, and two channels no longer share context. History already held in memory under the old per-user keys is not reused.
@@ -42,6 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **Cross-routing cache hits**: a web answer and a local answer can no longer share a cache entry, and a
+  degraded local fallback is never served as a web answer.
+- **Double Perplexity attempts**: the web-inability reroute consults an attempt ledger, so one request no
+  longer calls the same failed provider twice.
 - **Long answers are delivered completely**: message splitting is iterative and bounded by a 50-chunk runaway cap, so an answer within the provider's output budget is no longer cut off by a recursion-depth guard.
 - **Conversation transcript integrity**: answers stay attached to the question that produced them, and a zero consistency lookback now disables lookback instead of reading the whole transcript.
 - **Shutdown**: `SIGTERM` and `SIGINT` now stop the bot once, with a bounded wait, instead of crashing or being killed after the launcher's grace period.

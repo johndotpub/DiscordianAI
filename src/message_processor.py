@@ -64,6 +64,16 @@ def _reply_policy(
     )
 
 
+def _channel_kind(message: discord.Message, is_dm: bool) -> str:
+    """Return the router channel kind for this message."""
+    if is_dm:
+        return "dm"
+    channel = getattr(message, "channel", None)
+    if getattr(channel, "type", None) == discord.ChannelType.news:
+        return "announcement"
+    return "channel"
+
+
 def _guard_bot_turn(
     message: discord.Message,
     conversation_manager: Any,
@@ -237,6 +247,10 @@ async def _process_message_core(
                 "MAX_HISTORY_PER_USER",
                 "USER_LOCK_CLEANUP_INTERVAL",
                 "ENTITY_DETECTION_MIN_WORDS",
+                "ROUTER_MODE",
+                "ROUTER_WEB_THRESHOLD_CHANNEL",
+                "ROUTER_WEB_THRESHOLD_ANNOUNCE",
+                "ROUTER_WEB_THRESHOLD_DM",
             )
             if key in config
         }
@@ -249,6 +263,7 @@ async def _process_message_core(
             conversation_manager=conversation_manager,
             logger=logger,
             conversation_key=conversation_key,
+            channel_kind=_channel_kind(message, is_dm),
         )
 
         clients = AIClients(openai=deps.get("client"), perplexity=deps.get("perplexity_client"))

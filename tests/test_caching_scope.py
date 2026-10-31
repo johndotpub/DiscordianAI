@@ -175,9 +175,16 @@ def test_cache_keys_preserve_case_and_ignore_surrounding_whitespace():
     cache = ResponseCache()
     context = {"model": "gpt-test", "system_message": "test"}
 
-    assert cache._generate_cache_key("ABC", context) != cache._generate_cache_key("abc", context)
-    assert cache._generate_cache_key("ABC", context) == cache._generate_cache_key("ABC", context)
-    assert cache._generate_cache_key(" ABC ", context) == cache._generate_cache_key("ABC", context)
+    salt = "local:heuristic@1:1"
+    assert cache._generate_cache_key("ABC", context, salt=salt) != cache._generate_cache_key(
+        "abc", context, salt=salt
+    )
+    assert cache._generate_cache_key("ABC", context, salt=salt) == cache._generate_cache_key(
+        "ABC", context, salt=salt
+    )
+    assert cache._generate_cache_key(" ABC ", context, salt=salt) == cache._generate_cache_key(
+        "ABC", context, salt=salt
+    )
 
 
 @pytest.mark.asyncio
@@ -203,12 +210,13 @@ def test_bounded_size_eviction_still_holds():
     cache = ResponseCache(max_size=2, default_ttl=300.0)
     context = {"model": "gpt-test", "system_message": "test"}
 
-    cache.cache_response("first message", context, "First sufficiently long response")
-    cache.cache_response("second message", context, "Second sufficiently long response")
-    cache.cache_response("third message", context, "Third sufficiently long response")
+    salt = "local:heuristic@1:1"
+    cache.cache_response("first message", context, "First sufficiently long response", salt=salt)
+    cache.cache_response("second message", context, "Second sufficiently long response", salt=salt)
+    cache.cache_response("third message", context, "Third sufficiently long response", salt=salt)
 
     stats = cache.get_stats()
     assert stats["size"] == 2
     assert stats["evictions"] == 1
-    assert cache.get_cached_response("first message", context) is None
-    assert cache.get_cached_response("third message", context) is not None
+    assert cache.get_cached_response("first message", context, salt=salt) is None
+    assert cache.get_cached_response("third message", context, salt=salt) is not None

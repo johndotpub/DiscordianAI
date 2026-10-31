@@ -1,0 +1,236 @@
+{
+  "version": "1",
+  "language": "en",
+  "classes": {
+    "state_adjective": {
+      "klass": "bearing",
+      "weight": 2.4,
+      "terms": [
+        "down",
+        "up",
+        "offline",
+        "unreachable",
+        "broken",
+        "busy",
+        "closed",
+        "degraded",
+        "out of stock",
+        "available"
+      ]
+    },
+    "change_verb": {
+      "klass": "bearing",
+      "weight": 2.2,
+      "terms": [
+        "released",
+        "shipped",
+        "changed",
+        "went live",
+        "launched",
+        "rolled out",
+        "dropped",
+        "announced"
+      ]
+    },
+    "outcome_verb": {
+      "klass": "bearing",
+      "weight": 2.2,
+      "terms": [
+        "won",
+        "lost",
+        "beat",
+        "drew",
+        "elected",
+        "passed",
+        "failed",
+        "resigned",
+        "voted",
+        "vote",
+        "rejected",
+        "bought out",
+        "acquired",
+        "ruled"
+      ]
+    },
+    "volatile_topic": {
+      "klass": "bearing",
+      "weight": 1.8,
+      "terms": [
+        "weather",
+        "forecast",
+        "temperature",
+        "news",
+        "rate",
+        "score",
+        "schedule",
+        "outage",
+        "advisory",
+        "advisories",
+        "hours",
+        "flight",
+        "traffic",
+        "queue",
+        "cve",
+        "status page",
+        "headlines",
+        "breaking",
+        "downtime",
+        "maintenance",
+        "wipe"
+      ]
+    },
+    "release_state": {
+      "klass": "bearing",
+      "weight": 2.2,
+      "terms": [
+        "out yet",
+        "is it out",
+        "come out",
+        "comes out",
+        "coming out",
+        "shipping",
+        "ships",
+        "still in beta",
+        "out of beta",
+        "out of eap",
+        "release candidate",
+        "rc",
+        "early access",
+        "preorder",
+        "general availability",
+        "ga",
+        "deprecated",
+        "sunset",
+        "live yet",
+        "out of early access",
+        "wiped",
+        "reset"
+      ]
+    },
+    "commerce": {
+      "klass": "bearing",
+      "weight": 2.0,
+      "terms": [
+        "how much",
+        "pricing",
+        "price",
+        "cost",
+        "costs",
+        "trading at",
+        "go for",
+        "goes for",
+        "going for",
+        "tickets",
+        "fare",
+        "fares",
+        "msrp",
+        "per month",
+        "a month",
+        "a year",
+        "in stock",
+        "restock",
+        "back in stock",
+        "sold out",
+        "deal",
+        "discount",
+        "worth"
+      ]
+    },
+    "incumbency": {
+      "klass": "bearing",
+      "weight": 1.6,
+      "terms": [
+        "president",
+        "prime minister",
+        "pm",
+        "ceo",
+        "cto",
+        "senator",
+        "governor",
+        "mayor",
+        "chancellor",
+        "manager",
+        "manages",
+        "coach",
+        "in office",
+        "still in",
+        "these days",
+        "nowadays"
+      ]
+    },
+    "version_currency": {
+      "klass": "bearing",
+      "weight": 1.8,
+      "terms": [
+        "version",
+        "lts",
+        "kernel",
+        "release",
+        "releases",
+        "edition",
+        "changelog",
+        "release notes",
+        "roadmap",
+        "deprecation"
+      ]
+    },
+    "encyclopedic_relation": {
+      "klass": "framing",
+      "weight": 0.4,
+      "terms": [
+        "capital",
+        "population",
+        "author",
+        "founder",
+        "invented",
+        "discovered"
+      ]
+    },
+    "social_only": {
+      "klass": "framing",
+      "weight": -4.0,
+      "terms": [
+        "thanks",
+        "thank you",
+        "cheers",
+        "regards",
+        "best regards",
+        "goodnight",
+        "good night",
+        "congrats",
+        "well done",
+        "nice work",
+        "sorry"
+      ]
+    },
+    "greeting": {
+      "klass": "framing",
+      "weight": 0.0,
+      "terms": ["hi", "hello", "hey", "morning", "evening"]
+    },
+    "local_context": {
+      "klass": "framing",
+      "weight": -2.0,
+      "terms": [
+        "my server",
+        "my repo",
+        "my branch",
+        "my code",
+        "my machine",
+        "our ci",
+        "this loop",
+        "this function",
+        "this file"
+      ]
+    }
+  },
+  "overrides": {
+    "web_instruction": [
+      "search the (web|internet|online)",
+      "look (it )?up online",
+      "browse the web",
+      "check online"
+    ],
+    "local_instruction": ["from memory", "do not search", "don't search", "no web"]
+  }
+}

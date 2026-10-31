@@ -191,17 +191,19 @@ line-length = 99
 - **Simplified CI** - fewer steps, faster builds
 - **Modern standards** - follows current Python best practices
 - **AI-friendly** - configured for readable routing logic with multiple returns
-- **Centralized config** - all patterns and constants in one place
+- **Centralized settings** - runtime configuration defaults live in one place
 
 ## Recent Improvements
 
 ### Configuration Consolidation
-- **Single Source of Truth**: All regex patterns, constants, and settings now centralized in `/src/config.py`
-- **Eliminated Duplication**: Removed hardcoded patterns from individual modules
-- **Improved Maintainability**: Changes to patterns only need to be made in one place
+- **Single Source of Truth**: Configuration defaults, limits, and URL patterns live in `/src/config.py`
+- **Routing data**: Vocabulary lives in `src/routing/data/lexicon.en.json`; routing code lives in
+  `src/routing/`
 - **Better Testing**: Centralized configuration makes testing more reliable
 
 ### Enhanced AI Routing
-- **Improved Time-Sensitivity Detection**: Better recognition of queries needing current information
-- **Optimized Entity Detection**: `ENTITY_DETECTION_MIN_WORDS=10` is parsed into config and available for routing; note that the current routing implementation does not yet consult this value at runtime.
-- **Readable Logic**: Restored clear, readable routing logic with early returns
+- **Evidence model**: Bearing cues (status, price, version, events, volatile topics) may route to the web;
+  framing cues (question shape, opinion, creative, social, proper names) never decide alone.
+- **No early-return chain**: One score produces the decision and the logged reason trace.
+- **Entity threshold**: `ENTITY_DETECTION_MIN_WORDS=10` is parsed but is not consulted by the router at
+  runtime.

@@ -18,6 +18,20 @@ from .config import (
 
 
 @dataclass(frozen=True)
+class RoutingMetadata:
+    """Routing facts carried into cache and deduplication keys."""
+
+    service: str
+    router_id: str
+    policy_version: str
+    decision_source: str
+    route: str
+    salt: str
+    cacheable: bool = True
+    degraded: bool = False
+
+
+@dataclass(frozen=True)
 class AIRequest:
     """Groups common parameters for an AI request."""
 
@@ -26,6 +40,8 @@ class AIRequest:
     conversation_manager: Any
     logger: logging.Logger
     conversation_key: str | None = None
+    channel_kind: str = "channel"
+    routing: RoutingMetadata | None = None
 
 
 @dataclass(frozen=True)

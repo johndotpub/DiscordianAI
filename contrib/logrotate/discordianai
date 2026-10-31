@@ -3,13 +3,27 @@
 # Install it as /etc/logrotate.d/discordianai and replace the placeholder
 # path below with the bot.log location used by your installation.
 #
+# Rotation keeps history rather than trimming it. Each rotated file is
+# date-stamped and compressed, and the generation count is high enough that
+# the archive is effectively unbounded at this bot's volume: at roughly 50 MB
+# every few months, 50 generations of up to 100 MB compressed is years of
+# logs. If you ever need a hard limit, lower `rotate` — that is the only knob
+# that deletes anything.
+#
 # copytruncate is required because the bot holds bot.log open through the
-# supervisor's append redirection and cannot be asked to reopen it.
+# supervisor's append redirection and cannot be asked to reopen it. It copies
+# the file and then truncates it in place, so a line written in the moment
+# between the copy and the truncate can be lost. The alternative — routing
+# output through journald and rotating that instead — removes the window but
+# moves the logs out of bot.log entirely.
 
 /path/to/DiscordianAI/bot.log {
-    size 50M
-    rotate 5
+    size 100M
+    rotate 50
     compress
+    delaycompress
+    dateext
+    dateformat -%Y-%m-%d
     missingok
     notifempty
     copytruncate
