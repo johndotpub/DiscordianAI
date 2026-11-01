@@ -107,7 +107,12 @@ Lightweight HTTP health checks for Docker and Kubernetes deployments.
 - **`HEALTH_ENABLED`**: Enable or disable the health server *(default: `true`)*
 - **`HEALTH_HOST`**: Bind address for the health server *(default: `127.0.0.1`)*
 - **`HEALTH_PORT`**: Port for readiness/liveness probes *(default: `8080`)*
-- **`HEALTH_PROVIDER_STALE_SECONDS`**: Seconds after a provider's last success before health marks it degraded *(default: `300`)*
+- **`HEALTH_PROVIDER_STALE_SECONDS`**: Seconds after a provider's last success before the informational `last_success_stale` flag is set; it does not change health status *(default: `300`)*
+
+A configured provider is `unhealthy` when its breaker is open, `degraded` when it is half-open or when a
+failure happened after its last success, and `healthy` otherwise. A provider that has never been called is
+healthy: silence is not a failure. The payload still reports
+`last_success_age_seconds` and `last_success_stale` for diagnostics, but neither decides health.
 
 > **No cost cap.** These thresholds decide how readily the router searches; none of them is a
 > budget. There is no allowance, counter or price model in the routing path, so spend follows the

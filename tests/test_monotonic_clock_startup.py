@@ -70,17 +70,18 @@ def test_first_request_on_young_clock_starts_the_window():
     assert limiter.last_command_count[12345] == 3
 
 
-def test_stale_success_on_young_clock_is_degraded():
-    """A success 3600 seconds ago is old even when monotonic time is only 30."""
+def test_stale_success_on_young_clock_is_reported_but_healthy():
+    """A success 3600 seconds ago is aged correctly but is not a failure."""
     with patch("src.health_server.time.monotonic", return_value=30.0):
         with TestClient(_health_app(-3570.0, 30.0)) as client:
             response = client.get("/health")
 
     body = response.json()
-    assert response.status_code == 503, body
-    assert body["providers"]["openai"]["status"] == "degraded", body
+    assert response.status_code == 200, body
+    assert body["providers"]["openai"]["status"] == "healthy", body
     assert body["providers"]["openai"]["last_success_age_seconds"] == 3600.0, body
-    assert body["failing_providers"] == ["openai"], body
+    assert body["providers"]["openai"]["last_success_stale"] is True, body
+    assert body["failing_providers"] == [], body
 
 
 def test_never_succeeded_on_young_clock_is_not_stale():

@@ -107,14 +107,31 @@ def _deps(
     return deps
 
 
+def _set_breaker(
+    provider,
+    *,
+    state="CLOSED",
+    failures=0,
+    last_success_time=0.0,
+    last_failure_time=0.0,
+):
+    """Set one provider's shared breaker to an explicit observed state."""
+    breaker = get_circuit_breaker(provider)
+    breaker.state = state
+    breaker.failure_count = failures
+    breaker.last_success_time = last_success_time
+    breaker.last_failure_time = last_failure_time
+
+
 def _open_provider_breakers():
     """Leave both providers observably failing, with no recent success."""
     for provider in ("openai", "perplexity"):
-        breaker = get_circuit_breaker(provider)
-        breaker.state = "OPEN"
-        breaker.failure_count = 5
-        breaker.last_failure_time = time.monotonic()
-        breaker.last_success_time = 0.0
+        _set_breaker(
+            provider,
+            state="OPEN",
+            failures=5,
+            last_failure_time=time.monotonic(),
+        )
 
 
 def test_health_reports_failing_providers_instead_of_healthy():
@@ -147,12 +164,42 @@ def test_readiness_reports_not_ready_when_providers_are_failing():
     assert set(body["failing_providers"]) == {"openai", "perplexity"}, body
 
 
-def test_stale_success_degrades_health_and_keeps_configured_separate():
-    """A closed breaker with an old success is still not healthy."""
-    breaker = get_circuit_breaker("openai")
-    breaker.state = "CLOSED"
-    breaker.failure_count = 0
-    breaker.last_success_time = time.monotonic() - 3600
+# The previous version of this test asserted that a closed breaker whose last
+# success was an hour old was degraded. That made every quiet bot report itself
+# broken: absence of traffic is not evidence of failure. A stale success is
+# still reported through last_success_age_seconds and last_success_stale, but
+# only an open/half-open breaker or a failure after the last success decides
+# health. The pair below states the rule in both directions so this is not a
+# lowered floor.
+def test_old_success_without_failures_is_healthy():
+    """A closed breaker with an old success and no failures is healthy."""
+    _set_breaker("openai", last_success_time=time.monotonic() - 3600)
+    app = create_health_app(_deps())
+
+    with TestClient(app) as client:
+        response = client.get("/health")
+
+    body = response.json()
+    assert response.status_code == 200, body
+    assert body["status"] == "healthy", body
+    assert body["failing_providers"] == [], body
+    assert body["providers"]["openai"]["status"] == "healthy", body
+    assert body["providers"]["openai"]["last_success_age_seconds"] >= 3599, body
+    assert body["providers"]["openai"]["last_success_stale"] is True, body
+    assert body["services"]["openai"] == "configured", body
+    assert body["services"]["openai_configured"] is True, body
+    assert body["providers"]["openai"]["configured"] is True, body
+
+
+def test_failure_after_success_is_degraded():
+    """A failure after the last success is evidence of current ill health."""
+    now = time.monotonic()
+    _set_breaker(
+        "openai",
+        failures=1,
+        last_success_time=now - 3600,
+        last_failure_time=now,
+    )
     app = create_health_app(_deps())
 
     with TestClient(app) as client:
@@ -162,9 +209,49 @@ def test_stale_success_degrades_health_and_keeps_configured_separate():
     assert response.status_code == 503, body
     assert body["status"] == "degraded", body
     assert body["failing_providers"] == ["openai"], body
-    assert body["services"]["openai"] == "configured", body
-    assert body["services"]["openai_configured"] is True, body
-    assert body["providers"]["openai"]["configured"] is True, body
+    assert body["providers"]["openai"]["status"] == "degraded", body
+
+
+def test_never_called_provider_is_healthy_and_not_failing():
+    """A provider that has never been called is idle, not broken."""
+    _set_breaker("openai")
+    app = create_health_app(_deps())
+
+    with TestClient(app) as client:
+        response = client.get("/health")
+
+    body = response.json()
+    assert response.status_code == 200, body
+    assert body["status"] == "healthy", body
+    assert body["failing_providers"] == [], body
+    provider = body["providers"]["openai"]
+    assert provider["status"] == "healthy", body
+    assert provider["last_success_age_seconds"] is None, body
+    assert provider["last_success_stale"] is False, body
+
+
+@pytest.mark.parametrize(
+    ("breaker_state", "provider_status"),
+    [("OPEN", "unhealthy"), ("HALF_OPEN", "degraded")],
+)
+def test_open_and_half_open_breakers_still_fail_health(breaker_state, provider_status):
+    """An open or probing breaker must never report healthy."""
+    _set_breaker(
+        "openai",
+        state=breaker_state,
+        failures=5,
+        last_failure_time=time.monotonic(),
+    )
+    app = create_health_app(_deps())
+
+    with TestClient(app) as client:
+        response = client.get("/health")
+
+    body = response.json()
+    assert response.status_code == 503, body
+    assert body["status"] != "healthy", body
+    assert body["failing_providers"] == ["openai"], body
+    assert body["providers"]["openai"]["status"] == provider_status, body
 
 
 def test_bind_failure_disables_health_server_without_killing_bot():
