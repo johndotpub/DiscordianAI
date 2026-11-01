@@ -328,7 +328,9 @@ The bot serves real health endpoints at `HEALTH_HOST:HEALTH_PORT` (default
 `127.0.0.1:8080`):
 
 - `GET /health` returns 200 only when the bot and its configured providers are healthy,
-  and 503 otherwise;
+  and 503 otherwise. A provider is degraded only when its breaker is `HALF_OPEN` or a
+  failure happened after its last success; an idle provider with no traffic stays healthy.
+  An `OPEN` breaker is always unhealthy;
 - `GET /health/live` reports process liveness;
 - `GET /health/ready` reports readiness, including the Discord connection and provider
   health.

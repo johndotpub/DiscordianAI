@@ -24,8 +24,12 @@ class _Breaker:
         }
 
 
-def test_provider_stale_seconds_from_config_changes_health_payload(tmp_path, monkeypatch):
-    """A configured 45-second staleness threshold is used instead of 300."""
+def test_provider_stale_seconds_from_config_sets_informational_flag(tmp_path, monkeypatch):
+    """A configured 45-second staleness threshold marks the success as stale.
+
+    Staleness is reported for operators but does not degrade health; a closed
+    breaker with no failures after its last success is still healthy.
+    """
     monkeypatch.delenv("HEALTH_PROVIDER_STALE_SECONDS", raising=False)
     config_path = tmp_path / "config.ini"
     config_path.write_text(
@@ -55,6 +59,9 @@ def test_provider_stale_seconds_from_config_changes_health_payload(tmp_path, mon
             response = client.get("/health")
 
     body = response.json()
-    assert response.status_code == 503
-    assert body["providers"]["openai"]["status"] == "degraded"
-    assert body["providers"]["perplexity"]["status"] == "degraded"
+    assert response.status_code == 200, body
+    assert body["failing_providers"] == [], body
+    assert body["providers"]["openai"]["status"] == "healthy"
+    assert body["providers"]["perplexity"]["status"] == "healthy"
+    assert body["providers"]["openai"]["last_success_stale"] is True
+    assert body["providers"]["perplexity"]["last_success_stale"] is True
