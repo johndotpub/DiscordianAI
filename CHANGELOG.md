@@ -38,7 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the README, setup, configuration, security, architecture, connection-pooling, validation, and
   provider-contract docs describe the OpenAI-compatible provider with Ollama Cloud as the default.
 - **`scripts/probe_providers.py` probes the configured `OPENAI_API_URL`** instead of a hardcoded
-  OpenAI endpoint.
+  endpoint.
+- **Router documentation rewritten to match the gate**: `docs/routing/DESIGN.md` now describes what
+  ships; the sealed corpora are a behaviour-pinning fixture, not a scoreboard; the previously
+  assert-free `test_corpus.py` fails on drift; overrides are evaluated on code-masked text, so an
+  instruction inside a fenced block no longer routes web.
 
 ### Tests ✅
 
