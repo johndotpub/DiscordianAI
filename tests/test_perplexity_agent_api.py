@@ -123,7 +123,8 @@ async def test_request_uses_agent_api_fields_and_web_search_tool():
     ]
     assert payload["max_output_tokens"] == 200
     assert payload["tools"] == [{"type": "web_search"}, {"type": "fetch_url"}]
-    assert payload["max_steps"] == 3
+    assert payload["extra_body"]["max_steps"] == 3
+    assert "max_steps" not in payload
     assert "messages" not in payload
     assert "max_tokens" not in payload
     assert "temperature" not in payload

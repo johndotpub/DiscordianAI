@@ -179,7 +179,8 @@ class TestPerplexityAPIIntegration:
         assert call_args["instructions"].startswith("You are a web search assistant")
         assert "fetch_url" in call_args["instructions"]
         assert call_args["tools"] == [{"type": "web_search"}, {"type": "fetch_url"}]
-        assert call_args["max_steps"] == 3
+        assert call_args["extra_body"]["max_steps"] == 3
+        assert "max_steps" not in call_args
         assert "messages" not in call_args
         assert "max_tokens" not in call_args
 
