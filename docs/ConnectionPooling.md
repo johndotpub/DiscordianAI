@@ -13,13 +13,13 @@ The bot uses separate connection pools for the OpenAI-compatible chat provider (
 ```ini
 [ConnectionPool]
 # The chat provider typically handles more concurrent requests
-OPENAI_MAX_CONNECTIONS=50
-OPENAI_MAX_KEEPALIVE=10
+OPENAI_MAX_CONNECTIONS=100
+OPENAI_MAX_KEEPALIVE=20
 ```
 
 **Rationale:**
-- **50 max connections**: Handles bursts of concurrent chat requests
-- **10 keepalive**: Maintains persistent connections for frequently used clients
+- **100 max connections**: Handles bursts of concurrent chat requests
+- **20 keepalive**: Maintains persistent connections for frequently used clients
 - **Higher capacity**: Chat-completions endpoints generally tolerate more concurrency than search APIs
 
 ### Perplexity Connection Pool
@@ -27,13 +27,13 @@ OPENAI_MAX_KEEPALIVE=10
 ```ini
 [ConnectionPool]
 # Perplexity has more conservative limits
-PERPLEXITY_MAX_CONNECTIONS=30
-PERPLEXITY_MAX_KEEPALIVE=5
+PERPLEXITY_MAX_CONNECTIONS=40
+PERPLEXITY_MAX_KEEPALIVE=10
 ```
 
 **Rationale:**
-- **30 max connections**: Conservative limit for Perplexity's web search API
-- **5 keepalive**: Lower keepalive count due to less frequent usage patterns
+- **40 max connections**: Conservative limit for Perplexity's web search API
+- **10 keepalive**: Lower keepalive count due to less frequent usage patterns
 - **Web search focus**: Perplexity is typically used for time-sensitive queries
 
 ## API Rate Limits

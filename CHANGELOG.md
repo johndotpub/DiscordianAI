@@ -63,6 +63,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed 🔁
 
+- **Default capacity is right-sized for a 1M-token model.** `INPUT_TOKENS` defaults to 250,000,
+  `OUTPUT_TOKENS` and `PERPLEXITY_OUTPUT_TOKENS` to 16,384, and `CONTEXT_WINDOW` to 1,000,000;
+  the input-token warning threshold is now 1,000,000 and the output-cap ceiling follows the
+  context window. Conversation history defaults to 100 entries with a 7,200-second idle TTL.
+- **Cache and connection-pool defaults are larger.** Response cache TTL is 600 seconds, long
+  responses 1,800 seconds, the response cache holds 2,000 entries, chat-provider pools default
+  to 100 connections/20 keepalive, Perplexity pools to 40/10, and Perplexity requests allow up
+  to four `max_steps`.
+- **Local environment references were scrubbed from the documentation.** No hostnames or
+  private configuration filenames are published.
 - **Provider calls share one narrow adapter protocol and registry.** The Chat Completions
   payload, tool loop, and response parsing live in a chat adapter; the Agent API payload,
   Responses call, and citation extraction live in a Perplexity adapter. A registry supplies
@@ -107,7 +117,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   route to Perplexity, while framing (question shape, opinion, creative, social, proper names) can never
   decide alone. The ordered regex chain and its pattern lists were deleted rather than left dormant, so
   there is no flag to restore the old behaviour. Measured on the corpora committed under
-  `tests/routing/corpora/`: recall **0.728**, precision **0.716**, accuracy 0.778 over 289 scored rows,
+  `tests/routing/corpora/`: recall **0.728**, precision **0.716**, accuracy 0.779 over 289 scored rows,
   against the deleted chain's 0.526 / 0.682 / 0.716 on the same rows. On ordinary traffic the router is
   0.722 / 0.897; on a set deliberately built from surface-wording traps it is 0.738 / **0.534**, still
   ahead of the incumbent's 0.405 / 0.486. Precision on trap-heavy input is the known cost of preferring a

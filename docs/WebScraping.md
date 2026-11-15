@@ -11,7 +11,7 @@ The Agent API request always includes two tools:
 - `web_search` for current search results.
 - `fetch_url` for opening URLs that appear in the user's message.
 
-The request also sets `max_steps` to 3 via `extra_body` (the SDK has no
+The request also sets `max_steps` to 4 via `extra_body` (the SDK has no
 `max_steps` parameter), so the model can search, fetch, and answer without an
 unbounded tool loop. The instructions tell the model to open
 each URL (up to 10), cite the sources it used, and say plainly when a page
@@ -80,4 +80,6 @@ length. API keys are never logged.
 
 A chat answer produced with tools is cached like any other answer. The cache
 key is unchanged, so identical conversation state and message text can return
-the same cached answer within its TTL. Perplexity responses are not cached.
+the same cached answer within its TTL. Perplexity responses are cached under
+the same scoped key when the cache policy marks them cacheable; URL overrides
+and local decisions that carried bearing evidence are not cached.

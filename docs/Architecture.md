@@ -54,7 +54,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| **Router** | `routing/` | Decides whether a message needs live web data. Evidence model: *bearing* cues (a mutable referent) may decide, *framing* cues (the shape of the request) are scaled and can never decide alone. Owns the lexicon, the thresholds and the cache policy. |
+| **Router** | `routing/` | Decides whether a message needs live web data. Evidence model: *bearing* cues (a mutable referent) may decide, *framing* cues (the shape of the request) can never decide alone. Owns the lexicon, the gate and the cache policy. |
 | **Smart Orchestrator** | `smart_orchestrator.py` | Executes the router's decision against the providers, applies fallbacks, and records conversation turns |
 | **OpenAI-Compatible Processing** | `openai_processing.py` | Cache/dedup wrapper around the chat adapter |
 | **Perplexity Processing** | `perplexity_processing.py` | Cache wrapper, Discord citation formatting, and embed construction |
@@ -119,7 +119,7 @@ sequenceDiagram
     MP->>CM: Fetch conversation history
     MP->>O: Route message
     O->>O: Build one RouterInput (message, channel kind, history)
-    O->>O: Score bearing and framing evidence
+    O->>O: Apply the gate to bearing and framing cues
     O->>O: Select AI service from the route decision
     O->>C: Check cache
     alt Cache hit for this route
@@ -230,7 +230,7 @@ probes, and cache parity stay aligned.
 ### 4. Decorator-Based Caching
 
 ```python
-@cached_response(ttl=300)
+@cached_response(ttl=600)
 @deduplicated_request()
 async def _fetch_openai_response(...):
     ...
@@ -324,9 +324,9 @@ perplexity_client = pool.create_perplexity_client(perplexity_api_key, perplexity
 ```
 
 ### Caching Strategy
-- Response cache: 5-minute TTL
-- Conversation cache: 30-minute TTL
-- LRU eviction with 1000 entry limit
+- Response cache: 10-minute TTL
+- Conversation cache: 2-hour TTL
+- LRU eviction with 2000 entry limit
 
 ### Async Everything
 - All API calls are async

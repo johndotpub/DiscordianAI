@@ -39,9 +39,9 @@ GPT_MODEL=deepseek-v4.1-flash:1017
 REASONING_EFFORT=high
 
 # Token limits
-OUTPUT_TOKENS=8000
-INPUT_TOKENS=120000
-CONTEXT_WINDOW=128000
+OUTPUT_TOKENS=16384
+INPUT_TOKENS=250000
+CONTEXT_WINDOW=1000000
 
 # System message for personality
 SYSTEM_MESSAGE=You are a helpful AI assistant with access to current information.
@@ -52,7 +52,7 @@ Change the three provider values:
 ```ini
 OPENAI_API_KEY=sk-your-openai-key
 OPENAI_API_URL=https://api.openai.com/v1/
-GPT_MODEL=gpt-6-luna
+GPT_MODEL=<your-openai-model>
 ```
 
 ### Provider Notes
