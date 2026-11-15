@@ -428,7 +428,7 @@ def _build_api_params(  # noqa: PLR0913
             completion_tokens, context_window, input_tokens
         ),
         "tools": WEB_TOOLS,
-        "max_steps": 3,
+        "extra_body": {"max_steps": 3},
     }
 
 

@@ -58,7 +58,7 @@ The bot uses the current Agent API, not Sonar Chat Completions. The OpenAI SDK's
 | Model sent | `perplexity/sonar` | probe + `GET /v1/models` |
 | Catalogue | `GET /v1/models` lists 54 models and exactly one Sonar model, `perplexity/sonar` | probe |
 | Legacy interface | Sonar Chat Completions still answers 200 with `citations` and `search_results`; it is not the current catalogue or the interface this bot uses | probe |
-| Request fields | `model`, `instructions` (system prompt plus the URL-fetch policy), `input` (history and current user message, no system role), `max_output_tokens`, `tools: [{"type": "web_search"}, {"type": "fetch_url"}]`, `max_steps: 3` | probe + code |
+| Request fields | `model`, `instructions` (system prompt plus the URL-fetch policy), `input` (history and current user message, no system role), `max_output_tokens`, `tools: [{"type": "web_search"}, {"type": "fetch_url"}]`, `extra_body: {"max_steps": 3}` (the SDK has no `max_steps` kwarg) | probe + code |
 | Sampling | no `temperature` is sent | probe + code |
 | Response shape | `output` array of items | probe |
 | `search_results` item | `results[]` with `id`, `url`, `title`, `snippet`, `date`, `last_updated`, `source`; `id` is the 1-based marker number used in the answer as `[1]`, `[2]` | probe |
@@ -79,7 +79,8 @@ The bot uses the current Agent API, not Sonar Chat Completions. The OpenAI SDK's
    History and the current turn travel in `input`.
 3. `max_output_tokens` replaces `max_tokens`, and `tools` always asks for `web_search`
    and `fetch_url` because this path exists for live-data questions. `max_steps` bounds
-   the tool loop at three steps.
+   the tool loop at three steps and travels in `extra_body` because the SDK has no
+   parameter for it.
 4. Citation markers are mapped by the `search_results[].id`, not by array position, so a
    reordered result list cannot misattribute a source.
 5. A response without `search_results` is valid: the parser returns the message text and an

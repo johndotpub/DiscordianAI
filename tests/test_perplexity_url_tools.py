@@ -43,7 +43,8 @@ def test_params_request_search_and_fetch_tools_with_bounded_steps():
     )
 
     assert params["tools"] == [{"type": "web_search"}, {"type": "fetch_url"}]
-    assert params["max_steps"] == 3
+    assert params["extra_body"]["max_steps"] == 3
+    assert "max_steps" not in params
     assert params["instructions"].startswith("Answer with sources.")
     assert "fetch_url" in params["instructions"]
     assert "untrusted reference material" in params["instructions"]

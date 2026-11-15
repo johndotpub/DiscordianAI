@@ -11,8 +11,9 @@ The Agent API request always includes two tools:
 - `web_search` for current search results.
 - `fetch_url` for opening URLs that appear in the user's message.
 
-The request also sets `max_steps` to 3, so the model can search, fetch, and
-answer without an unbounded tool loop. The instructions tell the model to open
+The request also sets `max_steps` to 3 via `extra_body` (the SDK has no
+`max_steps` parameter), so the model can search, fetch, and answer without an
+unbounded tool loop. The instructions tell the model to open
 each URL (up to 10), cite the sources it used, and say plainly when a page
 cannot be fetched.
 

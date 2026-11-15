@@ -125,7 +125,8 @@ flowchart TD
 
 - `api_validation.validate_openai_config()` accepts any non-empty `GPT_MODEL`; provider model
   ids are not gated, so an unknown name does not block startup.
-- Perplexity calls send `model`, `instructions`, `input`, `max_output_tokens`, the `web_search` and `fetch_url` tools, and `max_steps: 3`.
+- Perplexity calls send `model`, `instructions`, `input`, `max_output_tokens`, the `web_search` and
+  `fetch_url` tools, and `max_steps: 3` via `extra_body` because the SDK exposes no `max_steps` kwarg.
   `perplexity/sonar` is the default, sampling is handled by the API, and no `temperature` is sent.
 - Citations come from the Agent API `search_results` and `fetch_url_results` items: each result's 1-based `id`
   maps to the `[n]` marker in the answer text.
