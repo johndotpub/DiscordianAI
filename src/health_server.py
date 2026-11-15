@@ -89,7 +89,7 @@ def _collect_breaker_states(deps: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def _provider_stale_after(config: dict[str, Any]) -> float:
-    """Return the age after which a provider's last success is stale."""
+    """Return the age after which a provider's last success is reported as stale."""
     raw_value = config.get("HEALTH_PROVIDER_STALE_SECONDS", DEFAULT_PROVIDER_STALE_SECONDS)
     try:
         value = float(raw_value)
@@ -159,11 +159,7 @@ def _provider_health(
             status = "not_configured"
         elif state == "OPEN":
             status = "unhealthy"
-        elif (
-            state == "HALF_OPEN"
-            or (success_age is not None and success_age > stale_after)
-            or (failures > 0 and last_failure_time > last_success_time)
-        ):
+        elif state == "HALF_OPEN" or (failures > 0 and last_failure_time > last_success_time):
             status = "degraded"
         else:
             status = "healthy"
@@ -180,6 +176,7 @@ def _provider_health(
             "last_success_age_seconds": (
                 round(success_age, 1) if success_age is not None else None
             ),
+            "last_success_stale": success_age is not None and success_age > stale_after,
         }
 
     return providers

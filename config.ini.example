@@ -126,7 +126,8 @@ DISCORDIANAI_LOG_COLOR=false
 HEALTH_ENABLED=true
 HEALTH_HOST=127.0.0.1
 HEALTH_PORT=8080
-# Seconds after a provider's last success before health marks it degraded
+# Seconds after a provider's last success before the informational
+# last_success_stale flag is set (it does not change health status)
 HEALTH_PROVIDER_STALE_SECONDS=300
 
 # === CONFIGURATION EXAMPLES ===
