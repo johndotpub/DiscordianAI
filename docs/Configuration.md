@@ -58,10 +58,8 @@ also leaves room for the provider's output cap inside `CONTEXT_WINDOW`; if the i
 output budgets exceed `CONTEXT_WINDOW`, the context window wins and a warning naming the
 conflicting settings is logged.
 
-#### Web Scraping Budgets
-- **`MAX_URLS_PER_MESSAGE`**: Maximum URLs scraped from one message; extras are ignored *(default: 3)*
-- **`MAX_TOTAL_SCRAPED_CHARS`**: Maximum combined scraped page text injected into one prompt *(default: 60000)*
-- **`SCRAPE_DEADLINE_SECONDS`**: Deadline for the entire scrape phase of one message, in seconds *(default: 20)*
+#### Web Tools
+- **`WEB_TOOLS`**: Offer native web search and page fetch to Ollama-compatible chat providers; OpenAI endpoints never receive these tools *(default: true)*
 
 ### Rate Limiting
 
@@ -191,10 +189,8 @@ CONTEXT_WINDOW=128000
 # Customize your bot's personality
 SYSTEM_MESSAGE=You are Bender, a sarcastic robot from Futurama. You're crude, selfish, and love beer, but deep down you care about your friends. You automatically know when to search for current information and when to use your existing knowledge.
 
-# === WEB SCRAPING BUDGETS ===
-MAX_URLS_PER_MESSAGE=3
-MAX_TOTAL_SCRAPED_CHARS=60000
-SCRAPE_DEADLINE_SECONDS=20
+# === WEB TOOLS ===
+WEB_TOOLS=true
 
 # No chat-provider-specific sampling parameters are supported by the public API; do not configure
 
@@ -287,10 +283,8 @@ export USER_LOCK_CLEANUP_INTERVAL="3600"
 export ENTITY_DETECTION_MIN_WORDS="10"
 export ROUTER_MODE="heuristic"
 
-# Web scraping budgets
-export MAX_URLS_PER_MESSAGE="3"
-export MAX_TOTAL_SCRAPED_CHARS="60000"
-export SCRAPE_DEADLINE_SECONDS="20"
+# Native web tools
+export WEB_TOOLS="1"
 
 # Logging and health
 export LOG_FILE="bot.log"

@@ -55,7 +55,7 @@ DiscordianAI API Reference
    :maxdepth: 2
    :caption: Utilities
 
-   web_scraper
+   web_tools
    discord_bot
    discord_embeds
    citation_formatting

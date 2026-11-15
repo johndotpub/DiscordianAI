@@ -12,11 +12,6 @@ from src.error_handling import (
     RetryConfig,
     retry_with_backoff,
 )
-from src.web_scraper import scrape_url_content
-
-_PUBLIC_ADDR_INFO = [
-    (2, 1, 6, "", ("93.184.216.34", 0)),
-]
 
 
 def _api_response(status_code: int, headers: dict[str, str] | None = None):
@@ -146,73 +141,3 @@ async def test_deadline_stops_retries():
 
     assert attempts == 1
     assert not sleep.called
-
-
-def _aiter_bytes(chunks: list[bytes]):
-    async def _generator():
-        for chunk in chunks:
-            yield chunk
-
-    return _generator()
-
-
-def _stream(status_code: int, body: bytes = b""):
-    request = httpx.Request("GET", "https://example.com")
-    response = Mock()
-    response.status_code = status_code
-    response.headers = {
-        "content-type": "text/html; charset=utf-8",
-        "content-length": str(len(body)),
-    }
-
-    if status_code >= 400:
-        response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            f"{status_code} response",
-            request=request,
-            response=response,
-        )
-    else:
-        response.raise_for_status.return_value = None
-        response.aiter_bytes = Mock(return_value=_aiter_bytes([body]))
-
-    stream = Mock()
-    stream.__aenter__ = AsyncMock(return_value=response)
-    stream.__aexit__ = AsyncMock(return_value=False)
-    return stream
-
-
-def _client_with_streams(streams: list[Mock]):
-    client = Mock()
-    client.stream.side_effect = streams
-    client_context = Mock()
-    client_context.__aenter__ = AsyncMock(return_value=client)
-    client_context.__aexit__ = AsyncMock(return_value=False)
-    return Mock(return_value=client_context), client
-
-
-@pytest.mark.asyncio
-async def test_scraper_retries_503_but_not_other_4xx():
-    html = b"<html><head><title>Recovered</title></head><body><p>content</p></body></html>"
-    client_class, client = _client_with_streams([_stream(503), _stream(200, html)])
-
-    with (
-        patch("src.web_scraper.httpx.AsyncClient", client_class),
-        patch("src.web_scraper.asyncio.sleep", new=AsyncMock()),
-        patch("src.web_scraper._resolve_hostname", new=AsyncMock(return_value=_PUBLIC_ADDR_INFO)),
-    ):
-        result = await scrape_url_content("https://example.com")
-
-    assert result is not None
-    assert client.stream.call_count == 2
-
-    client_class, client = _client_with_streams([_stream(404)])
-
-    with (
-        patch("src.web_scraper.httpx.AsyncClient", client_class),
-        patch("src.web_scraper.asyncio.sleep", new=AsyncMock()),
-        patch("src.web_scraper._resolve_hostname", new=AsyncMock(return_value=_PUBLIC_ADDR_INFO)),
-    ):
-        result = await scrape_url_content("https://example.com")
-
-    assert result is None
-    assert client.stream.call_count == 1

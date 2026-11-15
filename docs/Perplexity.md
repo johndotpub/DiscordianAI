@@ -1,6 +1,6 @@
 # Perplexity Integration Guide
 
-DiscordianAI provides comprehensive Perplexity integration for real-time web search capabilities with intelligent URL content extraction, citation formatting, and embed suppression for optimal Discord experience.
+DiscordianAI provides comprehensive Perplexity integration for real-time web search capabilities with native URL fetching, citation formatting, and embed suppression for optimal Discord experience.
 
 ## Supported Models
 
@@ -76,11 +76,11 @@ PERPLEXITY_API_KEY=your_perplexity_key_here
 
 ## Key Features
 
-### 🌐 Real-Time Web Search & URL Content Extraction
+### 🌐 Real-Time Web Search & URL Fetching
 - Access to current information and breaking news
 - Real-time data from various web sources
-- **Direct URL content extraction** for GitHub PRs, articles, and web pages
-- **Intelligent web scraping** with fallback to enhanced search prompts
+- **Native `fetch_url`** for GitHub PRs, articles, and web pages supplied by users
+- **Native `web_search`** when no page is supplied or a page cannot be fetched
 - Up-to-date facts and statistics
 
 ### 📚 Citation Management
@@ -106,12 +106,13 @@ Stable facts, creative requests, code help, and social messages stay local even 
 questions or contain proper names.
 
 ### 🔗 URL Processing
-When URLs are detected in messages, the bot:
-1. **Attempts web scraping** to extract actual content from the URL
-2. **Provides scraped content** directly to Perplexity for analysis
-3. **Falls back to enhanced prompts** if scraping fails
-4. **Logs all scraping attempts** for debugging and transparency
-5. **Handles multiple URLs** in the same message
+When URLs are detected in messages, the Agent API request already carries both
+`web_search` and `fetch_url`; no local scraping code runs. The model:
+1. **Opens each URL** with `fetch_url` (up to 10 per message)
+2. **Answers from the page contents** and cites the sources it used
+3. **Falls back to `web_search`** and labels the answer as search-based when a page cannot be fetched
+4. **Reports fetch failures plainly** instead of adding a canned note
+5. **Handles multiple URLs** in the same message within the three-step tool budget
 
 ## Citation Processing Flow
 
@@ -120,7 +121,7 @@ The following diagram shows how Perplexity responses are processed and formatted
 ```mermaid
 flowchart TD
     A[Agent API output array] --> B[Extract message output_text]
-    A --> D[Extract search_results results]
+    A --> D[Extract search_results and fetch_url_results]
     
     B --> E[Find Citation Markers]
     E --> F[Parse Citation Numbers]

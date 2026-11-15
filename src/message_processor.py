@@ -9,11 +9,8 @@ from discord import AllowedMentions
 from .config import (
     DEFAULT_CONTEXT_WINDOW,
     DEFAULT_INPUT_TOKENS,
-    DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
-    DEFAULT_MAX_URLS_PER_MESSAGE,
     DEFAULT_PERPLEXITY_MODEL,
     DEFAULT_REASONING_EFFORT,
-    DEFAULT_SCRAPE_DEADLINE_SECONDS,
     get_error_messages,
 )
 from .conversation_manager import (
@@ -216,6 +213,7 @@ async def _process_message_core(
             input_tokens=input_tokens,
             context_window=context_window,
             reasoning_effort=deps.get("REASONING_EFFORT", DEFAULT_REASONING_EFFORT),
+            web_tools=deps.get("WEB_TOOLS", True),
         )
         perplexity_model = (
             deps.get("PERPLEXITY_MODEL")
@@ -228,18 +226,6 @@ async def _process_message_core(
             output_tokens=_perplexity_output_tokens(deps, config),
             input_tokens=input_tokens,
             context_window=context_window,
-            max_urls_per_message=config.get(
-                "MAX_URLS_PER_MESSAGE",
-                deps.get("MAX_URLS_PER_MESSAGE", DEFAULT_MAX_URLS_PER_MESSAGE),
-            ),
-            max_total_scraped_chars=config.get(
-                "MAX_TOTAL_SCRAPED_CHARS",
-                deps.get("MAX_TOTAL_SCRAPED_CHARS", DEFAULT_MAX_TOTAL_SCRAPED_CHARS),
-            ),
-            scrape_deadline_seconds=config.get(
-                "SCRAPE_DEADLINE_SECONDS",
-                deps.get("SCRAPE_DEADLINE_SECONDS", DEFAULT_SCRAPE_DEADLINE_SECONDS),
-            ),
         )
         ai_config = AIConfig(openai=openai_config, perplexity=perplexity_config)
         orchestrator_config = {

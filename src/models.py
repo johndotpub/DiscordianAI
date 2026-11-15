@@ -7,14 +7,11 @@ from typing import Any
 from .config import (
     DEFAULT_CONTEXT_WINDOW,
     DEFAULT_INPUT_TOKENS,
-    DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
-    DEFAULT_MAX_URLS_PER_MESSAGE,
     DEFAULT_OPENAI_MODEL,
     DEFAULT_OUTPUT_TOKENS,
     DEFAULT_PERPLEXITY_MODEL,
     DEFAULT_PERPLEXITY_OUTPUT_TOKENS,
     DEFAULT_REASONING_EFFORT,
-    DEFAULT_SCRAPE_DEADLINE_SECONDS,
 )
 
 
@@ -55,6 +52,7 @@ class OpenAIConfig:
     input_tokens: int = DEFAULT_INPUT_TOKENS
     context_window: int = DEFAULT_CONTEXT_WINDOW
     reasoning_effort: str = DEFAULT_REASONING_EFFORT
+    web_tools: bool = True
 
 
 @dataclass(frozen=True)
@@ -67,9 +65,6 @@ class PerplexityConfig:
         "When providing citations, include source URLs when available."
     )
     output_tokens: int = DEFAULT_PERPLEXITY_OUTPUT_TOKENS
-    max_urls_per_message: int = DEFAULT_MAX_URLS_PER_MESSAGE
-    max_total_scraped_chars: int = DEFAULT_MAX_TOTAL_SCRAPED_CHARS
-    scrape_deadline_seconds: float = DEFAULT_SCRAPE_DEADLINE_SECONDS
     input_tokens: int = DEFAULT_INPUT_TOKENS
     context_window: int = DEFAULT_CONTEXT_WINDOW
 

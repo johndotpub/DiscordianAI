@@ -97,9 +97,7 @@ The launcher resolves Python in this order: pyenv → project-local `.venv` → 
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | How many recent messages to inspect when a follow-up inherits the previous provider.
 | `ROUTER_MODE` | Router implementation, `heuristic` by default. `model` is not implemented and raises with a pointer to `docs/routing/DESIGN.md`.
 | `CONVERSATION_TTL_SECONDS` | Idle seconds before a conversation and its lock are evicted (default 1800).
-| `MAX_URLS_PER_MESSAGE` | Maximum URLs scraped from one message; extras are ignored (default 3).
-| `MAX_TOTAL_SCRAPED_CHARS` | Maximum combined scraped text injected into one prompt (default 60000).
-| `SCRAPE_DEADLINE_SECONDS` | Deadline for the scrape phase of one message, in seconds (default 20).
+| `WEB_TOOLS` | Offer native web search and page fetch to Ollama-compatible chat providers (default true); OpenAI endpoints never receive these tools.
 | `OPENAI_MAX_CONNECTIONS` / `PERPLEXITY_MAX_CONNECTIONS` | HTTP/2 pool connection limits for each API client.
 
 ### Channel Targeting
@@ -138,7 +136,7 @@ RATE_LIMIT_PER=60
 ### AI Orchestration
 - [src/smart_orchestrator.py](src/smart_orchestrator.py) asks `src/routing/` for one evidence-based decision per message, owns provider selection and fallback, and writes the successful turn to history.
 - [src/message_processor.py](src/message_processor.py) builds the per-conversation history snapshot and request, calls the orchestrator, and sends the reply.
-- [src/openai_processing.py](src/openai_processing.py) sends the model, messages, an output cap (`max_tokens` to Ollama-compatible providers, `max_completion_tokens` to `api.openai.com`), and `reasoning_effort` when non-empty to the configured OpenAI-compatible provider. [src/perplexity_processing.py](src/perplexity_processing.py) sends the model, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool to the Agent API; neither sends sampling parameters. Perplexity processing also handles scrape budgets and citation extraction.
+- [src/openai_processing.py](src/openai_processing.py) sends the model, messages, an output cap (`max_tokens` to Ollama-compatible providers, `max_completion_tokens` to `api.openai.com`), and `reasoning_effort` when non-empty to the configured OpenAI-compatible provider. [src/perplexity_processing.py](src/perplexity_processing.py) sends the model, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool to the Agent API; neither sends sampling parameters. Perplexity processing also requests native page fetching and handles citation extraction.
 
 ### Discord User Experience
 - [src/discord_embeds.py](src/discord_embeds.py) formats Perplexity citations into embed descriptions and truncates descriptions above the 4096-character hard limit to the 3840-character safe limit.
@@ -163,7 +161,7 @@ RATE_LIMIT_PER=60
 | OpenAI usage | [docs/OpenAI.md](docs/OpenAI.md)
 | Perplexity usage & citations | [docs/Perplexity.md](docs/Perplexity.md)
 | Message splitting & embeds | [docs/MessageSplitting.md](docs/MessageSplitting.md), [docs/EmbedLimits.md](docs/EmbedLimits.md)
-| Web scraping pipeline | [docs/WebScraping.md](docs/WebScraping.md)
+| Web access tools | [docs/WebScraping.md](docs/WebScraping.md)
 | Connection pooling & HTTP/2 | [docs/ConnectionPooling.md](docs/ConnectionPooling.md)
 | Docker & daemonization | [docs/Docker.md](docs/Docker.md), [docs/Daemon.md](docs/Daemon.md)
 | Security & rate limiting | [docs/Security.md](docs/Security.md)
@@ -196,8 +194,8 @@ Use `tox` for the CI matrix (`tox`, `tox -e py312`, `tox --parallel auto`, `tox 
 - Rotate chat-provider and Perplexity (`pplx-...`) keys regularly. An `OPENAI_API_KEY` that is not `sk-`-shaped is accepted with a warning because non-OpenAI-compatible providers are supported.
 - Limit Discord bot permissions to the channels where it operates.
 - Prefer `ALLOWED_CHANNEL_IDS` for precise channel targeting in shared or multi-server deployments.
-- Scraped URLs are checked for loopback, private, link-local, CGNAT, and other non-global addresses, and every redirect hop is checked. HTTPS is not pinned to the vetted IP, so a DNS-rebinding window remains; see [docs/Security.md](docs/Security.md).
-- Monitor logs for rate-limit bursts or scraping failures and adjust `RATE_LIMIT` / `RATE_LIMIT_PER` accordingly.
+- Native web tools return text the model must treat as untrusted reference material; tool instructions cannot make a model obey them. See [docs/Security.md](docs/Security.md).
+- Monitor logs for rate-limit bursts or web-tool failures and adjust `RATE_LIMIT` / `RATE_LIMIT_PER` accordingly.
 
 ## Support & License
 

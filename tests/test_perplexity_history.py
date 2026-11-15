@@ -66,7 +66,8 @@ async def test_perplexity_sends_full_history_with_current_message_last():
 
     assert result is not None
     call = client.calls[0]
-    assert call["instructions"] == PerplexityConfig().system_message
+    assert call["instructions"].startswith(PerplexityConfig().system_message)
+    assert "fetch_url" in call["instructions"]
     messages = [{"role": "system", "content": call["instructions"]}, *call["input"]]
     assert len(messages) == 5
     assert [message["role"] for message in messages] == [
@@ -99,7 +100,8 @@ def test_openai_and_perplexity_builders_share_history_structure():
         HISTORY,
     )
 
-    assert perplexity_params["instructions"] == openai_params["messages"][0]["content"]
+    assert perplexity_params["instructions"].startswith(openai_params["messages"][0]["content"])
+    assert "fetch_url" in perplexity_params["instructions"]
     assert perplexity_params["input"] == openai_params["messages"][1:]
     assert [message["role"] for message in perplexity_params["input"]] == [
         message["role"] for message in openai_params["messages"][1:]
@@ -117,7 +119,8 @@ def test_empty_history_produces_system_instructions_and_user_input():
             8000,
             history,
         )
-        assert params["instructions"] == "You are a helpful assistant."
+        assert params["instructions"].startswith("You are a helpful assistant.")
+        assert "fetch_url" in params["instructions"]
         assert params["input"] == expected_input
 
 
@@ -151,7 +154,8 @@ async def test_orchestrator_web_follow_up_sends_prior_turn():
     assert response == "Dune Messiah was published in 1969."
     assert client.calls
     call = client.calls[0]
-    assert call["instructions"] == AIConfig().perplexity.system_message
+    assert call["instructions"].startswith(AIConfig().perplexity.system_message)
+    assert "fetch_url" in call["instructions"]
     assert call["input"] == [
         {"role": "user", "content": "Who wrote Dune?"},
         {"role": "assistant", "content": "Frank Herbert wrote Dune."},

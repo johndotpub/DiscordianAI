@@ -115,13 +115,15 @@ async def test_request_uses_agent_api_fields_and_web_search_tool():
     assert result is not None
     payload = client.responses.create.call_args.kwargs
     assert payload["model"] == "perplexity/sonar"
-    assert payload["instructions"] == "Answer with sources."
+    assert payload["instructions"].startswith("Answer with sources.")
+    assert "fetch_url" in payload["instructions"]
     assert payload["input"] == [
         *history,
         {"role": "user", "content": "What is the latest news?"},
     ]
     assert payload["max_output_tokens"] == 200
-    assert payload["tools"] == [{"type": "web_search"}]
+    assert payload["tools"] == [{"type": "web_search"}, {"type": "fetch_url"}]
+    assert payload["max_steps"] == 3
     assert "messages" not in payload
     assert "max_tokens" not in payload
     assert "temperature" not in payload

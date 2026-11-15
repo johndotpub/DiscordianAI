@@ -149,13 +149,6 @@ MUTATIONS = [
         ),
     ),
     Mutation(
-        name="scraper-follows-redirects",
-        path="src/web_scraper.py",
-        test="tests/test_scraper_ssrf.py",
-        old="httpx.AsyncClient(headers=DEFAULT_HEADERS, follow_redirects=False)",
-        new="httpx.AsyncClient(headers=DEFAULT_HEADERS, follow_redirects=True)",
-    ),
-    Mutation(
         name="rate-limit-uses-wall-clock",
         path="src/rate_limits.py",
         test="tests/test_rate_limit_clock.py",

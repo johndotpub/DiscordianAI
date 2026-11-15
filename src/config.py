@@ -128,11 +128,6 @@ DEFAULT_OUTPUT_TOKENS = 8000
 DEFAULT_PERPLEXITY_OUTPUT_TOKENS = DEFAULT_OUTPUT_TOKENS
 DEFAULT_CONTEXT_WINDOW = 128000
 
-# Web scraping budgets
-DEFAULT_MAX_URLS_PER_MESSAGE = 3
-DEFAULT_MAX_TOTAL_SCRAPED_CHARS = 60000
-DEFAULT_SCRAPE_DEADLINE_SECONDS = 20.0
-
 # ============================================================================
 # VALIDATION THRESHOLDS
 # ============================================================================
@@ -254,9 +249,7 @@ _CONFIG_DEFAULTS: dict[str, Any] = {
     "USER_LOCK_CLEANUP_INTERVAL": DEFAULT_USER_LOCK_CLEANUP_INTERVAL,
     "ROUTER_MODE": DEFAULT_ROUTER_MODE,
     "ENTITY_DETECTION_MIN_WORDS": 10,
-    "MAX_URLS_PER_MESSAGE": DEFAULT_MAX_URLS_PER_MESSAGE,
-    "MAX_TOTAL_SCRAPED_CHARS": DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
-    "SCRAPE_DEADLINE_SECONDS": DEFAULT_SCRAPE_DEADLINE_SECONDS,
+    "WEB_TOOLS": True,
     "LOG_FILE": "bot.log",
     "LOG_LEVEL": "INFO",
     "DISCORDIANAI_LOG_COLOR": True,
@@ -321,7 +314,6 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
             )
             _parse_discord_config(config, config_data, logger)
             _parse_default_config(config, config_data, logger)
-            _parse_scraping_config(config, config_data, logger)
             _parse_limits_config(config, config_data, logger)
             _parse_connection_pool_config(config, config_data, logger)
             _parse_orchestrator_config(config, config_data, logger)
@@ -456,9 +448,7 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "USER_LOCK_CLEANUP_INTERVAL",
         "ROUTER_MODE",
         "ENTITY_DETECTION_MIN_WORDS",
-        "MAX_URLS_PER_MESSAGE",
-        "MAX_TOTAL_SCRAPED_CHARS",
-        "SCRAPE_DEADLINE_SECONDS",
+        "WEB_TOOLS",
         "LOG_FILE",
         "LOG_LEVEL",
         "DISCORDIANAI_LOG_COLOR",
@@ -494,13 +484,10 @@ def _apply_single_env_override(
         "CONVERSATION_TTL_SECONDS",
         "USER_LOCK_CLEANUP_INTERVAL",
         "ENTITY_DETECTION_MIN_WORDS",
-        "MAX_URLS_PER_MESSAGE",
-        "MAX_TOTAL_SCRAPED_CHARS",
         "HEALTH_PORT",
         "HEALTH_PROVIDER_STALE_SECONDS",
     }
-    float_keys = {"SCRAPE_DEADLINE_SECONDS"}
-    bool_keys = {"HEALTH_ENABLED", "DISCORDIANAI_LOG_COLOR"}
+    bool_keys = {"HEALTH_ENABLED", "DISCORDIANAI_LOG_COLOR", "WEB_TOOLS"}
 
     if key in {"ALLOWED_CHANNELS", "ALLOWED_GUILDS"}:
         config_data[key] = (
@@ -515,11 +502,6 @@ def _apply_single_env_override(
             config_data[key] = int(value)
         except (ValueError, TypeError):
             logger.warning("Invalid integer for %s: %s", key, value)
-    elif key in float_keys:
-        try:
-            config_data[key] = float(value)
-        except (ValueError, TypeError):
-            logger.warning("Invalid number for %s: %s", key, value)
     elif key in bool_keys:
         parsed = _parse_bool(value)
         if parsed is None:
@@ -792,28 +774,10 @@ def _parse_default_config(
     config_data["SYSTEM_MESSAGE"] = config.get(
         "Default", "SYSTEM_MESSAGE", fallback=_CONFIG_DEFAULTS["SYSTEM_MESSAGE"]
     )
-
-
-def _parse_scraping_config(
-    config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger
-) -> None:
-    """Parse web scraping budget settings from configuration."""
-    config_data["MAX_URLS_PER_MESSAGE"] = _get_int_safe(
+    config_data["WEB_TOOLS"] = _get_bool_safe(
         config,
-        "MAX_URLS_PER_MESSAGE",
-        _CONFIG_DEFAULTS["MAX_URLS_PER_MESSAGE"],
-        logger,
-    )
-    config_data["MAX_TOTAL_SCRAPED_CHARS"] = _get_int_safe(
-        config,
-        "MAX_TOTAL_SCRAPED_CHARS",
-        _CONFIG_DEFAULTS["MAX_TOTAL_SCRAPED_CHARS"],
-        logger,
-    )
-    config_data["SCRAPE_DEADLINE_SECONDS"] = _get_float_safe(
-        config,
-        "SCRAPE_DEADLINE_SECONDS",
-        _CONFIG_DEFAULTS["SCRAPE_DEADLINE_SECONDS"],
+        "WEB_TOOLS",
+        _CONFIG_DEFAULTS["WEB_TOOLS"],
         logger,
     )
 
@@ -871,21 +835,6 @@ def _get_bool_safe(
             _BOOLEAN_ACCEPTED_FORMS,
             default,
         )
-        return default
-
-
-def _get_float_safe(
-    config: configparser.ConfigParser,
-    key: str,
-    default: float,
-    logger: logging.Logger,
-    section: str = "Default",
-) -> float:
-    """Safely get a floating-point value from configuration with fallback."""
-    try:
-        return config.getfloat(section, key, fallback=default)
-    except ValueError:
-        logger.warning("Invalid %s value, using default %s", key, default)
         return default
 
 

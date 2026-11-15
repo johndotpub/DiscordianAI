@@ -1,6 +1,6 @@
 """Token-budget enforcement tests for prompt construction."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -10,9 +10,8 @@ from src.message_builder import (
     build_messages,
     estimate_messages_tokens,
 )
-from src.models import AIRequest, OpenAIConfig, PerplexityConfig
+from src.models import AIRequest, OpenAIConfig
 from src.openai_processing import process_openai_message
-from src.perplexity_processing import process_perplexity_message
 from tests.helpers import FakeResponse
 
 CURRENT = "What did we decide in the latest turn?"
@@ -192,34 +191,6 @@ async def test_low_input_tokens_changes_the_request_outcome():
     low_messages = low_client.calls[0]["messages"]
     assert len(low_messages) < len(high_messages)
     assert estimate_messages_tokens(low_messages) <= 300
-
-
-@pytest.mark.asyncio
-async def test_scraped_content_counts_toward_perplexity_prompt_budget():
-    response_cache.cache.clear()
-    client = RecordingClient()
-    scraped = "Content from https://example.com/page:\n" + ("X" * 50000)
-    request = _make_request("Summarise https://example.com/page")
-    config = PerplexityConfig(
-        input_tokens=500,
-        output_tokens=100,
-        context_window=200000,
-    )
-
-    with patch(
-        "src.perplexity_processing._enhance_message_with_urls",
-        AsyncMock(return_value=scraped),
-    ):
-        result = await process_perplexity_message(request, client, config)
-
-    assert result is not None
-    call = client.calls[0]
-    messages = [
-        {"role": "system", "content": call["instructions"]},
-        *call["input"],
-    ]
-    assert estimate_messages_tokens(messages) <= 500
-    assert TRUNCATION_MARKER in call["input"][-1]["content"]
 
 
 @pytest.mark.asyncio

@@ -14,7 +14,6 @@ _ENV_KEYS = (
     "PERPLEXITY_API_URL",
     "PERPLEXITY_MODEL",
     "PERPLEXITY_OUTPUT_TOKENS",
-    "SCRAPE_DEADLINE_SECONDS",
 )
 
 
@@ -29,20 +28,6 @@ def _write_config(tmp_path, contents: str) -> str:
     config_path = tmp_path / "config.ini"
     config_path.write_text(contents, encoding="utf-8")
     return str(config_path)
-
-
-def test_invalid_scrape_deadline_environment_value_uses_the_default(monkeypatch, caplog):
-    """A typo in the env deadline is ignored instead of disabling scraping."""
-    monkeypatch.setenv("SCRAPE_DEADLINE_SECONDS", "not-a-number")
-
-    with caplog.at_level(logging.WARNING, logger="src.config"):
-        config = load_config()
-
-    assert config["SCRAPE_DEADLINE_SECONDS"] == 20.0
-    assert any(
-        "Invalid number for SCRAPE_DEADLINE_SECONDS" in record.getMessage()
-        for record in caplog.records
-    )
 
 
 def test_invalid_health_enabled_environment_value_is_ignored(monkeypatch, caplog):
@@ -85,20 +70,6 @@ def test_invalid_perplexity_output_tokens_falls_back_to_output_tokens(tmp_path, 
     assert config["PERPLEXITY_OUTPUT_TOKENS"] == 7000
     assert any(
         "Invalid PERPLEXITY_OUTPUT_TOKENS value" in record.getMessage()
-        for record in caplog.records
-    )
-
-
-def test_invalid_scrape_deadline_file_value_uses_the_default(tmp_path, caplog):
-    """A malformed deadline in config.ini falls back to the shipped default."""
-    config_path = _write_config(tmp_path, "[Default]\nSCRAPE_DEADLINE_SECONDS=soon\n")
-
-    with caplog.at_level(logging.WARNING, logger="src.config"):
-        config = load_config(config_path)
-
-    assert config["SCRAPE_DEADLINE_SECONDS"] == 20.0
-    assert any(
-        "Invalid SCRAPE_DEADLINE_SECONDS value, using default 20.0" in record.getMessage()
         for record in caplog.records
     )
 

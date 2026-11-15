@@ -18,7 +18,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
                                                  ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │ Discord Presentation                                                                    │
-│   embeds and citations · message splitting and sanitization · URL validation and scraping│
+│   embeds and citations · message splitting and sanitization · native web tools         │
 └────────────────────────────────────────────────┬───────────────────────────────────────┘
                                                  │
                                                  ▼
@@ -57,8 +57,8 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 | **Router** | `routing/` | Decides whether a message needs live web data. Evidence model: *bearing* cues (a mutable referent) may decide, *framing* cues (the shape of the request) are scaled and can never decide alone. Owns the lexicon, the thresholds and the cache policy. |
 | **Smart Orchestrator** | `smart_orchestrator.py` | Executes the router's decision against the providers, applies fallbacks, and records conversation turns |
 | **OpenAI-Compatible Processing** | `openai_processing.py` | Chat Completions interactions (Ollama Cloud by default), response formatting |
-| **Perplexity Processing** | `perplexity_processing.py` | Web search, citation extraction |
-| **Web Scraper** | `web_scraper.py` | URL content extraction for context enrichment |
+| **Perplexity Processing** | `perplexity_processing.py` | Web search, page fetch, citation extraction |
+| **Web Tools** | `web_tools.py` | Native search and page-fetch tools for the Ollama chat path |
 
 ### Infrastructure
 
@@ -311,7 +311,7 @@ tests/
 ```
 
 The suite is organised by behaviour: configuration and startup, routing and
-conversation scope, provider and retry policy, scraper security and budgets,
+conversation scope, provider and retry policy, native web tools,
 message delivery, health, and documentation truth.
 
 **Coverage Target:** 84%+ (enforced by CI)
