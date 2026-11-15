@@ -523,12 +523,21 @@ response_cache = ResponseCache(max_size=1000, default_ttl=DEFAULT_CACHE_TTL)
 request_deduplicator = RequestDeduplicator()
 
 
-def cached_response(ttl: float = DEFAULT_CACHE_TTL, cache_instance: ResponseCache | None = None):
+def cached_response(
+    ttl: float = DEFAULT_CACHE_TTL,
+    cache_instance: ResponseCache | None = None,
+    *,
+    key_fn: Callable[..., str | None] | None = None,
+):
     """Decorator to cache function responses.
 
     Args:
-        ttl: Time to live in seconds
-        cache_instance: Custom cache instance to use
+        ttl: Time to live in seconds.
+        cache_instance: Custom cache instance to use.
+        key_fn: Optional explicit key builder. When provided, the returned key
+            is used directly and any non-``None`` result is cached. When absent,
+            the original positional message/config extraction and scoping rules
+            apply unchanged.
     """
 
     def decorator(func: Callable) -> Callable:
@@ -536,6 +545,20 @@ def cached_response(ttl: float = DEFAULT_CACHE_TTL, cache_instance: ResponseCach
 
         @wraps(func)
         async def wrapper(*args, **kwargs) -> Any:
+            if key_fn is not None:
+                cache_key = key_fn(*args, **kwargs)
+                if cache_key is None:
+                    return await func(*args, **kwargs)
+
+                cached = cache.cache.get(cache_key)
+                if cached is not None:
+                    return cached
+
+                result = await func(*args, **kwargs)
+                if result is not None:
+                    cache.cache.put(cache_key, result, ttl)
+                return result
+
             # Generate cache key from function name, arguments, and routing.
             func_name = func.__name__
             message, context, salt = _cache_context(func_name, args, kwargs)

@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   URL longer than 2,048 characters becomes an error tool result instead of a provider request;
   `max_results` stays clamped to 1–10. Tool debug logs record only the tool name and argument byte
   length, never the query or URL.
+- **Perplexity answers use the same response cache as chat answers.** An identical Perplexity
+  request in the same conversation and routing scope now returns the cached answer for the cache
+  TTL instead of calling the provider again. The key includes the model, system message, history,
+  conversation scope, routing salt, and degraded flag, so a cached answer is never replayed across
+  conversations or routes.
 
 ### Added ✨
 
@@ -47,6 +52,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed 🔁
 
+- **Provider calls share one narrow adapter protocol and registry.** The Chat Completions
+  payload, tool loop, and response parsing live in a chat adapter; the Agent API payload,
+  Responses call, and citation extraction live in a Perplexity adapter. A registry supplies
+  the provider names used by health checks, the health server, and the breaker table, so those
+  lists no longer drift independently. The public `process_openai_message()` and
+  `process_perplexity_message()` signatures are unchanged.
 - **Configuration examples and docs use the new defaults.** `config.ini.example`, `.env.example`,
   the README, setup, configuration, security, architecture, connection-pooling, validation, and
   provider-contract docs describe the OpenAI-compatible provider with Ollama Cloud as the default.
@@ -61,6 +72,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Default-provider regression coverage** pins the Ollama Cloud URL and model, permissive model
   validation, `REASONING_EFFORT` overriding, and the `max_tokens` request payload.
+- **Provider contract coverage** runs both adapters against stubbed SDK clients: request shape,
+  text and citation extraction, the tool-loop round trip and cap, error classification, breaker
+  opening, probe success and failure, and cache parity between the two providers.
 
 ## [0.4.0] - 2026-10-28
 
