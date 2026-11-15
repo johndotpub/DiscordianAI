@@ -37,7 +37,7 @@ classifiers = [
 discordianai = "src.main:main"
 
 [tool.setuptools]
-packages = ["src", "src.routing"]
+packages = ["src", "src.routing", "src.providers"]
 package-dir = {"" = "."}
 
 [tool.setuptools.package-data]

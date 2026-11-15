@@ -88,6 +88,16 @@ def _extract_user_identity(user: Any) -> str | None:
     return str(candidate)
 
 
+def _image_digests(request: Any) -> list[str]:
+    """Return short content digests for images attached to a request."""
+    images = getattr(request, "images", ()) if request is not None else ()
+    digests: list[str] = []
+    for image in images or ():
+        payload = getattr(image, "data_b64", "") or ""
+        digests.append(hashlib.sha256(str(payload).encode()).hexdigest()[:16])
+    return digests
+
+
 def _extract_conversation_summary(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """Extract ordered conversation history from decorated calls."""
     if len(args) > 1 and isinstance(args[1], (list, tuple, dict)):
@@ -141,6 +151,7 @@ def _extract_request_scope(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dic
         "conversation_key": conversation_key,
         "conversation_digest": _conversation_digest(conversation_summary),
         "has_conversation": bool(conversation_summary),
+        "image_digests": _image_digests(request),
     }
 
 
@@ -176,6 +187,7 @@ def _generate_scoped_key(message: str, context: dict[str, Any], *, salt: str) ->
         "function": context.get("function", "unknown"),
         "route": context.get("route", ""),
         "degraded": bool(context.get("degraded", False)),
+        "image_digests": list(context.get("image_digests") or []),
         "salt": salt,
     }
 
@@ -523,12 +535,25 @@ response_cache = ResponseCache(max_size=1000, default_ttl=DEFAULT_CACHE_TTL)
 request_deduplicator = RequestDeduplicator()
 
 
-def cached_response(ttl: float = DEFAULT_CACHE_TTL, cache_instance: ResponseCache | None = None):
+def cached_response(
+    ttl: float = DEFAULT_CACHE_TTL,
+    cache_instance: ResponseCache | None = None,
+    *,
+    key_fn: Callable[..., str | None] | None = None,
+    result_text: Callable[[Any], str | None] | None = None,
+):
     """Decorator to cache function responses.
 
     Args:
-        ttl: Time to live in seconds
-        cache_instance: Custom cache instance to use
+        ttl: Time to live in seconds.
+        cache_instance: Custom cache instance to use.
+        key_fn: Optional explicit key builder. When provided, the returned key
+            is used directly and an eligible non-``None`` result is cached. When
+            absent, the original positional message/config extraction and
+            scoping rules apply unchanged.
+        result_text: Optional extractor for the answer text inside a structured
+            result. When provided with ``key_fn``, the extracted text must pass
+            the same eligibility gate as ``ResponseCache.cache_response``.
     """
 
     def decorator(func: Callable) -> Callable:
@@ -536,6 +561,35 @@ def cached_response(ttl: float = DEFAULT_CACHE_TTL, cache_instance: ResponseCach
 
         @wraps(func)
         async def wrapper(*args, **kwargs) -> Any:
+            if key_fn is not None:
+                cache_key = key_fn(*args, **kwargs)
+                if cache_key is None:
+                    return await func(*args, **kwargs)
+
+                cached = cache.cache.get(cache_key)
+                if cached is not None:
+                    return cached
+
+                result = await func(*args, **kwargs)
+                if result is not None:
+                    text: str | None
+                    if result_text is not None:
+                        text = result_text(result)
+                    elif isinstance(result, str):
+                        text = result
+                    else:
+                        text = None
+
+                    is_cacheable = cache._should_cache_response  # noqa: SLF001 - cache policy
+                    if text and is_cacheable(text):
+                        cache.cache.put(cache_key, result, ttl)
+                    else:
+                        cache.logger.debug(
+                            "Skipping cache write for %s: result is not cacheable",
+                            func.__name__,
+                        )
+                return result
+
             # Generate cache key from function name, arguments, and routing.
             func_name = func.__name__
             message, context, salt = _cache_context(func_name, args, kwargs)

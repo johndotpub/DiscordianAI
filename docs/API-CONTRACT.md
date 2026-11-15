@@ -16,14 +16,15 @@ is not a contract.
 
 | Item | Value | Source |
 |---|---|---|
-| Endpoint used | `POST /v1/chat/completions` | `src/openai_processing.py` |
+| Endpoint used | `POST /v1/chat/completions` | `src/providers/openai_chat.py` |
 | Base URL sent | whatever `OPENAI_API_URL` says; the shipped default is `https://ollama.com/v1/` | `config.ini.example` |
 | Model sent | whatever `GPT_MODEL` says; the shipped default is `deepseek-v4.1-flash:1017` | `config.ini.example` |
-| Output cap parameter | `max_tokens` on Ollama-compatible hosts (`ollama.com`, `localhost`, `127.0.0.1`); `max_completion_tokens` on `api.openai.com` | `src/openai_processing.py` |
+| Output cap parameter | `max_tokens` on Ollama-compatible hosts (`ollama.com`, `localhost`, `127.0.0.1`); `max_completion_tokens` on `api.openai.com` | `src/providers/openai_chat.py` |
 | What the output cap covers | **visible output plus reasoning tokens.** A cap consumed by reasoning returns HTTP 200 with `finish_reason: length` and `content: ""` | probe |
 | `reasoning_effort` | sent from `REASONING_EFFORT` only when non-empty (default `high`). It is a reasoning-model parameter; whether a model accepts it is provider-defined. `low`, `high`, and `max` are accepted by the shipped model, and `none` disables thinking | provider reference |
 | Cloud-model features | structured outputs, log probabilities, and `tool_choice` are not supported by cloud models and the bot does not send them | provider reference |
-| Web tools | `tools` carries `web_search` and `web_fetch` function schemas only when the base URL is Ollama-compatible and `WEB_TOOLS` is true; the model may request up to four tool rounds | `src/openai_processing.py`, `src/web_tools.py` |
+| Web tools | `tools` carries `web_search` and `web_fetch` function schemas only when the base URL is Ollama-compatible and `WEB_TOOLS` is true; the model may request up to four tool rounds | `src/providers/openai_chat.py`, `src/web_tools.py` |
+| Image content | When a message carries images, the current user message becomes a content list of one `text` part followed by one `image_url` part per image, with the part's `url` field set to `data:<mime>;base64,<payload>`. History turns remain text-only | `src/message_builder.py`, `src/image_attachments.py` |
 | OpenAI alternative | change `OPENAI_API_URL` to `https://api.openai.com/v1/`, set an `sk-` key, and choose a model; chat requests then send `max_completion_tokens` and `reasoning_effort`, not `max_tokens` | OpenAI Chat reference |
 | Maximum completion tokens | 128,000 (the bot's documented ceiling) | probe (error text) |
 | Oversized output cap | HTTP 400, `error.type: invalid_request_error`, `error.code: invalid_value`, message `max_tokens is too large: … This model supports at most 128000 completion tokens` | probe |
@@ -41,6 +42,8 @@ is not a contract.
    are not gated.
 4. Classify `invalid_value` and `invalid_request_error` as deterministic configuration
    faults: retrying them wastes an attempt and 2–4 seconds of the user's time.
+5. Image requests are local-only: they force the chat route, keep the native tools, and are
+   never sent to Perplexity. A chat-provider failure on an image request has no web fallback.
 
 ---
 
@@ -58,7 +61,7 @@ The bot uses the current Agent API, not Sonar Chat Completions. The OpenAI SDK's
 | Model sent | `perplexity/sonar` | probe + `GET /v1/models` |
 | Catalogue | `GET /v1/models` lists 54 models and exactly one Sonar model, `perplexity/sonar` | probe |
 | Legacy interface | Sonar Chat Completions still answers 200 with `citations` and `search_results`; it is not the current catalogue or the interface this bot uses | probe |
-| Request fields | `model`, `instructions` (system prompt plus the URL-fetch policy), `input` (history and current user message, no system role), `max_output_tokens`, `tools: [{"type": "web_search"}, {"type": "fetch_url"}]`, `extra_body: {"max_steps": 3}` (the SDK has no `max_steps` kwarg) | probe + code |
+| Request fields | `model`, `instructions` (system prompt plus the URL-fetch policy), `input` (history and current user message, no system role), `max_output_tokens`, `tools: [{"type": "web_search"}, {"type": "fetch_url"}]`, `extra_body: {"max_steps": 3}` (the SDK has no `max_steps` kwarg) | probe + `src/providers/perplexity.py` |
 | Sampling | no `temperature` is sent | probe + code |
 | Response shape | `output` array of items | probe |
 | `search_results` item | `results[]` with `id`, `url`, `title`, `snippet`, `date`, `last_updated`, `source`; `id` is the 1-based marker number used in the answer as `[1]`, `[2]` | probe |

@@ -14,21 +14,11 @@ import logging
 import time
 from typing import Any
 
-from .config import (
-    DEFAULT_OPENAI_MODEL,
-    DEFAULT_PERPLEXITY_MODEL,
-    OPENAI_VALID_MODELS,
-    PERPLEXITY_MODELS,
-    is_supported_openai_model,
-)
 from .connection_pool import versioned_perplexity_client
 from .error_handling import ErrorTracker, classify_error
+from .providers.registry import PROVIDERS
 
 # Health check thresholds
-OPENAI_RESPONSE_DEGRADED_THRESHOLD_MS = 5000
-OPENAI_RESPONSE_UNHEALTHY_THRESHOLD_MS = 10000
-PERPLEXITY_RESPONSE_DEGRADED_THRESHOLD_MS = 8000
-PERPLEXITY_RESPONSE_UNHEALTHY_THRESHOLD_MS = 15000
 DISCORD_LATENCY_DEGRADED_THRESHOLD_MS = 500
 DISCORD_LATENCY_UNHEALTHY_THRESHOLD_MS = 1000
 
@@ -75,41 +65,29 @@ class ProviderHealthSpec:
     degraded_threshold_ms: float = 0.0
     unhealthy_threshold_ms: float = 0.0
     deprecated_model_limit: int | None = None
+    versioned_client: bool = False
     kind: str = "api"
 
 
-PROVIDER_HEALTH_SPECS: dict[str, ProviderHealthSpec] = {
-    "openai": ProviderHealthSpec(
-        service="openai",
-        display_name="OpenAI",
-        client_key="openai",
-        model_key="GPT_MODEL",
-        default_model=DEFAULT_OPENAI_MODEL,
-        allowed_models=tuple(OPENAI_VALID_MODELS),
-        model_validator=is_supported_openai_model,
-        degraded_threshold_ms=OPENAI_RESPONSE_DEGRADED_THRESHOLD_MS,
-        unhealthy_threshold_ms=OPENAI_RESPONSE_UNHEALTHY_THRESHOLD_MS,
-        deprecated_model_limit=5,
-    ),
-    "perplexity": ProviderHealthSpec(
-        service="perplexity",
-        display_name="Perplexity",
-        client_key="perplexity",
-        model_key="PERPLEXITY_MODEL",
-        default_model=DEFAULT_PERPLEXITY_MODEL,
-        allowed_models=tuple(PERPLEXITY_MODELS),
-        degraded_threshold_ms=PERPLEXITY_RESPONSE_DEGRADED_THRESHOLD_MS,
-        unhealthy_threshold_ms=PERPLEXITY_RESPONSE_UNHEALTHY_THRESHOLD_MS,
-    ),
-    "discord": ProviderHealthSpec(
+def _provider_health_specs() -> dict[str, ProviderHealthSpec]:
+    """Build AI provider specs from the registry and append Discord."""
+    specs = {
+        name: ProviderHealthSpec(service=name, **spec.health_metadata)
+        for name, spec in PROVIDERS.items()
+        if spec.health
+    }
+    specs["discord"] = ProviderHealthSpec(
         service="discord",
         display_name="Discord",
         client_key="discord",
         degraded_threshold_ms=DISCORD_LATENCY_DEGRADED_THRESHOLD_MS,
         unhealthy_threshold_ms=DISCORD_LATENCY_UNHEALTHY_THRESHOLD_MS,
         kind="latency",
-    ),
-}
+    )
+    return specs
+
+
+PROVIDER_HEALTH_SPECS: dict[str, ProviderHealthSpec] = _provider_health_specs()
 
 
 class APIHealthMonitor:
@@ -193,9 +171,7 @@ class APIHealthMonitor:
                     details={"available_models": available_models},
                 )
 
-            model_client = (
-                versioned_perplexity_client(client) if spec.service == "perplexity" else client
-            )
+            model_client = versioned_perplexity_client(client) if spec.versioned_client else client
             response = await model_client.models.list()
 
             response_time_ms = (time.time() - start_time) * 1000

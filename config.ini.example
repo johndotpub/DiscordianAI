@@ -72,6 +72,14 @@ SYSTEM_MESSAGE=You are Bender, a sarcastic robot from Futurama. You're crude, se
 # OpenAI endpoints do not receive these tools.
 # WEB_TOOLS=true
 
+# === VISION ===
+# Read PNG, JPEG, GIF, and WebP attachments from messages. Images are sent only
+# to the OpenAI-compatible chat provider, never to Perplexity.
+VISION_ENABLED=true
+VISION_MAX_IMAGES=4
+VISION_MAX_BYTES=5242880
+VISION_TOKEN_ESTIMATE=1000
+
 [Limits]
 # Rate limiting to prevent spam
 RATE_LIMIT=10

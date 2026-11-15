@@ -35,6 +35,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   URL longer than 2,048 characters becomes an error tool result instead of a provider request;
   `max_results` stays clamped to 1–10. Tool debug logs record only the tool name and argument byte
   length, never the query or URL.
+- **Perplexity answers use the same response cache as chat answers.** An identical Perplexity
+  request in the same conversation and routing scope now returns the cached answer for the cache
+  TTL instead of calling the provider again. The key includes the model, system message, history,
+  conversation scope, routing salt, and degraded flag, so a cached answer is never replayed across
+  conversations or routes.
+- **Image attachments are understood by the chat provider.** A message may carry up to four
+  PNG, JPEG, GIF, or WebP images, with or without text. The current turn is sent to the
+  OpenAI-compatible chat provider as an `image_url` data part; history stays text-only, and
+  history records `[image: <filename>]` labels rather than image bytes. Perplexity never receives
+  image data and an image request is not rerouted to it. The bot always verifies the bytes
+  against the declared content type and skips a mismatch. `VISION_ENABLED=false` restores the
+  previous behaviour of ignoring attachments. Cache keys include a digest of each image, so the
+  same text with a different image cannot reuse an answer.
 
 ### Added ✨
 
@@ -44,9 +57,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`/v1/systemone`) one bounded yes/no question per message (~0.4 s, billed per token);
   `heuristic` remains the default. Network, timeout, HTTP, or malformed-response failures fall back
   to the deterministic gate, and a missing key selects it at startup.
+- **`VISION_ENABLED`, `VISION_MAX_IMAGES`, `VISION_MAX_BYTES`, and `VISION_TOKEN_ESTIMATE`**:
+  control image attachment handling, per-image size and count caps, and the flat prompt-token
+  estimate charged per image during budget trimming.
 
 ### Changed 🔁
 
+- **Provider calls share one narrow adapter protocol and registry.** The Chat Completions
+  payload, tool loop, and response parsing live in a chat adapter; the Agent API payload,
+  Responses call, and citation extraction live in a Perplexity adapter. A registry supplies
+  the provider names used by health checks, the health server, and the breaker table, so those
+  lists no longer drift independently. The public `process_openai_message()` and
+  `process_perplexity_message()` signatures are unchanged.
 - **Configuration examples and docs use the new defaults.** `config.ini.example`, `.env.example`,
   the README, setup, configuration, security, architecture, connection-pooling, validation, and
   provider-contract docs describe the OpenAI-compatible provider with Ollama Cloud as the default.
@@ -61,6 +83,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Default-provider regression coverage** pins the Ollama Cloud URL and model, permissive model
   validation, `REASONING_EFFORT` overriding, and the `max_tokens` request payload.
+- **Provider contract coverage** runs both adapters against stubbed SDK clients: request shape,
+  text and citation extraction, the tool-loop round trip and cap, error classification, breaker
+  opening, probe success and failure, and cache parity between the two providers.
+- **Vision coverage** checks magic-byte sniffing for PNG, JPEG, GIF, and WebP; pre- and
+  post-download size caps; the image-count cap; skipped and unreadable attachments; base64
+  round-tripping; multimodal message shape; image-aware token accounting and truncation; cache
+  keys scoped by image digest; image-only messages; disabled-vision short-circuiting; local route
+  forcing; Perplexity refusal; and history labels without base64.
+
+### Documentation 📝
+
+- **`docs/Vision.md`** documents how to send images, the provider used, limits, fallback
+  behavior, and the privacy note that images leave the bot for the configured chat provider.
+  The README documentation map and `docs/Configuration.md` link to it.
 
 ## [0.4.0] - 2026-10-28
 

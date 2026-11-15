@@ -27,9 +27,10 @@ from .config import (
     DEFAULT_HEALTH_PROVIDER_STALE_SECONDS,
 )
 from .error_handling import get_circuit_breaker_states
+from .providers.registry import client_deps_key, provider_names
 
 DEFAULT_PROVIDER_STALE_SECONDS = float(DEFAULT_HEALTH_PROVIDER_STALE_SECONDS)
-PROVIDER_NAMES = ("openai", "perplexity")
+PROVIDER_NAMES = provider_names()
 WALL_CLOCK_EPOCH_SECONDS = 1_000_000_000
 
 logger = logging.getLogger(__name__)
@@ -52,11 +53,11 @@ async def _readiness_handler(request: Any) -> JSONResponse:
     """Readiness probe - returns 200 only when the bot can serve requests."""
     app = request.app
     bot = app.state.deps.get("bot")
-    client = app.state.deps.get("client")
-    perplexity_client = app.state.deps.get("perplexity_client")
     health_data = await _collect_health_data(app)
 
-    has_api_client = client is not None or perplexity_client is not None
+    has_api_client = any(
+        app.state.deps.get(client_deps_key(name)) is not None for name in PROVIDER_NAMES
+    )
     ready = (
         bot is not None
         and bot.is_ready()
@@ -134,10 +135,7 @@ def _provider_health(
     config: dict[str, Any],
 ) -> dict[str, dict[str, Any]]:
     """Describe each provider using observed breaker behaviour."""
-    clients = {
-        "openai": deps.get("client"),
-        "perplexity": deps.get("perplexity_client"),
-    }
+    clients = {name: deps.get(client_deps_key(name)) for name in PROVIDER_NAMES}
     stale_after = _provider_stale_after(config)
     now = time.monotonic()
     providers: dict[str, dict[str, Any]] = {}

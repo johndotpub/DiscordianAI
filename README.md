@@ -162,6 +162,7 @@ RATE_LIMIT_PER=60
 | Perplexity usage & citations | [docs/Perplexity.md](docs/Perplexity.md)
 | Message splitting & embeds | [docs/MessageSplitting.md](docs/MessageSplitting.md), [docs/EmbedLimits.md](docs/EmbedLimits.md)
 | Web access tools | [docs/WebScraping.md](docs/WebScraping.md)
+| Image attachments (vision) | [docs/Vision.md](docs/Vision.md)
 | Connection pooling & HTTP/2 | [docs/ConnectionPooling.md](docs/ConnectionPooling.md)
 | Docker & daemonization | [docs/Docker.md](docs/Docker.md), [docs/Daemon.md](docs/Daemon.md)
 | Security & rate limiting | [docs/Security.md](docs/Security.md)

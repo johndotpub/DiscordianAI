@@ -12,7 +12,8 @@ chat provider (Ollama Cloud by default) or Perplexity, keeps a per-conversation 
 and renders the answer as Discord messages and embeds.
 `src/message_router.py` decides whether a message is addressed to the bot;
 `src/message_processor.py` normalises it; `src/smart_orchestrator.py` chooses the provider;
-`src/openai_processing.py` and `src/perplexity_processing.py` call the providers; and
+`src/openai_processing.py` and `src/perplexity_processing.py` keep the cache and lifecycle
+wrappers; `src/providers/` holds the protocol, the two provider adapters, and the registry; and
 `src/message_splitter.py`/`src/discord_embeds.py` deliver the result. The module map is
 `docs/Architecture.md`; the request/response contract with both providers is
 `docs/API-CONTRACT.md`. Read both before changing a provider payload or a delivery path.
@@ -23,9 +24,9 @@ These are not preferences. Each one exists because the previous version of this 
 broke it, and each break is a user-visible bug.
 
 - **One history writer.** Only `smart_orchestrator._record_conversation_turn()` may call
-  `ConversationManager.add_message()`. `openai_processing.py` and
-  `perplexity_processing.py` are I/O wrappers: they build a request, call the provider, and
-  return normalised content/embeds. *Why:* a chat-provider answer that is rerouted to Perplexity
+  `ConversationManager.add_message()`. The processing modules keep the cache/lifecycle
+  wrappers, and `src/providers/` adapters build a request, call the provider, and return
+  normalised content/embeds. *Why:* a chat-provider answer that is rerouted to Perplexity
   must produce one turn, not two, and a failed attempt must produce none. *Consequence:*
   writing history inside a client duplicates or loses turns and corrupts follow-up routing.
   *Check:* `rg -n 'add_message' src` matches only `conversation_manager.py` (the definition)

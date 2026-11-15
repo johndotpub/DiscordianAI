@@ -28,6 +28,7 @@ import httpx
 import openai
 
 from .config import ERROR_MESSAGES
+from .providers.registry import PROVIDERS
 
 try:
     import httpx2
@@ -197,7 +198,7 @@ class CircuitBreaker:
 
 
 PROVIDER_CIRCUIT_BREAKERS: dict[str, CircuitBreaker] = {
-    provider: CircuitBreaker(name=provider) for provider in ("openai", "perplexity")
+    provider: CircuitBreaker(name=provider) for provider, spec in PROVIDERS.items() if spec.breaker
 }
 
 

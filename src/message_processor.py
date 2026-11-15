@@ -11,6 +11,10 @@ from .config import (
     DEFAULT_INPUT_TOKENS,
     DEFAULT_PERPLEXITY_MODEL,
     DEFAULT_REASONING_EFFORT,
+    DEFAULT_VISION_ENABLED,
+    DEFAULT_VISION_MAX_BYTES,
+    DEFAULT_VISION_MAX_IMAGES,
+    DEFAULT_VISION_TOKEN_ESTIMATE,
     get_error_messages,
 )
 from .conversation_manager import (
@@ -18,6 +22,7 @@ from .conversation_manager import (
     conversation_key_for_message,
 )
 from .error_handling import classify_error, safe_discord_send
+from .image_attachments import ImagePayload, extract_images
 from .logging_adapter import get_logger_with_context
 from .message_splitter import clean_message_content, send_formatted_message
 from .models import AIClients, AIConfig, AIRequest, OpenAIConfig, PerplexityConfig
@@ -45,6 +50,51 @@ def _perplexity_output_tokens(deps: dict[str, Any] | Any, config: dict[str, Any]
     if output_tokens is None:
         output_tokens = deps["OUTPUT_TOKENS"]
     return output_tokens
+
+
+def _vision_settings(deps: dict[str, Any] | Any) -> tuple[bool, int, int, int]:
+    """Return the image policy from the config mapping with safe defaults."""
+    config = deps.get("config") or {}
+
+    def read(name: str, default: Any) -> Any:
+        value = config.get(name) if hasattr(config, "get") else None
+        if value is None:
+            value = deps.get(name)
+        return default if value is None else value
+
+    return (
+        bool(read("VISION_ENABLED", DEFAULT_VISION_ENABLED)),
+        int(read("VISION_MAX_IMAGES", DEFAULT_VISION_MAX_IMAGES)),
+        int(read("VISION_MAX_BYTES", DEFAULT_VISION_MAX_BYTES)),
+        int(read("VISION_TOKEN_ESTIMATE", DEFAULT_VISION_TOKEN_ESTIMATE)),
+    )
+
+
+async def _prepare_images(
+    message: discord.Message,
+    deps: dict[str, Any] | Any,
+    logger: Any,
+) -> tuple[tuple[ImagePayload, ...], int]:
+    """Extract usable images and return them with the per-image token estimate."""
+    enabled, max_images, max_bytes, token_estimate = _vision_settings(deps)
+    if not enabled:
+        return (), token_estimate
+
+    attachments = getattr(message, "attachments", None) or []
+    if not attachments:
+        return (), token_estimate
+
+    extracted, skipped = await extract_images(
+        attachments,
+        max_bytes=max_bytes,
+        max_count=max_images,
+    )
+    for reason in skipped:
+        logger.info("Skipping image attachment: %s", reason)
+    images = tuple(extracted)
+    if images:
+        logger.info("Attached %d image(s) to the request", len(images))
+    return images, token_estimate
 
 
 def _reply_policy(
@@ -189,9 +239,11 @@ async def _process_message_core(
             logger.warning("Rate limit exceeded")
             return
 
+        images, vision_token_estimate = await _prepare_images(message, deps, logger)
+
         # A mention-only or whitespace-only message has no body to answer. Reply
         # with the generic fallback without calling the provider or writing history.
-        if not clean_content:
+        if not clean_content and not images:
             await _send_empty_fallback(
                 message.channel,
                 logger,
@@ -214,6 +266,7 @@ async def _process_message_core(
             context_window=context_window,
             reasoning_effort=deps.get("REASONING_EFFORT", DEFAULT_REASONING_EFFORT),
             web_tools=deps.get("WEB_TOOLS", True),
+            vision_token_estimate=vision_token_estimate,
         )
         perplexity_model = (
             deps.get("PERPLEXITY_MODEL")
@@ -253,6 +306,7 @@ async def _process_message_core(
             logger=logger,
             conversation_key=conversation_key,
             channel_kind=_channel_kind(message, is_dm),
+            images=images,
         )
 
         clients = AIClients(openai=deps.get("client"), perplexity=deps.get("perplexity_client"))

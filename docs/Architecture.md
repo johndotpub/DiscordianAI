@@ -56,8 +56,10 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 |-----------|------|---------|
 | **Router** | `routing/` | Decides whether a message needs live web data. Evidence model: *bearing* cues (a mutable referent) may decide, *framing* cues (the shape of the request) are scaled and can never decide alone. Owns the lexicon, the thresholds and the cache policy. |
 | **Smart Orchestrator** | `smart_orchestrator.py` | Executes the router's decision against the providers, applies fallbacks, and records conversation turns |
-| **OpenAI-Compatible Processing** | `openai_processing.py` | Chat Completions interactions (Ollama Cloud by default), response formatting |
-| **Perplexity Processing** | `perplexity_processing.py` | Web search, page fetch, citation extraction |
+| **OpenAI-Compatible Processing** | `openai_processing.py` | Cache/dedup wrapper around the chat adapter |
+| **Perplexity Processing** | `perplexity_processing.py` | Cache wrapper, Discord citation formatting, and embed construction |
+| **Provider Adapters** | `providers/` | Narrow protocol plus chat-completions and Agent Responses adapters, and the provider registry |
+| **Image Attachments** | `image_attachments.py` | Validates and decodes Discord image attachments for the chat provider |
 | **Web Tools** | `web_tools.py` | Native search and page-fetch tools for the Ollama chat path |
 
 ### Infrastructure
@@ -174,7 +176,7 @@ The dataclass supports dict-style access (`deps["logger"]`, `deps.get("key")`, `
 
 The breaker lives in `error_handling.py`. `get_circuit_breaker()` returns one
 shared `CircuitBreaker` per provider (`openai`, `perplexity`), and the provider
-processing modules wrap the whole retry sequence for one logical API call in
+adapters wrap the whole retry sequence for one logical API call in
 `breaker.call(...)`:
 
 ```python
@@ -200,7 +202,32 @@ class CircuitBreaker:
 The health server publishes each breaker's state through
 `get_circuit_breaker_states()`.
 
-### 3. Decorator-Based Caching
+### 3. Provider Abstraction
+
+The `providers/` package is deliberately small: one protocol, two adapters, and
+one registry.
+
+- `providers/base.py` defines `CompletionRequest`, `ProviderResult`, `ProbeResult`, and
+  the `AIProvider` protocol. An adapter returns text or raises; tool calls are
+  resolved inside the adapter that offered them, and citations stay empty
+  unless the provider yields source metadata.
+- `providers/openai_chat.py` owns the Chat Completions payload, the
+  `max_tokens`/`max_completion_tokens` provider-family branch, the bounded
+  client-side web-tool loop, and response parsing.
+- `providers/perplexity.py` owns the Agent API request shape, the Responses call, and
+  citation extraction from search and fetched-page output.
+- `providers/registry.py` is the single source for provider names, client construction,
+  health-check metadata, and breaker membership. Health checks, the health
+  server, and the breaker table derive their entries from it.
+
+`process_openai_message()` and `process_perplexity_message()` remain the public
+entry points. They keep caching, retry lifecycle, and Discord formatting in the
+processing modules while delegating the provider request to an adapter. The
+shared contract suite in `tests/providers/` runs both adapters against stubbed
+SDK clients so request shape, parsing, tool-loop bounds, breaker behaviour,
+probes, and cache parity stay aligned.
+
+### 4. Decorator-Based Caching
 
 ```python
 @cached_response(ttl=300)
@@ -209,14 +236,18 @@ async def _fetch_openai_response(...):
     ...
 ```
 
-These decorators wrap `_fetch_openai_response()` in `src/openai_processing.py`; `_extract_message_context()` is the shared helper that supplies the cache and deduplication scope.
+These decorators wrap `_fetch_openai_response()` in `src/openai_processing.py`
+and `_fetch_perplexity_response()` in `src/perplexity_processing.py`.
+`_extract_message_context()` remains the shared helper for the implicit
+OpenAI-compatible scope; the Perplexity wrapper supplies a fully scoped
+`key_fn` because its arguments put the configuration in a different position.
 
 **Features:**
 - TTL-based expiration
 - Request deduplication (prevents duplicate API calls)
 - Thread-safe LRU cache
 
-### 4. Thread-Safe Conversation Management
+### 5. Thread-Safe Conversation Management
 
 ```python
 class ThreadSafeConversationManager:
@@ -231,7 +262,7 @@ class ThreadSafeConversationManager:
 - Automatic history pruning
 - Deep copy returns to prevent external modification
 
-### 5. Retry with Exponential Backoff and Jitter
+### 6. Retry with Exponential Backoff and Jitter
 
 ```python
 DEFAULT_API_RETRY_CONFIG = RetryConfig(
@@ -335,9 +366,8 @@ DiscordianAI/
 ## 🔮 Future Considerations
 
 ### Potential Improvements
-1. **Protocol Classes**: Define interfaces for AI clients (pre-empt multi-platform support)
-2. **Metrics Export**: Prometheus/OpenTelemetry integration
-3. **Message Queue**: For high-volume deployments
+1. **Metrics Export**: Prometheus/OpenTelemetry integration
+2. **Message Queue**: For high-volume deployments
 
 ### Scalability Path
 - Current: Single instance, in-memory state

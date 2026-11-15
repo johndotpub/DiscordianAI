@@ -258,9 +258,11 @@ class ConnectionPoolManager:
             http_client: Optional pre-configured HTTP client
 
         Returns:
-            AsyncOpenAI: Configured Perplexity client
+            AsyncOpenAI: Configured Perplexity client pointed at the versioned
+                Agent API base URL when the SDK exposes one.
         """
-        return self._create_api_client("perplexity", api_key, base_url, http_client)
+        client = self._create_api_client("perplexity", api_key, base_url, http_client)
+        return versioned_perplexity_client(client)
 
     def check_pool_health(self, client: httpx.AsyncClient | None) -> dict[str, Any]:
         """Check health of connection pool.

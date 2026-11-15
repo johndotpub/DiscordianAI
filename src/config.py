@@ -131,6 +131,13 @@ DEFAULT_OUTPUT_TOKENS = 8000
 DEFAULT_PERPLEXITY_OUTPUT_TOKENS = DEFAULT_OUTPUT_TOKENS
 DEFAULT_CONTEXT_WINDOW = 128000
 
+# Image attachment policy. Images travel only to the OpenAI-compatible chat
+# provider; Perplexity never receives them.
+DEFAULT_VISION_ENABLED = True
+DEFAULT_VISION_MAX_IMAGES = 4
+DEFAULT_VISION_MAX_BYTES = 5242880
+DEFAULT_VISION_TOKEN_ESTIMATE = 1000
+
 # ============================================================================
 # VALIDATION THRESHOLDS
 # ============================================================================
@@ -200,6 +207,9 @@ ERROR_MESSAGES = {
     "api_error": (
         "🔧 There was an issue connecting to the AI service. Please try again in a moment."
     ),
+    "vision_unavailable": (
+        "🖼️ Image understanding needs an OpenAI-compatible chat provider, which is not configured."
+    ),
     "message_too_long": ("📝 Your message is too long. Please break it into smaller parts."),
     "empty_message": "❓ Please send a message for me to respond to.",
 }
@@ -256,6 +266,10 @@ _CONFIG_DEFAULTS: dict[str, Any] = {
     "ROUTER_CLEF_TIMEOUT_MS": DEFAULT_ROUTER_CLEF_TIMEOUT_MS,
     "ENTITY_DETECTION_MIN_WORDS": 10,
     "WEB_TOOLS": True,
+    "VISION_ENABLED": DEFAULT_VISION_ENABLED,
+    "VISION_MAX_IMAGES": DEFAULT_VISION_MAX_IMAGES,
+    "VISION_MAX_BYTES": DEFAULT_VISION_MAX_BYTES,
+    "VISION_TOKEN_ESTIMATE": DEFAULT_VISION_TOKEN_ESTIMATE,
     "LOG_FILE": "bot.log",
     "LOG_LEVEL": "INFO",
     "DISCORDIANAI_LOG_COLOR": True,
@@ -458,6 +472,10 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "ROUTER_CLEF_TIMEOUT_MS",
         "ENTITY_DETECTION_MIN_WORDS",
         "WEB_TOOLS",
+        "VISION_ENABLED",
+        "VISION_MAX_IMAGES",
+        "VISION_MAX_BYTES",
+        "VISION_TOKEN_ESTIMATE",
         "LOG_FILE",
         "LOG_LEVEL",
         "DISCORDIANAI_LOG_COLOR",
@@ -494,10 +512,13 @@ def _apply_single_env_override(
         "USER_LOCK_CLEANUP_INTERVAL",
         "ENTITY_DETECTION_MIN_WORDS",
         "ROUTER_CLEF_TIMEOUT_MS",
+        "VISION_MAX_IMAGES",
+        "VISION_MAX_BYTES",
+        "VISION_TOKEN_ESTIMATE",
         "HEALTH_PORT",
         "HEALTH_PROVIDER_STALE_SECONDS",
     }
-    bool_keys = {"HEALTH_ENABLED", "DISCORDIANAI_LOG_COLOR", "WEB_TOOLS"}
+    bool_keys = {"HEALTH_ENABLED", "DISCORDIANAI_LOG_COLOR", "WEB_TOOLS", "VISION_ENABLED"}
     float_keys = {"ROUTER_CLEF_THRESHOLD"}
 
     if key in {"ALLOWED_CHANNELS", "ALLOWED_GUILDS"}:
@@ -815,6 +836,14 @@ def _parse_default_config(
         _CONFIG_DEFAULTS["WEB_TOOLS"],
         logger,
     )
+    config_data["VISION_ENABLED"] = _get_bool_safe(
+        config,
+        "VISION_ENABLED",
+        _CONFIG_DEFAULTS["VISION_ENABLED"],
+        logger,
+    )
+    for key in ("VISION_MAX_IMAGES", "VISION_MAX_BYTES", "VISION_TOKEN_ESTIMATE"):
+        config_data[key] = _get_int_safe(config, key, _CONFIG_DEFAULTS[key], logger)
 
 
 def _get_int_safe(
