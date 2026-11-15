@@ -40,9 +40,7 @@ def test_a_definition_question_is_not_rewritten_into_a_rate_lookup() -> None:
     decision = _decide("explain what a race condition is in two sentences")
 
     assert decision.route == "local"
-    assert not any(
-        item.signal == "topic.volatile" and item.detail == "rate" for item in decision.evidence
-    )
+    assert "bearing:topic.volatile" not in decision.reasons
 
 
 def test_a_plain_definition_question_stays_local() -> None:
@@ -77,9 +75,7 @@ def test_a_typo_in_a_volatile_topic_still_routes_to_web() -> None:
     decision = _decide("what's the wether in london")
 
     assert decision.route == "web"
-    assert any(
-        item.signal == "topic.volatile" and item.detail == "weather" for item in decision.evidence
-    )
+    assert "bearing:topic.volatile" in decision.reasons
 
 
 def test_a_transposed_version_typo_still_routes_to_web() -> None:
@@ -87,10 +83,7 @@ def test_a_transposed_version_typo_still_routes_to_web() -> None:
     decision = _decide("wat is the latest verison of postgres")
 
     assert decision.route == "web"
-    assert any(
-        item.signal == "topic.version_currency" and item.detail == "version"
-        for item in decision.evidence
-    )
+    assert "bearing:topic.version_currency" in decision.reasons
 
 
 def test_a_deletion_still_routes_to_web() -> None:
@@ -98,9 +91,7 @@ def test_a_deletion_still_routes_to_web() -> None:
     decision = _decide("is the api offlin")
 
     assert decision.route == "web"
-    assert any(
-        item.signal == "pred.status" and item.detail == "offline" for item in decision.evidence
-    )
+    assert "bearing:pred.status" in decision.reasons
 
 
 def test_short_function_words_are_never_fuzzy_matched() -> None:

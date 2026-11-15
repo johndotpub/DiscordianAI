@@ -15,7 +15,7 @@ def _decision(text: str) -> RouteDecision:
 
 
 def test_a_unique_message_token_leaves_no_trace_in_telemetry() -> None:
-    """The log fields contain signal ids, never the message or a matched term."""
+    """The log fields contain reason codes, never the message or a matched term."""
     fields = decision_log_fields(_decision(f"is github down {UNIQUE_MARKER}"))
 
     rendered = repr(fields)
@@ -27,17 +27,7 @@ def test_telemetry_has_the_required_content_free_fields() -> None:
     """Every documented field is present and reasons stay capped."""
     fields = decision_log_fields(_decision("is github down"))
 
-    assert set(fields) == {
-        "route",
-        "band",
-        "service",
-        "score",
-        "threshold",
-        "reasons",
-        "router_id",
-        "policy_version",
-        "latency_ms",
-    }
+    assert set(fields) == {"route", "service", "reasons", "latency_ms"}
     assert fields["service"] == "perplexity"
-    assert len(fields["reasons"]) <= 5
-    assert all(isinstance(reason, str) for reason in fields["reasons"])
+    assert fields["reasons"] == "bearing:pred.status"
+    assert isinstance(fields["latency_ms"], float)

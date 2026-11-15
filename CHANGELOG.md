@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   non-OpenAI-compatible key shape logs a warning so Ollama Cloud and local gateways work.
 - **Empty chat responses log the finish reason.** The client warns with `finish_reason` and returns
   no content, so the orchestrator's existing fallback handles it instead of delivering empty text.
+- **Routing is a deterministic gate; the scoring layer is gone.** A message routes to the web when an
+  explicit web instruction, URL, or bearing cue survives the existing gates, inherits the prior route
+  on a follow-up, and otherwise stays local. The channel-kind probability thresholds
+  (`ROUTER_WEB_THRESHOLD_CHANNEL`, `ROUTER_WEB_THRESHOLD_ANNOUNCE`, `ROUTER_WEB_THRESHOLD_DM`) are
+  removed; an existing `config.ini` that still sets them loads without error and ignores them.
 
 ### Added ✨
 

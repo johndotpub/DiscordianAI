@@ -140,7 +140,7 @@ def test_semantic_failure_classes_change_the_decision(
 
     assert decision.route == expected_route
     if signal:
-        assert any(item.signal == signal for item in decision.evidence)
+        assert f"bearing:{signal}" in decision.reasons
 
 
 def test_change_class_requires_a_change_of_state() -> None:
@@ -153,9 +153,9 @@ def test_change_class_requires_a_change_of_state() -> None:
     web = _decide("what changed in the newest ios update?")
 
     assert local.route == "local"
-    assert not any(item.signal == "pred.change" for item in local.evidence)
+    assert "bearing:pred.change" not in local.reasons
     assert web.route == "web"
-    assert any(item.signal == "pred.change" for item in web.evidence)
+    assert "bearing:pred.change" in web.reasons
 
 
 @pytest.mark.parametrize(
@@ -192,7 +192,7 @@ def test_supplied_artefact_negation_cancels_volatile_and_change(text: str) -> No
     assert not any(cue.signal == "topic.volatile" for cue in cues)
     assert not any(cue.signal == "pred.change" for cue in cues)
     assert decision.route == "local"
-    assert decision.band == "confident"
+    assert "local:supplied_artifact" in decision.reasons
 
 
 @pytest.mark.parametrize(("text", "expected_route", "signal"), NATURAL_LANGUAGE_INSTRUCTION_CASES)
@@ -212,9 +212,9 @@ def test_bang_token_is_ordinary_text_without_a_command_grammar() -> None:
     decision = _decide("!web what is 2 + 2")
 
     assert decision.route == "local"
-    assert decision.source == "structural"
+    assert decision.reasons == ("local:default",)
     assert decision.text == "!web what is 2 + 2"
-    assert not any(item.signal.startswith("override.route") for item in decision.evidence)
+    assert not any(reason.startswith("override:") for reason in decision.reasons)
 
 
 def test_question_prefix_routes_by_its_content() -> None:
@@ -222,6 +222,5 @@ def test_question_prefix_routes_by_its_content() -> None:
     decision = _decide("?status is github down")
 
     assert decision.route == "web"
-    assert decision.source == "lexicon"
+    assert decision.reasons == ("bearing:pred.status",)
     assert decision.text == "?status is github down"
-    assert any(item.signal == "pred.status" for item in decision.evidence)

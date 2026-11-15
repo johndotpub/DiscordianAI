@@ -32,7 +32,7 @@ _ROUTING_MODULES = frozenset(
         "src/routing/features.py",
         "src/routing/heuristic.py",
         "src/routing/lexicon.py",
-        "src/routing/scoring.py",
+        "src/routing/gate.py",
         "src/routing/telemetry.py",
     }
 )

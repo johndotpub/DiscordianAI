@@ -65,8 +65,8 @@ async def test_raising_history_lookup_logs_and_continues(caplog):
 
 
 @pytest.mark.asyncio
-async def test_web_failure_and_local_inability_call_each_provider_once(caplog):
-    caplog.set_level(logging.WARNING, logger="src.smart_orchestrator")
+async def test_web_failure_and_local_inability_do_not_retry_perplexity(caplog):
+    caplog.set_level(logging.INFO)
     manager = MagicMock(spec=ThreadSafeConversationManager)
     manager.get_recent_ai_service.return_value = None
     request = _request("http://example.com/status", manager)
@@ -86,9 +86,7 @@ async def test_web_failure_and_local_inability_call_each_provider_once(caplog):
     assert embed is None
     perplexity.assert_awaited_once()
     openai.assert_awaited_once()
-    assert any(
-        "already failed in this request" in record.getMessage() for record in caplog.records
-    )
+    assert any("decision holds" in record.getMessage() for record in caplog.records)
 
 
 @pytest.mark.asyncio

@@ -4,9 +4,7 @@ import pytest
 
 from src.routing.contracts import RouterInput
 from src.routing.heuristic import HeuristicRouter
-from src.routing.lexicon import Lexicon
 
-LEXICON = Lexicon.load()
 ROUTER = HeuristicRouter()
 
 
@@ -28,7 +26,9 @@ def test_state_bare_adjacency_routes_service_nouns_to_web(text: str) -> None:
     decision = _decide(text)
 
     assert decision.route == "web"
-    assert any(item.signal in {"pred.status", "pred.release"} for item in decision.evidence)
+    assert any(
+        reason in {"bearing:pred.status", "bearing:pred.release"} for reason in decision.reasons
+    )
 
 
 def test_state_bare_adjacency_does_not_fire_without_a_service_noun() -> None:
@@ -36,7 +36,7 @@ def test_state_bare_adjacency_does_not_fire_without_a_service_noun() -> None:
     decision = _decide("feeling down today")
 
     assert decision.route == "local"
-    assert not any(item.signal == "pred.status" for item in decision.evidence)
+    assert "bearing:pred.status" not in decision.reasons
 
 
 def test_possessive_service_noun_is_not_a_bare_service_noun() -> None:
@@ -59,7 +59,7 @@ def test_error_codes_near_a_service_noun_are_bearing(text: str) -> None:
     decision = _decide(text)
 
     assert decision.route == "web"
-    assert any(item.signal == "pred.error_code" for item in decision.evidence)
+    assert "bearing:pred.error_code" in decision.reasons
 
 
 @pytest.mark.parametrize(
@@ -75,7 +75,7 @@ def test_error_codes_without_a_nearby_service_noun_stay_local(text: str) -> None
     decision = _decide(text)
 
     assert decision.route == "local"
-    assert not any(item.signal == "pred.error_code" for item in decision.evidence)
+    assert "bearing:pred.error_code" not in decision.reasons
 
 
 @pytest.mark.parametrize(
@@ -92,7 +92,7 @@ def test_new_release_state_terms_are_bearing(text: str) -> None:
     decision = _decide(text)
 
     assert decision.route == "web"
-    assert any(item.signal == "pred.release" for item in decision.evidence)
+    assert "bearing:pred.release" in decision.reasons
 
 
 @pytest.mark.parametrize(
@@ -111,7 +111,7 @@ def test_new_volatile_terms_are_bearing(text: str) -> None:
     decision = _decide(text)
 
     assert decision.route == "web"
-    assert any(item.signal == "topic.volatile" for item in decision.evidence)
+    assert "bearing:topic.volatile" in decision.reasons
 
 
 @pytest.mark.parametrize(
@@ -130,7 +130,7 @@ def test_new_outcome_terms_are_bearing(text: str) -> None:
     decision = _decide(text)
 
     assert decision.route == "web"
-    assert any(item.signal == "pred.outcome" for item in decision.evidence)
+    assert "bearing:pred.outcome" in decision.reasons
 
 
 def test_down_to_a_verb_is_willingness_not_status() -> None:
@@ -138,7 +138,7 @@ def test_down_to_a_verb_is_willingness_not_status() -> None:
     decision = _decide("are you down to raid")
 
     assert decision.route == "local"
-    assert not any(item.signal == "pred.status" for item in decision.evidence)
+    assert "bearing:pred.status" not in decision.reasons
 
 
 def test_willingness_guard_yields_to_another_bearing_cue() -> None:
@@ -146,7 +146,7 @@ def test_willingness_guard_yields_to_another_bearing_cue() -> None:
     decision = _decide("the server is down to play and the price is up")
 
     assert decision.route == "web"
-    assert any(item.signal == "pred.status" for item in decision.evidence)
+    assert "bearing:pred.status" in decision.reasons
 
 
 @pytest.mark.parametrize(
@@ -161,7 +161,7 @@ def test_worth_it_is_opinion_and_stays_local(text: str) -> None:
     decision = _decide(text)
 
     assert decision.route == "local"
-    assert not any(item.signal == "topic.commerce" for item in decision.evidence)
+    assert "bearing:topic.commerce" not in decision.reasons
 
 
 def test_worth_followed_by_a_number_keeps_commerce_bearing() -> None:
@@ -169,9 +169,7 @@ def test_worth_followed_by_a_number_keeps_commerce_bearing() -> None:
     decision = _decide("worth 400")
 
     assert decision.route == "web"
-    assert any(
-        item.signal == "topic.commerce" and item.detail == "worth" for item in decision.evidence
-    )
+    assert "bearing:topic.commerce" in decision.reasons
 
 
 def test_worth_it_guard_yields_to_another_bearing_cue() -> None:
@@ -179,9 +177,7 @@ def test_worth_it_guard_yields_to_another_bearing_cue() -> None:
     decision = _decide("the price is high but is it worth it")
 
     assert decision.route == "web"
-    assert any(
-        item.signal == "topic.commerce" and item.detail == "worth" for item in decision.evidence
-    )
+    assert "bearing:topic.commerce" in decision.reasons
 
 
 def test_fuzzy_neighbours_of_new_terms_stay_local() -> None:

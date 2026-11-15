@@ -143,15 +143,15 @@ def test_group_11_a_new_topic_cancels_web_inheritance(text: str) -> None:
     decision = _decide(text, _context("web"))
 
     assert decision.route == "local"
-    assert decision.band == "confident"
+    assert decision.reasons == ("local:default",)
 
 
-def test_group_12_ordinal_follow_up_without_history_is_confident_local() -> None:
+def test_group_12_ordinal_follow_up_without_history_is_local() -> None:
     """An ordinal reference cannot inherit when there is no prior route."""
     decision = _decide("and the second one")
 
     assert decision.route == "local"
-    assert decision.band == "confident"
+    assert decision.reasons == ("local:default",)
 
 
 def test_group_13_inheritance_decays_after_two_turns() -> None:
@@ -169,7 +169,7 @@ def test_group_13_inheritance_decays_after_two_turns() -> None:
     decision = _decide("and the second one", context)
 
     assert decision.route == "local"
-    assert decision.band == "confident"
+    assert decision.reasons == ("local:default",)
 
 
 def test_group_9_explicit_search_instructions_win() -> None:
@@ -179,10 +179,10 @@ def test_group_9_explicit_search_instructions_win() -> None:
 
 
 @pytest.mark.parametrize("text", ["", "   ", "🙂", "<@123>"])
-def test_group_10_empty_and_non_word_input_is_confident_and_uncached(text: str) -> None:
-    """No content is a confident local decision that must not be cached."""
+def test_group_10_empty_and_non_word_input_is_local(text: str) -> None:
+    """No content is a local decision with no evidence behind it."""
     decision = _decide(text)
 
     assert decision.route == "local"
-    assert decision.band == "confident"
-    assert not decision.cache.cacheable
+    assert decision.reasons == ("local:default",)
+    assert decision.text == text

@@ -47,9 +47,6 @@ ENV_KEYS = [
     "USER_LOCK_CLEANUP_INTERVAL",
     "ENTITY_DETECTION_MIN_WORDS",
     "ROUTER_MODE",
-    "ROUTER_WEB_THRESHOLD_CHANNEL",
-    "ROUTER_WEB_THRESHOLD_ANNOUNCE",
-    "ROUTER_WEB_THRESHOLD_DM",
     "MAX_URLS_PER_MESSAGE",
     "MAX_TOTAL_SCRAPED_CHARS",
     "SCRAPE_DEADLINE_SECONDS",
@@ -146,26 +143,13 @@ def test_health_environment_overrides_are_coerced(monkeypatch):
     assert config["HEALTH_PORT"] == 9123
 
 
-@pytest.mark.parametrize(
-    ("key", "value", "expected"),
-    [
-        ("ROUTER_MODE", "model", "model"),
-        ("ROUTER_WEB_THRESHOLD_CHANNEL", "0.10", 0.10),
-        ("ROUTER_WEB_THRESHOLD_ANNOUNCE", "0.07", 0.07),
-        ("ROUTER_WEB_THRESHOLD_DM", "0.20", 0.20),
-    ],
-)
-def test_router_environment_overrides_use_the_documented_parser(
-    monkeypatch, caplog, key, value, expected
-):
+def test_router_mode_environment_override_is_honoured(monkeypatch, caplog):
     caplog.set_level(logging.WARNING, logger="src.config")
-    monkeypatch.setenv(key, value)
+    monkeypatch.setenv("ROUTER_MODE", "model")
 
     config = load_config()
 
-    assert config[key] == expected
-    if key != "ROUTER_MODE":
-        assert isinstance(config[key], float)
+    assert config["ROUTER_MODE"] == "model"
     assert not any("Invalid integer for" in record.getMessage() for record in caplog.records)
 
 

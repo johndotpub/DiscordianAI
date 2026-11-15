@@ -121,9 +121,6 @@ DEFAULT_USER_LOCK_CLEANUP_INTERVAL = 3600  # 1 hour
 
 # Routing
 DEFAULT_ROUTER_MODE = "heuristic"
-DEFAULT_ROUTER_WEB_THRESHOLD_CHANNEL = 0.10
-DEFAULT_ROUTER_WEB_THRESHOLD_ANNOUNCE = 0.07
-DEFAULT_ROUTER_WEB_THRESHOLD_DM = 0.20
 
 # Token and Context Limits
 DEFAULT_INPUT_TOKENS = 120000
@@ -249,9 +246,6 @@ _CONFIG_DEFAULTS: dict[str, Any] = {
     "CONVERSATION_TTL_SECONDS": DEFAULT_CONVERSATION_TTL_SECONDS,
     "USER_LOCK_CLEANUP_INTERVAL": DEFAULT_USER_LOCK_CLEANUP_INTERVAL,
     "ROUTER_MODE": DEFAULT_ROUTER_MODE,
-    "ROUTER_WEB_THRESHOLD_CHANNEL": DEFAULT_ROUTER_WEB_THRESHOLD_CHANNEL,
-    "ROUTER_WEB_THRESHOLD_ANNOUNCE": DEFAULT_ROUTER_WEB_THRESHOLD_ANNOUNCE,
-    "ROUTER_WEB_THRESHOLD_DM": DEFAULT_ROUTER_WEB_THRESHOLD_DM,
     "ENTITY_DETECTION_MIN_WORDS": 10,
     "MAX_URLS_PER_MESSAGE": DEFAULT_MAX_URLS_PER_MESSAGE,
     "MAX_TOTAL_SCRAPED_CHARS": DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
@@ -454,9 +448,6 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "CONVERSATION_TTL_SECONDS",
         "USER_LOCK_CLEANUP_INTERVAL",
         "ROUTER_MODE",
-        "ROUTER_WEB_THRESHOLD_CHANNEL",
-        "ROUTER_WEB_THRESHOLD_ANNOUNCE",
-        "ROUTER_WEB_THRESHOLD_DM",
         "ENTITY_DETECTION_MIN_WORDS",
         "MAX_URLS_PER_MESSAGE",
         "MAX_TOTAL_SCRAPED_CHARS",
@@ -499,12 +490,7 @@ def _apply_single_env_override(
         "MAX_TOTAL_SCRAPED_CHARS",
         "HEALTH_PORT",
     }
-    float_keys = {
-        "SCRAPE_DEADLINE_SECONDS",
-        "ROUTER_WEB_THRESHOLD_CHANNEL",
-        "ROUTER_WEB_THRESHOLD_ANNOUNCE",
-        "ROUTER_WEB_THRESHOLD_DM",
-    }
+    float_keys = {"SCRAPE_DEADLINE_SECONDS"}
     bool_keys = {"HEALTH_ENABLED", "DISCORDIANAI_LOG_COLOR"}
 
     if key in {"ALLOWED_CHANNELS", "ALLOWED_GUILDS"}:
@@ -655,18 +641,6 @@ def _parse_orchestrator_config(
         "ROUTER_MODE",
         fallback=_CONFIG_DEFAULTS["ROUTER_MODE"],
     )
-    for key in (
-        "ROUTER_WEB_THRESHOLD_CHANNEL",
-        "ROUTER_WEB_THRESHOLD_ANNOUNCE",
-        "ROUTER_WEB_THRESHOLD_DM",
-    ):
-        config_data[key] = _get_float_safe(
-            config,
-            key,
-            _CONFIG_DEFAULTS[key],
-            logger,
-            section="Orchestrator",
-        )
 
 
 def _parse_logging_config(

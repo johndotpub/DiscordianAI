@@ -141,11 +141,6 @@ flowchart TD
 # heuristic (default) or model; the Clef model router is not implemented yet
 ROUTER_MODE=heuristic
 
-# Web-route probability thresholds by channel kind
-ROUTER_WEB_THRESHOLD_CHANNEL=0.10
-ROUTER_WEB_THRESHOLD_ANNOUNCE=0.07
-ROUTER_WEB_THRESHOLD_DM=0.20
-
 # How many recent messages a follow-up may inspect
 LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 ```
@@ -153,22 +148,12 @@ LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 | Setting | Default | Description |
 |---|---|---|
 | `ROUTER_MODE` | `heuristic` | Selects the router implementation. `model` raises until the Clef seam is built. |
-| `ROUTER_WEB_THRESHOLD_CHANNEL` | 0.10 | Web-route probability threshold in ordinary channels. |
-| `ROUTER_WEB_THRESHOLD_ANNOUNCE` | 0.07 | Web-route probability threshold in announcement channels. |
-| `ROUTER_WEB_THRESHOLD_DM` | 0.20 | Web-route probability threshold in direct messages. |
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | 6 | How many recent messages a follow-up may inspect; `0` disables the lookup. |
 | `MAX_HISTORY_PER_USER` | 50 | Maximum conversation entries stored per user. |
 | `USER_LOCK_CLEANUP_INTERVAL` | 3600 | How often to clean up inactive user locks, in seconds. |
 
 `ENTITY_DETECTION_MIN_WORDS=10` is parsed into config but is not consulted by the current router; changing
 it has no runtime effect.
-
-### Threshold selection
-
-The router always uses the threshold for the current channel kind: DM (`ROUTER_WEB_THRESHOLD_DM`),
-announcement channel (`ROUTER_WEB_THRESHOLD_ANNOUNCE`), or ordinary channel
-(`ROUTER_WEB_THRESHOLD_CHANNEL`). Lowering a threshold makes borderline bearing messages more likely to
-search; raising it makes them more likely to stay local.
 
 ## Caching and Degradation
 

@@ -250,9 +250,6 @@ async def _process_message_core(
                 "USER_LOCK_CLEANUP_INTERVAL",
                 "ENTITY_DETECTION_MIN_WORDS",
                 "ROUTER_MODE",
-                "ROUTER_WEB_THRESHOLD_CHANNEL",
-                "ROUTER_WEB_THRESHOLD_ANNOUNCE",
-                "ROUTER_WEB_THRESHOLD_DM",
             )
             if key in config
         }

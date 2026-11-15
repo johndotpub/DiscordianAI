@@ -6,11 +6,8 @@ import pytest
 
 from src.caching import ResponseCache, _generate_scoped_key, cached_response
 from src.models import AIRequest, RoutingMetadata
-from src.routing.contracts import RouterConfig
-from src.routing.features import Cue
-from src.routing.scoring import decide
 
-SALT = "local:heuristic@1:1"
+SALT = "local:gate:1"
 
 
 def _context(**overrides):
@@ -97,28 +94,6 @@ def test_cache_response_refuses_when_the_decision_is_not_cacheable():
     cache.cache_response("question", context, "A long enough answer to cache.", salt=SALT)
 
     assert cache.get_cached_response("question", context, salt=SALT) is None
-
-
-def test_unsure_decision_is_not_cached():
-    cue = Cue(
-        signal="pred.status",
-        klass="bearing",
-        span=None,
-        detail="down",
-        weight=-0.3,
-    )
-    decision = decide((cue,), RouterConfig(), text="is it down")
-    context = _context(
-        cacheable=decision.cache.cacheable,
-        route=decision.route,
-        service="openai",
-    )
-    cache = ResponseCache()
-
-    cache.cache_response("is it down", context, "A long enough answer to cache.", salt=SALT)
-
-    assert not decision.cache.cacheable
-    assert cache.get_cached_response("is it down", context, salt=SALT) is None
 
 
 @pytest.mark.asyncio

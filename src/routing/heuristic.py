@@ -2,32 +2,32 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from datetime import date, datetime
 from functools import lru_cache
 import re
 from time import perf_counter
 from typing import TYPE_CHECKING
 
-from .contracts import (
-    ConversationContext,
-    EvidenceClass,
-    RouteDecision,
-    RouterConfig,
-    RouterInput,
-)
 from .features import (
     Cue,
     TextViews,
     extract_cues,
     extract_overrides,
+    mask_code,
     views,
 )
+from .gate import decide
 from .lexicon import Lexicon
-from .scoring import decide
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from .contracts import (
+        ConversationContext,
+        EvidenceClass,
+        RouteDecision,
+        RouterInput,
+    )
 
 _FOLLOW_UP_MAX_TOKENS = 6
 _INHERIT_WEIGHT = 2.0
@@ -104,22 +104,13 @@ def _bundled_lexicon() -> Lexicon:
 
 
 class HeuristicRouter:
-    """Score cues with a fixed pipeline and no I/O, model, or clock reads."""
+    """Apply the deterministic gate with no I/O, model, or clock reads."""
 
-    router_id = "heuristic@1"
+    router_id = "gate"
     policy_version = "1"
 
-    def __init__(
-        self,
-        *,
-        config: RouterConfig | None = None,
-        lexicon: Lexicon | None = None,
-    ) -> None:
-        """Create a heuristic router with optional thresholds and lexicon."""
-        self.config = config or RouterConfig(
-            router_id=self.router_id,
-            policy_version=self.policy_version,
-        )
+    def __init__(self, *, lexicon: Lexicon | None = None) -> None:
+        """Create a heuristic router with an optional lexicon."""
         self._lexicon = lexicon or _bundled_lexicon()
 
     async def decide(self, request: RouterInput) -> RouteDecision:
@@ -130,28 +121,16 @@ class HeuristicRouter:
         """Return the routing decision synchronously for tests and the corpus runner."""
         started = perf_counter()
         text_views = views(request.text)
+        masked_views = views(mask_code(request.text))
         cues: list[Cue] = [
-            *extract_overrides(text_views, self._lexicon),
+            *extract_overrides(masked_views, self._lexicon),
             *extract_cues(text_views, self._lexicon, clock=_clock(request.now)),
         ]
         inherited = _inheritance_cue(request, text_views, cues)
         if inherited is not None:
             cues.append(inherited)
         latency_ms = (perf_counter() - started) * 1000.0
-        return decide(
-            cues,
-            self._effective_config(request.config),
-            text=request.text,
-            latency_ms=latency_ms,
-        )
-
-    def _effective_config(self, request_config: RouterConfig) -> RouterConfig:
-        config = self.config if request_config == RouterConfig() else request_config
-        return replace(
-            config,
-            router_id=self.router_id,
-            policy_version=self.policy_version,
-        )
+        return decide(cues, text=request.text, latency_ms=latency_ms)
 
 
 def _clock(now: datetime | date) -> Callable[[], date]:

@@ -1,53 +1,43 @@
-"""Routing contracts, heuristic scoring, and the package factory."""
+"""Routing contracts, the deterministic gate, and the package factory."""
 
 from collections.abc import Mapping
 import os
 from typing import Any
 
 from .contracts import (
-    Band,
-    CachePolicy,
     ConversationContext,
-    Evidence,
     EvidenceClass,
     Route,
     RouteDecision,
     Router,
-    RouterConfig,
     RouterInput,
     Source,
     Turn,
 )
+from .gate import decide
 from .heuristic import HeuristicRouter
-from .scoring import Score, decide, score
 from .telemetry import decision_log_fields
 
 __all__ = [
-    "Band",
-    "CachePolicy",
     "ConversationContext",
-    "Evidence",
     "EvidenceClass",
     "HeuristicRouter",
     "Route",
     "RouteDecision",
     "Router",
-    "RouterConfig",
     "RouterInput",
-    "Score",
     "Source",
     "Turn",
     "build_router",
     "decide",
     "decision_log_fields",
-    "score",
 ]
 
 
 def build_router(config: Any = None) -> Router:
     """Return the configured router implementation.
 
-    Only the heuristic router exists today. Selecting the optional model
+    Only the heuristic gate exists today. Selecting the optional model
     implementation raises rather than silently falling back, because the Clef
     seam is specified but not built: see ``docs/routing/DESIGN.md``.
     """
@@ -61,12 +51,7 @@ def build_router(config: Any = None) -> Router:
     if mode != "heuristic":
         msg = f"Unknown ROUTER_MODE {mode!r}; expected 'heuristic' or 'model'"
         raise ValueError(msg)
-    return HeuristicRouter(
-        config=RouterConfig(
-            router_id=HeuristicRouter.router_id,
-            policy_version=HeuristicRouter.policy_version,
-        )
-    )
+    return HeuristicRouter()
 
 
 def _config_value(config: Any, key: str, default: Any) -> Any:
