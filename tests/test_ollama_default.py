@@ -134,6 +134,7 @@ def test_api_params_use_max_tokens_and_reasoning_effort():
         "Hello",
         1000,
         reasoning_effort="high",
+        base_url="https://ollama.com/v1/",
     )
 
     assert params["max_tokens"] == 1000

@@ -57,8 +57,6 @@ class Router(Protocol):
 
     async def decide(self, request: RouterInput) -> RouteDecision:
         """Return the routing decision for ``request``."""
-        ...
 
     def decide_sync(self, request: RouterInput) -> RouteDecision:
         """Return the routing decision synchronously for tests and offline runs."""
-        ...

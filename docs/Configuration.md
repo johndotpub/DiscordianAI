@@ -26,7 +26,7 @@ Configure the OpenAI-compatible chat provider (Ollama Cloud by default) and the 
 - **`OPENAI_API_KEY`**: Key for the configured OpenAI-compatible provider *(leave empty to disable)*. OpenAI keys start with `sk-`; other compatible providers use their own formats, which are accepted with a warning.
 - **`OPENAI_API_URL`**: Chat provider base URL. Accepted: `https://api.openai.com/v1/`, `https://ollama.com/v1/`, and `http(s)://localhost:11434/v1/` or `http(s)://127.0.0.1:11434/v1/` *(default: "https://ollama.com/v1/")*
 - **`GPT_MODEL`**: Model identifier sent as configured. Any non-empty identifier is accepted; the provider decides which names are valid *(default: "deepseek-v4.1-flash:1017")*
-- **`REASONING_EFFORT`**: Reasoning effort sent with chat requests. Valid values are model-defined; `low`, `high`, and `max` are supported by the shipped model, and `none` disables thinking. Reasoning tokens are billed as output *(default: "high")*
+- **`REASONING_EFFORT`**: Reasoning effort sent with chat requests only when non-empty. It is a reasoning-model parameter; valid values are model-defined, `low`, `high`, and `max` are supported by the shipped model, and `none` disables thinking. Reasoning tokens are billed as output *(default: "high")*
 
 OpenAI remains supported by setting all three of `OPENAI_API_URL`, `GPT_MODEL`, and `OPENAI_API_KEY` to OpenAI values.
 
@@ -37,13 +37,14 @@ OpenAI remains supported by setting all three of `OPENAI_API_URL`, `GPT_MODEL`, 
 
 #### Token Limits
 - **`INPUT_TOKENS`**: Maximum input context tokens *(default: 120000)*
-- **`OUTPUT_TOKENS`**: Maximum chat output tokens per response, sent as `max_tokens` *(default: 8000)*
+- **`OUTPUT_TOKENS`**: Maximum chat output tokens per response, sent as `max_tokens` to Ollama-compatible providers and `max_completion_tokens` to `api.openai.com` *(default: 8000)*
 - **`PERPLEXITY_OUTPUT_TOKENS`**: Maximum Perplexity output tokens per response, sent as `max_output_tokens` to the Agent API *(default: the value of `OUTPUT_TOKENS`)*
 - **`CONTEXT_WINDOW`**: Total context window size *(default: 128000)*. It stays 128000 because it is shared with the OpenAI-compatible path, and Sonar's window is the smaller of the two.
 - **`SYSTEM_MESSAGE`**: System prompt for AI personality *(default: "You are a helpful assistant.")*
 
 `OUTPUT_TOKENS` and `PERPLEXITY_OUTPUT_TOKENS` mean different things. The chat
-provider's `max_tokens` covers reasoning tokens as well as visible output, so a small
+provider's output cap (`max_tokens` or `max_completion_tokens`) covers reasoning tokens
+as well as visible output, so a small
 chat-provider value can be consumed entirely by reasoning and produce an empty reply with
 `finish_reason: length`. Perplexity's `max_output_tokens` covers output only. Both settings
 share the documented maximum of 128,000; values above it stop startup, and a chat-provider

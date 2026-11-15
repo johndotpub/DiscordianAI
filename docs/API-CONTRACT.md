@@ -19,11 +19,11 @@ is not a contract.
 | Endpoint used | `POST /v1/chat/completions` | `src/openai_processing.py` |
 | Base URL sent | whatever `OPENAI_API_URL` says; the shipped default is `https://ollama.com/v1/` | `config.ini.example` |
 | Model sent | whatever `GPT_MODEL` says; the shipped default is `deepseek-v4.1-flash:1017` | `config.ini.example` |
-| Output cap parameter | `max_tokens` | `src/openai_processing.py` |
+| Output cap parameter | `max_tokens` on Ollama-compatible hosts (`ollama.com`, `localhost`, `127.0.0.1`); `max_completion_tokens` on `api.openai.com` | `src/openai_processing.py` |
 | What the output cap covers | **visible output plus reasoning tokens.** A cap consumed by reasoning returns HTTP 200 with `finish_reason: length` and `content: ""` | probe |
-| `reasoning_effort` | sent from `REASONING_EFFORT` (default `high`). Valid values are model-defined; `low`, `high`, and `max` are accepted by the shipped model, and `none` disables thinking | provider reference |
+| `reasoning_effort` | sent from `REASONING_EFFORT` only when non-empty (default `high`). It is a reasoning-model parameter; whether a model accepts it is provider-defined. `low`, `high`, and `max` are accepted by the shipped model, and `none` disables thinking | provider reference |
 | Cloud-model features | structured outputs, log probabilities, and `tool_choice` are not supported by cloud models and the bot does not send them | provider reference |
-| OpenAI alternative | change `OPENAI_API_URL` to `https://api.openai.com/v1/`, set an `sk-` key, and choose a model; the same `max_tokens` and `reasoning_effort` parameters are sent | OpenAI Chat reference |
+| OpenAI alternative | change `OPENAI_API_URL` to `https://api.openai.com/v1/`, set an `sk-` key, and choose a model; chat requests then send `max_completion_tokens` and `reasoning_effort`, not `max_tokens` | OpenAI Chat reference |
 | Maximum completion tokens | 128,000 (the bot's documented ceiling) | probe (error text) |
 | Oversized output cap | HTTP 400, `error.type: invalid_request_error`, `error.code: invalid_value`, message `max_tokens is too large: … This model supports at most 128000 completion tokens` | probe |
 | Prompt-too-long | code `context_length_exceeded` is the documented family, **not verified here** — probing it means paying to send a 128k-token prompt. Treat as `UNVERIFIED` until someone does | unverified |

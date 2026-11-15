@@ -24,7 +24,7 @@ DiscordianAI is a Discord bot that routes each message to an OpenAI-compatible c
 
 ## What Makes It Different
 
-- **Evidence-based hybrid routing**: a local heuristic scores bearing evidence (things whose value can change) against framing (the shape of the request). The OpenAI-compatible provider (Ollama Cloud by default) handles stable knowledge, reasoning, and creative prompts; Perplexity's Agent API handles live facts and returns citations.
+- **Deterministic hybrid routing**: a gate decides each message from explicit overrides and bearing cues (things whose value can change); there are no scores, weights, or thresholds. The OpenAI-compatible provider (Ollama Cloud by default) handles stable knowledge, reasoning, and creative prompts; Perplexity's Agent API handles live facts and returns citations. See [docs/routing/DESIGN.md](docs/routing/DESIGN.md).
 - **Conversation history**: History is keyed by guild channel (`g:<guild>:c:<channel>`) or DM (`dm:<user>`) and is sent to both providers. A thread keeps its own history, separate from its parent. A follow-up is routed to the provider that answered the previous turn when one is recorded.
 - **Discord-native output**: Citation embeds, message splitting at Discord's 2000-character limit, and Perplexity link-preview suppression when a response contains two or more links. The OpenAI-compatible path does not suppress previews.
 - **Operations**: Per-provider HTTP/2 connection pooling with HTTP/1.1 fallback, per-provider circuit breakers, and health checks after login plus HTTP endpoints that report observed provider and breaker state.
@@ -138,7 +138,7 @@ RATE_LIMIT_PER=60
 ### AI Orchestration
 - [src/smart_orchestrator.py](src/smart_orchestrator.py) asks `src/routing/` for one evidence-based decision per message, owns provider selection and fallback, and writes the successful turn to history.
 - [src/message_processor.py](src/message_processor.py) builds the per-conversation history snapshot and request, calls the orchestrator, and sends the reply.
-- [src/openai_processing.py](src/openai_processing.py) sends the model, messages, `max_tokens`, and `reasoning_effort` to the configured OpenAI-compatible provider. [src/perplexity_processing.py](src/perplexity_processing.py) sends the model, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool to the Agent API; neither sends sampling parameters. Perplexity processing also handles scrape budgets and citation extraction.
+- [src/openai_processing.py](src/openai_processing.py) sends the model, messages, an output cap (`max_tokens` to Ollama-compatible providers, `max_completion_tokens` to `api.openai.com`), and `reasoning_effort` when non-empty to the configured OpenAI-compatible provider. [src/perplexity_processing.py](src/perplexity_processing.py) sends the model, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool to the Agent API; neither sends sampling parameters. Perplexity processing also handles scrape budgets and citation extraction.
 
 ### Discord User Experience
 - [src/discord_embeds.py](src/discord_embeds.py) formats Perplexity citations into embed descriptions and truncates descriptions above the 4096-character hard limit to the 3840-character safe limit.

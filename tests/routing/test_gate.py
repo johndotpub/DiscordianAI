@@ -51,7 +51,7 @@ TABLE = [
     (
         "supplied artifact beats bearing",
         "summarize: the api is down",
-        ("local:supplied_artifact",),
+        ("local:supplied_artifact", "bearing:pred.status"),
         "local",
     ),
     (

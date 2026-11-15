@@ -56,10 +56,12 @@ GPT_MODEL=gpt-6-luna
 ```
 
 ### Provider Notes
-The bot uses only standard Chat Completions parameters: `model`, `messages`, `max_tokens`,
-and `reasoning_effort`. It does not send sampling parameters such as `temperature`. Cloud
-models generally do not support structured outputs, log probabilities, or `tool_choice`; the
-bot does not request them.
+The bot uses only standard Chat Completions parameters: `model`, `messages`, an output cap,
+and optionally `reasoning_effort`. The cap is `max_tokens` on Ollama-compatible hosts
+(`ollama.com`, `localhost`, `127.0.0.1`) and `max_completion_tokens` on `api.openai.com`. It
+does not send sampling parameters such as `temperature`. Cloud models generally do not
+support structured outputs, log probabilities, or `tool_choice`; the bot does not request
+them.
 
 ## Operation Modes
 
@@ -127,8 +129,10 @@ INPUT_TOKENS=60000    # Adjust based on conversation length
 - **Local Ollama**: choose an installed model and match `CONTEXT_WINDOW` to its limits.
 
 ### Parameter support
-- `max_tokens` caps visible output plus reasoning tokens.
-- `reasoning_effort` is sent from `REASONING_EFFORT`; valid values are model-defined.
+- `max_tokens` caps visible output plus reasoning tokens on Ollama-compatible hosts;
+  `max_completion_tokens` does the same on `api.openai.com`.
+- `reasoning_effort` is sent from `REASONING_EFFORT` only when non-empty; valid values are
+  model-defined.
 - `verbosity`, sampling overrides, and tool parameters are not sent.
 
 ## Monitoring & Debugging

@@ -1,5 +1,6 @@
 """Routing and authorisation regression tests for threads, names, bots, and follow-ups."""
 
+from datetime import UTC, datetime
 import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -11,9 +12,11 @@ from src.conversation_manager import ThreadSafeConversationManager
 from src.models import AIClients, AIConfig, AIRequest
 from src.routing import HeuristicRouter
 from src.routing.context import build_router_input
+from src.routing.contracts import ConversationContext, RouterInput
 from src.smart_orchestrator import (
     _detect_openai_web_inability,
     _process_hybrid_mode,
+    _routing_metadata,
 )
 
 
@@ -536,3 +539,27 @@ async def test_reroute_perplexity_call_is_stamped_as_a_web_reroute() -> None:
     assert routing.policy_version == "1"
     assert routing.decision_source == "override:web_reroute"
     assert routing.salt == "web:gate:1:reroute"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_cacheable"),
+    [
+        ("summarize: the api is down", False),
+        ("summarize: how do I center a div", True),
+    ],
+)
+def test_local_override_cacheability_tracks_dropped_bearing_cues(
+    text: str, expected_cacheable: bool
+) -> None:
+    """A local override that carried live-data evidence must not be cached."""
+    decision = HeuristicRouter().decide_sync(
+        RouterInput(
+            text=text,
+            context=ConversationContext(),
+            now=datetime(2026, 10, 30, tzinfo=UTC),
+        )
+    )
+
+    assert decision.route == "local"
+    routing = _routing_metadata(decision, "openai")
+    assert routing.cacheable is expected_cacheable

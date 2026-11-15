@@ -289,6 +289,10 @@ def _cacheable(decision: RouteDecision) -> bool:
     """Return True when the answer produced under ``decision`` may be cached."""
     if any(reason.startswith("override:url") for reason in decision.reasons):
         return False
+    if decision.route == "local" and any(
+        reason.startswith("bearing:") for reason in decision.reasons
+    ):
+        return False
     return any(character.isalnum() for character in _CACHE_MENTION_PATTERN.sub("", decision.text))
 
 

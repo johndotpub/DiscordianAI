@@ -4,6 +4,7 @@ import asyncio
 import gc
 import logging
 import socket
+import time
 
 import pytest
 
@@ -17,11 +18,11 @@ from src.web_scraper import is_scrapable_url, scrape_url_content, scrape_urls
 async def test_dns_timeout_treats_host_as_unresolvable(monkeypatch, caplog):
     """A blackholed resolver must fail fast instead of hanging the scrape path."""
 
-    async def slow_lookup(_hostname):
-        await asyncio.sleep(10)
+    def slow_lookup(_hostname):
+        time.sleep(10)
         return []
 
-    monkeypatch.setattr("src.web_scraper._lookup_hostname", slow_lookup)
+    monkeypatch.setattr("src.web_scraper._blocking_getaddrinfo", slow_lookup)
     monkeypatch.setattr("src.web_scraper.RESOLVE_TIMEOUT_SECONDS", 0.05)
 
     with caplog.at_level(logging.WARNING, logger="src.web_scraper"):
@@ -153,11 +154,11 @@ async def test_raising_health_checker_is_reported_as_unhealthy():
 async def test_scrape_logs_redact_credentials_and_query(monkeypatch, caplog):
     """Scraper logs must not expose URL userinfo, query strings, or fragments."""
 
-    async def failing_lookup(_hostname):
+    def failing_lookup(_hostname):
         msg = "no such host"
         raise socket.gaierror(msg)
 
-    monkeypatch.setattr("src.web_scraper._lookup_hostname", failing_lookup)
+    monkeypatch.setattr("src.web_scraper._blocking_getaddrinfo", failing_lookup)
     url = "https://alice:s3cret@private.example/path?token=abc#fragment"
 
     with caplog.at_level(logging.DEBUG, logger="src.web_scraper"):
@@ -194,3 +195,15 @@ def test_unscoped_cache_key_is_uncached():
     context = {"model": "gpt-test", "system_message": "test"}
 
     assert _generate_scoped_key("question", context, salt="test-salt") is None
+
+
+def test_dns_resolution_uses_bounded_dedicated_executor():
+    """Resolver threads are bounded by a dedicated pool, not the default executor."""
+    import src.web_scraper as ws
+
+    pool = ws._dns_executor()
+    assert pool._max_workers == ws.MAX_CONCURRENT_RESOLUTIONS
+    assert (
+        pool._thread_name_prefix == "dns-resolve" if hasattr(pool, "_thread_name_prefix") else True
+    )
+    assert ws._dns_executor() is pool  # memoized singleton

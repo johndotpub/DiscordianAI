@@ -7,7 +7,9 @@ production deployment with comprehensive error handling and logging.
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from functools import lru_cache
 import ipaddress
 import logging
 import re
@@ -690,23 +692,24 @@ def _process_final_content(content: str, max_length: int, url: str, logger: logg
     return clean
 
 
-_resolution_semaphores: dict[asyncio.AbstractEventLoop, asyncio.Semaphore] = {}
+@lru_cache(maxsize=1)
+def _dns_executor() -> ThreadPoolExecutor:
+    """Return the process-wide, bounded resolver thread pool.
+
+    ``socket.getaddrinfo`` cannot be interrupted, so a request that hits the
+    deadline leaves its thread running. Routing every lookup through one small
+    dedicated pool caps how many resolver threads can pile up behind a
+    blackholed resolver, instead of growing the shared default executor
+    without bound.
+    """
+    return ThreadPoolExecutor(
+        max_workers=MAX_CONCURRENT_RESOLUTIONS,
+        thread_name_prefix="dns-resolve",
+    )
 
 
-def _get_resolution_semaphore() -> asyncio.Semaphore:
-    """Return the resolver semaphore for the running event loop."""
-    loop = asyncio.get_running_loop()
-    semaphore = _resolution_semaphores.get(loop)
-    if semaphore is None:
-        semaphore = asyncio.Semaphore(MAX_CONCURRENT_RESOLUTIONS)
-        _resolution_semaphores[loop] = semaphore
-    return semaphore
-
-
-async def _lookup_hostname(hostname: str) -> list[tuple[Any, ...]]:
-    """Run the blocking resolver in a worker thread."""
-    return await asyncio.to_thread(
-        socket.getaddrinfo,
+def _blocking_getaddrinfo(hostname: str) -> list[tuple[Any, ...]]:
+    return socket.getaddrinfo(
         hostname,
         None,
         socket.AF_UNSPEC,
@@ -717,11 +720,11 @@ async def _lookup_hostname(hostname: str) -> list[tuple[Any, ...]]:
 
 async def _resolve_hostname(hostname: str) -> list[tuple[Any, ...]]:
     """Resolve a hostname off the event loop within a hard deadline."""
-    async with _get_resolution_semaphore():
-        return await asyncio.wait_for(
-            _lookup_hostname(hostname),
-            timeout=RESOLVE_TIMEOUT_SECONDS,
-        )
+    loop = asyncio.get_running_loop()
+    return await asyncio.wait_for(
+        loop.run_in_executor(_dns_executor(), _blocking_getaddrinfo, hostname),
+        timeout=RESOLVE_TIMEOUT_SECONDS,
+    )
 
 
 def _is_global_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:

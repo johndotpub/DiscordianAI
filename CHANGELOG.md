@@ -13,8 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `https://ollama.com/v1/` and `GPT_MODEL` defaults to `deepseek-v4.1-flash:1017`. OpenAI remains
   supported by changing `OPENAI_API_URL`, `GPT_MODEL`, and `OPENAI_API_KEY`; the Perplexity path is
   unchanged.
-- **Chat requests send `max_tokens` instead of `max_completion_tokens`.** The cap still includes
-  reasoning tokens as well as visible output.
+- **Chat requests choose the output-cap parameter by provider.** Ollama-compatible hosts
+  (`ollama.com`, `localhost`, `127.0.0.1`) receive `max_tokens`; `api.openai.com` receives
+  `max_completion_tokens`. The cap still includes reasoning tokens as well as visible output.
 - **Provider model ids are no longer gated.** Any non-empty `GPT_MODEL` is accepted, and the health
   check no longer reports a non-empty model as deprecated or unsupported.
 - **An `OPENAI_API_KEY` that is not `sk-`-shaped is no longer fatal.** Empty keys still fail; a

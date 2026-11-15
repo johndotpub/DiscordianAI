@@ -39,7 +39,8 @@ def decide(
 
     local_overrides = [cue for cue in ordered if cue.signal in _LOCAL_OVERRIDE_SIGNALS]
     if local_overrides:
-        return _decision("local", local_overrides, text, latency_ms)
+        bearing = [cue for cue in ordered if cue.klass == "bearing"]
+        return _decision("local", [*local_overrides, *bearing], text, latency_ms)
 
     bearing = [cue for cue in ordered if cue.klass == "bearing"]
     if bearing:

@@ -134,8 +134,15 @@ def _build_dependencies(bot, channel, openai_client):
     )
 
 
+@pytest.mark.parametrize(
+    ("base_url", "cap_param"),
+    [
+        ("https://ollama.com/v1/", "max_tokens"),
+        ("https://api.openai.com/v1/", "max_completion_tokens"),
+    ],
+)
 @pytest.mark.asyncio
-async def test_guild_mention_travels_the_real_pipeline():
+async def test_guild_mention_travels_the_real_pipeline(base_url: str, cap_param: str):
     guild = FakeGuild(1)
     channel = FakeChannel(555, "general", guild)
     guild.text_channels.append(channel)
@@ -161,7 +168,8 @@ async def test_guild_mention_travels_the_real_pipeline():
     )
     create = AsyncMock(return_value=response)
     openai_client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
+        base_url=base_url,
     )
     deps = _build_dependencies(bot, channel, openai_client)
 
@@ -176,7 +184,11 @@ async def test_guild_mention_travels_the_real_pipeline():
         "content": deps.config["SYSTEM_MESSAGE"],
     }
     assert payload["messages"][-1] == {"role": "user", "content": USER_TEXT}
-    assert payload["max_tokens"] == deps.config["OUTPUT_TOKENS"]
+    other_cap_param = (
+        "max_tokens" if cap_param == "max_completion_tokens" else "max_completion_tokens"
+    )
+    assert payload[cap_param] == deps.config["OUTPUT_TOKENS"]
+    assert other_cap_param not in payload
     assert payload["reasoning_effort"] == "high"
 
     conversation_key = conversation_key_for_message(message, is_dm=False)

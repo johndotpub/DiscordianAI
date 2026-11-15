@@ -4,6 +4,8 @@ This module handles all chat API interactions (Ollama Cloud by default, OpenAI
 optionally), conversation state management, and error recovery.
 """
 
+from urllib.parse import urlparse
+
 from .api_context import api_call
 from .caching import cached_response, deduplicated_request
 from .config import (
@@ -23,6 +25,16 @@ from .models import AIRequest, OpenAIConfig
 openai_circuit_breaker = get_circuit_breaker("openai")
 
 
+def _provider_family(base_url: str) -> str:
+    """Return the provider family implied by ``base_url``."""
+    host = (urlparse(base_url).hostname or "").lower()
+    if host == "ollama.com" or host.endswith(".ollama.com"):
+        return "ollama"
+    if host in {"localhost", "127.0.0.1"}:
+        return "ollama"
+    return "openai"
+
+
 def _build_openai_api_params(  # noqa: PLR0913
     model: str,
     system: str,
@@ -34,11 +46,12 @@ def _build_openai_api_params(  # noqa: PLR0913
     output_tokens: int | None = None,
     context_window: int = DEFAULT_CONTEXT_WINDOW,
     reasoning_effort: str = DEFAULT_REASONING_EFFORT,
+    base_url: str = "",
     logger=None,
 ) -> dict:
     """Prepare OpenAI API call parameters."""
     completion_tokens = tokens if output_tokens is None else output_tokens
-    return {
+    params = {
         "model": model,
         "messages": build_messages(
             system,
@@ -49,9 +62,15 @@ def _build_openai_api_params(  # noqa: PLR0913
             context_window=context_window,
             logger=logger,
         ),
-        "max_tokens": resolve_completion_budget(completion_tokens, context_window, input_tokens),
-        "reasoning_effort": reasoning_effort,
     }
+    budget = resolve_completion_budget(completion_tokens, context_window, input_tokens)
+    if _provider_family(base_url) == "ollama":
+        params["max_tokens"] = budget
+    else:
+        params["max_completion_tokens"] = budget
+    if reasoning_effort:
+        params["reasoning_effort"] = reasoning_effort
+    return params
 
 
 @cached_response(ttl=DEFAULT_CACHE_TTL)
@@ -75,6 +94,7 @@ async def _fetch_openai_response(
                 output_tokens=config.output_tokens,
                 context_window=config.context_window,
                 reasoning_effort=config.reasoning_effort,
+                base_url=str(getattr(openai_client, "base_url", "")),
                 logger=request.logger,
             )
 

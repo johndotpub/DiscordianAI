@@ -69,13 +69,13 @@ class BotDependencies:
         rate_limit: Maximum commands per user per window.
         rate_limit_period: Rate-limit window in seconds.
         gpt_model: OpenAI GPT model identifier.
-        reasoning_effort: Reasoning effort sent with OpenAI-compatible requests.
         perplexity_model: Perplexity model identifier.
         system_message: System prompt for AI interactions.
         output_tokens: Maximum OpenAI output tokens per response.
         perplexity_output_tokens: Maximum Perplexity output tokens per response.
         input_tokens: Maximum prompt tokens per request.
         context_window: Total model context window in tokens.
+        reasoning_effort: Reasoning effort sent with OpenAI-compatible requests.
         health_task: Asyncio task for the health server (set at runtime).
     """
 
@@ -104,13 +104,13 @@ class BotDependencies:
     rate_limit: int = 10
     rate_limit_period: int = 60
     gpt_model: str = DEFAULT_OPENAI_MODEL
-    reasoning_effort: str = DEFAULT_REASONING_EFFORT
     perplexity_model: str = DEFAULT_PERPLEXITY_MODEL
     system_message: str = ""
     output_tokens: int = DEFAULT_OUTPUT_TOKENS
     perplexity_output_tokens: int = DEFAULT_OUTPUT_TOKENS
     input_tokens: int = DEFAULT_INPUT_TOKENS
     context_window: int = DEFAULT_CONTEXT_WINDOW
+    reasoning_effort: str = DEFAULT_REASONING_EFFORT
 
     # Runtime-only
     health_task: asyncio.Task | None = field(default=None, repr=False)

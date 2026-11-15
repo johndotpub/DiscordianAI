@@ -49,12 +49,12 @@ class AIRequest:
 class OpenAIConfig:
     """Configuration for OpenAI specific parameters."""
 
-    reasoning_effort: str = DEFAULT_REASONING_EFFORT
     model: str = DEFAULT_OPENAI_MODEL
     system_message: str = "You are a helpful assistant."
     output_tokens: int = DEFAULT_OUTPUT_TOKENS
     input_tokens: int = DEFAULT_INPUT_TOKENS
     context_window: int = DEFAULT_CONTEXT_WINDOW
+    reasoning_effort: str = DEFAULT_REASONING_EFFORT
 
 
 @dataclass(frozen=True)
