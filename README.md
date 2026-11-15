@@ -96,7 +96,6 @@ The launcher resolves Python in this order: pyenv → project-local `.venv` → 
 | `CONTEXT_WINDOW` | Shared context window (default 128000). It stays 128000 because it is shared with the OpenAI-compatible path, and Sonar's window is the smaller of the two.
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | How many recent messages to inspect when a follow-up inherits the previous provider.
 | `ROUTER_MODE` | Router implementation, `heuristic` by default. `model` is not implemented and raises with a pointer to `docs/routing/DESIGN.md`.
-| `ROUTER_WEB_THRESHOLD_CHANNEL` / `ROUTER_WEB_THRESHOLD_ANNOUNCE` / `ROUTER_WEB_THRESHOLD_DM` | Web-route probability thresholds for ordinary channels (0.10), announcement channels (0.07), and DMs (0.20).
 | `CONVERSATION_TTL_SECONDS` | Idle seconds before a conversation and its lock are evicted (default 1800).
 | `MAX_URLS_PER_MESSAGE` | Maximum URLs scraped from one message; extras are ignored (default 3).
 | `MAX_TOTAL_SCRAPED_CHARS` | Maximum combined scraped text injected into one prompt (default 60000).

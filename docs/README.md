@@ -46,17 +46,18 @@ The bot builds one evidence-based routing decision per message before calling a 
 ```mermaid
 flowchart TD
     A[User Message] --> S[Build RouterInput
-message + channel kind + history]
-    S --> D[Score bearing vs framing evidence]
-    D --> G{No bearing cue
-and no override?}
-    G -->|Yes| J[Use chat provider]
-    G -->|No| T{p_web >= channel threshold?}
-    T -->|Yes| F[Use Perplexity]
-    T -->|No| L{p_web <= tau_local?}
-    L -->|Yes| J
-    L -->|No| U[Unsure: local answer,
-not cached]
+message + history]
+    S --> C{Override: web instruction,
+URL, or local instruction?}
+    C -->|Override present| V{Which override?}
+    V -->|web| F[Use Perplexity]
+    V -->|local| J[Use chat provider]
+    C -->|No override| G{Any bearing cue?}
+    G -->|Yes| F
+    G -->|No| H{Short anaphoric follow-up?}
+    H -->|Yes| I[Inherit previous route]
+    H -->|No| J[Use chat provider]
+    I --> J
 
     %% Chat path includes a web-inability check that can reroute to Perplexity once
     J --> O[Chat Provider Response]

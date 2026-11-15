@@ -7,7 +7,7 @@ and three flexible operation modes:
 
 1. **OpenAI-Compatible Only** - Use the configured chat provider (Ollama Cloud by default) for all responses
 2. **Perplexity Only** - Use `perplexity/sonar` with web search for all responses
-3. **Smart Hybrid** - Choose the best AI for each message with an evidence model
+3. **Smart Hybrid** - Choose the best AI for each message with evidence-based routing
 
 Hybrid routing is not a list of word patterns. The router asks whether a message refers to something whose
 value can change and whose answer is expected to be verifiable. If it does, the message needs the live web.
@@ -15,34 +15,30 @@ If it does not, the local model answers it.
 
 ## Evidence-Based Routing
 
-Each message is scored once by `src/routing/` before any provider is called. The score is a signed trace of
-two evidence classes:
+Each message is classified once by `src/routing/` before any provider is called, in priority order:
 
-- **Bearing** — a mutable referent: a status predicate, a change or outcome event, a price or quantity
-  shape, a version shape, a volatile topic noun. Bearing may decide the route.
-- **Framing** — the shape of the request: question, imperative, opinion, creative, social, greeting, or a
-  proper name. Framing is multiplied by `lambda_framing < 1` and never decides alone.
-
-There are no early returns and no branch order that can hide a live-data cue. The pipeline is:
-
-```
-views    = normalise surface + folded text (case preserved for entities)
-overrides= URL, "search the web", "from memory", and similar explicit instructions
-cues     = bearing and framing evidence
-score    = sum(bearing) + lambda_framing * sum(framing)
-p_web    = sigmoid((score - t_mid) / temperature)
-route    = web     if p_web >= tau
-           local   if p_web <= tau_local
-           unsure  otherwise
-if no bearing cue and no override: route = local
-```
+1. **Explicit overrides.** A web instruction ("search the web for …", "look it up online"), a URL in the
+   message, or an explicit local instruction ("from memory", "do not search") decides outright. A pasted
+   artifact the user asked to transform — a log, a diff, "in plain English" — forces local.
+2. **Bearing cues.** A message refers to something whose answer changes: a live-status predicate
+   ("down", "offline", "sold out"), a change or outcome event ("released", "shipped", "won"), a
+   volatile topic ("weather", "outage", "score", "schedule"), a price or version shape. Any one of
+   these routes to the web.
+3. **Follow-up inheritance.** A short anaphoric reply ("and after the release?") inherits the previous
+   turn's route, unless a bearing cue appears or the topic shifts.
+4. **Otherwise local.** Framing — question shape, imperatives, register, proper names — never decides.
 
 Two rules keep the model honest:
 
 - **No bearing cue means no web route.** A question mark or a proper name is not enough. *"What is the
   capital of France?"* stays local because the answer does not change.
-- **Framing cannot decide alone.** Social text such as "thanks" or "best regards" carries negative framing
-  weight and will not turn into a search.
+- **Framing cannot decide alone.** Social text such as "thanks" or "best regards" neither triggers nor
+  blocks a search.
+- **Overrides are evaluated on code-masked text**, so instructions inside a fenced block (e.g. "use the
+  web API") do not fire.
+
+There is no threshold, no confidence score, and no per-channel tuning: either the message carries
+live-data evidence or it does not.
 
 The bundled English lexicon supplies topic terms; structural shapes supply status, change, release,
 version, money, time, code, and URL cues. Adding a term is a lexicon data change, not a code change.
@@ -62,10 +58,10 @@ version, money, time, code, and URL cues. Adding a term is a lexicon data change
 
 A follow-up is a short message (at most six tokens) that is an anaphor, a bare continuation, or begins with
 a coordinator, and it must have an assistant turn at gap <= 1 in the same conversation. The previous route
-then applies at +2/-2. A bearing cue in the new message wins, and a topic shift cancels inheritance.
+then inherits the previous route outright. A bearing cue in the new message wins, and a topic shift cancels inheritance.
 
 A word such as "also" or "more" inside a fresh question does not turn that question into an early return.
-There is no separate follow-up regex list; inheritance is one cue in the same score.
+There is no separate follow-up rulebook; inheritance is simply the lowest-priority signal in the gate.
 
 ### Example flow
 
@@ -240,9 +236,7 @@ counter runs out answers live questions from stale weights and cannot tell you i
 Each hybrid decision logs one content-free line:
 
 ```
-INFO Routing decision: {'route': 'web', 'band': 'confident', 'service': 'perplexity', 'score': 4.2,
-'threshold': 0.1, 'reasons': ['topic.volatile', 'time.deixis'], 'router_id': 'heuristic@1',
-'policy_version': '1', 'latency_ms': 0.14}
+INFO Routing decision route=web reasons=bearing:topic.volatile,bearing:time.deixis latency_ms=0.14 service=perplexity
 ```
 
 Message text and matched entity text are not logged.
@@ -275,12 +269,13 @@ DiscordianAI uses a thread-safe architecture for concurrent users:
 
 ## Customization
 
-There is no runtime per-guild vocabulary. Routing changes are either configuration (thresholds and mode) or
-a release that updates the bundled lexicon in `src/routing/data/lexicon.en.json`.
+There is no runtime per-guild vocabulary. Routing changes ship as a release that updates the bundled
+lexicon in `src/routing/data/lexicon.en.json`. There is nothing to tune at runtime; if the mix of your
+traffic shifts recall in one direction, that is a lexicon release conversation, not a config knob.
 
 ### Production deployment tips
 
 1. **Monitor memory**: watch cleanup logs to confirm inactive conversations are evicted.
 2. **Adjust history**: increase `MAX_HISTORY_PER_USER` for longer context.
-3. **Tune thresholds**: lower a channel-kind threshold only when missed live questions hurt more than
-   needless searches in that surface.
+3. **Watch the safety net**: log lines from the web-inability reroute tell you which live questions the
+   gate misses; feed those phrasings back as lexicon candidates in a release.

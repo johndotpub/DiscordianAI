@@ -112,10 +112,9 @@ failure happened after its last success, and `healthy` otherwise. A provider tha
 healthy: silence is not a failure. The payload still reports
 `last_success_age_seconds` and `last_success_stale` for diagnostics, but neither decides health.
 
-> **No cost cap.** These thresholds decide how readily the router searches; none of them is a
-> budget. There is no allowance, counter or price model in the routing path, so spend follows the
-> message mix rather than a configured ceiling. Measured precision also falls on trap-heavy input
-> (pleasantries that contain a date or a state word); the numbers are in `docs/routing/DESIGN.md`.
+> **No cost cap.** Routing carries no budget knob: the gate decides from the message alone, so spend
+> follows the message mix rather than a configured ceiling. Measured precision also falls on trap-heavy
+> input (pleasantries that contain a date or a state word); the numbers are in `docs/routing/DESIGN.md`.
 
 ## Operation Modes
 
