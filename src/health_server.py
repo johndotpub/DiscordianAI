@@ -21,11 +21,14 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from .config import (
+    DEFAULT_HEALTH_HOST,
+    DEFAULT_HEALTH_PORT,
+    DEFAULT_HEALTH_PROVIDER_STALE_SECONDS,
+)
 from .error_handling import get_circuit_breaker_states
 
-DEFAULT_HEALTH_HOST = "127.0.0.1"
-DEFAULT_HEALTH_PORT = 8080
-DEFAULT_PROVIDER_STALE_SECONDS = 300.0
+DEFAULT_PROVIDER_STALE_SECONDS = float(DEFAULT_HEALTH_PROVIDER_STALE_SECONDS)
 PROVIDER_NAMES = ("openai", "perplexity")
 WALL_CLOCK_EPOCH_SECONDS = 1_000_000_000
 

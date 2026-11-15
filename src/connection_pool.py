@@ -15,8 +15,16 @@ from urllib.parse import urlparse
 import httpx
 from openai import AsyncOpenAI
 
+from .config import (
+    DEFAULT_OPENAI_MAX_CONNECTIONS,
+    DEFAULT_OPENAI_MAX_KEEPALIVE,
+    DEFAULT_PERPLEXITY_MAX_CONNECTIONS,
+    DEFAULT_PERPLEXITY_MAX_KEEPALIVE,
+)
+
 PERPLEXITY_API_HOST = "api.perplexity.ai"
 PERPLEXITY_INTEGRATION_HEADERS = {"X-Pplx-Integration": "discordian-ai"}
+_DEFAULT_READ_TIMEOUT = 45.0
 
 
 @dataclass(frozen=True)
@@ -59,7 +67,7 @@ CONNECTION_POOL_SPECS: dict[str, PoolProviderSpec] = {
         label="OpenAI",
         max_connections_attr="openai_max_connections",
         max_keepalive_attr="openai_max_keepalive",
-        read_timeout=45.0,
+        read_timeout=_DEFAULT_READ_TIMEOUT,
     ),
     "perplexity": PoolProviderSpec(
         service="perplexity",
@@ -84,10 +92,10 @@ class ConnectionPoolManager:
 
     def __init__(
         self,
-        openai_max_connections: int = 50,
-        openai_max_keepalive: int = 10,
-        perplexity_max_connections: int = 30,
-        perplexity_max_keepalive: int = 5,
+        openai_max_connections: int = DEFAULT_OPENAI_MAX_CONNECTIONS,
+        openai_max_keepalive: int = DEFAULT_OPENAI_MAX_KEEPALIVE,
+        perplexity_max_connections: int = DEFAULT_PERPLEXITY_MAX_CONNECTIONS,
+        perplexity_max_keepalive: int = DEFAULT_PERPLEXITY_MAX_KEEPALIVE,
     ):
         """Initialize connection pool manager with API-specific settings.
 
@@ -124,7 +132,7 @@ class ConnectionPoolManager:
         """
         spec = CONNECTION_POOL_SPECS.get(api_type)
         if spec is None:
-            spec = replace(CONNECTION_POOL_SPECS["perplexity"], read_timeout=45.0)
+            spec = replace(CONNECTION_POOL_SPECS["perplexity"], read_timeout=_DEFAULT_READ_TIMEOUT)
         max_connections = getattr(self, spec.max_connections_attr)
         max_keepalive = getattr(self, spec.max_keepalive_attr)
 
@@ -385,8 +393,14 @@ def get_connection_pool_manager(config: dict | None = None) -> ConnectionPoolMan
         return ConnectionPoolManager()
 
     return ConnectionPoolManager(
-        openai_max_connections=config.get("OPENAI_MAX_CONNECTIONS", 50),
-        openai_max_keepalive=config.get("OPENAI_MAX_KEEPALIVE", 10),
-        perplexity_max_connections=config.get("PERPLEXITY_MAX_CONNECTIONS", 30),
-        perplexity_max_keepalive=config.get("PERPLEXITY_MAX_KEEPALIVE", 5),
+        openai_max_connections=config.get(
+            "OPENAI_MAX_CONNECTIONS", DEFAULT_OPENAI_MAX_CONNECTIONS
+        ),
+        openai_max_keepalive=config.get("OPENAI_MAX_KEEPALIVE", DEFAULT_OPENAI_MAX_KEEPALIVE),
+        perplexity_max_connections=config.get(
+            "PERPLEXITY_MAX_CONNECTIONS", DEFAULT_PERPLEXITY_MAX_CONNECTIONS
+        ),
+        perplexity_max_keepalive=config.get(
+            "PERPLEXITY_MAX_KEEPALIVE", DEFAULT_PERPLEXITY_MAX_KEEPALIVE
+        ),
     )

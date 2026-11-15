@@ -10,7 +10,11 @@ from dataclasses import dataclass, field, replace
 import re
 from typing import Any
 
-from .config import DISCORD_MARKUP_PATTERN, get_error_messages
+from .config import (
+    DEFAULT_LOOKBACK_MESSAGES_FOR_CONSISTENCY,
+    DISCORD_MARKUP_PATTERN,
+    get_error_messages,
+)
 from .error_handling import get_circuit_breaker
 from .models import AIClients, AIConfig, AIRequest, RoutingMetadata
 from .openai_processing import process_openai_message
@@ -69,7 +73,6 @@ _ONLY_MODE_SPECS: dict[str, _OnlyModeSpec] = {
 }
 
 # Constants for magic values
-DEFAULT_LOOKBACK = 6
 _EARLY_WEB_INABILITY_WINDOW = 300
 _QUOTED_SPAN_PATTERN = re.compile(r'"[^"\n]*"|“[^”\n]*”|`[^`\n]*`')
 _NARRATIVE_MARKERS_PATTERN = re.compile(
@@ -292,8 +295,10 @@ def _cacheable(decision: RouteDecision) -> bool:
 def _lookback(orchestrator_config: dict | None) -> int:
     """Return the configured follow-up lookback window."""
     if not orchestrator_config:
-        return DEFAULT_LOOKBACK
-    return orchestrator_config.get("LOOKBACK_MESSAGES_FOR_CONSISTENCY", DEFAULT_LOOKBACK)
+        return DEFAULT_LOOKBACK_MESSAGES_FOR_CONSISTENCY
+    return orchestrator_config.get(
+        "LOOKBACK_MESSAGES_FOR_CONSISTENCY", DEFAULT_LOOKBACK_MESSAGES_FOR_CONSISTENCY
+    )
 
 
 async def _build_route_decision(

@@ -64,6 +64,11 @@ docker run --restart always \
 The image defines the same `/health` `HEALTHCHECK` as the compose file, so `docker ps`
 reports the container as unhealthy when the bot or its providers stop responding.
 
+The Dockerfile healthcheck targets `http://127.0.0.1:8080/health` with the port
+hardcoded. If you change `HEALTH_PORT`, update the Dockerfile (or parameterise the check
+with an `ARG` whose default stays `8080`) to match; otherwise the check probes the wrong
+port and reports the container unhealthy.
+
 The `-v` mount is required because the entrypoint passes `config.ini` to `--conf`. Create
 the file first with `cp config.ini.example config.ini`, or with `touch config.ini` when
 every value comes from `.env`. If the file is missing, Docker creates a directory at

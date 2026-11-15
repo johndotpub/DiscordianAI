@@ -173,7 +173,7 @@ async def test_stateless_repeat_still_hits_cache():
 
 def test_cache_keys_preserve_case_and_ignore_surrounding_whitespace():
     cache = ResponseCache()
-    context = {"model": "gpt-test", "system_message": "test"}
+    context = {"model": "gpt-test", "system_message": "test", "user_id": "test-user"}
 
     salt = "local:heuristic@1:1"
     assert cache._generate_cache_key("ABC", context, salt=salt) != cache._generate_cache_key(
@@ -192,13 +192,13 @@ async def test_cached_response_for_uppercase_prompt_is_not_served_for_lowercase(
     calls = []
 
     @cached_response(ttl=300.0)
-    async def answer(message):
+    async def answer(message, **_kwargs):
         calls.append(message)
         return f"answer for {message}"
 
-    uppercase = await answer("ABC")
-    lowercase = await answer("abc")
-    repeated_uppercase = await answer("ABC")
+    uppercase = await answer("ABC", user_id="test-user")
+    lowercase = await answer("abc", user_id="test-user")
+    repeated_uppercase = await answer("ABC", user_id="test-user")
 
     assert uppercase == "answer for ABC"
     assert lowercase == "answer for abc"
@@ -208,7 +208,7 @@ async def test_cached_response_for_uppercase_prompt_is_not_served_for_lowercase(
 
 def test_bounded_size_eviction_still_holds():
     cache = ResponseCache(max_size=2, default_ttl=300.0)
-    context = {"model": "gpt-test", "system_message": "test"}
+    context = {"model": "gpt-test", "system_message": "test", "user_id": "test-user"}
 
     salt = "local:heuristic@1:1"
     cache.cache_response("first message", context, "First sufficiently long response", salt=salt)

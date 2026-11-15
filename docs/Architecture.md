@@ -221,8 +221,8 @@ These decorators wrap `_fetch_openai_response()` in `src/openai_processing.py`; 
 ```python
 class ThreadSafeConversationManager:
     def __init__(self):
-        self._conversations: dict[int, list[dict]] = {}
-        self._user_locks: dict[int, threading.RLock] = {}
+        self._conversations: dict[int | str, list[dict[str, str]]] = {}
+        self._user_locks: dict[int | str, threading.RLock] = {}
         self._global_lock = threading.RLock()
 ```
 

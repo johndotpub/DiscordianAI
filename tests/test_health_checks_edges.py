@@ -93,7 +93,10 @@ async def test_one_failing_health_check_does_not_hide_the_others(caplog):
             {},
         )
 
-    assert set(results) == {"perplexity"}
+    assert set(results) == {"openai", "perplexity"}
+    assert results["openai"].status == "unhealthy"
+    assert results["openai"].error == "check raised RuntimeError"
+    assert results["openai"].details["error_type"] == "RuntimeError"
     assert results["perplexity"].status == "healthy"
     assert any(record.getMessage() == "Failed to check OpenAI health" for record in caplog.records)
     assert "openai checker exploded" in caplog.text

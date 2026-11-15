@@ -246,7 +246,6 @@ _CONTRACTION_PATTERN = re.compile(
     + "|".join(re.escape(term) for term in sorted(_CONTRACTIONS, key=len, reverse=True))
     + r")(?![a-z0-9])"
 )
-_WHITESPACE = re.compile(r"\s+")
 
 
 def _joined(*parts: str) -> str:

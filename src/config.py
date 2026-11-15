@@ -138,7 +138,6 @@ DEFAULT_SCRAPE_DEADLINE_SECONDS = 20.0
 # ============================================================================
 
 MAX_OUTPUT_TOKENS_CEILING = DEFAULT_CONTEXT_WINDOW
-MAX_OUTPUT_TOKENS_THRESHOLD = MAX_OUTPUT_TOKENS_CEILING
 MAX_OUTPUT_TOKENS_COST_WARNING = 50000
 MIN_OPENAI_OUTPUT_TOKENS_WARNING = 512
 MAX_INPUT_TOKENS_THRESHOLD = 200000
@@ -208,6 +207,14 @@ ERROR_MESSAGES = {
 }
 
 # ============================================================================
+# HEALTH DEFAULTS
+# ============================================================================
+
+DEFAULT_HEALTH_HOST = "127.0.0.1"
+DEFAULT_HEALTH_PORT = 8080
+DEFAULT_HEALTH_PROVIDER_STALE_SECONDS = 300
+
+# ============================================================================
 # CONFIGURATION DEFAULTS
 # ============================================================================
 
@@ -254,9 +261,9 @@ _CONFIG_DEFAULTS: dict[str, Any] = {
     "LOG_LEVEL": "INFO",
     "DISCORDIANAI_LOG_COLOR": True,
     "HEALTH_ENABLED": True,
-    "HEALTH_HOST": "127.0.0.1",
-    "HEALTH_PORT": 8080,
-    "HEALTH_PROVIDER_STALE_SECONDS": 300,
+    "HEALTH_HOST": DEFAULT_HEALTH_HOST,
+    "HEALTH_PORT": DEFAULT_HEALTH_PORT,
+    "HEALTH_PROVIDER_STALE_SECONDS": DEFAULT_HEALTH_PROVIDER_STALE_SECONDS,
 }
 
 # ============================================================================
@@ -458,6 +465,7 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "HEALTH_ENABLED",
         "HEALTH_HOST",
         "HEALTH_PORT",
+        "HEALTH_PROVIDER_STALE_SECONDS",
     ]
 
     for key in env_keys:
@@ -489,6 +497,7 @@ def _apply_single_env_override(
         "MAX_URLS_PER_MESSAGE",
         "MAX_TOTAL_SCRAPED_CHARS",
         "HEALTH_PORT",
+        "HEALTH_PROVIDER_STALE_SECONDS",
     }
     float_keys = {"SCRAPE_DEADLINE_SECONDS"}
     bool_keys = {"HEALTH_ENABLED", "DISCORDIANAI_LOG_COLOR"}

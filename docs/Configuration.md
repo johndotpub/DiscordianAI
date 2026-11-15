@@ -299,6 +299,7 @@ export DISCORDIANAI_LOG_COLOR="1"
 export HEALTH_ENABLED="true"
 export HEALTH_HOST="127.0.0.1"
 export HEALTH_PORT="8080"
+export HEALTH_PROVIDER_STALE_SECONDS="300"
 ```
 
 Environment variables take precedence over `config.ini` values, allowing for flexible deployment configurations.
@@ -339,7 +340,7 @@ DiscordianAI includes comprehensive configuration validation:
 ### Error Examples
 ```
 CRITICAL: No API keys provided! Bot cannot function without either an OpenAI-compatible provider or Perplexity API access.
-WARNING: RATE_LIMIT is very high (100) - consider lowering to prevent API abuse
+WARNING: RATE_LIMIT very high (101). Consider lower value to prevent abuse.
 ERROR: Invalid log level 'VERBOSE', defaulting to INFO  
 INFO: Configuration validation passed - all critical settings are valid
 ```

@@ -6,17 +6,18 @@ against current API specifications to ensure compatibility and optimal performan
 
 import logging
 import re
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunsplit
 
 import discord
 
 # Import constants from config.py (single source of truth)
 from .config import (
+    DEFAULT_OPENAI_API_URL,
+    DEFAULT_PERPLEXITY_API_URL,
     DISCORD_ACTIVITY_TYPES,
     MAX_INPUT_TOKENS_THRESHOLD,
     MAX_OUTPUT_TOKENS_CEILING,
     MAX_OUTPUT_TOKENS_COST_WARNING,
-    MAX_OUTPUT_TOKENS_THRESHOLD,
     MAX_RATE_LIMIT_THRESHOLD,
     MAX_RECOMMENDED_REQ_PER_MIN,
     MIN_OPENAI_OUTPUT_TOKENS_WARNING,
@@ -124,6 +125,21 @@ def _is_absolute_http_url(value: str) -> bool:
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
+def _redact_api_url_for_log(url: str) -> str:
+    """Return an API URL without userinfo, query string, or fragment."""
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not parsed.scheme or not hostname:
+            return "[REDACTED URL]"
+        host = f"[{hostname}]" if ":" in hostname else hostname
+        if parsed.port is not None:
+            host = f"{host}:{parsed.port}"
+    except ValueError:
+        return "[REDACTED URL]"
+    return urlunsplit((parsed.scheme, host, parsed.path or "/", "", ""))
+
+
 def _validate_api_url(
     config: dict,
     key: str,
@@ -136,10 +152,11 @@ def _validate_api_url(
     if not api_url:
         return []
 
+    safe_url = _redact_api_url_for_log(api_url)
     if not _is_absolute_http_url(api_url):
         return [
             (
-                f"ERROR: Invalid {provider} API URL: {api_url}. {key} must be an absolute "
+                f"ERROR: Invalid {provider} API URL: {safe_url}. {key} must be an absolute "
                 f"http(s) URL (accepted: {example})."
             )
         ]
@@ -147,7 +164,7 @@ def _validate_api_url(
     if not pattern.match(api_url):
         return [
             (
-                f"WARNING: Invalid {provider} API URL: {api_url}. Expected pattern: {example}; "
+                f"WARNING: Invalid {provider} API URL: {safe_url}. Expected pattern: {example}; "
                 "continuing because a compatible gateway may accept it."
             )
         ]
@@ -177,7 +194,7 @@ def _output_token_issues(config: dict, key: str, *, reasoning_model: bool) -> li
             f"ERROR: {key} must be positive; accepted range: {accepted} (got {tokens}).",
         ]
 
-    if tokens > MAX_OUTPUT_TOKENS_THRESHOLD:
+    if tokens > MAX_OUTPUT_TOKENS_CEILING:
         return [
             (
                 f"ERROR: {key} is {tokens}, above the documented maximum of "
@@ -320,7 +337,7 @@ def validate_openai_config(config: dict) -> list[str]:
             "OPENAI_API_URL",
             VALID_OPENAI_URL_PATTERN,
             "OpenAI",
-            "https://api.openai.com/v1/, https://ollama.com/v1/, "
+            f"https://api.openai.com/v1/, {DEFAULT_OPENAI_API_URL}, "
             "or http(s)://localhost:11434/v1/",
         )
     )
@@ -369,7 +386,7 @@ def validate_perplexity_config(config: dict) -> list[str]:
             "PERPLEXITY_API_URL",
             VALID_PERPLEXITY_URL_PATTERN,
             "Perplexity",
-            "https://api.perplexity.ai",
+            DEFAULT_PERPLEXITY_API_URL,
         )
     )
 

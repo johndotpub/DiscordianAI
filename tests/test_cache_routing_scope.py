@@ -16,6 +16,7 @@ def _context(**overrides):
         "system_message": "system",
         "conversation_scope": "dm:1",
         "conversation_digest": "digest",
+        "user_id": "1",
         "service": "openai",
         "router_id": "heuristic@1",
         "policy_version": "1",
@@ -110,6 +111,7 @@ async def test_cached_response_obeys_the_decision_cache_policy():
         user=object(),
         conversation_manager=None,
         logger=logging.getLogger("cache-routing-test"),
+        conversation_key="dm:test",
         routing=RoutingMetadata(
             service="openai",
             router_id="heuristic@1",
@@ -132,6 +134,7 @@ async def test_cached_response_obeys_the_decision_cache_policy():
         user=object(),
         conversation_manager=None,
         logger=logging.getLogger("cache-routing-test"),
+        conversation_key="dm:test",
         routing=RoutingMetadata(
             service="openai",
             router_id="heuristic@1",

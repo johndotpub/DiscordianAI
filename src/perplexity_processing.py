@@ -33,11 +33,8 @@ from .models import AIRequest, PerplexityConfig
 from .web_scraper import is_scrapable_url, scrape_url_content, scrape_urls
 
 perplexity_circuit_breaker = get_circuit_breaker("perplexity")
-PERPLEXITY_CIRCUIT_BREAKER = perplexity_circuit_breaker
-_perplexity_circuit_breaker = perplexity_circuit_breaker
 
 # Constants
-CITATION_SPLIT_PARTS = 2
 LINK_THRESHOLD = 2
 SCRAPED_SECTION_SEPARATOR = "\n\n---\n\n"
 UNTRUSTED_CONTENT_START = "<untrusted_webpage_content>"

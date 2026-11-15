@@ -228,8 +228,6 @@ volume therefore follows what people ask, not how much you are willing to spend.
 belongs at the Discord or provider level, not in the router, because a router that stops searching when a
 counter runs out answers live questions from stale weights and cannot tell you it did so.
 
-## Cost Considerations
-
 - **Chat provider**: Higher cost per token but strong reasoning on stable knowledge and code.
 - **Perplexity**: Includes citations and live web data but is reserved for messages that carry bearing
   evidence.

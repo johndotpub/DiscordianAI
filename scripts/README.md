@@ -47,6 +47,18 @@ python scripts/router_eval.py --corpus corpus.jsonl [--json] [--slice FIELD]
 - Reports TP/FP/TN/FN for the whole corpus and for each slice
 - With `--json`, emits the same report for CI
 
+### `probe_providers.py`
+Probe the configured OpenAI-compatible and Perplexity endpoints and print response shapes, never secrets.
+
+### `mutation_check.py`
+Apply curated source mutations and verify that the named tests fail, guarding against weakened coverage.
+
+### `regen_golden.py`
+Check golden-behaviour fixtures for drift, or rewrite them with `--write` and `GOLDEN_REGEN=1`.
+
+### `preflight.sh`
+Run every repository gate in order (black, ruff, pytest, Sphinx, wheel build) and stop at the first failure.
+
 ### Other Debug Scripts
 Additional debugging utilities for response analysis and API testing.
 

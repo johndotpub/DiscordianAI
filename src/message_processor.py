@@ -153,10 +153,9 @@ async def _process_message_core(
             "🔧 Sorry, I encountered an error while processing your message. "
             "Please try again in a moment."
         )
-        display_content = clean_message_content(clean_content, 100)
     else:
         # Clean message content for logging (remove mentions)
-        clean_content = re.sub(r"<@\d+>", "", clean_content).strip()
+        clean_content = re.sub(r"<@[!&]?\d+>", "", clean_content).strip()
         logger.info(
             "Captured message for processing (ID: %s, length: %d)",
             message.id,
@@ -168,7 +167,8 @@ async def _process_message_core(
             "🔧 Sorry, I encountered an error while processing your message. "
             "Please try again in a moment."
         )
-        display_content = clean_message_content(clean_content, 100)
+
+    display_content = clean_message_content(clean_content, 100)
 
     try:
         logger.info("Processing message: %s", display_content)
