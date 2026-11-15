@@ -12,3 +12,8 @@ check = "B1"
 target = "LOG_FILE@complete-example"
 reason = "The complete example omits the deprecated LOG_FILE key for the same reason as config.ini.example."
 follow_up = "Remove LOG_FILE parsing when the backward-compatibility window closes."
+
+[[exception]]
+check = "B1"
+target = "WEB_TOOLS@config.ini.example"
+reason = "WEB_TOOLS defaults to true; the example documents the switch in a comment rather than adding a redundant active key."

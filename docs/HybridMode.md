@@ -125,17 +125,22 @@ flowchart TD
 
 - `api_validation.validate_openai_config()` accepts any non-empty `GPT_MODEL`; provider model
   ids are not gated, so an unknown name does not block startup.
-- Perplexity calls send `model`, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool.
+- Perplexity calls send `model`, `instructions`, `input`, `max_output_tokens`, the `web_search` and `fetch_url` tools, and `max_steps: 3`.
   `perplexity/sonar` is the default, sampling is handled by the API, and no `temperature` is sent.
-- Citations come from the Agent API `search_results` item: each result's 1-based `id` maps to the `[n]`
-  marker in the answer text.
+- Citations come from the Agent API `search_results` and `fetch_url_results` items: each result's 1-based `id`
+  maps to the `[n]` marker in the answer text.
 
 ## Routing Configuration
 
 ```ini
 [Orchestrator]
-# heuristic (default) or model; the Clef model router is not implemented yet
+# heuristic (default, deterministic) or clef (optional decision model)
 ROUTER_MODE=heuristic
+
+# Clef settings; ignored unless ROUTER_MODE=clef
+ROUTER_CLEF_MODEL=clef
+ROUTER_CLEF_THRESHOLD=0.5
+ROUTER_CLEF_TIMEOUT_MS=2000
 
 # How many recent messages a follow-up may inspect
 LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
@@ -143,7 +148,10 @@ LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 
 | Setting | Default | Description |
 |---|---|---|
-| `ROUTER_MODE` | `heuristic` | Selects the router implementation. `model` raises until the Clef seam is built. |
+| `ROUTER_MODE` | `heuristic` | Selects the router implementation. `clef` uses Ollama Cloud's decision model and falls back to the deterministic gate; `model` is retired and raises. |
+| `ROUTER_CLEF_MODEL` | `clef` | Decision model used when `ROUTER_MODE=clef`. |
+| `ROUTER_CLEF_THRESHOLD` | 0.5 | Probability at or above which Clef routes to the web. |
+| `ROUTER_CLEF_TIMEOUT_MS` | 2000 | Clef request timeout before falling back to the deterministic gate. |
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | 6 | How many recent messages a follow-up may inspect; `0` disables the lookup. |
 | `MAX_HISTORY_PER_USER` | 50 | Maximum conversation entries stored per user. |
 | `USER_LOCK_CLEANUP_INTERVAL` | 3600 | How often to clean up inactive user locks, in seconds. |

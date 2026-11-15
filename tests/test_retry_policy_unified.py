@@ -2,15 +2,12 @@
 
 import ast
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import discord
-import httpx
 import pytest
 
-from src import web_scraper
-from src.error_handling import is_retryable_status, retry_after_seconds, safe_discord_send
+from src.error_handling import retry_after_seconds, safe_discord_send
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -93,24 +90,3 @@ async def test_discord_403_makes_one_attempt_without_sleeping():
     assert result is False
     assert channel.send.await_count == 1
     assert not sleep.called
-
-
-def _status_error(status_code: int | None) -> httpx.HTTPStatusError:
-    request = httpx.Request("GET", "https://example.com")
-    response = None
-    if status_code is not None:
-        response = httpx.Response(status_code, request=request)
-    return httpx.HTTPStatusError("request failed", request=request, response=response)
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("status_code", [429, 500, 503, 400, 404, None])
-async def test_scraper_status_decision_matches_shared_policy(status_code):
-    target = SimpleNamespace(url="https://example.com")
-    error = _status_error(status_code)
-
-    with patch("src.web_scraper._fetch_attempt", AsyncMock(side_effect=error)):
-        result = await web_scraper._fetch_attempt_with_retry_logic(Mock(), target, 0, 15, Mock())
-
-    scraper_retries = result is not web_scraper._STOP_RETRY
-    assert scraper_retries is is_retryable_status(status_code)

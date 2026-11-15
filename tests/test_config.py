@@ -45,9 +45,10 @@ def isolate_config_env(monkeypatch):
         "USER_LOCK_CLEANUP_INTERVAL",
         "ENTITY_DETECTION_MIN_WORDS",
         "ROUTER_MODE",
-        "MAX_URLS_PER_MESSAGE",
-        "MAX_TOTAL_SCRAPED_CHARS",
-        "SCRAPE_DEADLINE_SECONDS",
+        "ROUTER_CLEF_MODEL",
+        "ROUTER_CLEF_THRESHOLD",
+        "ROUTER_CLEF_TIMEOUT_MS",
+        "WEB_TOOLS",
         "LOG_FILE",
         "LOG_LEVEL",
         "DISCORDIANAI_LOG_COLOR",
@@ -125,6 +126,10 @@ class TestLoadConfig:
         assert config["MAX_HISTORY_PER_USER"] == 50
         assert config["USER_LOCK_CLEANUP_INTERVAL"] == 3600
         assert config["ENTITY_DETECTION_MIN_WORDS"] == 10
+        assert config["ROUTER_MODE"] == "heuristic"
+        assert config["ROUTER_CLEF_MODEL"] == "clef"
+        assert config["ROUTER_CLEF_THRESHOLD"] == 0.5
+        assert config["ROUTER_CLEF_TIMEOUT_MS"] == 2000
 
     def test_load_config_with_file(self):
         """Test config loading from file."""

@@ -138,13 +138,13 @@ RetryConfig(
 - **Inbound text is not sanitized.** The message body is sent to the configured provider unchanged; the bot does not strip instructions, links, or markdown before the request.
 - **Outbound text is neutralised.** Messages longer than Discord's 2000-character limit are split, and model output is sanitised for mentions and links before delivery. These controls apply to outbound text only.
 - **Discord does not moderate bot messages.** Server AutoMod or channel permissions can restrict what users send, but the bot's own replies are not passed through Discord's moderation.
-- **URLs are validated before scraping.** Every user-supplied URL is checked by the SSRF protections below before any request is made.
+- **URLs are opened by provider tools.** User-supplied URLs are passed to the provider's native search and fetch tools. The bot does not fetch page content itself.
 
 ### Prompt Injection
 
-Scraped page text is wrapped in `<untrusted_webpage_content>` tags. A data-only directive tells the model to treat the block as data and ignore instructions inside it, and delimiter lookalikes are escaped case-insensitively, including whitespace and self-closing variants. This reduces the chance that a page can close the block or pass itself off as the system prompt.
+Tool descriptions and the Perplexity instructions state that search results and fetched pages are untrusted reference material and that the model must never follow instructions found inside them. Perplexity also opens URLs through `fetch_url`; the chat path offers Ollama's `web_search` and `web_fetch` tools instead of injecting page text into a prompt.
 
-The delimiters do not compel a model to obey the directive. Only scraped page text receives this treatment; user messages and conversation history are not wrapped. An injected page can still influence the content of an answer, so treat prompt injection as a residual risk: the wrapper is a mitigation, not a guarantee.
+These instructions do not compel a model to obey them. An injected page can still influence the content of an answer, so treat prompt injection as a residual risk: the directive is a mitigation, not a guarantee.
 
 ### Configuration Validation
 
@@ -181,45 +181,22 @@ HTTP connections use secure defaults:
   - Read: 45s (chat provider) / 60s (Perplexity)
   - Write: 10 seconds
 
-### Web Scraper SSRF Protection
+### Native Web Tools
 
-The web scraper validates the URL inside the fetch path itself, so a caller
-cannot bypass the check by forgetting to call `is_scrapable_url`. Automatic
-redirects are disabled on the scrape client: redirects are followed manually
-for at most three hops, and the initial URL and every `Location` are resolved
-and checked before use. A redirect to a non-global address is refused without
-reading its body.
+The bot does not validate or fetch user-supplied URLs locally. Perplexity opens
+them with the Agent API's `fetch_url` tool, and Ollama-compatible chat providers
+open them with `web_fetch` and `web_search` when `WEB_TOOLS` is enabled.
 
-A URL is accepted only when every address returned for its hostname passes
-Python's `ipaddress.is_global()` check and is not multicast. IPv4-mapped IPv6
-and NAT64 addresses are unwrapped before that check, so a blocked IPv4 target
-cannot slip through inside an IPv6 form. The main rejected classes are:
+Tool inputs are bounded before the provider request: `query` at 500 characters,
+`url` at 2,048 characters, and `max_results` at 1–10. Oversized inputs become
+error tool results and are not sent. Tool output is bounded before it reaches
+the model: search results at 6,000 characters and fetched page text at 8,000
+characters. Content is still untrusted and is not inspected by the bot. The
+residual prompt-injection risk described above applies to every page a provider
+fetches.
 
-| Class | Range or address |
-| --- | --- |
-| IPv4 loopback | `127.0.0.0/8` |
-| IPv4 private | `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` |
-| IPv4 link-local | `169.254.0.0/16` |
-| IPv4 CGNAT | `100.64.0.0/10` |
-| IPv4 unspecified | `0.0.0.0` |
-| IPv6 loopback | `::1` |
-| IPv6 link-local | `fe80::/10` |
-| IPv6 unique-local | `fc00::/7` |
-| Other non-global | multicast, documentation ranges, and anything else `ipaddress` reports as non-global |
-| NAT64-encoded blocked IPv4 | `64:ff9b::/96` wrapping a non-global IPv4 address |
-
-If a hostname resolves to a mix of global and non-global addresses, the URL
-is refused.
-
-For plain HTTP the connection is pinned to a vetted address: the request URL
-uses that IP and the original hostname is sent in the `Host` header, so a
-second DNS answer cannot redirect the connection. HTTPS is deliberately not
-pinned because connecting to a bare IP address would break SNI and certificate
-validation. Instead the hostname is resolved and checked immediately before
-the request, but httpx performs its own lookup when it connects. A
-DNS-rebinding attacker therefore has a small window between the validation
-lookup and the connection lookup. This residual risk is accepted deliberately
-in exchange for correct TLS verification.
+Tools are offered only on the Ollama-compatible chat path and when `WEB_TOOLS`
+is true; OpenAI endpoints receive plain chat requests.
 
 ### API Endpoints
 

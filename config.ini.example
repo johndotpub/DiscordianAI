@@ -67,13 +67,10 @@ CONTEXT_WINDOW=128000
 # Customize your bot's personality
 SYSTEM_MESSAGE=You are Bender, a sarcastic robot from Futurama. You're crude, selfish, and love beer, but deep down you care about your friends. You automatically know when to search for current information and when to use your existing knowledge.
 
-# === WEB SCRAPING BUDGETS ===
-# Maximum number of URLs scraped from a single message (extras are ignored)
-MAX_URLS_PER_MESSAGE=3
-# Maximum combined characters of scraped page text injected into one prompt
-MAX_TOTAL_SCRAPED_CHARS=60000
-# Deadline in seconds for the entire scrape phase of one message
-SCRAPE_DEADLINE_SECONDS=20
+# === WEB TOOLS ===
+# Offer native web search and page fetch to Ollama-compatible chat providers.
+# OpenAI endpoints do not receive these tools.
+# WEB_TOOLS=true
 
 [Limits]
 # Rate limiting to prevent spam
@@ -113,8 +110,13 @@ USER_LOCK_CLEANUP_INTERVAL=3600
 # routing evidence model; this key is retained so existing configs still load.
 ENTITY_DETECTION_MIN_WORDS=10
 
-# Router implementation: heuristic (default) or model (not implemented yet)
+# Router implementation: heuristic (default, no network) or clef (Ollama Cloud
+# decision model, ~0.4 s per message and billed per token). "model" is retired.
 ROUTER_MODE=heuristic
+# Clef settings; ignored unless ROUTER_MODE=clef
+ROUTER_CLEF_MODEL=clef
+ROUTER_CLEF_THRESHOLD=0.5
+ROUTER_CLEF_TIMEOUT_MS=2000
 
 [Logging]
 LOG_LEVEL=INFO

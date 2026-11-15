@@ -22,7 +22,6 @@ _IMPORT_ERRORS = {"ImportError", "ModuleNotFoundError"}
 
 # Import names that differ from the distribution users need to install.
 _DISTRIBUTION_ALIASES = {
-    "bs4": "beautifulsoup4",
     "discord": "discord.py",
 }
 

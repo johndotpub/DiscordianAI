@@ -23,6 +23,7 @@ is not a contract.
 | What the output cap covers | **visible output plus reasoning tokens.** A cap consumed by reasoning returns HTTP 200 with `finish_reason: length` and `content: ""` | probe |
 | `reasoning_effort` | sent from `REASONING_EFFORT` only when non-empty (default `high`). It is a reasoning-model parameter; whether a model accepts it is provider-defined. `low`, `high`, and `max` are accepted by the shipped model, and `none` disables thinking | provider reference |
 | Cloud-model features | structured outputs, log probabilities, and `tool_choice` are not supported by cloud models and the bot does not send them | provider reference |
+| Web tools | `tools` carries `web_search` and `web_fetch` function schemas only when the base URL is Ollama-compatible and `WEB_TOOLS` is true; the model may request up to four tool rounds | `src/openai_processing.py`, `src/web_tools.py` |
 | OpenAI alternative | change `OPENAI_API_URL` to `https://api.openai.com/v1/`, set an `sk-` key, and choose a model; chat requests then send `max_completion_tokens` and `reasoning_effort`, not `max_tokens` | OpenAI Chat reference |
 | Maximum completion tokens | 128,000 (the bot's documented ceiling) | probe (error text) |
 | Oversized output cap | HTTP 400, `error.type: invalid_request_error`, `error.code: invalid_value`, message `max_tokens is too large: … This model supports at most 128000 completion tokens` | probe |
@@ -57,11 +58,12 @@ The bot uses the current Agent API, not Sonar Chat Completions. The OpenAI SDK's
 | Model sent | `perplexity/sonar` | probe + `GET /v1/models` |
 | Catalogue | `GET /v1/models` lists 54 models and exactly one Sonar model, `perplexity/sonar` | probe |
 | Legacy interface | Sonar Chat Completions still answers 200 with `citations` and `search_results`; it is not the current catalogue or the interface this bot uses | probe |
-| Request fields | `model`, `instructions` (system prompt), `input` (history and current user message, no system role), `max_output_tokens`, `tools: [{"type": "web_search"}]` | probe |
+| Request fields | `model`, `instructions` (system prompt plus the URL-fetch policy), `input` (history and current user message, no system role), `max_output_tokens`, `tools: [{"type": "web_search"}, {"type": "fetch_url"}]`, `max_steps: 3` | probe + code |
 | Sampling | no `temperature` is sent | probe + code |
 | Response shape | `output` array of items | probe |
 | `search_results` item | `results[]` with `id`, `url`, `title`, `snippet`, `date`, `last_updated`, `source`; `id` is the 1-based marker number used in the answer as `[1]`, `[2]` | probe |
 | `message` item | `role: "assistant"`, `content: [{"type": "output_text", "text": "…"}]` | probe |
+| `fetch_url_results` item | fetched pages under `contents[]` (or `results[]` on older shapes), each with `url` and `title`; citation markers resolve the same way as search results | code |
 | No-search response | `output` contains only the `message` item; there is no `search_results` item | probe |
 | Usage | `input_tokens`, `output_tokens`, `total_tokens`, and `cost` with input, output, tool-call, and total cost | probe |
 | Invalid model | HTTP **400** with `error.type: invalid_request`, `error.code: 400`, message `validation failed: model "…" is not supported`. The legacy path used `invalid_model`. Classify as a deterministic validation error and never retry | probe |
@@ -76,7 +78,8 @@ The bot uses the current Agent API, not Sonar Chat Completions. The OpenAI SDK's
 2. The system prompt travels as `instructions`, not as a system message inside `input`.
    History and the current turn travel in `input`.
 3. `max_output_tokens` replaces `max_tokens`, and `tools` always asks for `web_search`
-   because this path exists for live-data questions.
+   and `fetch_url` because this path exists for live-data questions. `max_steps` bounds
+   the tool loop at three steps.
 4. Citation markers are mapped by the `search_results[].id`, not by array position, so a
    reordered result list cannot misattribute a source.
 5. A response without `search_results` is valid: the parser returns the message text and an

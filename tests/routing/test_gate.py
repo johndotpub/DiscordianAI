@@ -84,6 +84,14 @@ def test_gate_table(label: str, text: str, reasons: tuple[str, ...], route: str)
     assert decision.reasons == reasons, label
 
 
+def test_gate_decisions_carry_the_gate_identity() -> None:
+    """Every gate decision names the gate and its policy version explicitly."""
+    decision = _decide("is github down")
+
+    assert decision.router_id == "gate"
+    assert decision.policy_version == "1"
+
+
 def test_code_fenced_url_is_not_a_url_override() -> None:
     """Overrides are extracted from masked text, so a fenced URL stays local."""
     decision = _decide("```\nhttps://example.com/status\n```")

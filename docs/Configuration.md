@@ -58,10 +58,8 @@ also leaves room for the provider's output cap inside `CONTEXT_WINDOW`; if the i
 output budgets exceed `CONTEXT_WINDOW`, the context window wins and a warning naming the
 conflicting settings is logged.
 
-#### Web Scraping Budgets
-- **`MAX_URLS_PER_MESSAGE`**: Maximum URLs scraped from one message; extras are ignored *(default: 3)*
-- **`MAX_TOTAL_SCRAPED_CHARS`**: Maximum combined scraped page text injected into one prompt *(default: 60000)*
-- **`SCRAPE_DEADLINE_SECONDS`**: Deadline for the entire scrape phase of one message, in seconds *(default: 20)*
+#### Web Tools
+- **`WEB_TOOLS`**: Offer native web search and page fetch to Ollama-compatible chat providers; OpenAI endpoints never receive these tools *(default: true)*
 
 ### Rate Limiting
 
@@ -89,7 +87,10 @@ Advanced configuration for intelligent AI service routing.
 - **`CONVERSATION_TTL_SECONDS`**: Idle seconds before a conversation and its lock are evicted *(default: 1800)*
 - **`USER_LOCK_CLEANUP_INTERVAL`**: Memory cleanup interval in seconds *(default: 3600)*
 - **`ENTITY_DETECTION_MIN_WORDS`**: Minimum message length intended for entity detection *(default: 10)*. Note: this setting is parsed into config but not yet wired into the current routing implementation; changing it has no runtime effect in this release.
-- **`ROUTER_MODE`**: Router implementation, `heuristic` or `model` *(default: "heuristic")*. The `model` (Clef) implementation is not built yet and selecting it stops the response path with an error naming `docs/routing/DESIGN.md`.
+- **`ROUTER_MODE`**: Router implementation, `heuristic` or `clef` *(default: "heuristic")*. `heuristic` is the deterministic gate and remains the fallback. `clef` sends each message to Ollama Cloud's decision model (about 0.4 seconds, billed per token); network, timeout, HTTP, or malformed-response failures fall back to the deterministic gate. `model` is not implemented and raises with a pointer to `ROUTER_MODE=clef`.
+- **`ROUTER_CLEF_MODEL`**: Decision model used when `ROUTER_MODE=clef` *(default: "clef")*
+- **`ROUTER_CLEF_THRESHOLD`**: Probability at or above which Clef routes to the web *(default: 0.5)*
+- **`ROUTER_CLEF_TIMEOUT_MS`**: Clef request timeout in milliseconds before falling back to the deterministic gate *(default: 2000)*
 
 ### Logging
 
@@ -191,10 +192,8 @@ CONTEXT_WINDOW=128000
 # Customize your bot's personality
 SYSTEM_MESSAGE=You are Bender, a sarcastic robot from Futurama. You're crude, selfish, and love beer, but deep down you care about your friends. You automatically know when to search for current information and when to use your existing knowledge.
 
-# === WEB SCRAPING BUDGETS ===
-MAX_URLS_PER_MESSAGE=3
-MAX_TOTAL_SCRAPED_CHARS=60000
-SCRAPE_DEADLINE_SECONDS=20
+# === WEB TOOLS ===
+WEB_TOOLS=true
 
 # No chat-provider-specific sampling parameters are supported by the public API; do not configure
 
@@ -227,8 +226,11 @@ USER_LOCK_CLEANUP_INTERVAL=3600
 # Minimum words required before entity detection runs
 ENTITY_DETECTION_MIN_WORDS=10
 
-# Router implementation: heuristic (default) or model (not implemented yet)
+# Router implementation: heuristic (default) or clef (optional decision model)
 ROUTER_MODE=heuristic
+ROUTER_CLEF_MODEL=clef
+ROUTER_CLEF_THRESHOLD=0.5
+ROUTER_CLEF_TIMEOUT_MS=2000
 
 [Logging]
 LOG_LEVEL=INFO
@@ -286,11 +288,12 @@ export CONVERSATION_TTL_SECONDS="1800"
 export USER_LOCK_CLEANUP_INTERVAL="3600"
 export ENTITY_DETECTION_MIN_WORDS="10"
 export ROUTER_MODE="heuristic"
+export ROUTER_CLEF_MODEL="clef"
+export ROUTER_CLEF_THRESHOLD="0.5"
+export ROUTER_CLEF_TIMEOUT_MS="2000"
 
-# Web scraping budgets
-export MAX_URLS_PER_MESSAGE="3"
-export MAX_TOTAL_SCRAPED_CHARS="60000"
-export SCRAPE_DEADLINE_SECONDS="20"
+# Native web tools
+export WEB_TOOLS="1"
 
 # Logging and health
 export LOG_FILE="bot.log"

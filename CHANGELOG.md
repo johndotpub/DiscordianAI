@@ -27,11 +27,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on a follow-up, and otherwise stays local. The channel-kind probability thresholds
   (`ROUTER_WEB_THRESHOLD_CHANNEL`, `ROUTER_WEB_THRESHOLD_ANNOUNCE`, `ROUTER_WEB_THRESHOLD_DM`) are
   removed; an existing `config.ini` that still sets them loads without error and ignores them.
+- **Clef answers carry Clef's own cache identity.** The selected router's `router_id` and
+  `policy_version` now stamp the cache salt, so a Clef answer uses `{route}:clef:1` instead of the
+  gate's `{route}:gate:1` and the two cannot share an entry. The deterministic gate keeps its
+  existing identity.
+- **Web-tool inputs are bounded.** A `web_search` query longer than 500 characters or a `web_fetch`
+  URL longer than 2,048 characters becomes an error tool result instead of a provider request;
+  `max_results` stays clamped to 1–10. Tool debug logs record only the tool name and argument byte
+  length, never the query or URL.
 
 ### Added ✨
 
 - **`REASONING_EFFORT`**: sent as `reasoning_effort` with chat requests; defaults to `high`. Valid
   values are model-defined, and reasoning tokens are billed as output.
+- **Optional Clef decision-model router.** `ROUTER_MODE=clef` asks Ollama Cloud's Clef model
+  (`/v1/systemone`) one bounded yes/no question per message (~0.4 s, billed per token);
+  `heuristic` remains the default. Network, timeout, HTTP, or malformed-response failures fall back
+  to the deterministic gate, and a missing key selects it at startup.
 
 ### Changed 🔁
 

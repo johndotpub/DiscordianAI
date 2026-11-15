@@ -12,6 +12,7 @@ def decision_log_fields(decision: RouteDecision) -> dict[str, Any]:
     return {
         "route": decision.route,
         "service": _SERVICE_BY_ROUTE[decision.route],
+        "router_id": decision.router_id,
         "reasons": ",".join(decision.reasons),
         "latency_ms": decision.latency_ms,
     }

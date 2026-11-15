@@ -27,6 +27,7 @@ _BUILD_ROOT_FILES = (
 _ROUTING_MODULES = frozenset(
     {
         "src/routing/__init__.py",
+        "src/routing/clef.py",
         "src/routing/contracts.py",
         "src/routing/context.py",
         "src/routing/features.py",

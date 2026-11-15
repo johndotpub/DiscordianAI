@@ -3,63 +3,12 @@
 import asyncio
 import gc
 import logging
-import socket
-import time
 
 import pytest
 
 from src.api_validation import log_validation_results
 from src.caching import RequestDeduplicator, _generate_scoped_key
 from src.health_checks import APIHealthMonitor
-from src.web_scraper import is_scrapable_url, scrape_url_content, scrape_urls
-
-
-@pytest.mark.asyncio
-async def test_dns_timeout_treats_host_as_unresolvable(monkeypatch, caplog):
-    """A blackholed resolver must fail fast instead of hanging the scrape path."""
-
-    def slow_lookup(_hostname):
-        time.sleep(10)
-        return []
-
-    monkeypatch.setattr("src.web_scraper._blocking_getaddrinfo", slow_lookup)
-    monkeypatch.setattr("src.web_scraper.RESOLVE_TIMEOUT_SECONDS", 0.05)
-
-    with caplog.at_level(logging.WARNING, logger="src.web_scraper"):
-        result = await asyncio.wait_for(
-            is_scrapable_url("https://slow.example/page?token=abc"),
-            timeout=1.0,
-        )
-
-    assert result is False
-    assert "slow.example" in caplog.text
-    assert "token=abc" not in caplog.text
-
-
-@pytest.mark.asyncio
-async def test_scrape_urls_continues_after_one_url_raises(caplog):
-    """One failing page must not discard successful siblings or leak its query."""
-    bad_url = "https://bad.example/secret?token=abc"
-    good_url = "https://good.example/page"
-
-    async def scrape(url, logger=None, **_kwargs):
-        if url == bad_url:
-            msg = "page exploded"
-            raise RuntimeError(msg)
-        return "good content"
-
-    with caplog.at_level(logging.WARNING, logger="src.web_scraper"):
-        results = await scrape_urls(
-            [bad_url, good_url],
-            logging.getLogger("test.reliability"),
-            max_urls=3,
-            deadline_seconds=2,
-            scrape_func=scrape,
-        )
-
-    assert [url for url, _content in results] == [good_url]
-    assert "https://bad.example/secret" in caplog.text
-    assert "token=abc" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -150,28 +99,6 @@ async def test_raising_health_checker_is_reported_as_unhealthy():
     assert monitor.metrics["openai"].failed_checks == 1
 
 
-@pytest.mark.asyncio
-async def test_scrape_logs_redact_credentials_and_query(monkeypatch, caplog):
-    """Scraper logs must not expose URL userinfo, query strings, or fragments."""
-
-    def failing_lookup(_hostname):
-        msg = "no such host"
-        raise socket.gaierror(msg)
-
-    monkeypatch.setattr("src.web_scraper._blocking_getaddrinfo", failing_lookup)
-    url = "https://alice:s3cret@private.example/path?token=abc#fragment"
-
-    with caplog.at_level(logging.DEBUG, logger="src.web_scraper"):
-        result = await scrape_url_content(url)
-
-    assert result is None
-    assert "alice" not in caplog.text
-    assert "s3cret" not in caplog.text
-    assert "token=abc" not in caplog.text
-    assert "fragment" not in caplog.text
-    assert "private.example" in caplog.text
-
-
 def test_api_validation_logs_redact_credentials_and_query(caplog):
     """Configured API URLs are logged without userinfo or query secrets."""
     config = {
@@ -195,15 +122,3 @@ def test_unscoped_cache_key_is_uncached():
     context = {"model": "gpt-test", "system_message": "test"}
 
     assert _generate_scoped_key("question", context, salt="test-salt") is None
-
-
-def test_dns_resolution_uses_bounded_dedicated_executor():
-    """Resolver threads are bounded by a dedicated pool, not the default executor."""
-    import src.web_scraper as ws
-
-    pool = ws._dns_executor()
-    assert pool._max_workers == ws.MAX_CONCURRENT_RESOLUTIONS
-    assert (
-        pool._thread_name_prefix == "dns-resolve" if hasattr(pool, "_thread_name_prefix") else True
-    )
-    assert ws._dns_executor() is pool  # memoized singleton

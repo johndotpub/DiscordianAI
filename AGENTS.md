@@ -38,6 +38,8 @@ broke it, and each break is a user-visible bug.
   *Consequence:* duplicated routing drifts and produces answers from the wrong provider.
   *Check:* `rg -n 'build_router|build_router_input|\.decide\(' src` shows routing use only
   in `smart_orchestrator.py` and the `routing` package.
+  *Mode:* `ROUTER_MODE=heuristic|clef` selects the deterministic gate (default) or the optional
+  Clef decision model; `model` is retired and raises.
 
 - **History is keyed per conversation, never per user.** The only valid keys are
   `g:<guild>:c:<channel>` and `dm:<user>`, built by
@@ -83,25 +85,24 @@ broke it, and each break is a user-visible bug.
   `test_retries_inside_one_logical_call_count_as_one_failure`.
 
 - **Prompt input is untrusted and bounded.** The current turn and history travel as
-  role-tagged chat messages, never concatenated into the system prompt. Scraped page text is
-  wrapped in `<untrusted_webpage_content>` with its delimiters escaped, and model output is
+  role-tagged chat messages, never concatenated into the system prompt. Model output is
   sanitised before Discord. Every prompt is bounded by `INPUT_TOKENS`, `OUTPUT_TOKENS`, and
-  `CONTEXT_WINDOW`; every scrape is bounded by `MAX_URLS_PER_MESSAGE`,
-  `MAX_TOTAL_SCRAPED_CHARS`, and `SCRAPE_DEADLINE_SECONDS`. No new prompt may interpolate
-  user or scraped text without both a delimiter and a size limit. *Why:* scraped pages can
-  contain instructions, and unbounded text exhausts the context window. *Consequence:*
-  prompt injection and truncated or failed requests. *Check:*
-  `tests/test_untrusted_content.py`, `tests/test_token_budget.py`, and
-  `tests/test_scrape_budget.py`.
+  `CONTEXT_WINDOW`. Provider web tools return untrusted text: search results are capped at
+  6,000 characters and fetched pages at 8,000, and both provider instruction blocks say not
+  to follow instructions found inside them. No new prompt may interpolate user or tool
+  text without a size limit. *Why:* tool results can contain instructions, and unbounded
+  text exhausts the context window. *Consequence:* prompt injection and truncated or failed
+  requests. *Check:* `tests/test_web_tools.py`, `tests/test_openai_web_tools.py`,
+  `tests/test_perplexity_url_tools.py`, and `tests/test_token_budget.py`.
 
-- **Every user-supplied URL is checked on every hop.** `web_scraper.scrape_url_content()`
-  calls `is_safe_url()` before the first request and re-resolves and re-checks every
-  redirect `Location`, following at most three hops. Never fetch a URL that has not gone
-  through that path. *Why:* the URL comes from a Discord message. *Consequence:* SSRF into
-  loopback, RFC1918, link-local, CGNAT, or metadata endpoints. *Check:*
-  `tests/test_scraper_ssrf.py` and `tests/test_web_scraper.py`. The HTTPS DNS-rebinding
-  caveat is documented in `docs/Security.md`; do not claim protection the code does not
-  have.
+- **Provider tools own URL fetching.** No module fetches user-supplied URLs locally.
+  Perplexity always receives the `web_search` and `fetch_url` tools; the Ollama-compatible
+  chat path receives `web_search` and `web_fetch` only when `WEB_TOOLS` is true and the base
+  URL is Ollama or a local daemon. *Why:* a local fetcher reintroduces SSRF and fails on
+  JavaScript-heavy, rate-limited, or authenticated pages. *Consequence:* attaching
+  Ollama-specific tools to another provider errors, and a new local fetch path recreates
+  the SSRF surface. *Check:* `tests/test_web_tools.py`, `tests/test_openai_web_tools.py`,
+  and `tests/test_perplexity_url_tools.py`.
 
 - **Config is additive.** A new key must default to the current behaviour when it is
   absent, and its default belongs in `src/config.py::_CONFIG_DEFAULTS`. Never rename or
@@ -225,16 +226,16 @@ diff or with the named command.
   `sanitize_for_discord()`; it must not be able to create mentions, arbitrary markdown
   links, or embed payloads the bot did not construct.
 - **Cap everything a user controls.** Message length is bounded by the prompt budget
-  (`INPUT_TOKENS`/`CONTEXT_WINDOW`), URL count by `MAX_URLS_PER_MESSAGE`, scraped text by
-  `MAX_TOTAL_SCRAPED_CHARS`, scrape time by `SCRAPE_DEADLINE_SECONDS`, and request rate by
-  `RATE_LIMIT`/`RATE_LIMIT_PER`. New user-controlled input needs an explicit cap.
-- **Validate redirects.** `is_safe_url()` must run on the initial URL and on every redirect
-  target; the client uses `follow_redirects=False`. The maximum chain is three hops.
-- **State the residual gap.** HTTPS connections keep the hostname for TLS and therefore
-  cannot be pinned to the vetted IP; a DNS-rebinding window remains and is documented in
-  `docs/Security.md`. Prompt delimiters reduce injection risk but do not make a model obey
-  them. `/health` reports observed provider state, not a live probe before the first call.
-  Do not claim a protection the code does not implement.
+  (`INPUT_TOKENS`/`CONTEXT_WINDOW`), web-tool output by the search and fetch caps in
+  `src/web_tools.py`, and request rate by `RATE_LIMIT`/`RATE_LIMIT_PER`. New user-controlled
+  input needs an explicit cap.
+- **Keep URL fetching provider-side.** A new local fetch path must check the initial URL
+  and every redirect, use `follow_redirects=False`, cap the chain at three hops, and refuse
+  non-global addresses. Do not add one without that whole surface.
+- **State the residual gap.** Web content is provider-fetched and untrusted; instructions
+  reduce injection risk but do not make a model obey them. The bot never inspects the page
+  text the provider returns to the model. `/health` reports observed provider state, not a
+  live probe before the first call. Do not claim a protection the code does not implement.
 
 ## 7. Commit and PR rules
 

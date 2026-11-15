@@ -5,6 +5,11 @@ coverage:
         target: 84
         threshold: 0.1
         informational: false
+    patch:
+      default:
+        target: 84
+        threshold: 0.5
+        informational: false
 comment:
   require_changes: false
   layout: "reach, diff, flags"
