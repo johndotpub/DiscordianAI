@@ -87,7 +87,10 @@ Advanced configuration for intelligent AI service routing.
 - **`CONVERSATION_TTL_SECONDS`**: Idle seconds before a conversation and its lock are evicted *(default: 1800)*
 - **`USER_LOCK_CLEANUP_INTERVAL`**: Memory cleanup interval in seconds *(default: 3600)*
 - **`ENTITY_DETECTION_MIN_WORDS`**: Minimum message length intended for entity detection *(default: 10)*. Note: this setting is parsed into config but not yet wired into the current routing implementation; changing it has no runtime effect in this release.
-- **`ROUTER_MODE`**: Router implementation, `heuristic` or `model` *(default: "heuristic")*. The `model` (Clef) implementation is not built yet and selecting it stops the response path with an error naming `docs/routing/DESIGN.md`.
+- **`ROUTER_MODE`**: Router implementation, `heuristic` or `clef` *(default: "heuristic")*. `heuristic` is the deterministic gate and remains the fallback. `clef` sends each message to Ollama Cloud's decision model (about 0.4 seconds, billed per token); network, timeout, HTTP, or malformed-response failures fall back to the deterministic gate. `model` is not implemented and raises with a pointer to `ROUTER_MODE=clef`.
+- **`ROUTER_CLEF_MODEL`**: Decision model used when `ROUTER_MODE=clef` *(default: "clef")*
+- **`ROUTER_CLEF_THRESHOLD`**: Probability at or above which Clef routes to the web *(default: 0.5)*
+- **`ROUTER_CLEF_TIMEOUT_MS`**: Clef request timeout in milliseconds before falling back to the deterministic gate *(default: 2000)*
 
 ### Logging
 
@@ -223,8 +226,11 @@ USER_LOCK_CLEANUP_INTERVAL=3600
 # Minimum words required before entity detection runs
 ENTITY_DETECTION_MIN_WORDS=10
 
-# Router implementation: heuristic (default) or model (not implemented yet)
+# Router implementation: heuristic (default) or clef (optional decision model)
 ROUTER_MODE=heuristic
+ROUTER_CLEF_MODEL=clef
+ROUTER_CLEF_THRESHOLD=0.5
+ROUTER_CLEF_TIMEOUT_MS=2000
 
 [Logging]
 LOG_LEVEL=INFO
@@ -282,6 +288,9 @@ export CONVERSATION_TTL_SECONDS="1800"
 export USER_LOCK_CLEANUP_INTERVAL="3600"
 export ENTITY_DETECTION_MIN_WORDS="10"
 export ROUTER_MODE="heuristic"
+export ROUTER_CLEF_MODEL="clef"
+export ROUTER_CLEF_THRESHOLD="0.5"
+export ROUTER_CLEF_TIMEOUT_MS="2000"
 
 # Native web tools
 export WEB_TOOLS="1"

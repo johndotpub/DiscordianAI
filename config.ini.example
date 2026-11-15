@@ -110,8 +110,13 @@ USER_LOCK_CLEANUP_INTERVAL=3600
 # routing evidence model; this key is retained so existing configs still load.
 ENTITY_DETECTION_MIN_WORDS=10
 
-# Router implementation: heuristic (default) or model (not implemented yet)
+# Router implementation: heuristic (default, no network) or clef (Ollama Cloud
+# decision model, ~0.4 s per message and billed per token). "model" is retired.
 ROUTER_MODE=heuristic
+# Clef settings; ignored unless ROUTER_MODE=clef
+ROUTER_CLEF_MODEL=clef
+ROUTER_CLEF_THRESHOLD=0.5
+ROUTER_CLEF_TIMEOUT_MS=2000
 
 [Logging]
 LOG_LEVEL=INFO

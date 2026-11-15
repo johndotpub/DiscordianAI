@@ -95,7 +95,7 @@ The launcher resolves Python in this order: pyenv → project-local `.venv` → 
 | `PERPLEXITY_OUTPUT_TOKENS` | Perplexity completion cap, sent as `max_output_tokens` to the Agent API (output only). Defaults to `OUTPUT_TOKENS`.
 | `CONTEXT_WINDOW` | Shared context window (default 128000). It stays 128000 because it is shared with the OpenAI-compatible path, and Sonar's window is the smaller of the two.
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | How many recent messages to inspect when a follow-up inherits the previous provider.
-| `ROUTER_MODE` | Router implementation, `heuristic` by default. `model` is not implemented and raises with a pointer to `docs/routing/DESIGN.md`.
+| `ROUTER_MODE` | Router implementation, `heuristic` by default (deterministic, no network). `clef` uses Ollama Cloud's decision model (~0.4 s per message, billed per token) and falls back to the heuristic on failure; `model` is retired and raises.
 | `CONVERSATION_TTL_SECONDS` | Idle seconds before a conversation and its lock are evicted (default 1800).
 | `WEB_TOOLS` | Offer native web search and page fetch to Ollama-compatible chat providers (default true); OpenAI endpoints never receive these tools.
 | `OPENAI_MAX_CONNECTIONS` / `PERPLEXITY_MAX_CONNECTIONS` | HTTP/2 pool connection limits for each API client.

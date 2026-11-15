@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`REASONING_EFFORT`**: sent as `reasoning_effort` with chat requests; defaults to `high`. Valid
   values are model-defined, and reasoning tokens are billed as output.
+- **Optional Clef decision-model router.** `ROUTER_MODE=clef` asks Ollama Cloud's Clef model
+  (`/v1/systemone`) one bounded yes/no question per message (~0.4 s, billed per token);
+  `heuristic` remains the default. Network, timeout, HTTP, or malformed-response failures fall back
+  to the deterministic gate, and a missing key selects it at startup.
 
 ### Changed 🔁
 

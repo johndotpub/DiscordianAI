@@ -1,7 +1,8 @@
 # Routing: design record
 
-Status: the deterministic gate is the production router. This document describes what ships — what the
-decision is, what decides it, what is deliberately absent, and what we know about its accuracy.
+Status: the deterministic gate is the default production router; the optional Clef decision-model router
+is implemented behind `ROUTER_MODE=clef`. This document describes what ships — what the decision is,
+what decides it, what is deliberately absent, and what we know about its accuracy.
 
 ## The one question
 
@@ -76,16 +77,23 @@ the gate.
 
 ## Configuration
 
-`ROUTER_MODE=heuristic` (default; the only shipped mode). `ROUTER_MODE=model` raises until a decision
-model exists — see below. All `ROUTER_WEB_THRESHOLD_*` keys are gone; any lingering reference in an old
-config file is ignored harmlessly (warned once at startup).
+`ROUTER_MODE=heuristic` (default) is the deterministic gate. `ROUTER_MODE=clef` selects the optional
+Clef decision-model router described below; `ROUTER_MODE=model` is retired and raises. All
+`ROUTER_WEB_THRESHOLD_*` keys are gone; any lingering reference in an old config file is ignored
+harmlessly (warned once at startup).
 
-## The model seam (unbuilt, deliberate)
+## The Clef decision-model router (optional)
 
-`Router` is a protocol; `HeuristicRouter` implements it. A future `ModelRouter` (the Cloudflare Clef
-decision model is the intended candidate) can be slotted behind `ROUTER_MODE=model` without touching the
-orchestrator, the cache, or the cache-key derivation. Until then the seam is documented and exercised by
-the conformance tests only — deliberately not by a half-built implementation.
+`Router` is a protocol; `HeuristicRouter` and `ClefRouter` implement it. `ClefRouter` posts one bounded
+request to Ollama Cloud at `/v1/systemone` with the last two prior turns (each capped at 600 characters)
+and the current message as `state`. The single `needs_live_web` question is a `noul` probability;
+`>= ROUTER_CLEF_THRESHOLD` routes web, otherwise local. A live probe measured roughly 0.35–0.43 s per
+decision, billed per token; the request timeout defaults to 2 s.
+
+Any network error, timeout, HTTP status of 400 or above, or missing/malformed response logs a warning and
+returns the deterministic gate's decision with a `clef:fallback:<kind>` reason. A missing API key selects
+the gate at startup instead of raising. The gate therefore remains both the default and the fallback;
+Clef never widens the routing surface or changes the prompt.
 
 ## Cache and identity
 
@@ -108,3 +116,5 @@ call site — there is no router-emitted TTL object anymore.
   (code-fence instructions no longer force web); web-inability reroute widened to any local route without
   an explicit local instruction; `ROUTER_WEB_THRESHOLD_*` removed; corpora promoted from "scoreboard" to
   regression fixture; behavior on both corpora row-identical pre/post change.
+- 2026-11-15: optional Clef decision-model router added behind `ROUTER_MODE=clef`; the deterministic gate
+  stays the default and the fallback on any Clef failure. `ROUTER_MODE=model` now points at `clef`.

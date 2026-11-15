@@ -90,13 +90,13 @@ async def test_web_failure_and_local_inability_do_not_retry_perplexity(caplog):
 
 
 @pytest.mark.asyncio
-async def test_model_router_mode_raises_with_the_design_pointer():
+async def test_model_router_mode_raises_with_the_clef_replacement():
     from src.smart_orchestrator import get_smart_response
 
     request = _request("Tell me something interesting", MagicMock())
     clients = AIClients(openai=object(), perplexity=object())
 
-    with pytest.raises(NotImplementedError, match=r"docs/routing/DESIGN\.md"):
+    with pytest.raises(NotImplementedError, match=r"use ROUTER_MODE=clef"):
         await get_smart_response(
             request,
             [],

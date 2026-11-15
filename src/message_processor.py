@@ -236,6 +236,10 @@ async def _process_message_core(
                 "USER_LOCK_CLEANUP_INTERVAL",
                 "ENTITY_DETECTION_MIN_WORDS",
                 "ROUTER_MODE",
+                "ROUTER_CLEF_MODEL",
+                "ROUTER_CLEF_THRESHOLD",
+                "ROUTER_CLEF_TIMEOUT_MS",
+                "OPENAI_API_KEY",
             )
             if key in config
         }

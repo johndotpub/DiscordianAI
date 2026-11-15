@@ -38,6 +38,8 @@ broke it, and each break is a user-visible bug.
   *Consequence:* duplicated routing drifts and produces answers from the wrong provider.
   *Check:* `rg -n 'build_router|build_router_input|\.decide\(' src` shows routing use only
   in `smart_orchestrator.py` and the `routing` package.
+  *Mode:* `ROUTER_MODE=heuristic|clef` selects the deterministic gate (default) or the optional
+  Clef decision model; `model` is retired and raises.
 
 - **History is keyed per conversation, never per user.** The only valid keys are
   `g:<guild>:c:<channel>` and `dm:<user>`, built by

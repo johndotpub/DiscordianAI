@@ -134,8 +134,13 @@ flowchart TD
 
 ```ini
 [Orchestrator]
-# heuristic (default) or model; the Clef model router is not implemented yet
+# heuristic (default, deterministic) or clef (optional decision model)
 ROUTER_MODE=heuristic
+
+# Clef settings; ignored unless ROUTER_MODE=clef
+ROUTER_CLEF_MODEL=clef
+ROUTER_CLEF_THRESHOLD=0.5
+ROUTER_CLEF_TIMEOUT_MS=2000
 
 # How many recent messages a follow-up may inspect
 LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
@@ -143,7 +148,10 @@ LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 
 | Setting | Default | Description |
 |---|---|---|
-| `ROUTER_MODE` | `heuristic` | Selects the router implementation. `model` raises until the Clef seam is built. |
+| `ROUTER_MODE` | `heuristic` | Selects the router implementation. `clef` uses Ollama Cloud's decision model and falls back to the deterministic gate; `model` is retired and raises. |
+| `ROUTER_CLEF_MODEL` | `clef` | Decision model used when `ROUTER_MODE=clef`. |
+| `ROUTER_CLEF_THRESHOLD` | 0.5 | Probability at or above which Clef routes to the web. |
+| `ROUTER_CLEF_TIMEOUT_MS` | 2000 | Clef request timeout before falling back to the deterministic gate. |
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | 6 | How many recent messages a follow-up may inspect; `0` disables the lookup. |
 | `MAX_HISTORY_PER_USER` | 50 | Maximum conversation entries stored per user. |
 | `USER_LOCK_CLEANUP_INTERVAL` | 3600 | How often to clean up inactive user locks, in seconds. |

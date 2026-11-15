@@ -121,6 +121,9 @@ DEFAULT_USER_LOCK_CLEANUP_INTERVAL = 3600  # 1 hour
 
 # Routing
 DEFAULT_ROUTER_MODE = "heuristic"
+DEFAULT_ROUTER_CLEF_MODEL = "clef"
+DEFAULT_ROUTER_CLEF_THRESHOLD = 0.5
+DEFAULT_ROUTER_CLEF_TIMEOUT_MS = 2000
 
 # Token and Context Limits
 DEFAULT_INPUT_TOKENS = 120000
@@ -248,6 +251,9 @@ _CONFIG_DEFAULTS: dict[str, Any] = {
     "CONVERSATION_TTL_SECONDS": DEFAULT_CONVERSATION_TTL_SECONDS,
     "USER_LOCK_CLEANUP_INTERVAL": DEFAULT_USER_LOCK_CLEANUP_INTERVAL,
     "ROUTER_MODE": DEFAULT_ROUTER_MODE,
+    "ROUTER_CLEF_MODEL": DEFAULT_ROUTER_CLEF_MODEL,
+    "ROUTER_CLEF_THRESHOLD": DEFAULT_ROUTER_CLEF_THRESHOLD,
+    "ROUTER_CLEF_TIMEOUT_MS": DEFAULT_ROUTER_CLEF_TIMEOUT_MS,
     "ENTITY_DETECTION_MIN_WORDS": 10,
     "WEB_TOOLS": True,
     "LOG_FILE": "bot.log",
@@ -447,6 +453,9 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "CONVERSATION_TTL_SECONDS",
         "USER_LOCK_CLEANUP_INTERVAL",
         "ROUTER_MODE",
+        "ROUTER_CLEF_MODEL",
+        "ROUTER_CLEF_THRESHOLD",
+        "ROUTER_CLEF_TIMEOUT_MS",
         "ENTITY_DETECTION_MIN_WORDS",
         "WEB_TOOLS",
         "LOG_FILE",
@@ -484,10 +493,12 @@ def _apply_single_env_override(
         "CONVERSATION_TTL_SECONDS",
         "USER_LOCK_CLEANUP_INTERVAL",
         "ENTITY_DETECTION_MIN_WORDS",
+        "ROUTER_CLEF_TIMEOUT_MS",
         "HEALTH_PORT",
         "HEALTH_PROVIDER_STALE_SECONDS",
     }
     bool_keys = {"HEALTH_ENABLED", "DISCORDIANAI_LOG_COLOR", "WEB_TOOLS"}
+    float_keys = {"ROUTER_CLEF_THRESHOLD"}
 
     if key in {"ALLOWED_CHANNELS", "ALLOWED_GUILDS"}:
         config_data[key] = (
@@ -502,6 +513,11 @@ def _apply_single_env_override(
             config_data[key] = int(value)
         except (ValueError, TypeError):
             logger.warning("Invalid integer for %s: %s", key, value)
+    elif key in float_keys:
+        try:
+            config_data[key] = float(value)
+        except (ValueError, TypeError):
+            logger.warning("Invalid float for %s: %s", key, value)
     elif key in bool_keys:
         parsed = _parse_bool(value)
         if parsed is None:
@@ -631,6 +647,25 @@ def _parse_orchestrator_config(
         "Orchestrator",
         "ROUTER_MODE",
         fallback=_CONFIG_DEFAULTS["ROUTER_MODE"],
+    )
+    config_data["ROUTER_CLEF_MODEL"] = config.get(
+        "Orchestrator",
+        "ROUTER_CLEF_MODEL",
+        fallback=_CONFIG_DEFAULTS["ROUTER_CLEF_MODEL"],
+    )
+    config_data["ROUTER_CLEF_THRESHOLD"] = _get_float_safe(
+        config,
+        "ROUTER_CLEF_THRESHOLD",
+        _CONFIG_DEFAULTS["ROUTER_CLEF_THRESHOLD"],
+        logger,
+        section="Orchestrator",
+    )
+    config_data["ROUTER_CLEF_TIMEOUT_MS"] = _get_int_safe(
+        config,
+        "ROUTER_CLEF_TIMEOUT_MS",
+        _CONFIG_DEFAULTS["ROUTER_CLEF_TIMEOUT_MS"],
+        logger,
+        section="Orchestrator",
     )
 
 
@@ -794,6 +829,24 @@ def _get_int_safe(
         return config.getint(section, key, fallback=default)
     except ValueError:
         logger.warning("Invalid %s value, using default %d", key, default)
+        return default
+
+
+def _get_float_safe(
+    config: configparser.ConfigParser,
+    key: str,
+    default: float,
+    logger: logging.Logger,
+    section: str = "Default",
+) -> float:
+    """Safely get a float from configuration with fallback."""
+    raw_value = config.get(section, key, fallback=None)
+    if raw_value is None:
+        return default
+    try:
+        return float(raw_value)
+    except (TypeError, ValueError):
+        logger.warning("Invalid %s value, using default %s", key, default)
         return default
 
 
