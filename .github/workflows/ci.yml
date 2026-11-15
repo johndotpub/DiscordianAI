@@ -59,8 +59,19 @@ jobs:
     - name: Run tests
       run: tox -e py312
 
+    - name: Check Codecov token
+      id: codecov-token
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      run: |
+        if [[ -n "$CODECOV_TOKEN" ]]; then
+          echo "available=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "available=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Upload coverage to Codecov
-      if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+      if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && steps.codecov-token.outputs.available == 'true'
       uses: codecov/codecov-action@v7
       with:
         files: coverage.xml
