@@ -369,12 +369,21 @@ class APIHealthMonitor:
             client = clients.get(spec.client_key)
             if not client:
                 continue
+            start_time = time.time()
             try:
                 checker = getattr(self, f"check_{service}_health")
                 result = await checker(client, config)
-                results[service] = result
-                self.record_health_check(result)
-            except Exception:
+            except Exception as exc:
+                result = HealthCheckResult(
+                    service=service,
+                    status="unhealthy",
+                    response_time_ms=(time.time() - start_time) * 1000,
+                    timestamp=datetime.now(UTC),
+                    details={"error_type": type(exc).__name__},
+                    error=f"check raised {type(exc).__name__}",
+                )
                 self.logger.exception("Failed to check %s health", spec.display_name)
+            results[service] = result
+            self.record_health_check(result)
 
         return results

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "DiscordianAI"
 version = "0.4.0"
-description = "A Discord bot that uses OpenAI's GPT API to generate responses."
+description = "A Discord bot that uses an OpenAI-compatible chat API (Ollama Cloud by default) and Perplexity to generate responses."
 readme = "README.md"
 license = {file = "LICENSE"}
 authors = [{name = "johndotpub", email = "github@john.pub"}]

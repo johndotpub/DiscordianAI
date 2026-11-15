@@ -11,7 +11,27 @@ from urllib.parse import urlsplit
 
 from .contracts import EvidenceClass, Source
 from .lexicon import Lexicon, TermHit
-from .scoring import STRUCTURAL_WEIGHTS
+
+STRUCTURAL_WEIGHTS: dict[str, float] = {
+    "pred.event": 2.2,
+    "pred.error_code": 2.0,
+    "shape.version": 2.0,
+    "shape.money": 1.8,
+    "time.year": 2.0,
+    "time.deixis": 1.4,
+    "time.deixis.framing": 1.0,
+    "frame.question": 1.0,
+    "frame.imperative": 0.8,
+    "frame.opinion": 0.4,
+    "frame.creative": 0.4,
+    "frame.procedural": 0.5,
+    "cue.lookup": 0.6,
+    "ref.entity": 0.8,
+    "neg.narrative": -2.0,
+    "neg.supplied_artifact": -4.0,
+    "code.shape": -3.0,
+}
+"""Base weight for every structural signal emitted by ``features``."""
 
 SOURCE_EXTENSIONS = frozenset(
     {
@@ -226,7 +246,6 @@ _CONTRACTION_PATTERN = re.compile(
     + "|".join(re.escape(term) for term in sorted(_CONTRACTIONS, key=len, reverse=True))
     + r")(?![a-z0-9])"
 )
-_WHITESPACE = re.compile(r"\s+")
 
 
 def _joined(*parts: str) -> str:

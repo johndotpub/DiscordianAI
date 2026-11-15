@@ -11,9 +11,7 @@ import re
 from typing import Any
 
 from .config import (
-    DEFAULT_ROUTER_WEB_THRESHOLD_ANNOUNCE,
-    DEFAULT_ROUTER_WEB_THRESHOLD_CHANNEL,
-    DEFAULT_ROUTER_WEB_THRESHOLD_DM,
+    DEFAULT_LOOKBACK_MESSAGES_FOR_CONSISTENCY,
     DISCORD_MARKUP_PATTERN,
     get_error_messages,
 )
@@ -21,7 +19,7 @@ from .error_handling import get_circuit_breaker
 from .models import AIClients, AIConfig, AIRequest, RoutingMetadata
 from .openai_processing import process_openai_message
 from .perplexity_processing import process_perplexity_message
-from .routing import RouterConfig, build_router, decide, decision_log_fields
+from .routing import build_router, decision_log_fields
 from .routing.context import build_router_input
 from .routing.contracts import RouteDecision
 from .routing.lexicon import LexiconError
@@ -75,7 +73,6 @@ _ONLY_MODE_SPECS: dict[str, _OnlyModeSpec] = {
 }
 
 # Constants for magic values
-DEFAULT_LOOKBACK = 6
 _EARLY_WEB_INABILITY_WINDOW = 300
 _QUOTED_SPAN_PATTERN = re.compile(r'"[^"\n]*"|“[^”\n]*”|`[^`\n]*`')
 _NARRATIVE_MARKERS_PATTERN = re.compile(
@@ -116,23 +113,12 @@ _OPENAI_WEB_INABILITY_PATTERNS = [
     )
 ]
 
-_REROUTE_EVIDENCE_SIGNALS = frozenset({"cue.lookup", "override.url"})
 _MODEL_SELF_REFERENCE_PATTERN = re.compile(
     r"\byour\b[^.!?\n]{0,40}\b(?:knowledge|training|cutoff|cut.?off|model|version|update)\b"
     r"|\bwhat\s+(?:model|version)\s+(?:are|is)\s+you\b",
     re.IGNORECASE,
 )
-
-_CHANNEL_THRESHOLD_KEYS = {
-    "channel": "ROUTER_WEB_THRESHOLD_CHANNEL",
-    "announcement": "ROUTER_WEB_THRESHOLD_ANNOUNCE",
-    "dm": "ROUTER_WEB_THRESHOLD_DM",
-}
-_CHANNEL_THRESHOLD_DEFAULTS = {
-    "channel": DEFAULT_ROUTER_WEB_THRESHOLD_CHANNEL,
-    "announcement": DEFAULT_ROUTER_WEB_THRESHOLD_ANNOUNCE,
-    "dm": DEFAULT_ROUTER_WEB_THRESHOLD_DM,
-}
+_CACHE_MENTION_PATTERN = re.compile(r"<@[!&]?\d+>|<#\d+>|<a?:[A-Za-z0-9_]+:\d+>")
 
 
 @dataclass
@@ -269,16 +255,16 @@ def _detect_openai_web_inability(response_text: str) -> bool:
 def _web_inability_reroute_allowed(decision: RouteDecision, query: str) -> bool:
     """Return True when the router's decision leaves room for a web reroute.
 
-    A confident local decision is only overridden when the user explicitly
-    asked for a lookup or supplied a URL. Questions about the model's own
-    knowledge or training are not live-data requests, even though the lookup
-    cue pattern also matches their ``what is`` opener.
+    Only a local decision can be rerouted, and an explicit local instruction
+    or a question about the model's own knowledge always holds. Those questions
+    are not live-data requests even though the lookup cue pattern matches
+    their ``what is`` opener.
     """
     if _MODEL_SELF_REFERENCE_PATTERN.search(query or ""):
         return False
-    if decision.band == "unsure":
-        return True
-    return any(item.signal in _REROUTE_EVIDENCE_SIGNALS for item in decision.evidence)
+    if decision.route != "local":
+        return False
+    return not any(reason.startswith("override:local") for reason in decision.reasons)
 
 
 def _reroute_decision(decision: RouteDecision) -> RouteDecision:
@@ -286,37 +272,37 @@ def _reroute_decision(decision: RouteDecision) -> RouteDecision:
     return replace(
         decision,
         route="web",
-        cache=replace(
-            decision.cache,
-            cacheable=True,
-            salt=f"web:{decision.router_id}:{decision.policy_version}:reroute",
-        ),
+        reasons=("override:web_reroute",),
     )
 
 
 def _local_fallback_decision(request: AIRequest) -> RouteDecision:
     """Return a deterministic local decision that needs no lexicon or history."""
-    return decide((), RouterConfig(), text=getattr(request, "message", "") or "")
+    return RouteDecision(
+        route="local",
+        reasons=("fallback:lexicon_error",),
+        text=getattr(request, "message", "") or "",
+    )
 
 
-def _web_threshold(orchestrator_config: dict | None, channel_kind: str) -> float:
-    """Return the configured web threshold for one channel kind."""
-    kind = channel_kind if channel_kind in _CHANNEL_THRESHOLD_KEYS else "channel"
-    key = _CHANNEL_THRESHOLD_KEYS[kind]
-    default = _CHANNEL_THRESHOLD_DEFAULTS[kind]
-    if not orchestrator_config or key not in orchestrator_config:
-        return default
-    try:
-        return float(orchestrator_config[key])
-    except (TypeError, ValueError):
-        return default
+def _cacheable(decision: RouteDecision) -> bool:
+    """Return True when the answer produced under ``decision`` may be cached."""
+    if any(reason.startswith("override:url") for reason in decision.reasons):
+        return False
+    if decision.route == "local" and any(
+        reason.startswith("bearing:") for reason in decision.reasons
+    ):
+        return False
+    return any(character.isalnum() for character in _CACHE_MENTION_PATTERN.sub("", decision.text))
 
 
 def _lookback(orchestrator_config: dict | None) -> int:
     """Return the configured follow-up lookback window."""
     if not orchestrator_config:
-        return DEFAULT_LOOKBACK
-    return orchestrator_config.get("LOOKBACK_MESSAGES_FOR_CONSISTENCY", DEFAULT_LOOKBACK)
+        return DEFAULT_LOOKBACK_MESSAGES_FOR_CONSISTENCY
+    return orchestrator_config.get(
+        "LOOKBACK_MESSAGES_FOR_CONSISTENCY", DEFAULT_LOOKBACK_MESSAGES_FOR_CONSISTENCY
+    )
 
 
 async def _build_route_decision(
@@ -331,15 +317,9 @@ async def _build_route_decision(
             getattr(request, "conversation_manager", None),
             _lookback(orchestrator_config),
         )
-        channel_kind = getattr(request, "channel_kind", "channel")
         router_input = replace(
             router_input,
             text=_sanitize_for_routing(router_input.text),
-            context=replace(router_input.context, channel_kind=channel_kind),
-            config=replace(
-                router_input.config,
-                tau=_web_threshold(orchestrator_config, channel_kind),
-            ),
         )
         decision = await router.decide(router_input)
     except LexiconError as exc:
@@ -359,14 +339,16 @@ def _routing_metadata(
     degraded: bool = False,
 ) -> RoutingMetadata:
     """Return the cache identity for a call made under ``decision``."""
+    rerouted = "override:web_reroute" in decision.reasons
+    suffix = ":reroute" if rerouted else ""
     return RoutingMetadata(
         service=service,
-        router_id=decision.router_id,
-        policy_version=decision.policy_version,
-        decision_source=decision.source,
+        router_id="gate",
+        policy_version="1",
+        decision_source=decision.reasons[0] if decision.reasons else "unknown",
         route=decision.route,
-        salt=decision.cache.salt,
-        cacheable=decision.cache.cacheable,
+        salt=f"{decision.route}:gate:1{suffix}",
+        cacheable=_cacheable(decision),
         degraded=degraded,
     )
 

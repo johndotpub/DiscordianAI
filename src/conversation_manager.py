@@ -237,17 +237,6 @@ class ThreadSafeConversationManager:
 
         return removed_count
 
-    def cleanup_expired_conversations(self) -> int:
-        """Immediately remove every conversation that has exceeded the TTL.
-
-        Returns:
-            int: Number of conversation locks removed.
-        """
-        now = self._clock()
-        with self._global_lock:
-            self._last_expiry_sweep = now
-        return self._expire_stale_conversations(now)
-
     def get_conversation(
         self,
         user_id: ConversationKey | None = None,
@@ -692,25 +681,6 @@ class ThreadSafeConversationManager:
                     total_messages / len(self._conversations) if self._conversations else 0
                 ),
                 "active_locks": len(self._user_locks),
-            }
-
-    def get_memory_stats(self) -> dict[str, Any]:
-        """Get memory usage statistics for monitoring.
-
-        Returns:
-            Dictionary with memory usage statistics
-        """
-        self._safe_cleanup()
-        with self._global_lock:
-            total_messages = sum(len(conv) for conv in self._conversations.values())
-            return {
-                "total_users": len(self._conversations),
-                "total_locks": len(self._user_locks),
-                "total_messages": total_messages,
-                "max_history_per_user": self._max_history,
-                "average_messages_per_user": (
-                    total_messages / len(self._conversations) if self._conversations else 0
-                ),
             }
 
     def cleanup_inactive_user_locks(self, force: bool = False) -> int:

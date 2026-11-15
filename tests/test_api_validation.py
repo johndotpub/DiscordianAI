@@ -29,23 +29,25 @@ class TestAPIKeyFormatValidation:
             assert error_msg is None
 
     def test_validate_openai_api_key_format_invalid(self):
-        """Test invalid OpenAI API key formats."""
+        """Only empty or whitespace-only keys are invalid."""
         invalid_keys = [
-            "invalid-key",
-            "sk-",  # Too short
-            "sk-" + "a" * 10,  # Too short
-            "pk-" + "a" * 32,  # Wrong prefix
-            "SK-" + "a" * 32,  # Wrong case prefix
-            "",  # Empty string (though None is valid)
-            "sk-abc!@#",  # Invalid characters
+            "",
+            " ",
+            "   \n\t",
         ]
 
         for key in invalid_keys:
             is_valid, error_msg = validate_openai_api_key_format(key)
-            assert not is_valid, f"Key {key[:10]}... should be invalid"
+            assert not is_valid, f"Key {key!r} should be invalid"
             assert error_msg is not None
-            assert "OpenAI API key" in error_msg
-            assert "sk-" in error_msg
+            assert "OPENAI_API_KEY" in error_msg
+
+    def test_validate_openai_api_key_format_accepts_non_sk_shape(self):
+        """Non-OpenAI-compatible providers use their own key formats."""
+        for key in ("invalid-key", "pk-" + "a" * 32, "ollama-" + "a" * 32):
+            is_valid, error_msg = validate_openai_api_key_format(key)
+            assert is_valid, f"Key {key[:10]}... should be accepted"
+            assert error_msg is None
 
     def test_validate_openai_api_key_format_none(self):
         """Test None OpenAI API key (should be valid as optional)."""
@@ -97,17 +99,17 @@ class TestOpenAIConfigValidation:
     """Test OpenAI configuration validation."""
 
     def test_validate_openai_config_valid(self):
-        """Test validation of valid OpenAI configuration."""
+        """Test validation of valid Ollama Cloud configuration."""
         config = {
-            "OPENAI_API_KEY": "sk-" + "a" * 32,
-            "OPENAI_API_URL": "https://api.openai.com/v1/",
-            "GPT_MODEL": "gpt-5-mini",
+            "OPENAI_API_KEY": "ollama-" + "a" * 32,
+            "OPENAI_API_URL": "https://ollama.com/v1/",
+            "GPT_MODEL": "deepseek-v4.1-flash:1017",
             "OUTPUT_TOKENS": 8000,
             "INPUT_TOKENS": 120000,
         }
 
         issues = validate_openai_config(config)
-        # Should have no errors (may have INFO messages)
+        # Should have no errors; the non-sk key is a warning.
         errors = [issue for issue in issues if issue.startswith("ERROR:")]
         assert len(errors) == 0
 
@@ -122,24 +124,24 @@ class TestOpenAIConfigValidation:
         assert any("Invalid OpenAI API URL" in issue for issue in issues)
 
     def test_validate_openai_config_invalid_model(self):
-        """Test validation with invalid GPT model."""
+        """Any non-empty model identifier is accepted without a warning."""
         config = {
             "GPT_MODEL": "gpt-7-invalid",
         }
 
         issues = validate_openai_config(config)
-        assert any("Unknown GPT model" in issue for issue in issues)
+        assert not any("model" in issue.lower() for issue in issues)
 
     def test_validate_openai_config_invalid_api_key(self):
-        """Test validation with invalid API key format."""
+        """A non-sk key is a warning, never a fatal error."""
         config = {
             "OPENAI_API_KEY": "invalid-key-format",
         }
 
         issues = validate_openai_config(config)
         errors = [issue for issue in issues if issue.startswith("ERROR:")]
-        assert len(errors) > 0
-        assert any("Invalid OpenAI API key format" in error for error in errors)
+        assert not errors
+        assert any("does not match OpenAI's 'sk-' key format" in issue for issue in issues)
 
     def test_validate_openai_config_high_token_limits(self):
         """Test validation with very high token limits."""
@@ -283,11 +285,17 @@ class TestURLPatternValidation:
     """Test URL pattern validation."""
 
     def test_valid_openai_urls(self):
-        """Test valid OpenAI URL patterns."""
+        """Test accepted OpenAI-compatible URL patterns."""
         valid_urls = [
             "https://api.openai.com/v1/",
             "https://api.openai.com/v1",
             "https://api.openai.com/v2/",
+            "https://ollama.com/v1/",
+            "https://ollama.com/v1",
+            "http://localhost:11434/v1/",
+            "https://localhost:11434/v1/",
+            "http://127.0.0.1:11434/v1/",
+            "https://127.0.0.1:11434/v1",
         ]
 
         for url in valid_urls:
@@ -298,8 +306,10 @@ class TestURLPatternValidation:
         invalid_urls = [
             "https://api.openai.com/",
             "https://invalid.com/v1/",
-            "http://api.openai.com/v1/",  # HTTP not HTTPS
+            "http://api.openai.com/v1/",  # HTTP not HTTPS for OpenAI
             "https://api.openai.com",
+            "http://ollama.com/v1/",  # Ollama Cloud requires HTTPS
+            "https://localhost:8080/v1/",  # Wrong local port
             "not-a-url",
         ]
 

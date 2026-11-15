@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Behaviour changes
+
+- **Ollama Cloud is the default OpenAI-compatible chat provider.** `OPENAI_API_URL` defaults to
+  `https://ollama.com/v1/` and `GPT_MODEL` defaults to `deepseek-v4.1-flash:1017`. OpenAI remains
+  supported by changing `OPENAI_API_URL`, `GPT_MODEL`, and `OPENAI_API_KEY`; the Perplexity path is
+  unchanged.
+- **Chat requests choose the output-cap parameter by provider.** Ollama-compatible hosts
+  (`ollama.com`, `localhost`, `127.0.0.1`) receive `max_tokens`; `api.openai.com` receives
+  `max_completion_tokens`. The cap still includes reasoning tokens as well as visible output.
+- **Provider model ids are no longer gated.** Any non-empty `GPT_MODEL` is accepted, and the health
+  check no longer reports a non-empty model as deprecated or unsupported.
+- **An `OPENAI_API_KEY` that is not `sk-`-shaped is no longer fatal.** Empty keys still fail; a
+  non-OpenAI-compatible key shape logs a warning so Ollama Cloud and local gateways work.
+- **Empty chat responses log the finish reason.** The client warns with `finish_reason` and returns
+  no content, so the orchestrator's existing fallback handles it instead of delivering empty text.
+- **Routing is a deterministic gate; the scoring layer is gone.** A message routes to the web when an
+  explicit web instruction, URL, or bearing cue survives the existing gates, inherits the prior route
+  on a follow-up, and otherwise stays local. The channel-kind probability thresholds
+  (`ROUTER_WEB_THRESHOLD_CHANNEL`, `ROUTER_WEB_THRESHOLD_ANNOUNCE`, `ROUTER_WEB_THRESHOLD_DM`) are
+  removed; an existing `config.ini` that still sets them loads without error and ignores them.
+
+### Added ✨
+
+- **`REASONING_EFFORT`**: sent as `reasoning_effort` with chat requests; defaults to `high`. Valid
+  values are model-defined, and reasoning tokens are billed as output.
+
+### Changed 🔁
+
+- **Configuration examples and docs use the new defaults.** `config.ini.example`, `.env.example`,
+  the README, setup, configuration, security, architecture, connection-pooling, validation, and
+  provider-contract docs describe the OpenAI-compatible provider with Ollama Cloud as the default.
+- **`scripts/probe_providers.py` probes the configured `OPENAI_API_URL`** instead of a hardcoded
+  endpoint.
+- **Router documentation rewritten to match the gate**: `docs/routing/DESIGN.md` now describes what
+  ships; the sealed corpora are a behaviour-pinning fixture, not a scoreboard; the previously
+  assert-free `test_corpus.py` fails on drift; overrides are evaluated on code-masked text, so an
+  instruction inside a fenced block no longer routes web.
+
+### Tests ✅
+
+- **Default-provider regression coverage** pins the Ollama Cloud URL and model, permissive model
+  validation, `REASONING_EFFORT` overriding, and the `max_tokens` request payload.
+
 ## [0.4.0] - 2026-10-28
 
 ### Behaviour changes

@@ -20,14 +20,15 @@ Bot-authored messages are accepted like human messages, but replies never includ
 
 ### AI Service Configuration
 
-Configure OpenAI and Perplexity APIs for intelligent hybrid operation.
+Configure the OpenAI-compatible chat provider (Ollama Cloud by default) and the Perplexity Agent API for intelligent hybrid operation.
 
-#### OpenAI Settings
-- **`OPENAI_API_KEY`**: Your OpenAI API key for GPT models *(leave empty to disable)*
-- **`OPENAI_API_URL`**: OpenAI API endpoint *(default: "https://api.openai.com/v1/")*
-- **`GPT_MODEL`**: Model to use. GPT-6 is current: "gpt-6-luna" (default, cost-effective), "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-astra", "gpt-6-sol". Legacy GPT-5 models ("gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-pro") remain selectable until the provider retires them on 2026-12-11 *(default: "gpt-6-luna")*
+#### OpenAI-Compatible Settings
+- **`OPENAI_API_KEY`**: Key for the configured OpenAI-compatible provider *(leave empty to disable)*. OpenAI keys start with `sk-`; other compatible providers use their own formats, which are accepted with a warning.
+- **`OPENAI_API_URL`**: Chat provider base URL. Accepted: `https://api.openai.com/v1/`, `https://ollama.com/v1/`, and `http(s)://localhost:11434/v1/` or `http(s)://127.0.0.1:11434/v1/` *(default: "https://ollama.com/v1/")*
+- **`GPT_MODEL`**: Model identifier sent as configured. Any non-empty identifier is accepted; the provider decides which names are valid *(default: "deepseek-v4.1-flash:1017")*
+- **`REASONING_EFFORT`**: Reasoning effort sent with chat requests only when non-empty. It is a reasoning-model parameter; valid values are model-defined, `low`, `high`, and `max` are supported by the shipped model, and `none` disables thinking. Reasoning tokens are billed as output *(default: "high")*
 
-The GPT-6 family is current. The provider retires the GPT-5 series on 2026-12-11; those names stay selectable until then, and `gpt-5-chat` is already retired. Validation accepts any model in the `gpt-6`, `gpt-6.1`, `gpt-5.6` and `gpt-5` families, including dated snapshots, so a new point release is usable without a code change. Names outside those families, such as `gpt-7` or `gpt6-luna`, are rejected.
+OpenAI remains supported by setting all three of `OPENAI_API_URL`, `GPT_MODEL`, and `OPENAI_API_KEY` to OpenAI values.
 
 #### Perplexity Settings  
 - **`PERPLEXITY_API_KEY`**: Your Perplexity API key for web search *(leave empty to disable)*
@@ -36,17 +37,18 @@ The GPT-6 family is current. The provider retires the GPT-5 series on 2026-12-11
 
 #### Token Limits
 - **`INPUT_TOKENS`**: Maximum input context tokens *(default: 120000)*
-- **`OUTPUT_TOKENS`**: Maximum OpenAI output tokens per response, sent as `max_completion_tokens` *(default: 8000)*
+- **`OUTPUT_TOKENS`**: Maximum chat output tokens per response, sent as `max_tokens` to Ollama-compatible providers and `max_completion_tokens` to `api.openai.com` *(default: 8000)*
 - **`PERPLEXITY_OUTPUT_TOKENS`**: Maximum Perplexity output tokens per response, sent as `max_output_tokens` to the Agent API *(default: the value of `OUTPUT_TOKENS`)*
-- **`CONTEXT_WINDOW`**: Total context window size *(default: 128000)*. It stays 128000 because it is shared with the OpenAI path, and Sonar's window is the smaller of the two.
+- **`CONTEXT_WINDOW`**: Total context window size *(default: 128000)*. It stays 128000 because it is shared with the OpenAI-compatible path, and Sonar's window is the smaller of the two.
 - **`SYSTEM_MESSAGE`**: System prompt for AI personality *(default: "You are a helpful assistant.")*
 
-`OUTPUT_TOKENS` and `PERPLEXITY_OUTPUT_TOKENS` mean different things. OpenAI's
-`max_completion_tokens` covers reasoning tokens as well as visible output, so a small
-OpenAI value can be consumed entirely by reasoning and produce an empty reply with
+`OUTPUT_TOKENS` and `PERPLEXITY_OUTPUT_TOKENS` mean different things. The chat
+provider's output cap (`max_tokens` or `max_completion_tokens`) covers reasoning tokens
+as well as visible output, so a small
+chat-provider value can be consumed entirely by reasoning and produce an empty reply with
 `finish_reason: length`. Perplexity's `max_output_tokens` covers output only. Both settings
-share the documented maximum of 128,000; values above it stop startup, and an OpenAI value
-below 512 logs a warning about empty replies.
+share the documented maximum of 128,000; values above it stop startup, and a chat-provider
+value below 512 logs a warning about empty replies.
 
 `INPUT_TOKENS` is enforced as a prompt budget. The bot estimates prompt size from the
 system prompt, history, and current message using roughly four characters per token with
@@ -72,8 +74,8 @@ Prevents spam and manages API costs.
 
 HTTP/2 connection pool sizes for each provider client. See [ConnectionPooling.md](ConnectionPooling.md) for tuning guidance.
 
-- **`OPENAI_MAX_CONNECTIONS`**: Maximum concurrent OpenAI connections *(default: 50)*
-- **`OPENAI_MAX_KEEPALIVE`**: OpenAI keepalive connection count *(default: 10)*
+- **`OPENAI_MAX_CONNECTIONS`**: Maximum concurrent chat-provider connections *(default: 50)*
+- **`OPENAI_MAX_KEEPALIVE`**: Chat-provider keepalive connection count *(default: 10)*
 - **`PERPLEXITY_MAX_CONNECTIONS`**: Maximum concurrent Perplexity connections *(default: 30)*
 - **`PERPLEXITY_MAX_KEEPALIVE`**: Perplexity keepalive connection count *(default: 5)*
 
@@ -88,9 +90,6 @@ Advanced configuration for intelligent AI service routing.
 - **`USER_LOCK_CLEANUP_INTERVAL`**: Memory cleanup interval in seconds *(default: 3600)*
 - **`ENTITY_DETECTION_MIN_WORDS`**: Minimum message length intended for entity detection *(default: 10)*. Note: this setting is parsed into config but not yet wired into the current routing implementation; changing it has no runtime effect in this release.
 - **`ROUTER_MODE`**: Router implementation, `heuristic` or `model` *(default: "heuristic")*. The `model` (Clef) implementation is not built yet and selecting it stops the response path with an error naming `docs/routing/DESIGN.md`.
-- **`ROUTER_WEB_THRESHOLD_CHANNEL`**: Web-route probability threshold in ordinary guild channels *(default: 0.10)*.
-- **`ROUTER_WEB_THRESHOLD_ANNOUNCE`**: Web-route probability threshold in announcement channels *(default: 0.07)*.
-- **`ROUTER_WEB_THRESHOLD_DM`**: Web-route probability threshold in direct messages *(default: 0.20)*.
 
 ### Logging
 
@@ -114,10 +113,9 @@ failure happened after its last success, and `healthy` otherwise. A provider tha
 healthy: silence is not a failure. The payload still reports
 `last_success_age_seconds` and `last_success_stale` for diagnostics, but neither decides health.
 
-> **No cost cap.** These thresholds decide how readily the router searches; none of them is a
-> budget. There is no allowance, counter or price model in the routing path, so spend follows the
-> message mix rather than a configured ceiling. Measured precision also falls on trap-heavy input
-> (pleasantries that contain a date or a state word); the numbers are in `docs/routing/DESIGN.md`.
+> **No cost cap.** Routing carries no budget knob: the gate decides from the message alone, so spend
+> follows the message mix rather than a configured ceiling. Measured precision also falls on trap-heavy
+> input (pleasantries that contain a date or a state word); the numbers are in `docs/routing/DESIGN.md`.
 
 ## Operation Modes
 
@@ -126,14 +124,14 @@ DiscordianAI supports three distinct operation modes based on your API key confi
 ### 1. Smart Hybrid Mode (Recommended) 🧠
 Configure both API keys for intelligent automatic service selection:
 ```ini
-OPENAI_API_KEY=your_openai_api_key
+OPENAI_API_KEY=your_ollama_cloud_api_key
 PERPLEXITY_API_KEY=your_perplexity_api_key
 ```
 
-### 2. OpenAI Only Mode 🤖
-Only configure OpenAI for GPT-only responses:
+### 2. OpenAI-Compatible Only Mode 🤖
+Only configure the chat provider for non-web responses:
 ```ini
-OPENAI_API_KEY=your_openai_api_key
+OPENAI_API_KEY=your_ollama_cloud_api_key
 PERPLEXITY_API_KEY=
 ```
 
@@ -170,11 +168,12 @@ ACTIVITY_TYPE=listening
 ACTIVITY_STATUS=you bite my shiny metal ass!
 
 [Default]
-# === OPENAI CONFIGURATION ===
-# For GPT-6 series models - Leave blank to disable OpenAI
-OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_API_URL=https://api.openai.com/v1/
-GPT_MODEL=gpt-6-luna
+# === OPENAI-COMPATIBLE CONFIGURATION ===
+# Ollama Cloud is the default backend; leave the key blank to disable it.
+OPENAI_API_KEY=your-ollama-cloud-api-key
+OPENAI_API_URL=https://ollama.com/v1/
+GPT_MODEL=deepseek-v4.1-flash:1017
+REASONING_EFFORT=high
 
 # === PERPLEXITY CONFIGURATION ===  
 # For web search capabilities - Leave blank to disable web search
@@ -197,7 +196,7 @@ MAX_URLS_PER_MESSAGE=3
 MAX_TOTAL_SCRAPED_CHARS=60000
 SCRAPE_DEADLINE_SECONDS=20
 
-# No GPT-generation-specific parameters are supported by the public API; do not configure
+# No chat-provider-specific sampling parameters are supported by the public API; do not configure
 
 [Limits]
 # Rate limiting to prevent spam
@@ -231,11 +230,6 @@ ENTITY_DETECTION_MIN_WORDS=10
 # Router implementation: heuristic (default) or model (not implemented yet)
 ROUTER_MODE=heuristic
 
-# Web-route probability thresholds by channel kind
-ROUTER_WEB_THRESHOLD_CHANNEL=0.10
-ROUTER_WEB_THRESHOLD_ANNOUNCE=0.07
-ROUTER_WEB_THRESHOLD_DM=0.20
-
 [Logging]
 LOG_LEVEL=INFO
 DISCORDIANAI_LOG_COLOR=false
@@ -264,12 +258,13 @@ export ACTIVITY_TYPE="listening"
 export ACTIVITY_STATUS="Humans"
 
 # AI service settings
-export OPENAI_API_KEY="your_openai_key"
-export OPENAI_API_URL="https://api.openai.com/v1/"
+export OPENAI_API_KEY="your_ollama_cloud_key"
+export OPENAI_API_URL="https://ollama.com/v1/"
 export PERPLEXITY_API_KEY="your_perplexity_key"
 export PERPLEXITY_API_URL="https://api.perplexity.ai"
 export PERPLEXITY_MODEL="perplexity/sonar"
-export GPT_MODEL="gpt-6-luna"
+export GPT_MODEL="deepseek-v4.1-flash:1017"
+export REASONING_EFFORT="high"
 export INPUT_TOKENS="120000"
 export OUTPUT_TOKENS="8000"
 export PERPLEXITY_OUTPUT_TOKENS="8000"
@@ -291,9 +286,6 @@ export CONVERSATION_TTL_SECONDS="1800"
 export USER_LOCK_CLEANUP_INTERVAL="3600"
 export ENTITY_DETECTION_MIN_WORDS="10"
 export ROUTER_MODE="heuristic"
-export ROUTER_WEB_THRESHOLD_CHANNEL="0.10"
-export ROUTER_WEB_THRESHOLD_ANNOUNCE="0.07"
-export ROUTER_WEB_THRESHOLD_DM="0.20"
 
 # Web scraping budgets
 export MAX_URLS_PER_MESSAGE="3"
@@ -307,6 +299,7 @@ export DISCORDIANAI_LOG_COLOR="1"
 export HEALTH_ENABLED="true"
 export HEALTH_HOST="127.0.0.1"
 export HEALTH_PORT="8080"
+export HEALTH_PROVIDER_STALE_SECONDS="300"
 ```
 
 Environment variables take precedence over `config.ini` values, allowing for flexible deployment configurations.
@@ -335,7 +328,7 @@ DiscordianAI includes comprehensive configuration validation:
 ### Startup Validation
 - **Required Fields**: Ensures DISCORD_TOKEN and the credentials for every configured provider are present
 - **Errors Abort Startup**: Missing credentials, malformed base URLs, non-positive limits, and output caps above 128,000 stop the process
-- **Warnings Continue**: Unknown model names, non-standard provider base URLs, small OpenAI output caps, and other provider-tolerated settings are logged without blocking startup
+- **Warnings Continue**: Non-standard provider base URLs, small chat-provider output caps, non-`sk-` OpenAI-compatible keys, and other provider-tolerated settings are logged without blocking startup
 - **Value Validation**: Checks integer fields, validates rate limits, and ensures proper data types
 
 ### Runtime Error Handling
@@ -346,8 +339,8 @@ DiscordianAI includes comprehensive configuration validation:
 
 ### Error Examples
 ```
-CRITICAL: No API keys provided! Bot cannot function without either OpenAI or Perplexity API access.
-WARNING: RATE_LIMIT is very high (100) - consider lowering to prevent API abuse
+CRITICAL: No API keys provided! Bot cannot function without either an OpenAI-compatible provider or Perplexity API access.
+WARNING: RATE_LIMIT very high (101). Consider lower value to prevent abuse.
 ERROR: Invalid log level 'VERBOSE', defaulting to INFO  
 INFO: Configuration validation passed - all critical settings are valid
 ```

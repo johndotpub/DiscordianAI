@@ -55,10 +55,10 @@ DiscordianAI validates API key formats before use:
 
 | Service | Expected Format | Example |
 |---------|-----------------|---------|
-| OpenAI | `sk-` + at least 20 letters, digits, `-` or `_` | `sk-abc123...` |
+| OpenAI-compatible | `sk-` is OpenAI's shape; any non-empty key is accepted, and a non-`sk-` key logs a warning | `sk-abc123...` or an Ollama Cloud key |
 | Perplexity | `pplx-` + at least 20 letters, digits, `-` or `_` | `pplx-xyz789...` |
 
-Invalid formats will produce clear error messages with links to the respective API key management pages.
+An empty or whitespace-only key for a configured provider is an error. A non-empty OpenAI-compatible key that is not `sk-`-shaped is accepted because Ollama Cloud and local gateways use their own formats.
 
 ### Key Rotation
 
@@ -158,13 +158,13 @@ On startup, DiscordianAI validates:
 - Discord presence and activity-type names
 
 Not every invalid configuration prevents startup. Fatal errors are logged and
-abort startup with a non-zero exit: missing Discord or provider credentials,
-invalid API-key formats, malformed or non-absolute base URLs, non-integer or
-non-positive rate/input/context limits, output-token caps outside 1..128,000,
-and invalid presence or activity values. Warnings are logged and startup
-continues: unknown model names, well-formed non-standard provider URLs,
-unusually small or large token values, high rate limits, and a missing channel
-allowlist.
+abort startup with a non-zero exit: missing Discord credentials, a missing key
+for a configured provider, invalid Perplexity key formats, malformed or
+non-absolute base URLs, non-integer or non-positive rate/input/context limits,
+output-token caps outside 1..128,000, and invalid presence or activity values.
+Warnings are logged and startup continues: non-`sk-` OpenAI-compatible key
+formats, well-formed non-standard provider URLs, unusually small or large token
+values, high rate limits, and a missing channel allowlist.
 
 ## 🌐 Network Security
 
@@ -173,12 +173,12 @@ allowlist.
 HTTP connections use secure defaults:
 
 - **HTTP/2**: Enabled when the `h2` package is installed, with HTTP/1.1 fallback
-- **TLS**: The default OpenAI and Perplexity endpoints use HTTPS. A custom
+- **TLS**: The default OpenAI-compatible and Perplexity endpoints use HTTPS. A custom
   `http://` base URL is accepted with a warning, so use an `https://` endpoint
   when TLS is required.
 - **Timeouts**: Configured to prevent hanging connections
   - Connect: 10 seconds
-  - Read: 45s (OpenAI) / 60s (Perplexity)
+  - Read: 45s (chat provider) / 60s (Perplexity)
   - Write: 10 seconds
 
 ### Web Scraper SSRF Protection
@@ -227,11 +227,11 @@ These are the default endpoints:
 
 | Service | Default URL Pattern |
 |---------|---------------------|
-| OpenAI | `https://api.openai.com/v1/` |
+| OpenAI-compatible | `https://ollama.com/v1/` by default; `https://api.openai.com/v1/`, `http(s)://localhost:11434/v1/`, and `http(s)://127.0.0.1:11434/v1/` are also accepted |
 | Perplexity | `https://api.perplexity.ai/` |
 
 A custom base URL must be an absolute `http(s)` URL; a malformed or
-non-absolute value aborts startup. A well-formed URL outside these default
+non-absolute value aborts startup. A well-formed URL outside these accepted
 patterns is accepted with a warning, so compatible gateways can be used.
 
 ## 🐳 Docker Security
@@ -355,7 +355,7 @@ For production deployments, consider:
 ### If API Keys Are Exposed
 
 1. **Immediately revoke** the exposed keys from provider dashboards:
-   - OpenAI: https://platform.openai.com/api-keys
+   - OpenAI-compatible chat provider: https://ollama.com (default) or https://platform.openai.com/api-keys
    - Perplexity: https://www.perplexity.ai/settings/api
    - Discord: https://discord.com/developers/applications
 

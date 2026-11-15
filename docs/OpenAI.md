@@ -1,31 +1,42 @@
-# OpenAI Integration Guide
+# OpenAI-Compatible Provider Guide (Ollama Cloud Default)
 
-DiscordianAI provides comprehensive OpenAI integration with support for the current GPT-6 generation and legacy GPT-5 series models, including advanced features like conversation consistency and metadata tracking.
+DiscordianAI talks to an OpenAI-compatible Chat Completions endpoint. The shipped default is
+Ollama Cloud (`https://ollama.com/v1/`, model `deepseek-v4.1-flash:1017`); OpenAI itself is
+fully supported as a non-default option. The same client, retry policy, and delivery path are
+used for either provider.
 
-## Supported Models
+## Supported Providers and Models
 
-### GPT-6 Series (current)
-- **GPT-6-luna**: Cost-effective default for general use
-- **GPT-6.1-sol** / **GPT-6.1-terra**: GPT-6.1 point releases
-- **GPT-6-astra** / **GPT-6-sol**: GPT-6 variants
+The bot does not gate provider model ids. Any non-empty `GPT_MODEL` is accepted and sent as
+configured; the provider decides whether the name exists.
 
-### GPT-5 Series (retired by the provider on 2026-12-11)
-- **GPT-5**: High-quality reasoning and complex tasks
-- **GPT-5-mini**: Cost-effective option for general use
-- **GPT-5-nano**: High-speed processing with low latency
-- **GPT-5-pro**: Higher-capability GPT-5 variant
+### Ollama Cloud (default)
+- **Endpoint**: `https://ollama.com/v1/`
+- **Model**: `deepseek-v4.1-flash:1017`
+- **Reasoning effort**: `high` by default; `low`, `high`, and `max` are accepted by this
+  model, and `none` disables thinking. Reasoning tokens are billed as output.
 
-`gpt-5-chat` has already been retired and is rejected.
+### OpenAI
+- **Endpoint**: `https://api.openai.com/v1/`
+- **Models**: any model the account can use, including current GPT names. The old
+  family allowlist is gone; the provider decides which names are valid.
+- **Key shape**: OpenAI keys start with `sk-`. Other compatible providers use their own
+  formats and are accepted with a warning.
+
+### Local Ollama
+- **Endpoint**: `http(s)://localhost:11434/v1/` or `http(s)://127.0.0.1:11434/v1/`
+- Use the model name installed locally.
 
 ## Configuration
 
-### Basic OpenAI Setup
+### Basic Ollama Cloud Setup (default)
 ```ini
 [Default]
-# OpenAI API configuration
-OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_API_URL=https://api.openai.com/v1/
-GPT_MODEL=gpt-6-luna
+# OpenAI-compatible chat configuration
+OPENAI_API_KEY=your-ollama-cloud-api-key
+OPENAI_API_URL=https://ollama.com/v1/
+GPT_MODEL=deepseek-v4.1-flash:1017
+REASONING_EFFORT=high
 
 # Token limits
 OUTPUT_TOKENS=8000
@@ -36,45 +47,58 @@ CONTEXT_WINDOW=128000
 SYSTEM_MESSAGE=You are a helpful AI assistant with access to current information.
 ```
 
-### GPT-6 Notes
-OpenAI models use the standard Chat Completions API parameters. Only officially supported parameters are used (e.g., `model`, `messages`, `max_completion_tokens`). GPT-6 reasoning models enforce their own sampling so temperature overrides are ignored.
+### Switching to OpenAI
+Change the three provider values:
+```ini
+OPENAI_API_KEY=sk-your-openai-key
+OPENAI_API_URL=https://api.openai.com/v1/
+GPT_MODEL=gpt-6-luna
+```
+
+### Provider Notes
+The bot uses only standard Chat Completions parameters: `model`, `messages`, an output cap,
+and optionally `reasoning_effort`. The cap is `max_tokens` on Ollama-compatible hosts
+(`ollama.com`, `localhost`, `127.0.0.1`) and `max_completion_tokens` on `api.openai.com`. It
+does not send sampling parameters such as `temperature`. Cloud models generally do not
+support structured outputs, log probabilities, or `tool_choice`; the bot does not request
+them.
 
 ## Operation Modes
 
-### OpenAI Only Mode
-Disable Perplexity to use only OpenAI:
+### OpenAI-Compatible Only Mode
+Disable Perplexity to use only the chat provider:
 ```ini
-OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_API_KEY=your-ollama-cloud-api-key
 PERPLEXITY_API_KEY=
 ```
 
-### Smart Hybrid Mode  
+### Smart Hybrid Mode
 Enable both for intelligent routing:
 ```ini
-OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_API_KEY=your-ollama-cloud-api-key
 PERPLEXITY_API_KEY=your_perplexity_key_here
 ```
 
 ## Advanced Features
 
 ### Conversation Consistency
-- **Metadata Tracking**: Each OpenAI response includes model and service information
-- **Follow-up Routing**: Follow-up questions automatically route to OpenAI if the previous response came from OpenAI
+- **Metadata Tracking**: Each chat response includes model and service information
+- **Follow-up Routing**: Follow-up questions automatically route to the chat provider if the previous response came from it
 - **Context Preservation**: Maintains conversation context across multiple exchanges
 
 ### Thread-Safe Architecture
-- **Per-User Conversations**: Each user has isolated conversation history
-- **Concurrent Processing**: Multiple users can chat simultaneously without interference
+- **Per-Conversation History**: Each guild channel, thread, or DM has isolated conversation history
+- **Concurrent Processing**: Multiple conversations can proceed simultaneously without interference
 - **Memory Management**: Automatic cleanup of old conversation data
 
 ### Error Handling & Fallbacks
-- **Graceful Degradation**: If OpenAI fails, system provides helpful error messages
+- **Graceful Degradation**: If the chat provider fails, the system provides helpful error messages
 - **Retry Logic**: Automatic retries for transient API failures
 - **Logging**: Comprehensive logging for debugging and monitoring
 
 ## Usage Examples
 
-### Conversational Queries (Auto-routed to OpenAI)
+### Conversational Queries (Auto-routed to the chat provider)
 - `"Hello! How are you today?"`
 - `"Can you help me write a Python function?"`
 - `"What do you think about artificial intelligence?"`
@@ -100,13 +124,16 @@ INPUT_TOKENS=60000    # Adjust based on conversation length
 ```
 
 ### Model Selection
-- **GPT-6-luna**: Cost-effective default - best balance of quality and cost
-- **GPT-6.1-terra** / **GPT-6.1-sol**: GPT-6.1 point releases for more demanding work
-- **GPT-6-astra** / **GPT-6-sol**: GPT-6 variants
-- **GPT-5**, **GPT-5-mini**, **GPT-5-nano**, **GPT-5-pro**: legacy models selectable until 2026-12-11
+- **Ollama Cloud**: `deepseek-v4.1-flash:1017` is the shipped default.
+- **OpenAI**: any model the account can use; choose a reasoning model when the task needs it.
+- **Local Ollama**: choose an installed model and match `CONTEXT_WINDOW` to its limits.
 
 ### Parameter support
-- This project does not use unofficial parameters. There is no `reasoning_effort` or `verbosity`.
+- `max_tokens` caps visible output plus reasoning tokens on Ollama-compatible hosts;
+  `max_completion_tokens` does the same on `api.openai.com`.
+- `reasoning_effort` is sent from `REASONING_EFFORT` only when non-empty; valid values are
+  model-defined.
+- `verbosity`, sampling overrides, and tool parameters are not sent.
 
 ## Monitoring & Debugging
 
@@ -131,10 +158,10 @@ WARNING: OpenAI returned no response, trying fallback
 ## Cost Optimization Tips
 
 ### Smart Usage
-1. **Use GPT-6-luna** for simple queries to reduce costs (default)
+1. **Use the default model** for simple queries to reduce costs
 2. **Set appropriate OUTPUT_TOKENS** limit based on your needs
 3. **Monitor token usage** in logs to track spending
-4. Keep `max_tokens` conservative for cost control
+4. **Account for reasoning tokens** in the output cap; they are billed as output
 
 ### Rate Limiting
 ```ini
@@ -155,23 +182,22 @@ MAX_HISTORY_PER_USER=30  # Reduce to save tokens on context
 
 **"No API key provided"**:
 - Ensure `OPENAI_API_KEY` is set in config.ini or environment variables
-- Verify the API key starts with `sk-`
+- A non-`sk-` key is accepted for non-OpenAI providers; a warning notes the shape mismatch
 
 **"Rate limit exceeded"**:
-- Check your OpenAI billing and usage limits
+- Check the provider's billing and usage limits
 - Implement appropriate rate limiting in bot configuration
 
 **"Model not found"**:
-- Verify the model name is correct (examples: `gpt-6-luna`, `gpt-6.1-sol`, `gpt-6-astra`, `gpt-5-nano`)
-- Check if you have access to the specified model
+- Verify the model name with the configured provider
+- Check that the account has access to the specified model
 
 **High costs**:
 - Lower `OUTPUT_TOKENS` setting
-- Use `gpt-6-luna` for cost-effective responses (default)
-- Use `gpt-6.1-terra` or `gpt-6.1-sol` for enhanced capabilities when needed
+- Use a smaller or non-reasoning model when the task allows
 - Reduce `MAX_HISTORY_PER_USER` to minimize context tokens
 
 ### Getting Help
-- Check OpenAI's [API documentation](https://platform.openai.com/docs)
+- Check the configured provider's API documentation
 - Monitor the bot logs for specific error messages
-- Review your OpenAI usage dashboard for billing information
+- Review the provider's usage dashboard for billing information

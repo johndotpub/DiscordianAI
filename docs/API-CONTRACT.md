@@ -1,8 +1,10 @@
 # API contract
 
-What this bot actually sends to OpenAI and Perplexity, what those services actually
-return, and what that means for the code. Every row is either cited to a vendor page or
-**probed live** with `scripts/probe_providers.py` on 2026-10-28.
+What this bot actually sends to the OpenAI-compatible chat provider and Perplexity, what
+those services actually return, and what that means for the code. Every row is either cited
+to a vendor page or **probed live** with `scripts/probe_providers.py` on 2026-10-28.
+The shipped chat provider is Ollama Cloud (`https://ollama.com/v1/`); OpenAI is a supported
+alternative reached through the same client.
 
 Rule for contributors: if you change a request parameter, a model name, or an error
 branch, update this file and run the probe. A claim without a citation or a probe result
@@ -10,39 +12,32 @@ is not a contract.
 
 ---
 
-## OpenAI
+## OpenAI-compatible chat provider
 
 | Item | Value | Source |
 |---|---|---|
 | Endpoint used | `POST /v1/chat/completions` | `src/openai_processing.py` |
-| Model sent | whatever `GPT_MODEL` says; the shipped default is `gpt-6-luna` | `config.ini.example` |
-| Newer models accepted by the API | `gpt-5.4` answered normally at probe time, so the API is not the limit — our allowlist is | probe |
-| Chat Completions with GPT-6 | `gpt-6-luna` returned HTTP 200 at probe time with `max_completion_tokens` | probe |
-| Output cap parameter | `max_completion_tokens` (not `max_tokens`, which is deprecated and incompatible with o-series) | OpenAI Chat reference |
-| What the output cap covers | **visible output plus reasoning tokens.** A cap of 16 tokens on `gpt-5` returned HTTP 200 with `finish_reason: length` and `content: ""` — the whole budget went to reasoning | probe |
-| Maximum completion tokens on `gpt-5` | 128,000 | probe (error text) |
-| `reasoning_effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`; not every model supports every value. `gpt-6-astra` rejects `none` | OpenAI reference + changelog |
-| GPT-6 default reasoning effort | `medium`; the bot does not override it | OpenAI reference |
-| Function calling on Chat Completions | requires `reasoning_effort: none`; this bot does not use function calling | OpenAI reference |
-| `verbosity` | `low`, `medium`, `high` | OpenAI reference |
+| Base URL sent | whatever `OPENAI_API_URL` says; the shipped default is `https://ollama.com/v1/` | `config.ini.example` |
+| Model sent | whatever `GPT_MODEL` says; the shipped default is `deepseek-v4.1-flash:1017` | `config.ini.example` |
+| Output cap parameter | `max_tokens` on Ollama-compatible hosts (`ollama.com`, `localhost`, `127.0.0.1`); `max_completion_tokens` on `api.openai.com` | `src/openai_processing.py` |
+| What the output cap covers | **visible output plus reasoning tokens.** A cap consumed by reasoning returns HTTP 200 with `finish_reason: length` and `content: ""` | probe |
+| `reasoning_effort` | sent from `REASONING_EFFORT` only when non-empty (default `high`). It is a reasoning-model parameter; whether a model accepts it is provider-defined. `low`, `high`, and `max` are accepted by the shipped model, and `none` disables thinking | provider reference |
+| Cloud-model features | structured outputs, log probabilities, and `tool_choice` are not supported by cloud models and the bot does not send them | provider reference |
+| OpenAI alternative | change `OPENAI_API_URL` to `https://api.openai.com/v1/`, set an `sk-` key, and choose a model; chat requests then send `max_completion_tokens` and `reasoning_effort`, not `max_tokens` | OpenAI Chat reference |
+| Maximum completion tokens | 128,000 (the bot's documented ceiling) | probe (error text) |
 | Oversized output cap | HTTP 400, `error.type: invalid_request_error`, `error.code: invalid_value`, message `max_tokens is too large: … This model supports at most 128000 completion tokens` | probe |
 | Prompt-too-long | code `context_length_exceeded` is the documented family, **not verified here** — probing it means paying to send a 128k-token prompt. Treat as `UNVERIFIED` until someone does | unverified |
-| Rate-limit headers on success | `x-ratelimit-limit-requests`, `x-ratelimit-remaining-requests`, `x-ratelimit-reset-requests`, `x-ratelimit-limit-tokens`, `x-ratelimit-remaining-tokens`, `x-ratelimit-reset-tokens` | probe |
-| `Retry-After` | not sent on 2xx; expected on 429, **not observed** | unverified |
 | Idempotency key | no documented header for chat completions. Retries must therefore be limited to requests that provably never reached the server | unverified |
-| Chat Completions status | "remains supported" indefinitely; Responses is recommended for new work and gives better reasoning results and 40–80% better cache utilisation | OpenAI migration guide |
-| Assistants API | sunset 2026-08-26 | OpenAI changelog |
 
 ### Consequences for this codebase
 
-1. `max_completion_tokens` must never be set low "to save money": on a reasoning model the
+1. `max_tokens` must never be set low "to save money": on a reasoning model the
    reasoning budget is consumed first and the reply comes back as an empty string with
    `finish_reason: length`. The empty-content reroute path exists — it is a safety net, not
    a licence to set the cap small.
 2. Token budgeting must reserve headroom for reasoning, not just for the visible answer.
-3. `is_supported_openai_model` accepts the `gpt-6`, `gpt-6.1`, `gpt-5.6` and
-   `gpt-5` families, including dated snapshots, while rejecting `gpt-5-chat` and
-   other families. An unrecognised name still warns and never blocks startup.
+3. `is_supported_openai_model` accepts any non-empty model identifier; provider model ids
+   are not gated.
 4. Classify `invalid_value` and `invalid_request_error` as deterministic configuration
    faults: retrying them wastes an attempt and 2–4 seconds of the user's time.
 

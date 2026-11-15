@@ -20,13 +20,15 @@ import threading
 import time
 from typing import Any
 
+from .config import DEFAULT_CACHE_TTL
+
 logger = logging.getLogger(__name__)
 
 # Constants for caching
 MIN_CACHABLE_RESPONSE_LENGTH = 10
 RESPONSE_LENGTH_TTL_THRESHOLD = 1000
 LONG_RESPONSE_TTL = 600.0
-SHORT_RESPONSE_TTL = 300.0
+SHORT_RESPONSE_TTL = DEFAULT_CACHE_TTL
 POSITIONAL_CONFIG_INDEX = 3
 
 
@@ -147,17 +149,15 @@ def _generate_scoped_key(message: str, context: dict[str, Any], *, salt: str) ->
     user_id = context.get("user_id")
     conversation_key = context.get("conversation_key")
     conversation_digest = context.get("conversation_digest")
-    has_conversation = bool(context.get("has_conversation"))
 
     if conversation_digest is None:
         conversation_summary = context.get("conversation_summary")
         if conversation_summary is None:
             conversation_summary = context.get("history", [])
         conversation_digest = _conversation_digest(conversation_summary)
-        has_conversation = has_conversation or bool(conversation_summary)
 
     scope_id = conversation_key if conversation_key is not None else user_id
-    if has_conversation and scope_id is None:
+    if scope_id is None:
         return None
 
     normalized_message = str(message).strip()
@@ -167,7 +167,7 @@ def _generate_scoped_key(message: str, context: dict[str, Any], *, salt: str) ->
         "system_message_hash": hashlib.sha256(
             str(context.get("system_message") or "").encode(),
         ).hexdigest()[:8],
-        "conversation_scope": "" if scope_id is None else str(scope_id),
+        "conversation_scope": str(scope_id),
         "conversation_digest": conversation_digest,
         "service": context.get("service", "unknown"),
         "router_id": context.get("router_id", "unknown"),
@@ -235,7 +235,7 @@ class CacheEntry:
 
     value: Any
     timestamp: float
-    ttl: float = 300.0  # 5 minutes default
+    ttl: float = DEFAULT_CACHE_TTL  # 5 minutes default
 
     def is_expired(self) -> bool:
         """Check if cache entry has expired."""
@@ -248,7 +248,7 @@ class ThreadSafeLRUCache:
     Provides fast caching with automatic cleanup of expired entries.
     """
 
-    def __init__(self, max_size: int = 1000, default_ttl: float = 300.0):
+    def __init__(self, max_size: int = 1000, default_ttl: float = DEFAULT_CACHE_TTL):
         """Initialize cache with capacity and default TTL.
 
         Args:
@@ -335,7 +335,7 @@ class ResponseCache:
     Caches expensive API responses with intelligent cache key generation.
     """
 
-    def __init__(self, max_size: int = 500, default_ttl: float = 300.0):
+    def __init__(self, max_size: int = 500, default_ttl: float = DEFAULT_CACHE_TTL):
         """Initialize response cache wrapper.
 
         Args:
@@ -443,6 +443,16 @@ class ResponseCache:
         return self.cache.get_stats()
 
 
+class _LeaderFailed(Exception):  # noqa: N818 - the sentinel name is intentional
+    """Signal that the shared request failed and followers must run independently."""
+
+
+def _consume_future_exception(future: asyncio.Future) -> None:
+    """Retrieve an unobserved shared-future exception to avoid asyncio warnings."""
+    if not future.cancelled():
+        future.exception()
+
+
 class RequestDeduplicator:
     """Deduplicates identical API requests to prevent redundant calls.
 
@@ -477,17 +487,18 @@ class RequestDeduplicator:
                 is_leader = True
 
         if not is_leader:
-            return await asyncio.shield(future)
+            try:
+                return await asyncio.shield(future)
+            except _LeaderFailed:
+                return await request_func()
 
         try:
             result = await request_func()
         except asyncio.CancelledError:
-            if not future.done():
-                future.cancel()
+            self._fail_shared_future(future)
             raise
-        except Exception as e:
-            if not future.done():
-                future.set_exception(e)
+        except Exception:
+            self._fail_shared_future(future)
             raise
         else:
             if not future.done():
@@ -498,13 +509,21 @@ class RequestDeduplicator:
                 if self._pending_requests.get(request_key) is future:
                     del self._pending_requests[request_key]
 
+    @staticmethod
+    def _fail_shared_future(future: asyncio.Future) -> None:
+        """Wake followers with the sentinel and consume the unawaited exception."""
+        if future.done():
+            return
+        future.set_exception(_LeaderFailed("shared request did not produce a result"))
+        future.add_done_callback(_consume_future_exception)
+
 
 # Global cache instances
-response_cache = ResponseCache(max_size=1000, default_ttl=300.0)
+response_cache = ResponseCache(max_size=1000, default_ttl=DEFAULT_CACHE_TTL)
 request_deduplicator = RequestDeduplicator()
 
 
-def cached_response(ttl: float = 300.0, cache_instance: ResponseCache | None = None):
+def cached_response(ttl: float = DEFAULT_CACHE_TTL, cache_instance: ResponseCache | None = None):
     """Decorator to cache function responses.
 
     Args:

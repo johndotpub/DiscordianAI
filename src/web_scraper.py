@@ -7,7 +7,9 @@ production deployment with comprehensive error handling and logging.
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from functools import lru_cache
 import ipaddress
 import logging
 import re
@@ -50,6 +52,8 @@ MAX_REDIRECTS = 3
 REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
 MAX_TCP_PORT = 65535
 NAT64_NETWORK = ipaddress.ip_network("64:ff9b::/96")
+RESOLVE_TIMEOUT_SECONDS = 5.0  # Hard cap before a host is treated as unresolvable
+MAX_CONCURRENT_RESOLUTIONS = 16
 
 # Production-ready headers to avoid blocking
 DEFAULT_HEADERS = {
@@ -237,6 +241,21 @@ def _extract_body_fallback(soup: BeautifulSoup, content_parts: list[str]) -> Non
             content_parts.append(f"Page content: {text}")
 
 
+def _url_for_log(url: str) -> str:
+    """Return a log-safe URL without userinfo, query string, or fragment."""
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not parsed.scheme or not hostname:
+            return "[invalid URL]"
+        host = f"[{hostname}]" if ":" in hostname else hostname
+        if parsed.port is not None:
+            host = f"{host}:{parsed.port}"
+    except ValueError:
+        return "[invalid URL]"
+    return urlunsplit((parsed.scheme, host, parsed.path or "/", "", ""))
+
+
 async def scrape_url_content(
     url: str,
     logger: logging.Logger | None = None,
@@ -264,12 +283,12 @@ async def scrape_url_content(
     if not logger:
         logger = logging.getLogger(__name__)
 
-    logger.info("Starting web scraping for URL: %s", url)
+    logger.info("Starting web scraping for URL: %s", _url_for_log(url))
 
     try:
         target = await _resolve_safe_target(url, logger)
         if target is None:
-            logger.warning("Refusing to scrape unsafe URL: %s", url)
+            logger.warning("Refusing to scrape unsafe URL: %s", _url_for_log(url))
             return None
 
         # Execute request asynchronously, enforcing an overall asyncio timeout
@@ -277,7 +296,7 @@ async def scrape_url_content(
             async with asyncio.timeout(request_timeout):
                 html_content = await _fetch_content_with_retries(target, request_timeout, logger)
         except TimeoutError:
-            logger.warning("Scrape timed out for URL: %s", url)
+            logger.warning("Scrape timed out for URL: %s", _url_for_log(url))
             return None
 
         if not html_content:
@@ -290,8 +309,12 @@ async def scrape_url_content(
 
         return _process_final_content(content, max_content_length, url, logger)
 
-    except Exception:
-        logger.exception("Unexpected error during scraping: %s", url)
+    except Exception as exc:  # noqa: BLE001 - scraping failures must never escape
+        logger.warning(
+            "Unexpected error during scraping: %s (%s)",
+            _url_for_log(url),
+            type(exc).__name__,
+        )
         return None
 
 
@@ -338,8 +361,12 @@ async def _scrape_host_worker(  # noqa: PLR0913, PLR0917
                         request_timeout=request_timeout,
                         max_content_length=max_content_length,
                     )
-                except (TimeoutError, httpx.HTTPError):
-                    logger.exception("Web scraping failed for %s", urls[index])
+                except Exception as exc:  # noqa: BLE001 - one page must not drop the batch
+                    logger.warning(
+                        "Web scraping failed for %s: %s",
+                        _url_for_log(urls[index]),
+                        type(exc).__name__,
+                    )
                     content = None
 
             if content:
@@ -437,10 +464,11 @@ async def scrape_urls(  # noqa: PLR0913
     results: dict[int, str] = {}
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_HOSTS)
     states = {host: _HostState() for host in grouped}
+    hosts = list(grouped)
     tasks = [
         asyncio.create_task(
             _scrape_host_worker(
-                indices,
+                grouped[host],
                 selected,
                 states[host],
                 results,
@@ -451,12 +479,12 @@ async def scrape_urls(  # noqa: PLR0913
                 max_content_length,
             )
         )
-        for host, indices in grouped.items()
+        for host in hosts
     ]
 
     try:
         async with asyncio.timeout(deadline_seconds):
-            await asyncio.gather(*tasks)
+            outcomes = await asyncio.gather(*tasks, return_exceptions=True)
     except TimeoutError:
         for task in tasks:
             task.cancel()
@@ -466,6 +494,16 @@ async def scrape_urls(  # noqa: PLR0913
             deadline_seconds,
             len(results),
         )
+    else:
+        for host, outcome in zip(hosts, outcomes, strict=True):
+            if not isinstance(outcome, BaseException):
+                continue
+            for index in grouped[host]:
+                logger.warning(
+                    "Web scraping failed for %s: %s",
+                    _url_for_log(selected[index]),
+                    type(outcome).__name__,
+                )
 
     ordered = [(selected[index], results[index]) for index in sorted(results)]
     return _apply_total_content_budget(ordered, max_total_chars, logger)
@@ -553,18 +591,23 @@ async def _fetch_attempt_with_retry_logic(  # noqa: PLR0911
 
         if redirects_followed >= MAX_REDIRECTS:
             logger.warning(
-                "Refusing redirect chain longer than %d hops: %s", MAX_REDIRECTS, target.url
+                "Refusing redirect chain longer than %d hops: %s",
+                MAX_REDIRECTS,
+                _url_for_log(target.url),
             )
             return _STOP_RETRY
 
         redirect_target = await _resolve_safe_target(result.url, logger)
         if redirect_target is None:
-            logger.warning("Refusing redirect to unsafe URL: %s", result.url)
+            logger.warning("Refusing redirect to unsafe URL: %s", _url_for_log(result.url))
             return _STOP_RETRY
 
         redirects_followed += 1
         logger.info(
-            "Following redirect %d/%d to %s", redirects_followed, MAX_REDIRECTS, result.url
+            "Following redirect %d/%d to %s",
+            redirects_followed,
+            MAX_REDIRECTS,
+            _url_for_log(result.url),
         )
         target = redirect_target
 
@@ -590,14 +633,16 @@ async def _fetch_attempt(
         request_url, host_header = _pinned_request_url(target)
         request_headers = {"Host": host_header}
 
-    logger.debug("HTTP attempt %d for: %s", attempt + 1, target.url)
+    logger.debug("HTTP attempt %d for: %s", attempt + 1, _url_for_log(target.url))
     async with client.stream(
         "GET", request_url, timeout=request_timeout, headers=request_headers
     ) as response:
         if response.status_code in REDIRECT_STATUS_CODES:
             location = response.headers.get("location")
             if not location:
-                logger.warning("Redirect without Location header from %s", target.url)
+                logger.warning(
+                    "Redirect without Location header from %s", _url_for_log(target.url)
+                )
                 return _STOP_RETRY
             return _Redirect(urljoin(target.url, location))
 
@@ -628,9 +673,14 @@ def _log_fetch_error(e: Exception, url: str, attempt: int, logger: logging.Logge
     """Log fetch errors with appropriate detail."""
     if isinstance(e, httpx.HTTPStatusError):
         status = e.response.status_code if e.response else "unknown"
-        logger.error("HTTP %s for %s", status, url)
+        logger.error("HTTP %s for %s", status, _url_for_log(url))
     else:
-        logger.warning("Attempt %d failed for %s: %s", attempt + 1, url, str(e))
+        logger.warning(
+            "Attempt %d failed for %s: %s",
+            attempt + 1,
+            _url_for_log(url),
+            type(e).__name__,
+        )
 
 
 def _process_final_content(content: str, max_length: int, url: str, logger: logging.Logger) -> str:
@@ -638,19 +688,42 @@ def _process_final_content(content: str, max_length: int, url: str, logger: logg
     clean = re.sub(r"\s+", " ", content).strip()
     original_len = len(clean)
     clean, _ = truncate_with_notice(clean, max_length, "\n\n[Content truncated due to length]")
-    logger.info("Scraped %d chars from %s", original_len, url)
+    logger.info("Scraped %d chars from %s", original_len, _url_for_log(url))
     return clean
 
 
-async def _resolve_hostname(hostname: str) -> list[tuple[Any, ...]]:
-    """Resolve hostnames off the main event loop."""
-    return await asyncio.to_thread(
-        socket.getaddrinfo,
+@lru_cache(maxsize=1)
+def _dns_executor() -> ThreadPoolExecutor:
+    """Return the process-wide, bounded resolver thread pool.
+
+    ``socket.getaddrinfo`` cannot be interrupted, so a request that hits the
+    deadline leaves its thread running. Routing every lookup through one small
+    dedicated pool caps how many resolver threads can pile up behind a
+    blackholed resolver, instead of growing the shared default executor
+    without bound.
+    """
+    return ThreadPoolExecutor(
+        max_workers=MAX_CONCURRENT_RESOLUTIONS,
+        thread_name_prefix="dns-resolve",
+    )
+
+
+def _blocking_getaddrinfo(hostname: str) -> list[tuple[Any, ...]]:
+    return socket.getaddrinfo(
         hostname,
         None,
         socket.AF_UNSPEC,
         socket.SOCK_STREAM,
         socket.IPPROTO_TCP,
+    )
+
+
+async def _resolve_hostname(hostname: str) -> list[tuple[Any, ...]]:
+    """Resolve a hostname off the event loop within a hard deadline."""
+    loop = asyncio.get_running_loop()
+    return await asyncio.wait_for(
+        loop.run_in_executor(_dns_executor(), _blocking_getaddrinfo, hostname),
+        timeout=RESOLVE_TIMEOUT_SECONDS,
     )
 
 
@@ -680,18 +753,28 @@ async def _resolve_safe_target(  # noqa: PLR0911
         hostname = parsed.hostname
         port = parsed.port
         if port is not None and not 0 < port <= MAX_TCP_PORT:
-            logger.warning("Invalid port in URL: %s", url)
+            logger.warning("Invalid port in URL: %s", _url_for_log(url))
             return None
     except ValueError:
-        logger.warning("Invalid URL: %s", url)
+        logger.warning("Invalid URL: %s", _url_for_log(url))
         return None
 
     if parsed.scheme not in {"http", "https"} or not parsed.netloc or not hostname:
-        logger.warning("Invalid URL scheme or host: %s", url)
+        logger.warning("Invalid URL scheme or host: %s", _url_for_log(url))
         return None
 
     try:
-        addr_info = await _resolve_hostname(hostname)
+        addr_info = await asyncio.wait_for(
+            _resolve_hostname(hostname),
+            timeout=RESOLVE_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        logger.warning(
+            "Timed out resolving %s after %ss; treating it as unresolvable",
+            hostname,
+            RESOLVE_TIMEOUT_SECONDS,
+        )
+        return None
     except (socket.gaierror, TypeError, OSError) as e:
         logger.warning("Could not resolve %s: %s", hostname, e)
         return None
@@ -708,7 +791,7 @@ async def _resolve_safe_target(  # noqa: PLR0911
             logger.warning("Invalid resolved address for %s", hostname)
             return None
         if not _is_global_address(ip_obj):
-            logger.warning("Refusing %s: %s is not a global address", url, ip_obj)
+            logger.warning("Refusing %s: %s is not a global address", _url_for_log(url), ip_obj)
             return None
         addresses.append(ip_obj)
 

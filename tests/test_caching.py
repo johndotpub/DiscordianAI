@@ -146,7 +146,11 @@ class TestResponseCache:
     def test_cache_response_and_retrieve(self):
         """Test caching and retrieving responses."""
         message = "What is Python?"
-        context = {"model": "gpt-5-mini", "system_message": "You are helpful"}
+        context = {
+            "model": "gpt-5-mini",
+            "system_message": "You are helpful",
+            "user_id": "test-user",
+        }
         response = "Python is a programming language."
 
         # Cache response
@@ -158,7 +162,11 @@ class TestResponseCache:
 
     def test_cache_key_normalization_strips_whitespace_only(self):
         """Cache keys ignore surrounding whitespace but preserve letter case."""
-        context = {"model": "gpt-5-mini", "system_message": "Test"}
+        context = {
+            "model": "gpt-5-mini",
+            "system_message": "Test",
+            "user_id": "test-user",
+        }
         response = "Test response"
 
         # Cache response with original message
@@ -174,7 +182,7 @@ class TestResponseCache:
 
     def test_should_not_cache_time_sensitive(self):
         """Test that time-sensitive responses are not cached."""
-        context = {"model": "gpt-5-mini"}
+        context = {"model": "gpt-5-mini", "user_id": "test-user"}
 
         # Time-sensitive responses should not be cached
         time_sensitive_responses = [
@@ -192,7 +200,7 @@ class TestResponseCache:
 
     def test_should_not_cache_short_responses(self):
         """Test that very short responses are not cached."""
-        context = {"model": "gpt-5-mini"}
+        context = {"model": "gpt-5-mini", "user_id": "test-user"}
 
         # Very short responses should not be cached
         short_responses = ["Yes.", "No", "OK", "   \n  "]
@@ -205,7 +213,7 @@ class TestResponseCache:
     def test_cache_stats(self):
         """Test cache statistics."""
         # Perform some cache operations
-        context = {"model": "test"}
+        context = {"model": "test", "user_id": "test-user"}
 
         self.cache.cache_response("msg1", context, "Long response 1 for testing", salt="test-salt")
         self.cache.cache_response("msg2", context, "Long response 2 for testing", salt="test-salt")
@@ -285,7 +293,7 @@ class TestRequestDeduplicator:
             msg = "API error"
             raise ValueError(msg)
 
-        # Followers wait on the leader's future, so the failure is shared.
+        # A failed leader wakes followers so each can run its own request.
         tasks = [
             asyncio.create_task(
                 self.deduplicator.deduplicate_request("fail_key", failing_request),
@@ -295,11 +303,9 @@ class TestRequestDeduplicator:
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # One call fails once; every follower receives that same exception.
-        assert call_count == 1
+        assert call_count == 3
         assert all(isinstance(result, ValueError) for result in results)
-        assert all(result is results[0] for result in results)
-        assert str(results[0]) == "API error"
+        assert all(str(result) == "API error" for result in results)
 
 
 class TestCachingDecorators:
@@ -311,19 +317,19 @@ class TestCachingDecorators:
         call_count = 0
 
         @cached_response(ttl=300.0)
-        async def test_function(message: str, gpt_model: str = "test"):
+        async def test_function(message: str, gpt_model: str = "test", **_kwargs):
             nonlocal call_count
             call_count += 1
             await asyncio.sleep(0.01)  # Simulate processing
             return f"Response to: {message} (call #{call_count})"
 
         # First call should execute function
-        result1 = await test_function("Hello", gpt_model="gpt-5-mini")
+        result1 = await test_function("Hello", gpt_model="gpt-5-mini", user_id="test-user")
         assert call_count == 1
         assert "call #1" in result1
 
         # Second identical call should use cache
-        result2 = await test_function("Hello", gpt_model="gpt-5-mini")
+        result2 = await test_function("Hello", gpt_model="gpt-5-mini", user_id="test-user")
         assert call_count == 1  # No additional call
         assert result2 == result1
 
@@ -332,7 +338,7 @@ class TestCachingDecorators:
         """Test deduplicated_request decorator."""
         call_count = 0
 
-        @deduplicated_request()
+        @deduplicated_request(key_func=lambda *_args, **_kwargs: "shared")
         async def test_function(message: str, model: str = "test"):
             nonlocal call_count
             call_count += 1

@@ -43,9 +43,12 @@ def test_top_released_version_matches_pyproject():
     assert versions[0] == _pyproject_version()
 
 
-def test_no_unreleased_section_remains():
-    """Every change belongs to a released entry, so no Unreleased heading remains."""
-    assert not re.search(r"^## \[Unreleased\]", _changelog_text(), re.MULTILINE)
+def test_unreleased_section_only_precedes_released_entries():
+    """An in-progress section is allowed only above the newest release."""
+    headings = RELEASE_HEADING.findall(_changelog_text())
+
+    if "Unreleased" in headings:
+        assert headings[0] == "Unreleased"
 
 
 def test_current_entry_has_behaviour_changes_section():

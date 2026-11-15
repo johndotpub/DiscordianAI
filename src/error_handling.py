@@ -256,6 +256,11 @@ DEFAULT_API_RETRY_CONFIG = RetryConfig(
 )
 
 
+def _callable_name(func: Callable) -> str:
+    """Return a display name for a callable, falling back to its repr."""
+    return getattr(func, "__name__", repr(func))
+
+
 async def retry_with_backoff(
     func: Callable,
     retry_config: RetryConfig,
@@ -290,14 +295,14 @@ async def retry_with_backoff(
             retry_if = retry_config.retry_if or _is_retryable_error
 
             if not retry_if(error_details, e):
-                logger.exception("Non-retryable error in %s", func.__name__)
+                logger.exception("Non-retryable error in %s", _callable_name(func))
                 raise
 
             if attempt >= retry_config.max_attempts - 1:
                 logger.exception(
                     "All %s attempts failed for %s",
                     retry_config.max_attempts,
-                    func.__name__,
+                    _callable_name(func),
                 )
                 break
 
@@ -306,7 +311,7 @@ async def retry_with_backoff(
                 logger.exception(
                     "Retry deadline of %.1fs exceeded for %s",
                     retry_config.max_elapsed,
-                    func.__name__,
+                    _callable_name(func),
                 )
                 break
 
@@ -317,7 +322,7 @@ async def retry_with_backoff(
                     "Retry delay of %.1fs would exceed deadline of %.1fs for %s",
                     delay,
                     retry_config.max_elapsed,
-                    func.__name__,
+                    _callable_name(func),
                 )
                 break
 
@@ -325,7 +330,7 @@ async def retry_with_backoff(
                 "Attempt %d/%d failed for %s: %s. Retrying in %.1fs",
                 attempt + 1,
                 retry_config.max_attempts,
-                func.__name__,
+                _callable_name(func),
                 e,
                 delay,
             )
@@ -627,10 +632,10 @@ def classify_error(exception: Exception) -> ErrorDetails:
     ):
         error_type = ErrorType.API_AUTH_ERROR
         severity = ErrorSeverity.HIGH
-        user_message = "💳 API quota exhausted. Please check your OpenAI plan and billing details."
+        user_message = "💳 API quota exhausted. The provider returned insufficient quota."
 
     # OpenAI/API specific errors
-    elif "rate limit" in error_msg.lower() or "429" in error_msg:
+    elif "rate limit" in error_msg.lower() or re.search(r"\b429\b", error_msg):
         error_type = ErrorType.API_RATE_LIMIT
         severity = ErrorSeverity.MEDIUM
         user_message = "⏱️ Service is busy. Please try again in a moment."
@@ -642,7 +647,7 @@ def classify_error(exception: Exception) -> ErrorDetails:
         user_message = "🔧 Request timed out. Please try again."
         retry_after = 10
 
-    elif "401" in error_msg or "unauthorized" in error_msg.lower():
+    elif re.search(r"\b401\b", error_msg) or "unauthorized" in error_msg.lower():
         error_type = ErrorType.API_AUTH_ERROR
         severity = ErrorSeverity.HIGH
         user_message = "🔐 Authentication issue. Please contact administrator."

@@ -28,6 +28,7 @@ from .config import (
     DEFAULT_OPENAI_MODEL,
     DEFAULT_OUTPUT_TOKENS,
     DEFAULT_PERPLEXITY_MODEL,
+    DEFAULT_REASONING_EFFORT,
 )
 
 if TYPE_CHECKING:
@@ -74,6 +75,7 @@ class BotDependencies:
         perplexity_output_tokens: Maximum Perplexity output tokens per response.
         input_tokens: Maximum prompt tokens per request.
         context_window: Total model context window in tokens.
+        reasoning_effort: Reasoning effort sent with OpenAI-compatible requests.
         health_task: Asyncio task for the health server (set at runtime).
     """
 
@@ -108,6 +110,7 @@ class BotDependencies:
     perplexity_output_tokens: int = DEFAULT_OUTPUT_TOKENS
     input_tokens: int = DEFAULT_INPUT_TOKENS
     context_window: int = DEFAULT_CONTEXT_WINDOW
+    reasoning_effort: str = DEFAULT_REASONING_EFFORT
 
     # Runtime-only
     health_task: asyncio.Task | None = field(default=None, repr=False)
@@ -145,6 +148,7 @@ class BotDependencies:
             "RATE_LIMIT": self.rate_limit,
             "RATE_LIMIT_PER": self.rate_limit_period,
             "GPT_MODEL": self.gpt_model,
+            "REASONING_EFFORT": self.reasoning_effort,
             "PERPLEXITY_MODEL": self.perplexity_model,
             "SYSTEM_MESSAGE": self.system_message,
             "OUTPUT_TOKENS": self.output_tokens,
@@ -174,6 +178,7 @@ class BotDependencies:
             "RATE_LIMIT": "rate_limit",
             "RATE_LIMIT_PER": "rate_limit_period",
             "GPT_MODEL": "gpt_model",
+            "REASONING_EFFORT": "reasoning_effort",
             "PERPLEXITY_MODEL": "perplexity_model",
             "SYSTEM_MESSAGE": "system_message",
             "OUTPUT_TOKENS": "output_tokens",

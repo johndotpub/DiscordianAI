@@ -30,6 +30,7 @@ services:
       - "127.0.0.1:8080:8080"
 
     # Ask the running bot itself, using only the standard library.
+    # The URL below hardcodes port 8080; keep it in sync with HEALTH_PORT.
     healthcheck:
       test:
         - CMD

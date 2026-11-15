@@ -13,6 +13,7 @@ from .config import (
     DEFAULT_OUTPUT_TOKENS,
     DEFAULT_PERPLEXITY_MODEL,
     DEFAULT_PERPLEXITY_OUTPUT_TOKENS,
+    DEFAULT_REASONING_EFFORT,
     DEFAULT_SCRAPE_DEADLINE_SECONDS,
 )
 
@@ -53,6 +54,7 @@ class OpenAIConfig:
     output_tokens: int = DEFAULT_OUTPUT_TOKENS
     input_tokens: int = DEFAULT_INPUT_TOKENS
     context_window: int = DEFAULT_CONTEXT_WINDOW
+    reasoning_effort: str = DEFAULT_REASONING_EFFORT
 
 
 @dataclass(frozen=True)

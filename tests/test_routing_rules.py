@@ -1,5 +1,6 @@
 """Routing and authorisation regression tests for threads, names, bots, and follow-ups."""
 
+from datetime import UTC, datetime
 import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -9,12 +10,13 @@ import pytest
 from src import message_router
 from src.conversation_manager import ThreadSafeConversationManager
 from src.models import AIClients, AIConfig, AIRequest
-from src.routing import HeuristicRouter, RouterConfig, decide
+from src.routing import HeuristicRouter
 from src.routing.context import build_router_input
-from src.routing.features import Cue
+from src.routing.contracts import ConversationContext, RouterInput
 from src.smart_orchestrator import (
     _detect_openai_web_inability,
     _process_hybrid_mode,
+    _routing_metadata,
 )
 
 
@@ -347,7 +349,7 @@ def test_second_one_after_openai_turn_stays_local():
         conversation_key,
         "assistant",
         "Two poems.",
-        metadata={"ai_service": "openai", "model": "gpt-6-luna"},
+        metadata={"ai_service": "openai", "model": "deepseek-v4.1-flash:1017"},
     )
 
     decision = _decide("and the second one?", manager, conversation_key)
@@ -433,7 +435,7 @@ async def test_knowledge_cutoff_question_keeps_its_local_answer(caplog):
 
 
 @pytest.mark.asyncio
-async def test_haiku_mentioning_browsing_is_kept() -> None:
+async def test_haiku_mentioning_browsing_reroutes_under_the_local_gate() -> None:
     query = "Write a haiku about a robot"
     answer = "Here is a haiku about a robot that cannot browse the web."
     assert _detect_openai_web_inability(answer)
@@ -464,27 +466,14 @@ async def test_haiku_mentioning_browsing_is_kept() -> None:
             AIConfig(),
         )
 
-    assert response == answer
-    perplexity.assert_not_awaited()
-
-
-def _unsure_live_decision():
-    cue = Cue(
-        signal="pred.status",
-        klass="bearing",
-        span=None,
-        detail="down",
-        weight=-0.3,
-    )
-    decision = decide((cue,), RouterConfig(), text="is it down")
-    assert decision.band == "unsure"
-    return decision
+    assert response == "replacement"
+    perplexity.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_unsure_live_question_still_reroutes_to_perplexity() -> None:
+async def test_local_answer_admitting_web_inability_still_reroutes_to_perplexity() -> None:
     request = AIRequest(
-        "is it down",
+        "what is a monad",
         SimpleNamespace(id=791),
         MagicMock(),
         logging.getLogger("unsure-routing-test"),
@@ -493,10 +482,6 @@ async def test_unsure_live_question_still_reroutes_to_perplexity() -> None:
     clients = AIClients(openai=object(), perplexity=object())
 
     with (
-        patch(
-            "src.smart_orchestrator._build_route_decision",
-            new=AsyncMock(return_value=_unsure_live_decision()),
-        ),
         patch(
             "src.smart_orchestrator.process_openai_message",
             new=AsyncMock(return_value="I cannot access the internet to check."),
@@ -520,7 +505,7 @@ async def test_unsure_live_question_still_reroutes_to_perplexity() -> None:
 @pytest.mark.asyncio
 async def test_reroute_perplexity_call_is_stamped_as_a_web_reroute() -> None:
     request = AIRequest(
-        "is it down",
+        "what is a monad",
         SimpleNamespace(id=792),
         MagicMock(),
         logging.getLogger("reroute-metadata-test"),
@@ -534,10 +519,6 @@ async def test_reroute_perplexity_call_is_stamped_as_a_web_reroute() -> None:
         return "replacement", False, None
 
     with (
-        patch(
-            "src.smart_orchestrator._build_route_decision",
-            new=AsyncMock(return_value=_unsure_live_decision()),
-        ),
         patch(
             "src.smart_orchestrator.process_openai_message",
             new=AsyncMock(return_value="I cannot access the internet to check."),
@@ -554,4 +535,31 @@ async def test_reroute_perplexity_call_is_stamped_as_a_web_reroute() -> None:
     assert routing.route == "web"
     assert routing.degraded is True
     assert routing.cacheable is True
-    assert routing.salt == "web:heuristic@1:1:reroute"
+    assert routing.router_id == "gate"
+    assert routing.policy_version == "1"
+    assert routing.decision_source == "override:web_reroute"
+    assert routing.salt == "web:gate:1:reroute"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_cacheable"),
+    [
+        ("summarize: the api is down", False),
+        ("summarize: how do I center a div", True),
+    ],
+)
+def test_local_override_cacheability_tracks_dropped_bearing_cues(
+    text: str, expected_cacheable: bool
+) -> None:
+    """A local override that carried live-data evidence must not be cached."""
+    decision = HeuristicRouter().decide_sync(
+        RouterInput(
+            text=text,
+            context=ConversationContext(),
+            now=datetime(2026, 10, 30, tzinfo=UTC),
+        )
+    )
+
+    assert decision.route == "local"
+    routing = _routing_metadata(decision, "openai")
+    assert routing.cacheable is expected_cacheable

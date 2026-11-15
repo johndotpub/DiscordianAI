@@ -1,8 +1,9 @@
 """DiscordianAI - A Discord bot powered by OpenAI and Perplexity AI.
 
 This package provides a production-ready Discord bot with intelligent
-AI service selection between OpenAI (GPT-5) for conversational tasks
-and Perplexity for web search and factual queries.
+AI service selection between OpenAI-compatible chat
+(Ollama Cloud by default) for conversational tasks and Perplexity for web
+search and factual queries.
 
 Features:
     - Smart orchestration between OpenAI and Perplexity APIs

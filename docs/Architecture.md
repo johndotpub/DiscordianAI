@@ -24,7 +24,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
                                                  ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │ Orchestration & AI Selection                                                            │
-│   evidence-based routing · OpenAI processing · Perplexity processing                      │
+│   evidence-based routing · OpenAI-compatible processing · Perplexity processing           │
 └────────────────────────────────────────────────┬───────────────────────────────────────┘
                                                  │
                                                  ▼
@@ -56,7 +56,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 |-----------|------|---------|
 | **Router** | `routing/` | Decides whether a message needs live web data. Evidence model: *bearing* cues (a mutable referent) may decide, *framing* cues (the shape of the request) are scaled and can never decide alone. Owns the lexicon, the thresholds and the cache policy. |
 | **Smart Orchestrator** | `smart_orchestrator.py` | Executes the router's decision against the providers, applies fallbacks, and records conversation turns |
-| **OpenAI Processing** | `openai_processing.py` | GPT API interactions, response formatting |
+| **OpenAI-Compatible Processing** | `openai_processing.py` | Chat Completions interactions (Ollama Cloud by default), response formatting |
 | **Perplexity Processing** | `perplexity_processing.py` | Web search, citation extraction |
 | **Web Scraper** | `web_scraper.py` | URL content extraction for context enrichment |
 
@@ -125,8 +125,8 @@ sequenceDiagram
     else Cache miss
         O->>AI: API call with retry
         AI-->>O: Response
-        %% If OpenAI responded but indicates web-inability, orchestrator reroutes
-        alt OpenAI indicates web-inability
+        %% If the chat provider responded but indicates web-inability, orchestrator reroutes
+        alt Chat provider indicates web-inability
             O->>AI: Request Perplexity (fallback)
             AI-->>O: Perplexity response
             O->>C: Store Perplexity result in cache
@@ -221,8 +221,8 @@ These decorators wrap `_fetch_openai_response()` in `src/openai_processing.py`; 
 ```python
 class ThreadSafeConversationManager:
     def __init__(self):
-        self._conversations: dict[int, list[dict]] = {}
-        self._user_locks: dict[int, threading.RLock] = {}
+        self._conversations: dict[int | str, list[dict[str, str]]] = {}
+        self._user_locks: dict[int | str, threading.RLock] = {}
         self._global_lock = threading.RLock()
 ```
 
@@ -252,7 +252,7 @@ a 90-second overall deadline stops retries even when attempts remain.
 
 ### API Key Handling
 - Keys loaded from config files or environment variables
-- Format validation before use (sk-*, pplx-*)
+- Empty keys are rejected; OpenAI key shape is advisory (`sk-` is OpenAI-specific), Perplexity uses `pplx-*`
 - Never logged or exposed in error messages
 
 ### Input Validation

@@ -8,7 +8,8 @@ findings as either **errors** or **warnings**:
 - **Errors stop startup.** They cover missing credentials, malformed base URLs,
   non-positive limits, and output caps above the documented maximum.
 - **Warnings are logged and startup continues.** They cover values a provider
-  may still accept, such as an unknown model name or a non-standard gateway URL.
+  may still accept, such as a non-`sk-` OpenAI-compatible key or a non-standard
+  gateway URL.
 
 Every error names the failing key and the accepted value or range. The module
 does not certify a configuration beyond the constraints it can actually verify.
@@ -20,7 +21,8 @@ The live provider behaviour behind these checks is recorded in
 - A missing `DISCORD_TOKEN`.
 - A provider selected by its settings but missing its API key
   (`OPENAI_API_KEY` or `PERPLEXITY_API_KEY`).
-- An API key that does not match the documented `sk-` or `pplx-` shape.
+- An API key that is empty or whitespace-only for a configured provider, or a
+  Perplexity key that does not match the `pplx-` shape.
 - A base URL that is not an absolute `http(s)` URL with a host.
 - `OUTPUT_TOKENS` or `PERPLEXITY_OUTPUT_TOKENS` that is not an integer, is
   non-positive, or exceeds the documented maximum of **128,000**.
@@ -33,28 +35,30 @@ The live provider behaviour behind these checks is recorded in
   set, currently `perplexity/sonar`. The provider may add models before this
   list is updated, so the name is not fatal; legacy Sonar names still answer on
   Chat Completions but warn here.
-- An unknown `GPT_MODEL`. OpenAI accepts model names beyond any list shipped
-  with the bot; only the shape is known locally, not the full catalogue.
-- A well-formed base URL that is not the provider's documented endpoint. A
-  compatible gateway may still work.
-- An OpenAI `OUTPUT_TOKENS` value below **512**. OpenAI's
-  `max_completion_tokens` covers reasoning tokens as well as visible output, so
+- An `OPENAI_API_KEY` that is non-empty but does not match OpenAI's `sk-`
+  shape. Ollama Cloud and local gateways use their own formats, so this is a
+  warning, never a fatal error.
+- A well-formed base URL that is not one of the accepted endpoints (OpenAI,
+  Ollama Cloud, or a local Ollama daemon). A compatible gateway may still work.
+- A chat-provider `OUTPUT_TOKENS` value below **512**. `max_tokens` covers
+  reasoning tokens as well as visible output, so
   a small cap can be spent entirely on reasoning. The API can then return HTTP
   200 with an empty message and `finish_reason: length`. Startup continues, but
   the warning explains why the value is risky.
 - High token or rate limits that are legal but likely to increase cost or abuse.
 - No configured channels.
 
-## OpenAI
+## OpenAI-Compatible Provider
 
-- The output cap is sent as `max_completion_tokens`, not `max_tokens`.
+- The output cap is sent as `max_tokens`.
+- `reasoning_effort` is sent from `REASONING_EFFORT` and is not validated
+  against a local enum; valid values are model-defined.
 - That cap covers **visible output plus reasoning tokens**.
 - The documented maximum is **128,000** completion tokens. A larger value is an
   error; it is not silently clamped.
-- GPT-generation-specific parameter validation does **not** exist in this codebase. The
+- Chat-generation-specific parameter validation does **not** exist in this codebase. The
   old check was removed, and this document no longer claims otherwise.
-- Model names are not an allowlist gate. A name outside the documented list
-  produces a warning because the provider may already support it.
+- Model names are not gated at all: any non-empty identifier is accepted.
 
 ## Perplexity
 
@@ -79,7 +83,7 @@ The live provider behaviour behind these checks is recorded in
 ```ini
 [Default]
 INPUT_TOKENS=120000
-OUTPUT_TOKENS=8000                # OpenAI max_completion_tokens, includes reasoning
+OUTPUT_TOKENS=8000                # chat provider max_tokens, includes reasoning
 PERPLEXITY_OUTPUT_TOKENS=8000     # Perplexity max_output_tokens, output only
 CONTEXT_WINDOW=128000
 

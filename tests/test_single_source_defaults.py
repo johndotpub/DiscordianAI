@@ -33,6 +33,7 @@ ENV_KEYS = (
     "PERPLEXITY_API_URL",
     "PERPLEXITY_MODEL",
     "GPT_MODEL",
+    "REASONING_EFFORT",
     "INPUT_TOKENS",
     "OUTPUT_TOKENS",
     "PERPLEXITY_OUTPUT_TOKENS",
@@ -50,9 +51,6 @@ ENV_KEYS = (
     "USER_LOCK_CLEANUP_INTERVAL",
     "ENTITY_DETECTION_MIN_WORDS",
     "ROUTER_MODE",
-    "ROUTER_WEB_THRESHOLD_CHANNEL",
-    "ROUTER_WEB_THRESHOLD_ANNOUNCE",
-    "ROUTER_WEB_THRESHOLD_DM",
     "MAX_URLS_PER_MESSAGE",
     "MAX_TOTAL_SCRAPED_CHARS",
     "SCRAPE_DEADLINE_SECONDS",
@@ -118,7 +116,7 @@ def _referenced_names() -> set[str]:
     return references
 
 
-@pytest.mark.parametrize("literal", ["perplexity/sonar", "gpt-6-luna"])
+@pytest.mark.parametrize("literal", ["perplexity/sonar", "deepseek-v4.1-flash:1017"])
 def test_model_default_literal_appears_once_in_src(literal):
     sites = [
         f"{path.relative_to(REPO_ROOT)}:{node.lineno}"

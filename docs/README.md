@@ -10,7 +10,7 @@ Welcome to the DiscordianAI documentation! This guide covers everything you need
 - **[Python Versions](Python_Versions.md)** - Python version compatibility
 
 ### 🤖 AI Integration
-- **[OpenAI Integration](OpenAI.md)** - OpenAI API configuration and GPT models
+- **[OpenAI-Compatible Integration](OpenAI.md)** - Ollama Cloud by default; OpenAI remains supported
 - **[Perplexity Integration](Perplexity.md)** - Web search, citations, and Sonar models
 - **[Smart Orchestration](HybridMode.md)** - How the bot chooses between AI services
 - **[Web Scraping](WebScraping.md)** - URL content extraction for context
@@ -46,21 +46,22 @@ The bot builds one evidence-based routing decision per message before calling a 
 ```mermaid
 flowchart TD
     A[User Message] --> S[Build RouterInput
-message + channel kind + history]
-    S --> D[Score bearing vs framing evidence]
-    D --> G{No bearing cue
-and no override?}
-    G -->|Yes| J[Use OpenAI]
-    G -->|No| T{p_web >= channel threshold?}
-    T -->|Yes| F[Use Perplexity]
-    T -->|No| L{p_web <= tau_local?}
-    L -->|Yes| J
-    L -->|No| U[Unsure: local answer,
-not cached]
+message + history]
+    S --> C{Override: web instruction,
+URL, or local instruction?}
+    C -->|Override present| V{Which override?}
+    V -->|web| F[Use Perplexity]
+    V -->|local| J[Use chat provider]
+    C -->|No override| G{Any bearing cue?}
+    G -->|Yes| F
+    G -->|No| H{Short anaphoric follow-up?}
+    H -->|Yes| I[Inherit previous route]
+    H -->|No| J[Use chat provider]
+    I --> J
 
-    %% OpenAI path includes a web-inability check that can reroute to Perplexity once
-    J --> O[OpenAI Response]
-    O --> WI{OpenAI indicates web-inability?}
+    %% Chat path includes a web-inability check that can reroute to Perplexity once
+    J --> O[Chat Provider Response]
+    O --> WI{Chat provider indicates web-inability?}
     WI -->|Yes, Perplexity not tried| F
     WI -->|No or already tried| M[Local answer]
 
@@ -71,7 +72,7 @@ not cached]
 |-------------------|-----------|
 | Set up the bot from scratch | [Setup Guide](Setup.md) |
 | Configure bot settings | [Configuration](Configuration.md) |
-| Set up OpenAI API | [OpenAI Integration](OpenAI.md) |
+| Set up the chat provider (Ollama Cloud by default) | [OpenAI-Compatible Integration](OpenAI.md) |
 | Set up Perplexity API | [Perplexity Integration](Perplexity.md) |
 | Understand the architecture | [Architecture](Architecture.md) |
 | Deploy with Docker | [Docker](Docker.md) |
@@ -86,4 +87,5 @@ not cached]
 - **[Issue Tracker](https://github.com/johndotpub/DiscordianAI/issues)**
 - **[Discord.py Documentation](https://discordpy.readthedocs.io/)**
 - **[OpenAI API Documentation](https://platform.openai.com/docs/)**
+- **[Ollama Cloud](https://ollama.com/)**
 - **[Perplexity API Documentation](https://docs.perplexity.ai/)**

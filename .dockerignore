@@ -91,8 +91,22 @@ venv/
 # VS Code
 .vscode/
 
-# Config
+# Local configuration and secrets. bender.ini is a private local config and
+# must never enter the build context. Keep the shipped templates available.
+bender.ini
+*.ini
+!config.ini.example
+!tox.ini
 config.ini
+
+# Local runtime and tool caches
+.bot.pid
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hermes/
+htmlcov/
+coverage.xml
 
 # Licensing
 LICENSE

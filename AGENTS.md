@@ -7,8 +7,9 @@ command, a test, or a review diff.
 
 ## 1. What this is
 
-DiscordianAI is a Discord bot that routes each incoming message to OpenAI or Perplexity,
-keeps a per-conversation history, and renders the answer as Discord messages and embeds.
+DiscordianAI is a Discord bot that routes each incoming message to an OpenAI-compatible
+chat provider (Ollama Cloud by default) or Perplexity, keeps a per-conversation history,
+and renders the answer as Discord messages and embeds.
 `src/message_router.py` decides whether a message is addressed to the bot;
 `src/message_processor.py` normalises it; `src/smart_orchestrator.py` chooses the provider;
 `src/openai_processing.py` and `src/perplexity_processing.py` call the providers; and
@@ -24,7 +25,7 @@ broke it, and each break is a user-visible bug.
 - **One history writer.** Only `smart_orchestrator._record_conversation_turn()` may call
   `ConversationManager.add_message()`. `openai_processing.py` and
   `perplexity_processing.py` are I/O wrappers: they build a request, call the provider, and
-  return normalised content/embeds. *Why:* an OpenAI answer that is rerouted to Perplexity
+  return normalised content/embeds. *Why:* a chat-provider answer that is rerouted to Perplexity
   must produce one turn, not two, and a failed attempt must produce none. *Consequence:*
   writing history inside a client duplicates or loses turns and corrupts follow-up routing.
   *Check:* `rg -n 'add_message' src` matches only `conversation_manager.py` (the definition)

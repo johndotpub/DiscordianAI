@@ -28,6 +28,7 @@ class TestOpenAIAPIIntegration:
         """Test complete OpenAI integration with successful response."""
         conversation_manager = Mock(spec=ThreadSafeConversationManager)
         openai_client = Mock()
+        openai_client.base_url = "https://api.openai.com/v1/"
         openai_client.chat.completions.create = AsyncMock(
             return_value=openai_response("This is a test response from OpenAI")
         )
@@ -49,6 +50,8 @@ class TestOpenAIAPIIntegration:
         call_args = openai_client.chat.completions.create.call_args[1]
         assert call_args["model"] == "gpt-5-mini"
         assert call_args["max_completion_tokens"] == 1000
+        assert "max_tokens" not in call_args
+        assert call_args["reasoning_effort"] == "high"
         assert len(call_args["messages"]) == 2  # system + user message
 
         conversation_manager.add_message.assert_not_called()
@@ -107,7 +110,7 @@ class TestOpenAIAPIIntegration:
 
         call_args = openai_client.chat.completions.create.call_args[1]
         assert call_args["model"] == "gpt-5"
-        assert "reasoning_effort" not in call_args
+        assert call_args["reasoning_effort"] == "high"
         assert "verbosity" not in call_args
 
 
