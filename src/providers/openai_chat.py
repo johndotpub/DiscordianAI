@@ -34,7 +34,6 @@ from .base import CompletionRequest, ProbeResult, ProviderResult
 openai_circuit_breaker = get_circuit_breaker("openai")
 
 MAX_WEB_TOOL_ROUNDS = 4
-_WEB_TOOL_BAD_ARGUMENTS = '{"error":"bad arguments"}'
 _DEFAULT_PROBE_TIMEOUT = 10.0
 
 ToolExecutor = Callable[..., Awaitable[str]]

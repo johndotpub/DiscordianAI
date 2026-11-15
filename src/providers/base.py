@@ -80,8 +80,6 @@ class AIProvider(Protocol):
 
     async def complete(self, req: CompletionRequest) -> ProviderResult:
         """Return one parsed answer, resolving any client-side tool loop."""
-        ...
 
     async def probe(self) -> ProbeResult:
         """Check provider reachability without changing user-visible state."""
-        ...

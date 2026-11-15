@@ -44,7 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   PNG, JPEG, GIF, or WebP images, with or without text. The current turn is sent to the
   OpenAI-compatible chat provider as an `image_url` data part; history stays text-only, and
   history records `[image: <filename>]` labels rather than image bytes. Perplexity never receives
-  image data and an image request is not rerouted to it. `VISION_ENABLED=false` restores the
+  image data and an image request is not rerouted to it. The bot always verifies the bytes
+  against the declared content type and skips a mismatch. `VISION_ENABLED=false` restores the
   previous behaviour of ignoring attachments. Cache keys include a digest of each image, so the
   same text with a different image cannot reuse an answer.
 

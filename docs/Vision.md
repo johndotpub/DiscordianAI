@@ -9,8 +9,9 @@ conversation as text history.
 
 - Post up to four images in the same message. A message with only images works;
   no caption is required.
-- Accepted formats are PNG, JPEG, GIF, and WebP. When Discord does not supply a
-  usable content type, the bot reads the file signature before accepting it.
+- Accepted formats are PNG, JPEG, GIF, and WebP. The bot always checks the file
+  signature and rejects bytes whose declared content type disagrees with the
+  detected format.
 - Each image may be at most 5 MiB. The size is checked from Discord's attachment
   metadata before download and again after the bytes arrive.
 - Unsupported, oversized, unreadable, or extra attachments are skipped and

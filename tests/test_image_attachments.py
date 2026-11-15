@@ -75,13 +75,40 @@ def test_generic_content_type_uses_magic_bytes():
     assert images[0].mime == "image/jpeg"
 
 
-def test_declared_image_mime_is_accepted_without_sniffing():
-    attachment = FakeAttachment(b"not-really-a-png", content_type="image/png")
+def test_declared_image_mime_is_accepted_when_the_bytes_match():
+    attachment = FakeAttachment(PNG, content_type="image/png")
 
     images, skipped = _run(extract_images([attachment]))
 
     assert skipped == []
     assert images[0].mime == "image/png"
+
+
+def test_declared_mime_that_disagrees_with_the_bytes_is_skipped():
+    attachment = FakeAttachment(JPEG, content_type="image/png", filename="wrong.png")
+
+    images, skipped = _run(extract_images([attachment]))
+
+    assert images == []
+    assert skipped == ["mime_mismatch: wrong.png (declared image/png, detected image/jpeg)"]
+
+
+def test_generic_content_type_accepts_webp_bytes():
+    attachment = FakeAttachment(WEBP, content_type="application/octet-stream", filename="pic.webp")
+
+    images, skipped = _run(extract_images([attachment]))
+
+    assert skipped == []
+    assert images[0].mime == "image/webp"
+
+
+def test_corrupt_bytes_are_skipped_even_with_an_image_content_type():
+    attachment = FakeAttachment(b"not-really-a-png", content_type="image/png")
+
+    images, skipped = _run(extract_images([attachment]))
+
+    assert images == []
+    assert skipped == ["unsupported_type: image.png"]
 
 
 def test_unknown_bytes_are_skipped_with_a_reason():

@@ -540,6 +540,7 @@ def cached_response(
     cache_instance: ResponseCache | None = None,
     *,
     key_fn: Callable[..., str | None] | None = None,
+    result_text: Callable[[Any], str | None] | None = None,
 ):
     """Decorator to cache function responses.
 
@@ -547,9 +548,12 @@ def cached_response(
         ttl: Time to live in seconds.
         cache_instance: Custom cache instance to use.
         key_fn: Optional explicit key builder. When provided, the returned key
-            is used directly and any non-``None`` result is cached. When absent,
-            the original positional message/config extraction and scoping rules
-            apply unchanged.
+            is used directly and an eligible non-``None`` result is cached. When
+            absent, the original positional message/config extraction and
+            scoping rules apply unchanged.
+        result_text: Optional extractor for the answer text inside a structured
+            result. When provided with ``key_fn``, the extracted text must pass
+            the same eligibility gate as ``ResponseCache.cache_response``.
     """
 
     def decorator(func: Callable) -> Callable:
@@ -568,7 +572,22 @@ def cached_response(
 
                 result = await func(*args, **kwargs)
                 if result is not None:
-                    cache.cache.put(cache_key, result, ttl)
+                    text: str | None
+                    if result_text is not None:
+                        text = result_text(result)
+                    elif isinstance(result, str):
+                        text = result
+                    else:
+                        text = None
+
+                    is_cacheable = cache._should_cache_response  # noqa: SLF001 - cache policy
+                    if text and is_cacheable(text):
+                        cache.cache.put(cache_key, result, ttl)
+                    else:
+                        cache.logger.debug(
+                            "Skipping cache write for %s: result is not cacheable",
+                            func.__name__,
+                        )
                 return result
 
             # Generate cache key from function name, arguments, and routing.

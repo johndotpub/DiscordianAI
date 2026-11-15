@@ -184,18 +184,19 @@ async def extract_images(
             skipped.append(f"oversize_after_download: {label} ({len(data)} bytes)")
             continue
 
-        if declared in ALLOWED_IMAGE_MIME_TYPES:
-            mime = declared
-        else:
-            mime = sniff_image_mime(data)
-            if mime is None:
-                skipped.append(f"unsupported_type: {label}")
-                continue
+        detected = sniff_image_mime(data)
+        if detected is None:
+            skipped.append(f"unsupported_type: {label}")
+            continue
+
+        if declared in ALLOWED_IMAGE_MIME_TYPES and declared != detected:
+            skipped.append(f"mime_mismatch: {label} (declared {declared}, detected {detected})")
+            continue
 
         images.append(
             ImagePayload(
                 filename=filename,
-                mime=mime,
+                mime=detected,
                 data_b64=base64.b64encode(data).decode("ascii"),
                 width=_pixel_dimension(attachment, "width"),
                 height=_pixel_dimension(attachment, "height"),

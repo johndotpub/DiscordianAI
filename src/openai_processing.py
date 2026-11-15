@@ -15,7 +15,6 @@ from .config import DEFAULT_CACHE_TTL
 from .error_handling import retry_with_backoff
 from .models import AIRequest, OpenAIConfig
 from .providers.openai_chat import (
-    _WEB_TOOL_BAD_ARGUMENTS,
     MAX_WEB_TOOL_ROUNDS,
     ChatCompletionsProvider,
     _build_openai_api_params,
@@ -38,6 +37,8 @@ __all__ = [
     "process_openai_message",
     "retry_with_backoff",
 ]
+
+_WEB_TOOL_BAD_ARGUMENTS = '{"error":"bad arguments"}'
 
 
 async def _execute_web_tool_call(

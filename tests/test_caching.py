@@ -334,6 +334,79 @@ class TestCachingDecorators:
         assert result2 == result1
 
     @pytest.mark.asyncio
+    async def test_cached_response_key_fn_caches_a_normal_answer(self):
+        """The explicit key path caches an eligible answer."""
+        call_count = 0
+
+        @cached_response(
+            ttl=300.0,
+            cache_instance=ResponseCache(),
+            key_fn=lambda *_args, **_kwargs: "normal-answer",
+        )
+        async def answer():
+            nonlocal call_count
+            call_count += 1
+            return "A sufficiently detailed answer that is safe to cache."
+
+        first = await answer()
+        second = await answer()
+
+        assert first == second
+        assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_cached_response_key_fn_does_not_cache_a_time_sensitive_answer(self):
+        """The explicit key path applies the time-sensitive gate."""
+        call_count = 0
+
+        @cached_response(
+            ttl=300.0,
+            cache_instance=ResponseCache(),
+            key_fn=lambda *_args, **_kwargs: "time-sensitive-answer",
+        )
+        async def answer():
+            nonlocal call_count
+            call_count += 1
+            return "Today the market moved sharply and this answer is already stale."
+
+        first = await answer()
+        second = await answer()
+
+        assert first == second
+        assert call_count == 2
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("answer_text", "expected_calls"),
+        [
+            ("A sufficiently detailed tuple answer that is safe to cache.", 1),
+            ("Latest update: this tuple answer changes every hour and is stale.", 2),
+        ],
+    )
+    async def test_cached_response_key_fn_result_text_gates_tuple_results(
+        self, answer_text, expected_calls
+    ):
+        """A tuple result is gated through its extracted text."""
+        call_count = 0
+
+        @cached_response(
+            ttl=300.0,
+            cache_instance=ResponseCache(),
+            key_fn=lambda *_args, **_kwargs: "tuple-answer",
+            result_text=lambda result: result[0] if isinstance(result, tuple) and result else None,
+        )
+        async def answer():
+            nonlocal call_count
+            call_count += 1
+            return (answer_text, False, None)
+
+        first = await answer()
+        second = await answer()
+
+        assert first == second
+        assert call_count == expected_calls
+
+    @pytest.mark.asyncio
     async def test_deduplicated_request_decorator(self):
         """Test deduplicated_request decorator."""
         call_count = 0

@@ -194,7 +194,11 @@ def _handle_provider_result(
     return final_text, suppress_embeds, embed_data
 
 
-@cached_response(ttl=DEFAULT_CACHE_TTL, key_fn=_perplexity_cache_key)
+@cached_response(
+    ttl=DEFAULT_CACHE_TTL,
+    key_fn=_perplexity_cache_key,
+    result_text=lambda result: result[0] if isinstance(result, tuple) and result else None,
+)
 async def _fetch_perplexity_response(
     request: AIRequest,
     perplexity_client: Any,
