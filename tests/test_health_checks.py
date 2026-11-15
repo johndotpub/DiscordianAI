@@ -145,16 +145,31 @@ class TestAPIHealthMonitor:
         assert "error_type" in result.details
 
     @pytest.mark.asyncio
-    async def test_openai_health_check_deprecated_model(self):
-        """Test OpenAI health check with deprecated model."""
+    async def test_openai_health_check_accepts_any_non_empty_model(self):
+        """A non-empty provider model id is not treated as deprecated."""
         openai_client = Mock()
+        response = Mock()
+        response.data = [Mock(id="deepseek-v4.1-flash:1017")]
+        openai_client.models.list = AsyncMock(return_value=response)
         config = {"GPT_MODEL": "deprecated-model"}
 
         result = await self.monitor.check_openai_health(openai_client, config)
 
         assert result.service == "openai"
+        assert result.status == "healthy"
+        assert result.details["model"] == "deprecated-model"
+
+    @pytest.mark.asyncio
+    async def test_openai_health_check_flags_an_empty_model(self):
+        """An empty model id cannot be checked against the provider."""
+        openai_client = Mock()
+        config = {"GPT_MODEL": ""}
+
+        result = await self.monitor.check_openai_health(openai_client, config)
+
+        assert result.service == "openai"
         assert result.status == "degraded"
-        assert "deprecated-model may be deprecated" in result.error
+        assert "may be deprecated" in result.error
         assert "available_models" in result.details
 
     @pytest.mark.asyncio

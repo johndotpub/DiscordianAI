@@ -383,7 +383,7 @@ class TestProcessingModes:
                 12345,
                 "assistant",
                 "OpenAI response",
-                metadata={"ai_service": "openai", "model": "gpt-6-luna"},
+                metadata={"ai_service": "openai", "model": "deepseek-v4.1-flash:1017"},
             )
             assert conversation_manager.add_message.call_count == 2
 
@@ -504,7 +504,7 @@ class TestProcessingModes:
             12345,
             "assistant",
             "OpenAI response",
-            metadata={"ai_service": "openai", "model": "gpt-6-luna"},
+            metadata={"ai_service": "openai", "model": "deepseek-v4.1-flash:1017"},
         )
         assert conversation_manager.add_message.call_count == 2
 
@@ -549,7 +549,7 @@ class TestProcessingModes:
                 12345,
                 "assistant",
                 "OpenAI fallback response",
-                metadata={"ai_service": "openai", "model": "gpt-6-luna"},
+                metadata={"ai_service": "openai", "model": "deepseek-v4.1-flash:1017"},
             )
             assert conversation_manager.add_message.call_count == 2
 

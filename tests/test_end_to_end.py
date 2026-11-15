@@ -176,7 +176,8 @@ async def test_guild_mention_travels_the_real_pipeline():
         "content": deps.config["SYSTEM_MESSAGE"],
     }
     assert payload["messages"][-1] == {"role": "user", "content": USER_TEXT}
-    assert payload["max_completion_tokens"] == deps.config["OUTPUT_TOKENS"]
+    assert payload["max_tokens"] == deps.config["OUTPUT_TOKENS"]
+    assert payload["reasoning_effort"] == "high"
 
     conversation_key = conversation_key_for_message(message, is_dm=False)
     conversation = deps.conversation_manager.get_conversation(conversation_key=conversation_key)

@@ -29,35 +29,14 @@ from typing import Any
 # API CONFIGURATION
 # ============================================================================
 
-# OpenAI Models
-OPENAI_MODEL_PREFIX = "gpt-6"
-DEFAULT_OPENAI_MODEL = "gpt-6-luna"
+# Chat backend reached through the OpenAI-compatible client. Ollama Cloud is
+# the shipped default; any provider model identifier is accepted.
+DEFAULT_OPENAI_MODEL = "deepseek-v4.1-flash:1017"
 
-# Canonical model identifiers that we document. The GPT-6 generation is current;
-# the GPT-5 entries remain selectable until the provider retires them on 2026-12-11.
-OPENAI_VALID_MODELS = [
-    DEFAULT_OPENAI_MODEL,  # Current generation - cost-effective default
-    "gpt-6.1-sol",  # Current generation - GPT-6.1
-    "gpt-6.1-terra",  # Current generation - GPT-6.1
-    "gpt-6-astra",  # Current generation - GPT-6
-    "gpt-6-sol",  # Current generation - GPT-6
-    # Legacy GPT-5 models: selectable only until the 2026-12-11 shutdown.
-    "gpt-5",
-    "gpt-5-mini",
-    "gpt-5-nano",
-    "gpt-5-pro",
-]
-
-# Supported families accept point releases and dated snapshots within the family.
-OPENAI_MODEL_FAMILIES = (
-    OPENAI_MODEL_PREFIX,
-    "gpt-6.1",
-    "gpt-5.6",
-    "gpt-5",
-)
-
-# Models the provider has already retired; rejected even though the family matches.
-OPENAI_RETIRED_MODELS = ("gpt-5-chat",)
+# Deprecated: retained for import compatibility only. Model ids are no longer
+# gated, so this list no longer decides whether a model is accepted; it records
+# the shipped default only.
+OPENAI_VALID_MODELS = [DEFAULT_OPENAI_MODEL]
 
 
 # Perplexity Agent API model catalogue. The legacy Sonar names still answer on
@@ -69,40 +48,32 @@ PERPLEXITY_MODELS = [
 ]
 
 
-def _matches_model_family(model: str, family: str) -> bool:
-    """Return True when ``model`` is ``family`` or extends it at a boundary."""
-    return model == family or model.startswith((f"{family}-", f"{family}."))
-
-
 def is_supported_openai_model(model: str | None) -> bool:
-    """Return True if the model belongs to a supported OpenAI GPT family.
+    """Return True for any non-empty model identifier.
 
-    A model is accepted when it is one of the documented ``OPENAI_VALID_MODELS``
-    or when it extends a family from ``OPENAI_MODEL_FAMILIES`` at a hyphen, a
-    dot, or the end of the identifier. That covers point releases and dated
-    snapshots such as ``gpt-6-luna-2026-09-01`` while rejecting a different
-    family (``gpt-7``), a malformed prefix (``gpt6-luna``), and identifiers the
-    provider has already retired (``gpt-5-chat``).
+    Any non-empty model identifier is accepted; we don't gate provider model
+    ids anymore.
     """
-    if not model:
-        return False
-
-    if any(_matches_model_family(model, retired) for retired in OPENAI_RETIRED_MODELS):
-        return False
-
-    if model in OPENAI_VALID_MODELS:
-        return True
-
-    return any(_matches_model_family(model, family) for family in OPENAI_MODEL_FAMILIES)
+    return bool(model and model.strip())
 
 
 # API URL Patterns for validation (stricter patterns with end anchor)
-VALID_OPENAI_URL_PATTERN = re.compile(r"https://api\.openai\.com/v\d+/?$")
+VALID_OPENAI_URL_PATTERN = re.compile(
+    r"^(?:"
+    r"https://api\.openai\.com/v\d+|"
+    r"https://ollama\.com/v1|"
+    r"https?://(?:localhost|127\.0\.0\.1):11434/v1"
+    r")/?$"
+)
 VALID_PERPLEXITY_URL_PATTERN = re.compile(r"https://api\.perplexity\.ai/?$")
 
 # Default API URLs
-DEFAULT_OPENAI_API_URL = "https://api.openai.com/v1/"
+DEFAULT_OPENAI_API_URL = "https://ollama.com/v1/"
 DEFAULT_PERPLEXITY_API_URL = "https://api.perplexity.ai"
+
+# Reasoning effort passed to reasoning-capable chat models. Valid values are
+# model-defined; this default matches the shipped Ollama Cloud model.
+DEFAULT_REASONING_EFFORT = "high"
 
 # ============================================================================
 # DISCORD CONFIGURATION
@@ -261,6 +232,7 @@ _CONFIG_DEFAULTS: dict[str, Any] = {
     "PERPLEXITY_API_URL": DEFAULT_PERPLEXITY_API_URL,
     "PERPLEXITY_MODEL": DEFAULT_PERPLEXITY_MODEL,
     "GPT_MODEL": DEFAULT_OPENAI_MODEL,
+    "REASONING_EFFORT": DEFAULT_REASONING_EFFORT,
     "INPUT_TOKENS": DEFAULT_INPUT_TOKENS,
     "OUTPUT_TOKENS": DEFAULT_OUTPUT_TOKENS,
     "PERPLEXITY_OUTPUT_TOKENS": None,
@@ -465,6 +437,7 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "PERPLEXITY_API_URL",
         "PERPLEXITY_MODEL",
         "GPT_MODEL",
+        "REASONING_EFFORT",
         "INPUT_TOKENS",
         "OUTPUT_TOKENS",
         "PERPLEXITY_OUTPUT_TOKENS",
@@ -564,6 +537,8 @@ def _apply_single_env_override(
             )
         else:
             config_data[key] = parsed
+    elif key == "REASONING_EFFORT":
+        config_data[key] = value.strip() or _CONFIG_DEFAULTS["REASONING_EFFORT"]
     else:
         config_data[key] = value
 
@@ -798,6 +773,10 @@ def _parse_default_config(
     )
     config_data["GPT_MODEL"] = config.get(
         "Default", "GPT_MODEL", fallback=_CONFIG_DEFAULTS["GPT_MODEL"]
+    )
+    config_data["REASONING_EFFORT"] = (
+        config.get("Default", "REASONING_EFFORT", fallback="").strip()
+        or _CONFIG_DEFAULTS["REASONING_EFFORT"]
     )
 
     # Perplexity API

@@ -627,7 +627,7 @@ def classify_error(exception: Exception) -> ErrorDetails:
     ):
         error_type = ErrorType.API_AUTH_ERROR
         severity = ErrorSeverity.HIGH
-        user_message = "💳 API quota exhausted. Please check your OpenAI plan and billing details."
+        user_message = "💳 API quota exhausted. The provider returned insufficient quota."
 
     # OpenAI/API specific errors
     elif "rate limit" in error_msg.lower() or "429" in error_msg:

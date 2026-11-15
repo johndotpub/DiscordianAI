@@ -20,22 +20,22 @@
 
 # DiscordianAI
 
-DiscordianAI is a Discord bot that routes each message to OpenAI or Perplexity, keeps conversation history per conversation, and formats replies for Discord. `GPT_MODEL` defaults to `gpt-6-luna` and is sent as configured: an unknown model name produces a startup warning, not an allowlist rejection. `PERPLEXITY_MODEL` defaults to `perplexity/sonar` and the Perplexity path uses the current Agent API. The provider decides which model names are valid. See [docs/API-CONTRACT.md](docs/API-CONTRACT.md) for what is sent to each provider.
+DiscordianAI is a Discord bot that routes each message to an OpenAI-compatible chat provider or Perplexity, keeps conversation history per conversation, and formats replies for Discord. The shipped default chat backend is Ollama Cloud (`https://ollama.com/v1/`, model `deepseek-v4.1-flash:1017`); OpenAI remains supported by changing `OPENAI_API_URL`, `GPT_MODEL`, and `OPENAI_API_KEY`. `GPT_MODEL` is sent as configured, and any non-empty model identifier is accepted. `PERPLEXITY_MODEL` defaults to `perplexity/sonar` and the Perplexity path uses the current Agent API. The provider decides which model names are valid. See [docs/API-CONTRACT.md](docs/API-CONTRACT.md) for what is sent to each provider.
 
 ## What Makes It Different
 
-- **Evidence-based hybrid routing**: a local heuristic scores bearing evidence (things whose value can change) against framing (the shape of the request). OpenAI handles stable knowledge, reasoning, and creative prompts; Perplexity's Agent API handles live facts and returns citations.
+- **Evidence-based hybrid routing**: a local heuristic scores bearing evidence (things whose value can change) against framing (the shape of the request). The OpenAI-compatible provider (Ollama Cloud by default) handles stable knowledge, reasoning, and creative prompts; Perplexity's Agent API handles live facts and returns citations.
 - **Conversation history**: History is keyed by guild channel (`g:<guild>:c:<channel>`) or DM (`dm:<user>`) and is sent to both providers. A thread keeps its own history, separate from its parent. A follow-up is routed to the provider that answered the previous turn when one is recorded.
-- **Discord-native output**: Citation embeds, message splitting at Discord's 2000-character limit, and Perplexity link-preview suppression when a response contains two or more links. The OpenAI path does not suppress previews.
+- **Discord-native output**: Citation embeds, message splitting at Discord's 2000-character limit, and Perplexity link-preview suppression when a response contains two or more links. The OpenAI-compatible path does not suppress previews.
 - **Operations**: Per-provider HTTP/2 connection pooling with HTTP/1.1 fallback, per-provider circuit breakers, and health checks after login plus HTTP endpoints that report observed provider and breaker state.
-- **Single-source configuration**: `config.ini` or environment variables drive every mode. Startup validation stops on missing credentials, malformed URLs, and invalid limits, and warns about unknown model names.
+- **Single-source configuration**: `config.ini` or environment variables drive every mode. Startup validation stops on missing credentials, malformed URLs, and invalid limits; provider model ids are not gated.
 
 ## Operation Modes
 
 | Mode | What it does | When the chosen provider fails |
 |------|--------------|--------------------------------|
-| 🧠 **Smart Hybrid** | Requires both clients. Builds one evidence-based routing decision per message, then sends live-data questions to Perplexity and stable/local questions to OpenAI. | If Perplexity is selected and fails, the bot tries OpenAI and marks the answer degraded. If OpenAI is selected and returns no content, the bot tries Perplexity. An OpenAI answer that says it cannot browse is rerouted only when Perplexity has not already failed in this request. Each provider is attempted at most once. If both fail, the bot sends an error notice. |
-| 🤖 **OpenAI Only** | Requires only the OpenAI client. Every message goes to the configured OpenAI model. | The bot sends an error notice. It does not fall back to Perplexity. |
+| 🧠 **Smart Hybrid** | Requires both clients. Builds one evidence-based routing decision per message, then sends live-data questions to Perplexity and stable/local questions to the OpenAI-compatible provider. | If Perplexity is selected and fails, the bot tries the chat provider and marks the answer degraded. If the chat provider is selected and returns no content, the bot tries Perplexity. A chat answer that says it cannot browse is rerouted only when Perplexity has not already failed in this request. Each provider is attempted at most once. If both fail, the bot sends an error notice. |
+| 🤖 **OpenAI-compatible Only** | Requires only the chat client. Every message goes to the configured OpenAI-compatible model. | The bot sends an error notice. It does not fall back to Perplexity. |
 | 🔍 **Perplexity Only** | Requires only the Perplexity client. Every message goes to the configured Perplexity model and citations are formatted into embeds. | The bot sends an error notice. It does not fall back to OpenAI. |
 
 ## Quick Start
@@ -43,7 +43,7 @@ DiscordianAI is a Discord bot that routes each message to OpenAI or Perplexity, 
 1. **Install Python 3.12 or newer** and create a virtual environment.
 2. **Clone & install**: `pip install -e ".[dev]"`
 3. **Copy config**: `cp config.ini.example config.ini`
-4. **Set tokens** in `config.ini` (Discord, OpenAI, Perplexity as needed).
+4. **Set tokens** in `config.ini` (Discord, chat provider, Perplexity as needed).
 5. **Run the bot**: `python -m src.main --conf config.ini` (or the installed console script: `discordianai --conf config.ini`).
 6. **Run tests** before shipping: `pytest` (coverage gate: 84% via tox/Codecov)
 
@@ -89,11 +89,11 @@ The launcher resolves Python in this order: pyenv → project-local `.venv` → 
 | Key | Purpose |
 |-----|---------|
 | `DISCORD_TOKEN` | Bot authentication token from the Discord Developer Portal.
-| `GPT_MODEL` | OpenAI model name sent as configured. Default `gpt-6-luna`; unknown names warn but do not block startup.
+| `GPT_MODEL` | OpenAI-compatible model name sent as configured. Default `deepseek-v4.1-flash:1017`; any non-empty model identifier is accepted.
 | `PERPLEXITY_MODEL` | Perplexity model name. Default `perplexity/sonar`, the current Agent API Sonar model. Legacy Sonar names still answer on Chat Completions but are not used by this bot.
-| `INPUT_TOKENS` / `OUTPUT_TOKENS` | Prompt budget and OpenAI completion cap. `OUTPUT_TOKENS` is sent as `max_completion_tokens` and includes reasoning tokens.
+| `INPUT_TOKENS` / `OUTPUT_TOKENS` | Prompt budget and chat completion cap. `OUTPUT_TOKENS` is sent as `max_tokens` and includes reasoning tokens.
 | `PERPLEXITY_OUTPUT_TOKENS` | Perplexity completion cap, sent as `max_output_tokens` to the Agent API (output only). Defaults to `OUTPUT_TOKENS`.
-| `CONTEXT_WINDOW` | Shared context window (default 128000). It stays 128000 because it is shared with the OpenAI path, and Sonar's window is the smaller of the two.
+| `CONTEXT_WINDOW` | Shared context window (default 128000). It stays 128000 because it is shared with the OpenAI-compatible path, and Sonar's window is the smaller of the two.
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | How many recent messages to inspect when a follow-up inherits the previous provider.
 | `ROUTER_MODE` | Router implementation, `heuristic` by default. `model` is not implemented and raises with a pointer to `docs/routing/DESIGN.md`.
 | `ROUTER_WEB_THRESHOLD_CHANNEL` / `ROUTER_WEB_THRESHOLD_ANNOUNCE` / `ROUTER_WEB_THRESHOLD_DM` | Web-route probability thresholds for ordinary channels (0.10), announcement channels (0.07), and DMs (0.20).
@@ -119,9 +119,10 @@ The launcher resolves Python in this order: pyenv → project-local `.venv` → 
 DISCORD_TOKEN=your_discord_bot_token
 
 [Default]
-OPENAI_API_KEY=sk-your-openai-key
-OPENAI_API_URL=https://api.openai.com/v1/
-GPT_MODEL=gpt-6-luna
+OPENAI_API_KEY=your-ollama-cloud-api-key
+OPENAI_API_URL=https://ollama.com/v1/
+GPT_MODEL=deepseek-v4.1-flash:1017
+REASONING_EFFORT=high
 PERPLEXITY_API_KEY=pplx-your-perplexity-key
 PERPLEXITY_MODEL=perplexity/sonar
 INPUT_TOKENS=120000
@@ -138,17 +139,17 @@ RATE_LIMIT_PER=60
 ### AI Orchestration
 - [src/smart_orchestrator.py](src/smart_orchestrator.py) asks `src/routing/` for one evidence-based decision per message, owns provider selection and fallback, and writes the successful turn to history.
 - [src/message_processor.py](src/message_processor.py) builds the per-conversation history snapshot and request, calls the orchestrator, and sends the reply.
-- [src/openai_processing.py](src/openai_processing.py) sends the model, messages, and completion cap. [src/perplexity_processing.py](src/perplexity_processing.py) sends the model, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool to the Agent API; neither sends sampling parameters. Perplexity processing also handles scrape budgets and citation extraction.
+- [src/openai_processing.py](src/openai_processing.py) sends the model, messages, `max_tokens`, and `reasoning_effort` to the configured OpenAI-compatible provider. [src/perplexity_processing.py](src/perplexity_processing.py) sends the model, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool to the Agent API; neither sends sampling parameters. Perplexity processing also handles scrape budgets and citation extraction.
 
 ### Discord User Experience
 - [src/discord_embeds.py](src/discord_embeds.py) formats Perplexity citations into embed descriptions and truncates descriptions above the 4096-character hard limit to the 3840-character safe limit.
-- [src/message_splitter.py](src/message_splitter.py) splits at 2000 characters, uses 3840 as the safe embed split target and 4096 as the hard embed limit, avoids splitting code blocks, and provides the link-count check that the Perplexity path uses to suppress previews at two or more links. The OpenAI path always returns `False`.
+- [src/message_splitter.py](src/message_splitter.py) splits at 2000 characters, uses 3840 as the safe embed split target and 4096 as the hard embed limit, avoids splitting code blocks, and provides the link-count check that the Perplexity path uses to suppress previews at two or more links. The OpenAI-compatible path always returns `False`.
 - [src/message_router.py](src/message_router.py) handles mentions, DMs, channel and thread allowlists, bot-authored senders, and dispatch to the DM/channel processors.
 
 ### Reliability & Ops
-- [src/connection_pool.py](src/connection_pool.py) creates HTTP/2 clients with 50/10 connections for OpenAI and 30/5 for Perplexity, falling back to HTTP/1.1 when `h2` is unavailable.
-- [src/health_checks.py](src/health_checks.py) checks each configured provider after login; supported models are checked against the provider's model-list endpoint. [src/health_server.py](src/health_server.py) serves liveness/readiness and reports observed provider and breaker state.
-- [src/api_validation.py](src/api_validation.py) rejects missing credentials, malformed URLs, and invalid limits, and warns about unknown model names. [src/error_handling.py](src/error_handling.py) classifies errors and owns the retry and circuit-breaker policy.
+- [src/connection_pool.py](src/connection_pool.py) creates HTTP/2 clients with 50/10 connections for the chat provider and 30/5 for Perplexity, falling back to HTTP/1.1 when `h2` is unavailable.
+- [src/health_checks.py](src/health_checks.py) checks each configured provider after login; any non-empty model identifier is accepted. [src/health_server.py](src/health_server.py) serves liveness/readiness and reports observed provider and breaker state.
+- [src/api_validation.py](src/api_validation.py) rejects missing credentials, malformed URLs, and invalid limits, and warns when an `OPENAI_API_KEY` does not match OpenAI's `sk-` shape (other compatible providers are supported). [src/error_handling.py](src/error_handling.py) classifies errors and owns the retry and circuit-breaker policy.
 
 ## Documentation Map
 
@@ -193,7 +194,7 @@ Use `tox` for the CI matrix (`tox`, `tox -e py312`, `tox --parallel auto`, `tox 
 
 - Keep `config.ini` out of version control; copy from `config.ini.example` and set `chmod 600 config.ini` on servers.
 - Prefer environment variables in production (`export DISCORD_TOKEN=...`).
-- Rotate OpenAI (`sk-...`) and Perplexity (`pplx-...`) keys regularly; validators will reject malformed prefixes.
+- Rotate chat-provider and Perplexity (`pplx-...`) keys regularly. An `OPENAI_API_KEY` that is not `sk-`-shaped is accepted with a warning because non-OpenAI-compatible providers are supported.
 - Limit Discord bot permissions to the channels where it operates.
 - Prefer `ALLOWED_CHANNEL_IDS` for precise channel targeting in shared or multi-server deployments.
 - Scraped URLs are checked for loopback, private, link-local, CGNAT, and other non-global addresses, and every redirect hop is checked. HTTPS is not pinned to the vetted IP, so a DNS-rebinding window remains; see [docs/Security.md](docs/Security.md).

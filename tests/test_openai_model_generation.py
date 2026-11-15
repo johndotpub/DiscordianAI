@@ -1,28 +1,12 @@
-"""Regression tests for the OpenAI model generation and family allowlist."""
+"""Regression tests for the permissive OpenAI-compatible model policy."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
-from src.config import (
-    DEFAULT_OPENAI_MODEL,
-    OPENAI_VALID_MODELS,
-    is_supported_openai_model,
-)
+from src.config import DEFAULT_OPENAI_MODEL, is_supported_openai_model
 from src.health_checks import APIHealthMonitor
-
-EXPECTED_VALID_MODELS = {
-    "gpt-6-luna",
-    "gpt-6.1-sol",
-    "gpt-6.1-terra",
-    "gpt-6-astra",
-    "gpt-6-sol",
-    "gpt-5",
-    "gpt-5-mini",
-    "gpt-5-nano",
-    "gpt-5-pro",
-}
 
 
 def _models_client(model_ids: list[str]) -> SimpleNamespace:
@@ -30,54 +14,52 @@ def _models_client(model_ids: list[str]) -> SimpleNamespace:
     return SimpleNamespace(models=SimpleNamespace(list=AsyncMock(return_value=response)))
 
 
-def test_default_model_is_the_current_generation():
-    assert DEFAULT_OPENAI_MODEL == "gpt-6-luna"
-    assert is_supported_openai_model("gpt-6-luna") is True
-
-
-def test_every_documented_model_is_accepted():
-    assert set(OPENAI_VALID_MODELS) == EXPECTED_VALID_MODELS
-
-    for model in OPENAI_VALID_MODELS:
-        assert is_supported_openai_model(model) is True, model
+def test_default_model_is_the_ollama_cloud_model():
+    assert DEFAULT_OPENAI_MODEL == "deepseek-v4.1-flash:1017"
+    assert is_supported_openai_model("deepseek-v4.1-flash:1017") is True
 
 
 @pytest.mark.parametrize(
     "model",
     [
+        "deepseek-v4.1-flash:1017",
+        "gpt-6-luna",
         "gpt-6.1-terra",
-        "gpt-6-astra",
-        "gpt-5.6-luna",
         "gpt-6-luna-2026-09-01",
+        "claude-3",
+        "llama3.2:latest",
+        "some-provider/model@2026",
     ],
 )
-def test_family_members_and_dated_snapshots_are_accepted(model):
+def test_any_non_empty_model_identifier_is_accepted(model):
     assert is_supported_openai_model(model) is True
 
 
-@pytest.mark.parametrize(
-    "model",
-    [
-        "gpt-5-chat",
-        "gpt-7",
-        "gpt6-luna",
-        "claude-3",
-        "",
-    ],
-)
-def test_retired_unknown_and_malformed_models_are_rejected(model):
+@pytest.mark.parametrize("model", [None, "", "   ", "\n\t "])
+def test_empty_and_whitespace_models_are_rejected(model):
     assert is_supported_openai_model(model) is False
 
 
 @pytest.mark.asyncio
-async def test_health_check_uses_the_same_family_allowlist():
+async def test_health_check_accepts_any_non_empty_model():
     monitor = APIHealthMonitor()
-    client = _models_client(["gpt-6-luna"])
+    client = _models_client(["deepseek-v4.1-flash:1017"])
 
-    current = await monitor.check_openai_health(client, {"GPT_MODEL": "gpt-6-luna"})
+    current = await monitor.check_openai_health(client, {"GPT_MODEL": "deepseek-v4.1-flash:1017"})
     assert current.status == "healthy"
-    assert current.details["model"] == "gpt-6-luna"
+    assert current.details["model"] == "deepseek-v4.1-flash:1017"
 
-    bogus = await monitor.check_openai_health(client, {"GPT_MODEL": "gpt-7-bogus"})
-    assert bogus.status == "degraded"
-    assert "gpt-7-bogus" in bogus.error
+    other = await monitor.check_openai_health(client, {"GPT_MODEL": "gpt-7-bogus"})
+    assert other.status == "healthy"
+    assert other.details["model"] == "gpt-7-bogus"
+
+
+@pytest.mark.asyncio
+async def test_health_check_still_flags_an_empty_model():
+    monitor = APIHealthMonitor()
+    client = _models_client(["deepseek-v4.1-flash:1017"])
+
+    result = await monitor.check_openai_health(client, {"GPT_MODEL": ""})
+
+    assert result.status == "degraded"
+    assert "may be deprecated or unsupported" in result.error

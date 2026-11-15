@@ -347,7 +347,7 @@ def test_second_one_after_openai_turn_stays_local():
         conversation_key,
         "assistant",
         "Two poems.",
-        metadata={"ai_service": "openai", "model": "gpt-6-luna"},
+        metadata={"ai_service": "openai", "model": "deepseek-v4.1-flash:1017"},
     )
 
     decision = _decide("and the second one?", manager, conversation_key)

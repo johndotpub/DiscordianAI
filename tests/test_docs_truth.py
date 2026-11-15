@@ -736,7 +736,7 @@ def test_b14_readme_does_not_claim_a_frontier_model_generation() -> None:
     matches = [match.group(0) for match in FRONTIER_CLAIM_PATTERN.finditer(text)]
     assert not matches, (
         "README claims a model generation is frontier or state of the art; the configured "
-        "default is gpt-5-mini, so the claim is not true: " + ", ".join(matches)
+        "default is deepseek-v4.1-flash:1017, so the claim is not true: " + ", ".join(matches)
     )
 
 

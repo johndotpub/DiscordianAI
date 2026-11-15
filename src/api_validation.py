@@ -25,7 +25,6 @@ from .config import (
     SECONDS_PER_MINUTE,
     VALID_OPENAI_URL_PATTERN,
     VALID_PERPLEXITY_URL_PATTERN,
-    is_supported_openai_model,
 )
 
 # Re-export for backward compatibility
@@ -55,7 +54,12 @@ PERPLEXITY_API_KEY_PATTERN = re.compile(r"^pplx-[a-zA-Z0-9\-_]{20,}$")
 
 
 def validate_openai_api_key_format(api_key: str | None) -> tuple[bool, str | None]:
-    """Validate OpenAI API key format.
+    """Validate that an OpenAI-compatible API key is present.
+
+    The ``sk-`` shape is OpenAI-specific. Other OpenAI-compatible providers
+    (Ollama Cloud, local gateways) use their own key formats, so a non-empty
+    key that does not match ``OPENAI_API_KEY_PATTERN`` is accepted here and
+    reported as a warning by :func:`validate_openai_config`.
 
     Args:
         api_key: API key to validate (can be None if not provided)
@@ -68,18 +72,9 @@ def validate_openai_api_key_format(api_key: str | None) -> tuple[bool, str | Non
 
     if not api_key or not api_key.strip():
         return False, (
-            "Invalid OpenAI API key format. "
-            "Accepted format: 'sk-' followed by at least 20 alphanumeric, '-' or '_' "
-            "characters. Please verify your API key from "
-            "https://platform.openai.com/api-keys"
-        )
-
-    if not OPENAI_API_KEY_PATTERN.match(api_key):
-        return False, (
-            "Invalid OpenAI API key format. "
-            "Accepted format: 'sk-' followed by at least 20 alphanumeric, '-' or '_' "
-            "characters. Please verify your API key from "
-            "https://platform.openai.com/api-keys"
+            "OPENAI_API_KEY must not be empty. Provide the key for the configured "
+            "OpenAI-compatible provider, or remove the OpenAI settings to run in "
+            "Perplexity-only mode."
         )
 
     return True, None
@@ -193,7 +188,7 @@ def _output_token_issues(config: dict, key: str, *, reasoning_model: bool) -> li
     issues = []
     if reasoning_model and tokens < MIN_OPENAI_OUTPUT_TOKENS_WARNING:
         issues.append(
-            f"WARNING: {key} is only {tokens}. OpenAI's max_completion_tokens covers "
+            f"WARNING: {key} is only {tokens}. Provider output caps cover "
             "reasoning tokens as well as visible output, so a cap below "
             f"{MIN_OPENAI_OUTPUT_TOKENS_WARNING} can be spent entirely on reasoning; "
             "the API can then return HTTP 200 with an empty message and "
@@ -312,6 +307,12 @@ def validate_openai_config(config: dict) -> list[str]:
                 error_msg.replace(api_key, "[REDACTED]") if api_key in error_msg else error_msg
             )
             issues.append(f"ERROR: OPENAI_API_KEY is invalid: {safe_msg}")
+        elif not OPENAI_API_KEY_PATTERN.match(api_key.strip()):
+            issues.append(
+                "WARNING: OPENAI_API_KEY does not match OpenAI's 'sk-' key format. "
+                "Non-OpenAI-compatible providers are supported; verify the key "
+                "matches the configured OPENAI_API_URL.",
+            )
 
     issues.extend(
         _validate_api_url(
@@ -319,20 +320,12 @@ def validate_openai_config(config: dict) -> list[str]:
             "OPENAI_API_URL",
             VALID_OPENAI_URL_PATTERN,
             "OpenAI",
-            "https://api.openai.com/v1/",
+            "https://api.openai.com/v1/, https://ollama.com/v1/, "
+            "or http(s)://localhost:11434/v1/",
         )
     )
 
-    # OpenAI accepts model names beyond any list we ship, so an unknown name is
-    # a warning rather than a reason to refuse startup.
-    gpt_model = config.get("GPT_MODEL", "")
-    if gpt_model and not is_supported_openai_model(gpt_model):
-        issues.append(
-            "WARNING: Unknown GPT model: "
-            f"{gpt_model}. Known documented models: {', '.join(OPENAI_VALID_MODELS)}. "
-            "The provider may accept names outside this list, so startup continues.",
-        )
-
+    # The provider decides which model ids exist, so no model name is rejected.
     # Removed unsupported GPT-5 parameter validation
 
     issues.extend(_output_token_issues(config, "OUTPUT_TOKENS", reasoning_model=True))

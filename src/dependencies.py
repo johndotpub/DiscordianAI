@@ -28,6 +28,7 @@ from .config import (
     DEFAULT_OPENAI_MODEL,
     DEFAULT_OUTPUT_TOKENS,
     DEFAULT_PERPLEXITY_MODEL,
+    DEFAULT_REASONING_EFFORT,
 )
 
 if TYPE_CHECKING:
@@ -68,6 +69,7 @@ class BotDependencies:
         rate_limit: Maximum commands per user per window.
         rate_limit_period: Rate-limit window in seconds.
         gpt_model: OpenAI GPT model identifier.
+        reasoning_effort: Reasoning effort sent with OpenAI-compatible requests.
         perplexity_model: Perplexity model identifier.
         system_message: System prompt for AI interactions.
         output_tokens: Maximum OpenAI output tokens per response.
@@ -102,6 +104,7 @@ class BotDependencies:
     rate_limit: int = 10
     rate_limit_period: int = 60
     gpt_model: str = DEFAULT_OPENAI_MODEL
+    reasoning_effort: str = DEFAULT_REASONING_EFFORT
     perplexity_model: str = DEFAULT_PERPLEXITY_MODEL
     system_message: str = ""
     output_tokens: int = DEFAULT_OUTPUT_TOKENS
@@ -145,6 +148,7 @@ class BotDependencies:
             "RATE_LIMIT": self.rate_limit,
             "RATE_LIMIT_PER": self.rate_limit_period,
             "GPT_MODEL": self.gpt_model,
+            "REASONING_EFFORT": self.reasoning_effort,
             "PERPLEXITY_MODEL": self.perplexity_model,
             "SYSTEM_MESSAGE": self.system_message,
             "OUTPUT_TOKENS": self.output_tokens,
@@ -174,6 +178,7 @@ class BotDependencies:
             "RATE_LIMIT": "rate_limit",
             "RATE_LIMIT_PER": "rate_limit_period",
             "GPT_MODEL": "gpt_model",
+            "REASONING_EFFORT": "reasoning_effort",
             "PERPLEXITY_MODEL": "perplexity_model",
             "SYSTEM_MESSAGE": "system_message",
             "OUTPUT_TOKENS": "output_tokens",

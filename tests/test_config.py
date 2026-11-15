@@ -27,6 +27,7 @@ def isolate_config_env(monkeypatch):
         "PERPLEXITY_API_URL",
         "PERPLEXITY_MODEL",
         "GPT_MODEL",
+        "REASONING_EFFORT",
         "INPUT_TOKENS",
         "OUTPUT_TOKENS",
         "PERPLEXITY_OUTPUT_TOKENS",
@@ -107,15 +108,14 @@ class TestLoadConfig:
         assert config["ACTIVITY_TYPE"] == "listening"
         assert config["ACTIVITY_STATUS"] == "Humans"
         assert config["OPENAI_API_KEY"] is None
-        assert config["OPENAI_API_URL"] == "https://api.openai.com/v1/"
+        assert config["OPENAI_API_URL"] == "https://ollama.com/v1/"
         assert config["PERPLEXITY_API_KEY"] is None
         assert config["PERPLEXITY_API_URL"] == "https://api.perplexity.ai"
-        assert config["GPT_MODEL"] == "gpt-6-luna"
+        assert config["GPT_MODEL"] == "deepseek-v4.1-flash:1017"
         assert config["INPUT_TOKENS"] == 120000
         assert config["OUTPUT_TOKENS"] == 8000
         assert config["CONTEXT_WINDOW"] == 128000
         assert config["SYSTEM_MESSAGE"] == "You are a helpful assistant."
-        # GPT-5 models use max_completion_tokens instead of max_tokens
         assert config["RATE_LIMIT"] == 10
         assert config["RATE_LIMIT_PER"] == 60
         assert config["OPENAI_MAX_CONNECTIONS"] == 50
@@ -142,7 +142,7 @@ ACTIVITY_STATUS=test game
 [Default]
 OPENAI_API_KEY=test_api_key
 PERPLEXITY_API_KEY=test_perplexity_key
-GPT_MODEL=gpt-6-luna
+GPT_MODEL=file-model
 INPUT_TOKENS=50000
 OUTPUT_TOKENS=2000
 SYSTEM_MESSAGE=Test system message
@@ -183,12 +183,12 @@ LOG_LEVEL=DEBUG
             assert config["ACTIVITY_STATUS"] == "test game"
             assert config["OPENAI_API_KEY"] == "test_api_key"
             assert config["PERPLEXITY_API_KEY"] == "test_perplexity_key"
-            assert config["GPT_MODEL"] == "gpt-6-luna"
+            assert config["GPT_MODEL"] == "file-model"
             assert config["INPUT_TOKENS"] == 50000
             assert config["OUTPUT_TOKENS"] == 2000
             assert config["SYSTEM_MESSAGE"] == "Test system message"
             # Legacy parameters that are no longer used
-            assert config.get("REASONING_EFFORT") is None
+            assert config["REASONING_EFFORT"] == "high"
             assert config.get("VERBOSITY") is None
             assert config["RATE_LIMIT"] == 5
             assert config["RATE_LIMIT_PER"] == 30
@@ -212,7 +212,7 @@ LOG_LEVEL=DEBUG
 
         # Should return defaults when file doesn't exist
         assert config["DISCORD_TOKEN"] is None
-        assert config["GPT_MODEL"] == "gpt-6-luna"
+        assert config["GPT_MODEL"] == "deepseek-v4.1-flash:1017"
 
     def test_load_config_with_base_folder(self):
         """Test config loading with base folder."""
@@ -476,7 +476,7 @@ OPENAI_API_KEY=test_key
             config = load_config(temp_config_path)
             # At minimum, defaults should be present
             assert "GPT_MODEL" in config
-            assert config["GPT_MODEL"] == "gpt-6-luna"
+            assert config["GPT_MODEL"] == "deepseek-v4.1-flash:1017"
         finally:
             os.unlink(temp_config_path)
 
@@ -493,7 +493,7 @@ DISCORD_TOKEN=test_token
         try:
             config = load_config(temp_config_path)
             assert config["DISCORD_TOKEN"] == "test_token"  # noqa: S105
-            assert config["GPT_MODEL"] == "gpt-6-luna"  # Default value
+            assert config["GPT_MODEL"] == "deepseek-v4.1-flash:1017"  # Default value
             assert config["OPENAI_API_KEY"] is None  # Default value
         finally:
             os.unlink(temp_config_path)
@@ -507,7 +507,7 @@ DISCORD_TOKEN=test_token
         try:
             config = load_config(temp_config_path)
             # Should return all defaults
-            assert config["GPT_MODEL"] == "gpt-6-luna"
+            assert config["GPT_MODEL"] == "deepseek-v4.1-flash:1017"
             assert config["DISCORD_TOKEN"] is None
         finally:
             os.unlink(temp_config_path)
@@ -708,4 +708,4 @@ TEST_VALUE=test
         """Test handling of nonexistent base_folder."""
         config = load_config(None, "/nonexistent/path/that/does/not/exist")
         # Should not crash, should use defaults
-        assert config["GPT_MODEL"] == "gpt-6-luna"
+        assert config["GPT_MODEL"] == "deepseek-v4.1-flash:1017"

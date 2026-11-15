@@ -1,12 +1,17 @@
-"""OpenAI API processing with thread-safe conversation management and enhanced error handling.
+"""OpenAI-compatible chat API processing with thread-safe error handling.
 
-This module handles all OpenAI API interactions including GPT-5 specific parameters,
-conversation state management, and comprehensive error recovery.
+This module handles all chat API interactions (Ollama Cloud by default, OpenAI
+optionally), conversation state management, and error recovery.
 """
 
 from .api_context import api_call
 from .caching import cached_response, deduplicated_request
-from .config import DEFAULT_CACHE_TTL, DEFAULT_CONTEXT_WINDOW, DEFAULT_INPUT_TOKENS
+from .config import (
+    DEFAULT_CACHE_TTL,
+    DEFAULT_CONTEXT_WINDOW,
+    DEFAULT_INPUT_TOKENS,
+    DEFAULT_REASONING_EFFORT,
+)
 from .error_handling import (
     DEFAULT_API_RETRY_CONFIG,
     get_circuit_breaker,
@@ -28,6 +33,7 @@ def _build_openai_api_params(  # noqa: PLR0913
     input_tokens: int = DEFAULT_INPUT_TOKENS,
     output_tokens: int | None = None,
     context_window: int = DEFAULT_CONTEXT_WINDOW,
+    reasoning_effort: str = DEFAULT_REASONING_EFFORT,
     logger=None,
 ) -> dict:
     """Prepare OpenAI API call parameters."""
@@ -43,9 +49,8 @@ def _build_openai_api_params(  # noqa: PLR0913
             context_window=context_window,
             logger=logger,
         ),
-        "max_completion_tokens": resolve_completion_budget(
-            completion_tokens, context_window, input_tokens
-        ),
+        "max_tokens": resolve_completion_budget(completion_tokens, context_window, input_tokens),
+        "reasoning_effort": reasoning_effort,
     }
 
 
@@ -69,6 +74,7 @@ async def _fetch_openai_response(
                 input_tokens=config.input_tokens,
                 output_tokens=config.output_tokens,
                 context_window=config.context_window,
+                reasoning_effort=config.reasoning_effort,
                 logger=request.logger,
             )
 
@@ -92,7 +98,10 @@ async def _fetch_openai_response(
 
             response_content = response.choices[0].message.content
             if not response_content or not response_content.strip():
-                request.logger.warning("OpenAI returned empty response content")
+                request.logger.warning(
+                    "OpenAI returned empty response content (finish_reason=%s)",
+                    getattr(response.choices[0], "finish_reason", "unknown"),
+                )
                 return None
 
             response_content = response_content.strip()

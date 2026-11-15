@@ -48,7 +48,8 @@ class TestOpenAIAPIIntegration:
         openai_client.chat.completions.create.assert_called_once()
         call_args = openai_client.chat.completions.create.call_args[1]
         assert call_args["model"] == "gpt-5-mini"
-        assert call_args["max_completion_tokens"] == 1000
+        assert call_args["max_tokens"] == 1000
+        assert call_args["reasoning_effort"] == "high"
         assert len(call_args["messages"]) == 2  # system + user message
 
         conversation_manager.add_message.assert_not_called()
@@ -107,7 +108,7 @@ class TestOpenAIAPIIntegration:
 
         call_args = openai_client.chat.completions.create.call_args[1]
         assert call_args["model"] == "gpt-5"
-        assert "reasoning_effort" not in call_args
+        assert call_args["reasoning_effort"] == "high"
         assert "verbosity" not in call_args
 
 

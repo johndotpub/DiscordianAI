@@ -74,7 +74,7 @@ Our GitHub Actions workflow automatically tests:
 All project dependencies are verified to work with Python 3.12:
 
 - **discord.py**: ✅ Python 3.8+
-- **openai**: ✅ Python 3.7+
+- **openai** (OpenAI-compatible client): ✅ Python 3.7+
 - **websockets**: ✅ Python 3.7+
 - **pytest**: ✅ Python 3.8+
 - **ruff**: ✅ Python 3.7+

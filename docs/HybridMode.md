@@ -1,11 +1,11 @@
-# Smart AI Mode: Advanced GPT-6 + Perplexity Integration
+# Smart AI Mode: Advanced OpenAI-Compatible + Perplexity Integration
 
 ## Overview
 
 DiscordianAI features an AI orchestration system with evidence-based routing, conversation consistency,
 and three flexible operation modes:
 
-1. **OpenAI Only** - Use GPT-6 for all responses
+1. **OpenAI-Compatible Only** - Use the configured chat provider (Ollama Cloud by default) for all responses
 2. **Perplexity Only** - Use `perplexity/sonar` with web search for all responses
 3. **Smart Hybrid** - Choose the best AI for each message with an evidence model
 
@@ -90,14 +90,14 @@ flowchart TD
     C -->|Passed| E[Build AIRequest]
 
     E --> F{Mode Selector}
-    F -->|OpenAI Only| G[OpenAI Processing\n(GPT-6 family)]
+    F -->|OpenAI-Compatible Only| G[OpenAI-Compatible Processing\n(Ollama Cloud default)]
     F -->|Perplexity Only| H[Perplexity Processing\n(Agent API)]
     F -->|Hybrid| R[Build RouterInput\n+ one route decision]
 
     R -->|web| H
     R -->|local| G
 
-    G --> OW[OpenAI Response]
+    G --> OW[Chat Provider Response]
     OW --> WI{Indicates web-inability?}
     WI -->|Yes, Perplexity not tried| H
     WI -->|Yes, Perplexity already failed| U[Return local answer]
@@ -127,8 +127,8 @@ flowchart TD
 
 ### Model guardrails
 
-- `api_validation.validate_openai_config()` warns when `GPT_MODEL` falls outside the documented GPT model
-  families; unknown names do not block startup.
+- `api_validation.validate_openai_config()` accepts any non-empty `GPT_MODEL`; provider model
+  ids are not gated, so an unknown name does not block startup.
 - Perplexity calls send `model`, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool.
   `perplexity/sonar` is the default, sampling is handled by the API, and no `temperature` is sent.
 - Citations come from the Agent API `search_results` item: each result's 1-based `id` maps to the `[n]`
@@ -186,9 +186,9 @@ search; raising it makes them more likely to stay local.
 
 ### 1. Get API keys (as needed)
 
-**OpenAI API key** (for GPT-6):
-- Go to https://platform.openai.com/api-keys
-- Create a new API key
+**OpenAI-compatible API key** (Ollama Cloud by default):
+- Sign in at https://ollama.com and create an API key
+- OpenAI itself remains supported by changing `OPENAI_API_URL`, `GPT_MODEL`, and `OPENAI_API_KEY`
 
 **Perplexity API key** (for web search):
 - Go to https://www.perplexity.ai/settings/api
@@ -198,7 +198,7 @@ search; raising it makes them more likely to stay local.
 
 Copy `config.ini.example` to `config.ini` and toggle the keys for your desired mode:
 - **Hybrid**: Provide both `OPENAI_API_KEY` and `PERPLEXITY_API_KEY`.
-- **OpenAI Only**: Set `PERPLEXITY_API_KEY` blank.
+- **OpenAI-Compatible Only**: Set `PERPLEXITY_API_KEY` blank.
 - **Perplexity Only**: Set `OPENAI_API_KEY` blank.
 
 Environment variables with the same names override `config.ini`, so production deployments can keep
@@ -206,22 +206,22 @@ secrets out of the file system.
 
 ### 3. Test it
 
-- "Hello!" -> local GPT-6
+- "Hello!" -> local chat provider
 - "What's the latest AI news?" -> Perplexity
 - "Tell me about today's weather" -> Perplexity
-- "How do I learn Python?" -> local GPT-6
+- "How do I learn Python?" -> local chat provider
 
 ## Fallback Behavior
 
 The hybrid orchestrator (`smart_orchestrator.py`) provides bounded fallback between services:
 
-- **OpenAI failure -> Perplexity**: When the local answer is empty, the orchestrator may try Perplexity
+- **Chat provider failure -> Perplexity**: When the local answer is empty, the orchestrator may try Perplexity
   once for a web-enabled fallback.
-- **Perplexity failure -> OpenAI**: When the web answer fails, the orchestrator falls back to OpenAI for a
-  standard completion and marks the answer degraded.
-- **Web-inability reroute**: If OpenAI says it cannot browse the web and Perplexity has not been tried in
-  this request, the orchestrator reroutes once. If Perplexity already failed, the local answer is returned
-  with a warning instead of a second Perplexity call.
+- **Perplexity failure -> chat provider**: When the web answer fails, the orchestrator falls back to the
+  OpenAI-compatible provider for a standard completion and marks the answer degraded.
+- **Web-inability reroute**: If the chat provider says it cannot browse the web and Perplexity has not been
+  tried in this request, the orchestrator reroutes once. If Perplexity already failed, the local answer is
+  returned with a warning instead of a second Perplexity call.
 - **Both unavailable**: Returns the `both_services_unavailable` message
   (`"🔧 All AI services are temporarily unavailable. Please try again later."`).
 
@@ -245,7 +245,7 @@ counter runs out answers live questions from stale weights and cannot tell you i
 
 ## Cost Considerations
 
-- **GPT-6**: Higher cost per token but strong reasoning on stable knowledge and code.
+- **Chat provider**: Higher cost per token but strong reasoning on stable knowledge and code.
 - **Perplexity**: Includes citations and live web data but is reserved for messages that carry bearing
   evidence.
 - The bot chooses local answers for stable knowledge and creative work, and web answers for live facts.

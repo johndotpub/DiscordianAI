@@ -4,23 +4,23 @@ DiscordianAI uses optimized HTTP connection pooling to maximize performance whil
 
 ## Overview
 
-The bot uses separate connection pools for OpenAI and Perplexity APIs, each tuned for their specific characteristics and rate limits. This allows efficient handling of multiple concurrent users without overwhelming the APIs.
+The bot uses separate connection pools for the OpenAI-compatible chat provider (Ollama Cloud by default) and the Perplexity API, each tuned for their specific characteristics and rate limits. This allows efficient handling of multiple concurrent users without overwhelming the APIs.
 
 ## Configuration Options
 
-### OpenAI Connection Pool
+### OpenAI-Compatible Connection Pool
 
 ```ini
 [ConnectionPool]
-# OpenAI typically handles more concurrent requests
+# The chat provider typically handles more concurrent requests
 OPENAI_MAX_CONNECTIONS=50
 OPENAI_MAX_KEEPALIVE=10
 ```
 
 **Rationale:**
-- **50 max connections**: Allows handling ~500 requests per minute (OpenAI's rate limit)
+- **50 max connections**: Handles bursts of concurrent chat requests
 - **10 keepalive**: Maintains persistent connections for frequently used clients
-- **Higher capacity**: OpenAI's infrastructure can handle more concurrent connections
+- **Higher capacity**: Chat-completions endpoints generally tolerate more concurrency than search APIs
 
 ### Perplexity Connection Pool
 
@@ -38,9 +38,9 @@ PERPLEXITY_MAX_KEEPALIVE=5
 
 ## API Rate Limits
 
-### OpenAI API Limits
-- **Requests per minute**: 500 RPM (varies by model and account tier)
-- **Tokens per minute**: Varies by model (check OpenAI documentation for current limits)
+### OpenAI-Compatible API Limits
+- **Requests per minute**: Provider- and account-dependent (check the configured provider's documentation)
+- **Tokens per minute**: Varies by model (check the configured provider's documentation)
 - **Connection limits**: No explicit connection limits, but rate limits apply
 
 ### Perplexity API Limits
@@ -138,11 +138,11 @@ Each API client uses service-specific read timeouts tuned for their response cha
 
 | Service | Connect | Read | Write | Pool |
 |---------|---------|------|-------|------|
-| **OpenAI** | 10s | 45s | 10s | 5s |
+| **Chat provider** | 10s | 45s | 10s | 5s |
 | **Perplexity** | 10s | 60s | 10s | 5s |
 
 **Rationale:**
-- **OpenAI 45s read**: Handles GPT-6 reasoning on long context without timing out prematurely.
+- **Chat provider 45s read**: Handles reasoning on long context without timing out prematurely.
 - **Perplexity 60s read**: Accommodates the full search → analyze → cite pipeline, which can take 30-55s for complex queries.
 - **Connect/write unchanged (10s)**: Network-level operations complete quickly; only inference needs the longer window.
 - **SDK retries disabled**: The OpenAI SDK's built-in `max_retries` is set to `0` on both clients. Application-level retry with jittered backoff is handled by `error_handling.py`'s `retry_with_backoff`, preventing nested retry multiplication.

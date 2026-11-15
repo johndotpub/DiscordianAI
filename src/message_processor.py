@@ -12,6 +12,7 @@ from .config import (
     DEFAULT_MAX_TOTAL_SCRAPED_CHARS,
     DEFAULT_MAX_URLS_PER_MESSAGE,
     DEFAULT_PERPLEXITY_MODEL,
+    DEFAULT_REASONING_EFFORT,
     DEFAULT_SCRAPE_DEADLINE_SECONDS,
     get_error_messages,
 )
@@ -214,6 +215,7 @@ async def _process_message_core(
             output_tokens=deps["OUTPUT_TOKENS"],
             input_tokens=input_tokens,
             context_window=context_window,
+            reasoning_effort=deps.get("REASONING_EFFORT", DEFAULT_REASONING_EFFORT),
         )
         perplexity_model = (
             deps.get("PERPLEXITY_MODEL")

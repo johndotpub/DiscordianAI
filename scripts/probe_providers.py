@@ -81,35 +81,44 @@ def main():
     if not oai or not pplx:
         sys.exit("missing OPENAI_API_KEY / PERPLEXITY_API_KEY in env")
 
+    openai_url = os.environ.get("OPENAI_API_URL", "https://ollama.com/v1/").rstrip("/")
+    openai_model = os.environ.get("GPT_MODEL", "deepseek-v4.1-flash:1017")
+    reasoning_effort = os.environ.get("REASONING_EFFORT", "high")
+
     cheap = {
         "messages": [{"role": "user", "content": "Reply with the single word: ok"}],
         "max_tokens": 16,
     }
 
     with httpx.Client(timeout=60) as c:
-        # 1. OpenAI chat completions, current Bender model
+        # 1. OpenAI-compatible chat completions, configured provider and model
         r = c.post(
-            "https://api.openai.com/v1/chat/completions",
+            f"{openai_url}/chat/completions",
             headers={"Authorization": f"Bearer {oai}"},
-            json={"model": "gpt-5", "messages": cheap["messages"], "max_completion_tokens": 16},
+            json={
+                "model": openai_model,
+                "messages": cheap["messages"],
+                "max_tokens": 16,
+                "reasoning_effort": reasoning_effort,
+            },
         )
-        show("openai /chat/completions gpt-5", r)
+        show(f"openai-compatible /chat/completions {openai_model}", r)
 
-        # 2. OpenAI with a current-generation model, to test the allowlist assumption
+        # 2. The same request without reasoning_effort, to test the optional path
         r = c.post(
-            "https://api.openai.com/v1/chat/completions",
+            f"{openai_url}/chat/completions",
             headers={"Authorization": f"Bearer {oai}"},
-            json={"model": "gpt-5.4", "messages": cheap["messages"], "max_completion_tokens": 16},
+            json={"model": openai_model, "messages": cheap["messages"], "max_tokens": 16},
         )
-        show("openai gpt-5.4 (newer generation)", r)
+        show(f"openai-compatible {openai_model} without reasoning_effort", r)
 
-        # 3. OpenAI context-length error shape: force it with an absurd token floor
+        # 3. Context-length error shape: force it with an absurd token floor
         r = c.post(
-            "https://api.openai.com/v1/chat/completions",
+            f"{openai_url}/chat/completions",
             headers={"Authorization": f"Bearer {oai}"},
-            json={"model": "gpt-5", "messages": cheap["messages"], "max_completion_tokens": 200000},
+            json={"model": openai_model, "messages": cheap["messages"], "max_tokens": 200000},
         )
-        show("openai oversized max_completion_tokens", r)
+        show("openai-compatible oversized max_tokens", r)
 
         # 4. Perplexity, the path the SDK actually calls, with the #256 header
         r = c.post(

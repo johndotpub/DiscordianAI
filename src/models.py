@@ -13,6 +13,7 @@ from .config import (
     DEFAULT_OUTPUT_TOKENS,
     DEFAULT_PERPLEXITY_MODEL,
     DEFAULT_PERPLEXITY_OUTPUT_TOKENS,
+    DEFAULT_REASONING_EFFORT,
     DEFAULT_SCRAPE_DEADLINE_SECONDS,
 )
 
@@ -48,6 +49,7 @@ class AIRequest:
 class OpenAIConfig:
     """Configuration for OpenAI specific parameters."""
 
+    reasoning_effort: str = DEFAULT_REASONING_EFFORT
     model: str = DEFAULT_OPENAI_MODEL
     system_message: str = "You are a helpful assistant."
     output_tokens: int = DEFAULT_OUTPUT_TOKENS

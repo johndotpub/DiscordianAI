@@ -6,7 +6,7 @@ Complete setup guide for DiscordianAI with advanced AI orchestration and convers
 
 - **Python 3.12 or newer** installed
 - **Discord bot token** from Discord Developer Portal
-- **At least one AI service API key** (OpenAI and/or Perplexity)
+- **At least one AI service API key** (an OpenAI-compatible chat provider and/or Perplexity)
 
 ## Step 1: Discord Bot Creation
 
@@ -45,7 +45,12 @@ Create and configure your Discord bot:
 ### Option A: Smart Hybrid Mode (Recommended) 🧠
 Get both API keys for intelligent automatic service selection:
 
-**OpenAI API Key** (for GPT-6):
+**Ollama Cloud API Key** (default OpenAI-compatible chat provider):
+- Sign in at [Ollama](https://ollama.com)
+- Create an API key in your account settings
+- Copy the key for `OPENAI_API_KEY`; it does not use OpenAI's `sk-` prefix, which is accepted
+
+**OpenAI API Key** (alternative chat provider):
 - Go to [OpenAI Platform](https://platform.openai.com/api-keys)
 - Create new API key
 - Copy the key (starts with `sk-`)
@@ -56,7 +61,7 @@ Get both API keys for intelligent automatic service selection:
 - Copy the key (starts with `pplx-`)
 
 ### Option B: Single Service Mode
-Choose **either** OpenAI only **or** Perplexity only based on your needs.
+Choose **either** the OpenAI-compatible chat provider only **or** Perplexity only based on your needs.
 
 ## Step 3: Configuration
 
@@ -74,11 +79,11 @@ Choose **either** OpenAI only **or** Perplexity only based on your needs.
    
    [Default] 
    # For Smart Hybrid Mode, provide both:
-   OPENAI_API_KEY=your_openai_api_key_here
-   PERPLEXITY_API_KEY=your_perplexity_api_key_here
+   OPENAI_API_KEY=your_ollama_cloud_api_key
+   PERPLEXITY_API_KEY=your_perplexity_api_key
    
    # For single service, leave one empty:
-   # OPENAI_API_KEY=your_openai_key  # OpenAI only
+   # OPENAI_API_KEY=your_ollama_cloud_key  # Chat provider only
    # PERPLEXITY_API_KEY=      # Disable Perplexity
    ```
 
@@ -138,7 +143,7 @@ The included `discordian.sh` script provides additional process management:
 ### Test Basic Functionality
 Send these messages to your bot to verify it's working:
 
-1. **General Response**: `Hello!` (should use GPT/conversational AI)
+1. **General Response**: `Hello!` (should use the chat provider/conversational AI)
 2. **Web Search**: `What's the latest AI news?` (should use Perplexity if available)
 3. **Follow-up Consistency**: 
    - First: `What's the weather today?` (→ Perplexity)
@@ -171,7 +176,7 @@ INFO: Message analysis suggests web search would be beneficial - trying Perplexi
 - **Use environment variables** in production:
   ```bash
   export DISCORD_TOKEN="your_token"
-  export OPENAI_API_KEY="your_openai_key"
+  export OPENAI_API_KEY="your_ollama_cloud_key"
   export PERPLEXITY_API_KEY="your_perplexity_key"
   ```
 - **Restrict config file permissions**: `chmod 600 config.ini`

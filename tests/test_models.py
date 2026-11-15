@@ -18,7 +18,8 @@ def test_openai_config_defaults_and_frozen():
     """OpenAIConfig should expose defaults and be immutable."""
     config = OpenAIConfig()
 
-    assert config.model == "gpt-6-luna"
+    assert config.model == "deepseek-v4.1-flash:1017"
+    assert config.reasoning_effort == "high"
     assert config.system_message == "You are a helpful assistant."
     assert config.output_tokens == 8000
 

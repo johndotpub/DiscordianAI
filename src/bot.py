@@ -23,6 +23,7 @@ from .config import (
     DEFAULT_CONVERSATION_TTL_SECONDS,
     DEFAULT_INPUT_TOKENS,
     DEFAULT_PERPLEXITY_MODEL,
+    DEFAULT_REASONING_EFFORT,
 )
 from .connection_pool import get_connection_pool_manager
 from .conversation_manager import ThreadSafeConversationManager
@@ -146,6 +147,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
         rate_limit=config["RATE_LIMIT"],
         rate_limit_period=config["RATE_LIMIT_PER"],
         gpt_model=config["GPT_MODEL"],
+        reasoning_effort=config.get("REASONING_EFFORT", DEFAULT_REASONING_EFFORT),
         perplexity_model=config.get("PERPLEXITY_MODEL", DEFAULT_PERPLEXITY_MODEL),
         system_message=config["SYSTEM_MESSAGE"],
         output_tokens=config["OUTPUT_TOKENS"],
