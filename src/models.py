@@ -12,7 +12,9 @@ from .config import (
     DEFAULT_PERPLEXITY_MODEL,
     DEFAULT_PERPLEXITY_OUTPUT_TOKENS,
     DEFAULT_REASONING_EFFORT,
+    DEFAULT_VISION_TOKEN_ESTIMATE,
 )
+from .image_attachments import ImagePayload
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,7 @@ class AIRequest:
     conversation_key: str | None = None
     channel_kind: str = "channel"
     routing: RoutingMetadata | None = None
+    images: tuple[ImagePayload, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -53,6 +56,7 @@ class OpenAIConfig:
     context_window: int = DEFAULT_CONTEXT_WINDOW
     reasoning_effort: str = DEFAULT_REASONING_EFFORT
     web_tools: bool = True
+    vision_token_estimate: int = DEFAULT_VISION_TOKEN_ESTIMATE
 
 
 @dataclass(frozen=True)

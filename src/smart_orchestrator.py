@@ -136,6 +136,20 @@ class AttemptLedger:
         return provider in self.providers
 
 
+def _history_user_text(request: AIRequest) -> str:
+    """Return the text stored in history for a user turn, including image labels."""
+    message = (getattr(request, "message", "") or "").strip()
+    images = getattr(request, "images", ()) or ()
+    if not images:
+        return message
+
+    labels = []
+    for image in images:
+        filename = str(getattr(image, "filename", "") or "").strip()
+        labels.append(f"[image: {filename}]" if filename else "[image]")
+    return " ".join([*labels, message]).strip()
+
+
 def _record_conversation_turn(
     request: AIRequest,
     response_text: str,
@@ -143,7 +157,8 @@ def _record_conversation_turn(
     model: str,
 ) -> None:
     """Record the user prompt and assistant response in conversation history."""
-    if not (request.message or "").strip() or not (response_text or "").strip():
+    user_text = _history_user_text(request)
+    if not user_text or not (response_text or "").strip():
         request.logger.warning("Skipping incomplete conversation turn")
         return
 
@@ -157,7 +172,7 @@ def _record_conversation_turn(
         conversation_key = request.user.id
 
     try:
-        manager.add_message(conversation_key, "user", request.message)
+        manager.add_message(conversation_key, "user", user_text)
         manager.add_message(
             conversation_key,
             "assistant",
@@ -273,6 +288,15 @@ def _reroute_decision(decision: RouteDecision) -> RouteDecision:
         decision,
         route="web",
         reasons=("override:web_reroute",),
+    )
+
+
+def _vision_decision(decision: RouteDecision) -> RouteDecision:
+    """Force an image-bearing request onto the OpenAI-compatible provider."""
+    return replace(
+        decision,
+        route="local",
+        reasons=("images:local",),
     )
 
 
@@ -512,6 +536,12 @@ async def get_smart_response(  # noqa: PLR0911 - explicit failure and fallback b
 
         # Mode 1: Perplexity only
         if clients.perplexity and not clients.openai:
+            if getattr(request, "images", ()):
+                request.logger.warning(
+                    "Image request needs the OpenAI-compatible provider; "
+                    "refusing to send images to Perplexity"
+                )
+                return ERROR_MESSAGES["vision_unavailable"], False, None
             return await _process_perplexity_only_mode(
                 request, clients.perplexity, config, conversation_summary
             )
@@ -568,6 +598,10 @@ async def _process_hybrid_mode(  # noqa: PLR0911 - one return per fallback outco
     ledger = AttemptLedger()
     degraded = False
 
+    if getattr(request, "images", ()):
+        request.logger.info("Images present; forcing the local provider route")
+        decision = _vision_decision(decision)
+
     if decision.route == "web":
         request.logger.info("Routing to Perplexity")
         res = await _call_perplexity(
@@ -597,6 +631,12 @@ async def _process_hybrid_mode(  # noqa: PLR0911 - one return per fallback outco
     )
     if res_content:
         if _detect_openai_web_inability(res_content):
+            if getattr(request, "images", ()):
+                request.logger.info(
+                    "Image request answered locally; not rerouting to Perplexity without images"
+                )
+                _record_conversation_turn(request, res_content, "openai", config.openai.model)
+                return res_content, False, None
             if not _web_inability_reroute_allowed(decision, request.message):
                 request.logger.info(
                     "OpenAI response mentions web-inability, but the routing decision "
@@ -641,6 +681,13 @@ async def _process_hybrid_mode(  # noqa: PLR0911 - one return per fallback outco
         return res_content, False, None
 
     # If OpenAI returned no response (None/empty), attempt Perplexity as a fallback.
+    if getattr(request, "images", ()):
+        request.logger.error(
+            "The OpenAI-compatible provider returned no response for an image request; "
+            "Perplexity cannot receive images, so there is no fallback"
+        )
+        return ERROR_MESSAGES["ai_service_unavailable"], False, None
+
     if ledger.already_tried("perplexity"):
         request.logger.error("Both services failed or returned no response")
         return ERROR_MESSAGES["both_services_unavailable"], False, None

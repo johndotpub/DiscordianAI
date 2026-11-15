@@ -59,6 +59,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 | **OpenAI-Compatible Processing** | `openai_processing.py` | Cache/dedup wrapper around the chat adapter |
 | **Perplexity Processing** | `perplexity_processing.py` | Cache wrapper, Discord citation formatting, and embed construction |
 | **Provider Adapters** | `providers/` | Narrow protocol plus chat-completions and Agent Responses adapters, and the provider registry |
+| **Image Attachments** | `image_attachments.py` | Validates and decodes Discord image attachments for the chat provider |
 | **Web Tools** | `web_tools.py` | Native search and page-fetch tools for the Ollama chat path |
 
 ### Infrastructure

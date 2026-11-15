@@ -27,6 +27,7 @@ DiscordianAI API Reference
    message_router
    message_splitter
    message_builder
+   image_attachments
    conversation_manager
 
 .. toctree::

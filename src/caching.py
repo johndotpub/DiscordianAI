@@ -88,6 +88,16 @@ def _extract_user_identity(user: Any) -> str | None:
     return str(candidate)
 
 
+def _image_digests(request: Any) -> list[str]:
+    """Return short content digests for images attached to a request."""
+    images = getattr(request, "images", ()) if request is not None else ()
+    digests: list[str] = []
+    for image in images or ():
+        payload = getattr(image, "data_b64", "") or ""
+        digests.append(hashlib.sha256(str(payload).encode()).hexdigest()[:16])
+    return digests
+
+
 def _extract_conversation_summary(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """Extract ordered conversation history from decorated calls."""
     if len(args) > 1 and isinstance(args[1], (list, tuple, dict)):
@@ -141,6 +151,7 @@ def _extract_request_scope(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dic
         "conversation_key": conversation_key,
         "conversation_digest": _conversation_digest(conversation_summary),
         "has_conversation": bool(conversation_summary),
+        "image_digests": _image_digests(request),
     }
 
 
@@ -176,6 +187,7 @@ def _generate_scoped_key(message: str, context: dict[str, Any], *, salt: str) ->
         "function": context.get("function", "unknown"),
         "route": context.get("route", ""),
         "degraded": bool(context.get("degraded", False)),
+        "image_digests": list(context.get("image_digests") or []),
         "salt": salt,
     }
 

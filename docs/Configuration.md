@@ -61,6 +61,14 @@ conflicting settings is logged.
 #### Web Tools
 - **`WEB_TOOLS`**: Offer native web search and page fetch to Ollama-compatible chat providers; OpenAI endpoints never receive these tools *(default: true)*
 
+#### Vision
+Image attachments are read from normal messages in allowed channels and direct messages, and sent only to the OpenAI-compatible chat provider. Perplexity never receives image data. See [Vision.md](Vision.md) for limits, fallback behavior, and the privacy note.
+
+- **`VISION_ENABLED`**: Read image attachments on incoming messages; when false, attachments are ignored entirely *(default: true)*
+- **`VISION_MAX_IMAGES`**: Maximum images accepted from one message; additional images are skipped and logged *(default: 4)*
+- **`VISION_MAX_BYTES`**: Maximum size of one image in bytes, checked before and after download *(default: 5242880)*
+- **`VISION_TOKEN_ESTIMATE`**: Flat prompt-token estimate charged per image during budget trimming *(default: 1000)*
+
 ### Rate Limiting
 
 Prevents spam and manages API costs.
@@ -195,6 +203,13 @@ SYSTEM_MESSAGE=You are Bender, a sarcastic robot from Futurama. You're crude, se
 # === WEB TOOLS ===
 WEB_TOOLS=true
 
+# === VISION ===
+# Images go only to the OpenAI-compatible chat provider, never to Perplexity.
+VISION_ENABLED=true
+VISION_MAX_IMAGES=4
+VISION_MAX_BYTES=5242880
+VISION_TOKEN_ESTIMATE=1000
+
 # No chat-provider-specific sampling parameters are supported by the public API; do not configure
 
 [Limits]
@@ -294,6 +309,12 @@ export ROUTER_CLEF_TIMEOUT_MS="2000"
 
 # Native web tools
 export WEB_TOOLS="1"
+
+# Image attachments (OpenAI-compatible chat provider only)
+export VISION_ENABLED="true"
+export VISION_MAX_IMAGES="4"
+export VISION_MAX_BYTES="5242880"
+export VISION_TOKEN_ESTIMATE="1000"
 
 # Logging and health
 export LOG_FILE="bot.log"

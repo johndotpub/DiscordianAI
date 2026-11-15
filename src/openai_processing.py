@@ -100,6 +100,7 @@ async def _fetch_openai_response(
                 context_window=config.context_window,
                 reasoning_effort=config.reasoning_effort,
                 logger=request.logger,
+                images=request.images,
             )
             result = await provider.complete(completion_request)
             ctx.set_result(result.raw)

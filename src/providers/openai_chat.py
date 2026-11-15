@@ -6,7 +6,7 @@ processing function remains the cache and lifecycle wrapper around it.
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 import json
 import logging
 import time
@@ -17,12 +17,14 @@ from src.config import (
     DEFAULT_CONTEXT_WINDOW,
     DEFAULT_INPUT_TOKENS,
     DEFAULT_REASONING_EFFORT,
+    DEFAULT_VISION_TOKEN_ESTIMATE,
 )
 from src.error_handling import (
     DEFAULT_API_RETRY_CONFIG,
     get_circuit_breaker,
     retry_with_backoff,
 )
+from src.image_attachments import ImagePayload
 from src.message_builder import build_messages, resolve_completion_budget
 from src.models import OpenAIConfig
 from src.web_tools import WEB_TOOLS, should_offer_web_tools
@@ -95,6 +97,8 @@ def _build_openai_api_params(  # noqa: PLR0913
     reasoning_effort: str = DEFAULT_REASONING_EFFORT,
     base_url: str = "",
     logger=None,
+    images: Sequence[ImagePayload] | None = None,
+    vision_token_estimate: int = DEFAULT_VISION_TOKEN_ESTIMATE,
 ) -> dict:
     """Prepare OpenAI-compatible chat-completion parameters."""
     completion_tokens = tokens if output_tokens is None else output_tokens
@@ -108,6 +112,8 @@ def _build_openai_api_params(  # noqa: PLR0913
             output_tokens=completion_tokens,
             context_window=context_window,
             logger=logger,
+            images=images,
+            vision_token_estimate=vision_token_estimate,
         ),
     }
     budget = resolve_completion_budget(completion_tokens, context_window, input_tokens)
@@ -174,6 +180,7 @@ class ChatCompletionsProvider:
         context_window: int | None = None,
         reasoning_effort: str | None = None,
         logger: logging.Logger | None = None,
+        images: Sequence[ImagePayload] | None = None,
     ) -> CompletionRequest:
         """Build one normalised request using the adapter's provider policy."""
         config = self._config
@@ -191,6 +198,8 @@ class ChatCompletionsProvider:
             ),
             base_url=self._base_url,
             logger=logger or self._logger,
+            images=images,
+            vision_token_estimate=config.vision_token_estimate,
         )
         token_key = _output_cap_key(self._base_url)
         return CompletionRequest(

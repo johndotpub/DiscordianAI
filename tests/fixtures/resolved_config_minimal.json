@@ -41,6 +41,10 @@
   "ROUTER_MODE": "heuristic",
   "SYSTEM_MESSAGE": "You are a helpful assistant.",
   "USER_LOCK_CLEANUP_INTERVAL": 3600,
+  "VISION_ENABLED": true,
+  "VISION_MAX_BYTES": 5242880,
+  "VISION_MAX_IMAGES": 4,
+  "VISION_TOKEN_ESTIMATE": 1000,
   "WEB_TOOLS": true,
   "_OPENAI_CONFIGURED": false,
   "_PERPLEXITY_CONFIGURED": false

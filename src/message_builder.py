@@ -1,7 +1,11 @@
 """Shared construction of chat-completion message lists for AI providers."""
 
+from collections.abc import Sequence
 from math import ceil
 from typing import Any
+
+from .config import DEFAULT_VISION_TOKEN_ESTIMATE
+from .image_attachments import ImagePayload
 
 CHARS_PER_TOKEN = 4
 TOKEN_ESTIMATE_MARGIN = 1.1
@@ -18,14 +22,48 @@ def _estimate_text_tokens(text: Any) -> int:
     return ceil(characters * TOKEN_ESTIMATE_MARGIN / CHARS_PER_TOKEN)
 
 
-def estimate_message_tokens(message: dict[str, Any]) -> int:
-    """Estimate the tokens used by one chat message."""
-    return MESSAGE_OVERHEAD_TOKENS + _estimate_text_tokens(message.get("content"))
+def _estimate_content_tokens(content: Any, vision_token_estimate: int) -> int:
+    """Estimate tokens for text content or a multimodal content list."""
+    if not isinstance(content, list):
+        return _estimate_text_tokens(content)
+
+    total = 0
+    image_tokens = max(0, int(vision_token_estimate))
+    for part in content:
+        if not isinstance(part, dict):
+            continue
+        if part.get("type") == "text":
+            total += _estimate_text_tokens(part.get("text"))
+        elif part.get("type") == "image_url":
+            total += image_tokens
+    return total
 
 
-def estimate_messages_tokens(messages: list[dict[str, Any]]) -> int:
+def estimate_message_tokens(
+    message: dict[str, Any],
+    *,
+    vision_token_estimate: int = DEFAULT_VISION_TOKEN_ESTIMATE,
+) -> int:
+    """Estimate the tokens used by one chat message.
+
+    Image parts use a flat per-image estimate; base64 payload length is never
+    counted as text.
+    """
+    return MESSAGE_OVERHEAD_TOKENS + _estimate_content_tokens(
+        message.get("content"), vision_token_estimate
+    )
+
+
+def estimate_messages_tokens(
+    messages: list[dict[str, Any]],
+    *,
+    vision_token_estimate: int = DEFAULT_VISION_TOKEN_ESTIMATE,
+) -> int:
     """Estimate the tokens used by a complete message list."""
-    return sum(estimate_message_tokens(message) for message in messages)
+    return sum(
+        estimate_message_tokens(message, vision_token_estimate=vision_token_estimate)
+        for message in messages
+    )
 
 
 def resolve_completion_budget(
@@ -114,6 +152,8 @@ def _trim_history(
     user_message: dict[str, Any],
     history: list[dict[str, Any]],
     budget: int,
+    *,
+    vision_token_estimate: int,
 ) -> list[dict[str, Any]]:
     """Drop the oldest history units until the prompt fits the budget."""
     units = _history_units(history)
@@ -121,9 +161,15 @@ def _trim_history(
     while units:
         kept = [message for unit in units for message in unit]
         messages = [system_message, *kept, user_message]
-        if estimate_messages_tokens(messages) <= budget:
+        if (
+            estimate_messages_tokens(messages, vision_token_estimate=vision_token_estimate)
+            <= budget
+        ):
             break
-        if len(units) == 1 and estimate_messages_tokens(base_messages) <= budget:
+        if len(units) == 1 and (
+            estimate_messages_tokens(base_messages, vision_token_estimate=vision_token_estimate)
+            <= budget
+        ):
             break
         units.pop(0)
     return [message for unit in units for message in unit]
@@ -155,16 +201,49 @@ def _truncate_content_to_tokens(content: Any, max_message_tokens: int) -> str:
     return f"{prefix}{TRUNCATION_MARKER}"
 
 
-def _fit_messages_to_budget(messages: list[dict[str, Any]], budget: int) -> None:
-    """Truncate the largest messages until the list fits the budget."""
-    estimates = [estimate_message_tokens(message) for message in messages]
+def _fit_messages_to_budget(
+    messages: list[dict[str, Any]],
+    budget: int,
+    *,
+    vision_token_estimate: int,
+) -> None:
+    """Trim text content until the list fits the budget.
+
+    Image parts are never truncated or removed here: their token cost is fixed
+    and the base64 payload must survive. When only image-bearing messages are
+    left, the prompt can stay over budget because the images are the request.
+    """
+    estimates = [
+        estimate_message_tokens(message, vision_token_estimate=vision_token_estimate)
+        for message in messages
+    ]
     total = sum(estimates)
     minimum = MESSAGE_OVERHEAD_TOKENS + _estimate_text_tokens(TRUNCATION_MARKER)
 
     while total > budget:
-        index = max(range(len(messages)), key=lambda position: estimates[position])
-        if estimates[index] <= minimum:
+        truncatable = [
+            position
+            for position, message in enumerate(messages)
+            if isinstance(message.get("content"), str)
+        ]
+        if not truncatable:
             history_index = next((position for position in range(1, len(messages) - 1)), None)
+            if history_index is None:
+                break
+            total -= estimates.pop(history_index)
+            messages.pop(history_index)
+            continue
+
+        index = max(truncatable, key=lambda position: estimates[position])
+        if estimates[index] <= minimum:
+            history_index = next(
+                (
+                    position
+                    for position in range(1, len(messages) - 1)
+                    if isinstance(messages[position].get("content"), str)
+                ),
+                None,
+            )
             if history_index is None:
                 break
             total -= estimates.pop(history_index)
@@ -185,6 +264,19 @@ def _fit_messages_to_budget(messages: list[dict[str, Any]], budget: int) -> None
         messages[index]["content"] = content
 
 
+def _multimodal_content(user_message: str, images: Sequence[ImagePayload]) -> list[dict[str, Any]]:
+    """Return the OpenAI-compatible content list for a user turn with images."""
+    content: list[dict[str, Any]] = [{"type": "text", "text": user_message}]
+    content.extend(
+        {
+            "type": "image_url",
+            "image_url": {"url": f"data:{image.mime};base64,{image.data_b64}"},
+        }
+        for image in images
+    )
+    return content
+
+
 def build_messages(  # noqa: PLR0913
     system_message: str,
     user_message: str,
@@ -194,6 +286,8 @@ def build_messages(  # noqa: PLR0913
     output_tokens: int | None = None,
     context_window: int | None = None,
     logger: Any = None,
+    images: Sequence[ImagePayload] | None = None,
+    vision_token_estimate: int = DEFAULT_VISION_TOKEN_ESTIMATE,
 ) -> list[dict[str, Any]]:
     """Build system, prior turns, and current user message in order.
 
@@ -206,27 +300,51 @@ def build_messages(  # noqa: PLR0913
             context window.
         context_window: Optional total model context window.
         logger: Optional logger for budget warnings and trim summaries.
+        images: Optional image payloads attached to the current turn. History
+            turns stay text-only.
+        vision_token_estimate: Flat prompt-token estimate charged per image.
 
     Returns:
         A message list containing the system message, any prior turns, and the
-        current user message exactly once.
+        current user message exactly once. The current message carries a
+        multimodal content list when images are present.
     """
     system_entry = {"role": "system", "content": system_message}
-    current_entry = {"role": "user", "content": user_message}
+    image_payloads = tuple(images or ())
+    if image_payloads:
+        current_entry = {
+            "role": "user",
+            "content": _multimodal_content(user_message, image_payloads),
+        }
+    else:
+        current_entry = {"role": "user", "content": user_message}
     history_entries = [dict(message) for message in history] if history else []
 
     budget = resolve_prompt_budget(input_tokens, output_tokens, context_window, logger)
     if budget is None:
         return [system_entry, *history_entries, current_entry]
 
-    before = estimate_messages_tokens([system_entry, *history_entries, current_entry])
+    before = estimate_messages_tokens(
+        [system_entry, *history_entries, current_entry],
+        vision_token_estimate=vision_token_estimate,
+    )
     if before <= budget:
         return [system_entry, *history_entries, current_entry]
 
-    trimmed_history = _trim_history(system_entry, current_entry, history_entries, budget)
+    trimmed_history = _trim_history(
+        system_entry,
+        current_entry,
+        history_entries,
+        budget,
+        vision_token_estimate=vision_token_estimate,
+    )
     messages = [system_entry, *trimmed_history, current_entry]
-    _fit_messages_to_budget(messages, budget)
-    after = estimate_messages_tokens(messages)
+    _fit_messages_to_budget(
+        messages,
+        budget,
+        vision_token_estimate=vision_token_estimate,
+    )
+    after = estimate_messages_tokens(messages, vision_token_estimate=vision_token_estimate)
 
     if logger is not None:
         kept_history = max(0, len(messages) - 2)
