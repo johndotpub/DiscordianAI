@@ -12,7 +12,7 @@ import threading
 import time
 from typing import Any
 
-from .config import DEFAULT_CONVERSATION_TTL_SECONDS
+from .config import DEFAULT_CONVERSATION_TTL_SECONDS, DEFAULT_MAX_HISTORY_PER_USER
 
 ConversationKey = int | str
 
@@ -74,7 +74,7 @@ class ThreadSafeConversationManager:
 
     def __init__(
         self,
-        max_history_per_user: int = 50,
+        max_history_per_user: int = DEFAULT_MAX_HISTORY_PER_USER,
         cleanup_interval: int = 3600,
         conversation_ttl_seconds: int = DEFAULT_CONVERSATION_TTL_SECONDS,
         clock: Callable[[], float] | None = None,

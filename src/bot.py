@@ -22,6 +22,7 @@ from .config import (
     DEFAULT_CONTEXT_WINDOW,
     DEFAULT_CONVERSATION_TTL_SECONDS,
     DEFAULT_INPUT_TOKENS,
+    DEFAULT_MAX_HISTORY_PER_USER,
     DEFAULT_PERPLEXITY_MODEL,
     DEFAULT_REASONING_EFFORT,
 )
@@ -116,7 +117,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
         logger.info("Running in Perplexity-only mode")
 
     # Initialize thread-safe components
-    max_history = config.get("MAX_HISTORY_PER_USER", 50)
+    max_history = config.get("MAX_HISTORY_PER_USER", DEFAULT_MAX_HISTORY_PER_USER)
     conversation_ttl = config.get(
         "CONVERSATION_TTL_SECONDS",
         DEFAULT_CONVERSATION_TTL_SECONDS,

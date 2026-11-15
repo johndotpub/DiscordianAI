@@ -29,7 +29,7 @@ class TestThreadSafeConversationManager:
         """Test initialization with default parameters."""
         manager = ThreadSafeConversationManager()
 
-        assert manager._max_history == 50
+        assert manager._max_history == 100
         assert manager._cleanup_interval == 3600
         assert len(manager._conversations) == 0
         assert len(manager._user_locks) == 0

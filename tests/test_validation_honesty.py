@@ -23,10 +23,10 @@ def _valid_config(**overrides):
         "PERPLEXITY_API_KEY": PERPLEXITY_KEY,
         "PERPLEXITY_API_URL": "https://api.perplexity.ai",
         "PERPLEXITY_MODEL": "perplexity/sonar",
-        "INPUT_TOKENS": 120000,
-        "OUTPUT_TOKENS": 8000,
+        "INPUT_TOKENS": 250000,
+        "OUTPUT_TOKENS": 16384,
         "PERPLEXITY_OUTPUT_TOKENS": 7000,
-        "CONTEXT_WINDOW": 128000,
+        "CONTEXT_WINDOW": 1000000,
         "RATE_LIMIT": 10,
         "RATE_LIMIT_PER": 60,
         "ALLOWED_CHANNELS": ["general"],
@@ -101,11 +101,11 @@ async def test_output_token_settings_are_sent_to_providers_independently():
 
 @pytest.mark.parametrize("key", ["OUTPUT_TOKENS", "PERPLEXITY_OUTPUT_TOKENS"])
 def test_output_cap_above_documented_ceiling_aborts_startup(key):
-    config = _valid_config(**{key: 128001})
+    config = _valid_config(**{key: 1000001})
 
     warnings, errors = validate_full_config(config)
 
-    assert any(key in error and "128000" in error for error in errors), (warnings, errors)
+    assert any(key in error and "1000000" in error for error in errors), (warnings, errors)
 
     exit_code, run_bot = _run_main_with_config(config)
     assert exit_code not in (None, 0)

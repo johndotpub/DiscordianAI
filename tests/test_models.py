@@ -21,7 +21,7 @@ def test_openai_config_defaults_and_frozen():
     assert config.model == "deepseek-v4.1-flash:1017"
     assert config.reasoning_effort == "high"
     assert config.system_message == "You are a helpful assistant."
-    assert config.output_tokens == 8000
+    assert config.output_tokens == 16384
 
     with pytest.raises(FrozenInstanceError):
         config.output_tokens = 1
@@ -33,7 +33,7 @@ def test_perplexity_config_defaults_and_frozen():
 
     assert "current web information" in config.system_message
     assert "source URLs" in config.system_message
-    assert config.output_tokens == 8000
+    assert config.output_tokens == 16384
 
     with pytest.raises(FrozenInstanceError):
         config.model = "other"

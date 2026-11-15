@@ -58,10 +58,10 @@ PERPLEXITY_MODEL=perplexity/sonar
 # tokens as well as visible output.
 # PERPLEXITY_OUTPUT_TOKENS caps Perplexity completions (max_output_tokens),
 # which are output only. Omit it to use the same value as OUTPUT_TOKENS.
-INPUT_TOKENS=120000
-OUTPUT_TOKENS=8000
-PERPLEXITY_OUTPUT_TOKENS=8000
-CONTEXT_WINDOW=128000
+INPUT_TOKENS=250000
+OUTPUT_TOKENS=16384
+PERPLEXITY_OUTPUT_TOKENS=16384
+CONTEXT_WINDOW=1000000
 
 # === SYSTEM MESSAGE ===
 # Customize your bot's personality
@@ -92,12 +92,12 @@ RATE_LIMIT_PER=60
 
 # The chat provider (Ollama Cloud by default) typically handles more
 # concurrent requests than Perplexity.
-OPENAI_MAX_CONNECTIONS=50
-OPENAI_MAX_KEEPALIVE=10
+OPENAI_MAX_CONNECTIONS=100
+OPENAI_MAX_KEEPALIVE=20
 
 # Perplexity has more conservative limits (rate limits not publicly documented)
-PERPLEXITY_MAX_CONNECTIONS=30
-PERPLEXITY_MAX_KEEPALIVE=5
+PERPLEXITY_MAX_CONNECTIONS=40
+PERPLEXITY_MAX_KEEPALIVE=10
 
 [Orchestrator]
 # AI Orchestrator Configuration for advanced routing and optimization
@@ -106,10 +106,10 @@ LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 
 
 # Maximum conversation entries per user before pruning
-MAX_HISTORY_PER_USER=50
+MAX_HISTORY_PER_USER=100
 
 # How long a conversation may sit idle before its history and lock are dropped
-CONVERSATION_TTL_SECONDS=1800
+CONVERSATION_TTL_SECONDS=7200
 
 # How often to clean up inactive user locks (seconds) - default 1 hour
 USER_LOCK_CLEANUP_INTERVAL=3600
@@ -158,7 +158,7 @@ HEALTH_PROVIDER_STALE_SECONDS=300
 # To use OpenAI itself instead, set:
 # OPENAI_API_URL=https://api.openai.com/v1/
 # OPENAI_API_KEY=sk-your-openai-key
-# GPT_MODEL=gpt-6-luna
+# GPT_MODEL=<your-openai-model>
 # PERPLEXITY ONLY MODE:
 # OPENAI_API_KEY=              # Leave blank
 # PERPLEXITY_API_KEY=pplx-your-perplexity-key

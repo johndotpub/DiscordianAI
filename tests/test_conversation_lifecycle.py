@@ -155,13 +155,13 @@ def test_conversation_ttl_default_agrees_across_config_example_and_docs(monkeypa
     monkeypatch.delenv("CONVERSATION_TTL_SECONDS", raising=False)
 
     loaded = load_config()
-    assert loaded["CONVERSATION_TTL_SECONDS"] == 1800
-    assert DEFAULT_CONVERSATION_TTL_SECONDS == 1800
+    assert loaded["CONVERSATION_TTL_SECONDS"] == 7200
+    assert DEFAULT_CONVERSATION_TTL_SECONDS == 7200
 
     parser = configparser.ConfigParser()
     parser.read(REPO_ROOT / "config.ini.example")
-    assert parser.getint("Orchestrator", "CONVERSATION_TTL_SECONDS") == 1800
+    assert parser.getint("Orchestrator", "CONVERSATION_TTL_SECONDS") == 7200
 
     docs = (REPO_ROOT / "docs" / "Configuration.md").read_text(encoding="utf-8")
-    pattern = r"`CONVERSATION_TTL_SECONDS`[^\n]*?\(default:\s*`?1800`?\)"
+    pattern = r"`CONVERSATION_TTL_SECONDS`[^\n]*?\(default:\s*`?7200`?\)"
     assert re.search(pattern, docs), "CONVERSATION_TTL_SECONDS default missing from docs"

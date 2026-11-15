@@ -151,9 +151,9 @@ def test_no_trimming_and_no_log_when_prompt_is_comfortably_inside_budget():
         "You are helpful.",
         CURRENT,
         history,
-        input_tokens=120000,
-        output_tokens=8000,
-        context_window=128000,
+        input_tokens=250000,
+        output_tokens=16384,
+        context_window=1000000,
         logger=logger,
     )
 

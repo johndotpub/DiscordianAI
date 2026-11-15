@@ -2,7 +2,7 @@
   "cases": {
     "e-empty-values": {
       "extra_body": {
-        "max_steps": 3
+        "max_steps": 4
       },
       "input": [
         {
@@ -24,7 +24,7 @@
     },
     "e-history-one-turn": {
       "extra_body": {
-        "max_steps": 3
+        "max_steps": 4
       },
       "input": [
         {
@@ -50,7 +50,7 @@
     },
     "e-history-three-turns": {
       "extra_body": {
-        "max_steps": 3
+        "max_steps": 4
       },
       "input": [
         {
@@ -84,7 +84,7 @@
     },
     "e-json-ish-content": {
       "extra_body": {
-        "max_steps": 3
+        "max_steps": 4
       },
       "input": [
         {
@@ -106,7 +106,7 @@
     },
     "e-large-token-budget": {
       "extra_body": {
-        "max_steps": 3
+        "max_steps": 4
       },
       "input": [
         {
@@ -128,7 +128,7 @@
     },
     "e-long-system": {
       "extra_body": {
-        "max_steps": 3
+        "max_steps": 4
       },
       "input": [
         {
@@ -150,7 +150,7 @@
     },
     "e-multiline-system": {
       "extra_body": {
-        "max_steps": 3
+        "max_steps": 4
       },
       "input": [
         {
@@ -172,7 +172,7 @@
     },
     "e-multiline-user": {
       "extra_body": {
-        "max_steps": 3
+        "max_steps": 4
       },
       "input": [
         {
@@ -194,7 +194,7 @@
     },
     "e-standard-values": {
       "extra_body": {
-        "max_steps": 3
+        "max_steps": 4
       },
       "input": [
         {
@@ -216,7 +216,7 @@
     },
     "e-unicode-values": {
       "extra_body": {
-        "max_steps": 3
+        "max_steps": 4
       },
       "input": [
         {

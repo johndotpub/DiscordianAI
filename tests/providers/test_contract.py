@@ -215,7 +215,7 @@ async def test_perplexity_request_shape_and_citations():
     ]
     assert params["max_output_tokens"] == 100
     assert params["tools"] == [{"type": "web_search"}, {"type": "fetch_url"}]
-    assert params["extra_body"]["max_steps"] == 3
+    assert params["extra_body"]["max_steps"] == 4
     assert "max_steps" not in params
     assert "messages" not in params
     assert result.text == "The report says [1]."

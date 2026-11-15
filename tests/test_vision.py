@@ -58,7 +58,7 @@ def _config(**overrides):
         "system_message": "You are helpful.",
         "output_tokens": 100,
         "input_tokens": 10000,
-        "context_window": 128000,
+        "context_window": 1000000,
         "web_tools": False,
     }
     values.update(overrides)
@@ -73,7 +73,7 @@ def _ai_config():
             system_message="You are helpful.",
             output_tokens=100,
             input_tokens=10000,
-            context_window=128000,
+            context_window=1000000,
         ),
     )
 
@@ -342,7 +342,7 @@ def _deps(config):
         "OUTPUT_TOKENS": 100,
         "PERPLEXITY_OUTPUT_TOKENS": 100,
         "INPUT_TOKENS": 10000,
-        "CONTEXT_WINDOW": 128000,
+        "CONTEXT_WINDOW": 1000000,
         "config": config,
     }
 

@@ -38,7 +38,7 @@ FETCH_URL_INSTRUCTIONS = (
     "search results, clearly labelled as such."
 )
 WEB_TOOLS = [{"type": "web_search"}, {"type": "fetch_url"}]
-DEFAULT_MAX_STEPS = 3
+DEFAULT_MAX_STEPS = 4
 _DEFAULT_PROBE_TIMEOUT = 10.0
 
 
