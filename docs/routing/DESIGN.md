@@ -119,4 +119,5 @@ local-with-bearing-cue", expressed at the call site — there is no router-emitt
   an explicit local instruction; `ROUTER_WEB_THRESHOLD_*` removed; corpora promoted from "scoreboard" to
   regression fixture; behavior on both corpora row-identical pre/post change.
 - 2026-11-15: optional Clef decision-model router added behind `ROUTER_MODE=clef`; the deterministic gate
-  stays the default and the fallback on any Clef failure. `ROUTER_MODE=model` now points at `clef`.
+  stays the default and the fallback on any Clef failure. `ROUTER_MODE=model` is retired and rejected at
+  startup; use `heuristic` or `clef`.

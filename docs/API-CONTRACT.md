@@ -26,7 +26,7 @@ is not a contract.
 | Web tools | `tools` carries `web_search` and `web_fetch` function schemas only when the base URL is Ollama-compatible and `WEB_TOOLS` is true; the model may request up to four tool rounds | `src/providers/openai_chat.py`, `src/web_tools.py` |
 | Image content | When a message carries images, the current user message becomes a content list of one `text` part followed by one `image_url` part per image, with the part's `url` field set to `data:<mime>;base64,<payload>`. History turns remain text-only | `src/message_builder.py`, `src/image_attachments.py` |
 | OpenAI alternative | change `OPENAI_API_URL` to `https://api.openai.com/v1/`, set an `sk-` key, and choose a model; chat requests then send `max_completion_tokens` and `reasoning_effort`, not `max_tokens` | OpenAI Chat reference |
-| Maximum completion tokens | 128,000 (the bot's documented ceiling) | probe (error text) |
+| Maximum completion tokens | 128,000 provider-reported; the bot enforces a fixed 128,000 validation ceiling, independent of `CONTEXT_WINDOW` | probe (error text) |
 | Oversized output cap | HTTP 400, `error.type: invalid_request_error`, `error.code: invalid_value`, message `max_tokens is too large: … This model supports at most 128000 completion tokens` | probe |
 | Prompt-too-long | code `context_length_exceeded` is the documented family, **not verified here** — probing it means paying to send a 128k-token prompt. Treat as `UNVERIFIED` until someone does | unverified |
 | Idempotency key | no documented header for chat completions. Retries must therefore be limited to requests that provably never reached the server | unverified |
@@ -61,7 +61,7 @@ The bot uses the current Agent API, not Sonar Chat Completions. The OpenAI SDK's
 | Model sent | `perplexity/sonar` | probe + `GET /v1/models` |
 | Catalogue | `GET /v1/models` lists 54 models and exactly one Sonar model, `perplexity/sonar` | probe |
 | Legacy interface | Sonar Chat Completions still answers 200 with `citations` and `search_results`; it is not the current catalogue or the interface this bot uses | probe |
-| Request fields | `model`, `instructions` (system prompt plus the URL-fetch policy), `input` (history and current user message, no system role), `max_output_tokens`, `tools: [{"type": "web_search"}, {"type": "fetch_url"}]`, `extra_body: {"max_steps": 3}` (the SDK has no `max_steps` kwarg) | probe + `src/providers/perplexity.py` |
+| Request fields | `model`, `instructions` (system prompt plus the URL-fetch policy), `input` (history and current user message, no system role), `max_output_tokens`, `tools: [{"type": "web_search"}, {"type": "fetch_url"}]`, `extra_body: {"max_steps": 4}` (the SDK has no `max_steps` kwarg) | probe + `src/providers/perplexity.py` |
 | Sampling | no `temperature` is sent | probe + code |
 | Response shape | `output` array of items | probe |
 | `search_results` item | `results[]` with `id`, `url`, `title`, `snippet`, `date`, `last_updated`, `source`; `id` is the 1-based marker number used in the answer as `[1]`, `[2]` | probe |
@@ -82,7 +82,7 @@ The bot uses the current Agent API, not Sonar Chat Completions. The OpenAI SDK's
    History and the current turn travel in `input`.
 3. `max_output_tokens` replaces `max_tokens`, and `tools` always asks for `web_search`
    and `fetch_url` because this path exists for live-data questions. `max_steps` bounds
-   the tool loop at three steps and travels in `extra_body` because the SDK has no
+   the tool loop at four steps and travels in `extra_body` because the SDK has no
    parameter for it.
 4. Citation markers are mapped by the `search_results[].id`, not by array position, so a
    reordered result list cannot misattribute a source.
@@ -96,7 +96,7 @@ The bot uses the current Agent API, not Sonar Chat Completions. The OpenAI SDK's
 ## How to re-verify
 
 ```bash
-set -a && . ~/.config/environment.d/hermes.conf && set +a
+# export the provider credentials for your deployment, then:
 .venv/bin/python scripts/probe_providers.py
 ```
 

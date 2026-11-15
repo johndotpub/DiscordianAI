@@ -95,7 +95,7 @@ Choose **either** the OpenAI-compatible chat provider only **or** Perplexity onl
    LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
    
    # Maximum conversation entries per user before pruning
-   MAX_HISTORY_PER_USER=50
+   MAX_HISTORY_PER_USER=100
    
    # Memory cleanup interval in seconds (default: 1 hour)
    USER_LOCK_CLEANUP_INTERVAL=3600

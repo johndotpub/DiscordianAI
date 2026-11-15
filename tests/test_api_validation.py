@@ -104,8 +104,8 @@ class TestOpenAIConfigValidation:
             "OPENAI_API_KEY": "ollama-" + "a" * 32,
             "OPENAI_API_URL": "https://ollama.com/v1/",
             "GPT_MODEL": "deepseek-v4.1-flash:1017",
-            "OUTPUT_TOKENS": 8000,
-            "INPUT_TOKENS": 120000,
+            "OUTPUT_TOKENS": 16384,
+            "INPUT_TOKENS": 250000,
         }
 
         issues = validate_openai_config(config)
@@ -147,7 +147,7 @@ class TestOpenAIConfigValidation:
         """Test validation with very high token limits."""
         config = {
             "OUTPUT_TOKENS": 60000,  # Very high
-            "INPUT_TOKENS": 250000,  # Very high
+            "INPUT_TOKENS": 1000001,  # Very high
         }
 
         issues = validate_openai_config(config)

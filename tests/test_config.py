@@ -114,20 +114,20 @@ class TestLoadConfig:
         assert config["PERPLEXITY_API_KEY"] is None
         assert config["PERPLEXITY_API_URL"] == "https://api.perplexity.ai"
         assert config["GPT_MODEL"] == "deepseek-v4.1-flash:1017"
-        assert config["INPUT_TOKENS"] == 120000
-        assert config["OUTPUT_TOKENS"] == 8000
-        assert config["CONTEXT_WINDOW"] == 128000
+        assert config["INPUT_TOKENS"] == 250000
+        assert config["OUTPUT_TOKENS"] == 16384
+        assert config["CONTEXT_WINDOW"] == 1000000
         assert config["SYSTEM_MESSAGE"] == "You are a helpful assistant."
         assert config["RATE_LIMIT"] == 10
         assert config["RATE_LIMIT_PER"] == 60
-        assert config["OPENAI_MAX_CONNECTIONS"] == 50
-        assert config["OPENAI_MAX_KEEPALIVE"] == 10
-        assert config["PERPLEXITY_MAX_CONNECTIONS"] == 30
-        assert config["PERPLEXITY_MAX_KEEPALIVE"] == 5
+        assert config["OPENAI_MAX_CONNECTIONS"] == 100
+        assert config["OPENAI_MAX_KEEPALIVE"] == 20
+        assert config["PERPLEXITY_MAX_CONNECTIONS"] == 40
+        assert config["PERPLEXITY_MAX_KEEPALIVE"] == 10
         assert config["LOG_FILE"] == "bot.log"
         assert config["LOG_LEVEL"] == "INFO"
         assert config["LOOKBACK_MESSAGES_FOR_CONSISTENCY"] == 6
-        assert config["MAX_HISTORY_PER_USER"] == 50
+        assert config["MAX_HISTORY_PER_USER"] == 100
         assert config["USER_LOCK_CLEANUP_INTERVAL"] == 3600
         assert config["ENTITY_DETECTION_MIN_WORDS"] == 10
         assert config["ROUTER_MODE"] == "heuristic"
@@ -265,7 +265,7 @@ LOG_FILE=relative.log
 
                 # Invalid integer should trigger warning and use default
                 mock_logger.return_value.warning.assert_called()
-                assert config["OUTPUT_TOKENS"] == 8000  # Default value
+                assert config["OUTPUT_TOKENS"] == 16384  # Default value
 
     def test_load_config_env_allowed_channel_ids_partial_invalid(self):
         """Invalid channel IDs should not discard valid IDs from env parsing."""
@@ -548,14 +548,14 @@ ENTITY_DETECTION_MIN_WORDS=invalid
                 config = load_config(temp_config_path)
 
                 # Should fall back to defaults for invalid integers
-                assert config["INPUT_TOKENS"] == 120000  # Default
-                assert config["OUTPUT_TOKENS"] == 8000  # Default
+                assert config["INPUT_TOKENS"] == 250000  # Default
+                assert config["OUTPUT_TOKENS"] == 16384  # Default
                 assert config["RATE_LIMIT"] == 10  # Default
                 assert config["RATE_LIMIT_PER"] == 60  # Default
-                assert config["OPENAI_MAX_CONNECTIONS"] == 50  # Default
-                assert config["OPENAI_MAX_KEEPALIVE"] == 10  # Default
-                assert config["PERPLEXITY_MAX_CONNECTIONS"] == 30  # Default
-                assert config["PERPLEXITY_MAX_KEEPALIVE"] == 5  # Default
+                assert config["OPENAI_MAX_CONNECTIONS"] == 100  # Default
+                assert config["OPENAI_MAX_KEEPALIVE"] == 20  # Default
+                assert config["PERPLEXITY_MAX_CONNECTIONS"] == 40  # Default
+                assert config["PERPLEXITY_MAX_KEEPALIVE"] == 10  # Default
                 assert config["ENTITY_DETECTION_MIN_WORDS"] == 10  # Default
 
                 # Should log warnings for invalid values

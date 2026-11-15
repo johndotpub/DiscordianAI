@@ -36,10 +36,10 @@ OpenAI remains supported by setting all three of `OPENAI_API_URL`, `GPT_MODEL`, 
 - **`PERPLEXITY_MODEL`**: Model to use. The current Agent API catalogue's Sonar model is "perplexity/sonar"; legacy Sonar names still answer on Chat Completions but are not used by this bot *(default: "perplexity/sonar")*
 
 #### Token Limits
-- **`INPUT_TOKENS`**: Maximum input context tokens *(default: 120000)*
-- **`OUTPUT_TOKENS`**: Maximum chat output tokens per response, sent as `max_tokens` to Ollama-compatible providers and `max_completion_tokens` to `api.openai.com` *(default: 8000)*
+- **`INPUT_TOKENS`**: Maximum input context tokens *(default: 250000)*
+- **`OUTPUT_TOKENS`**: Maximum chat output tokens per response, sent as `max_tokens` to Ollama-compatible providers and `max_completion_tokens` to `api.openai.com` *(default: 16384)*
 - **`PERPLEXITY_OUTPUT_TOKENS`**: Maximum Perplexity output tokens per response, sent as `max_output_tokens` to the Agent API *(default: the value of `OUTPUT_TOKENS`)*
-- **`CONTEXT_WINDOW`**: Total context window size *(default: 128000)*. It stays 128000 because it is shared with the OpenAI-compatible path, and Sonar's window is the smaller of the two.
+- **`CONTEXT_WINDOW`**: Total context window size *(default: 1000000)*. The default chat model's window is 1,000,000 tokens, so this value may be set that high; it feeds the prompt budget and truncation, not billing.
 - **`SYSTEM_MESSAGE`**: System prompt for AI personality *(default: "You are a helpful assistant.")*
 
 `OUTPUT_TOKENS` and `PERPLEXITY_OUTPUT_TOKENS` mean different things. The chat
@@ -47,7 +47,7 @@ provider's output cap (`max_tokens` or `max_completion_tokens`) covers reasoning
 as well as visible output, so a small
 chat-provider value can be consumed entirely by reasoning and produce an empty reply with
 `finish_reason: length`. Perplexity's `max_output_tokens` covers output only. Both settings
-share the documented maximum of 128,000; values above it stop startup, and a chat-provider
+share the documented maximum of 1,000,000; values above it stop startup, and a chat-provider
 value below 512 logs a warning about empty replies.
 
 `INPUT_TOKENS` is enforced as a prompt budget. The bot estimates prompt size from the
@@ -80,10 +80,10 @@ Prevents spam and manages API costs.
 
 HTTP/2 connection pool sizes for each provider client. See [ConnectionPooling.md](ConnectionPooling.md) for tuning guidance.
 
-- **`OPENAI_MAX_CONNECTIONS`**: Maximum concurrent chat-provider connections *(default: 50)*
-- **`OPENAI_MAX_KEEPALIVE`**: Chat-provider keepalive connection count *(default: 10)*
-- **`PERPLEXITY_MAX_CONNECTIONS`**: Maximum concurrent Perplexity connections *(default: 30)*
-- **`PERPLEXITY_MAX_KEEPALIVE`**: Perplexity keepalive connection count *(default: 5)*
+- **`OPENAI_MAX_CONNECTIONS`**: Maximum concurrent chat-provider connections *(default: 100)*
+- **`OPENAI_MAX_KEEPALIVE`**: Chat-provider keepalive connection count *(default: 20)*
+- **`PERPLEXITY_MAX_CONNECTIONS`**: Maximum concurrent Perplexity connections *(default: 40)*
+- **`PERPLEXITY_MAX_KEEPALIVE`**: Perplexity keepalive connection count *(default: 10)*
 
 ### AI Orchestrator Settings
 
@@ -91,8 +91,8 @@ Advanced configuration for intelligent AI service routing.
 
 - **`LOOKBACK_MESSAGES_FOR_CONSISTENCY`**: Messages to check for follow-up consistency; `0` or a negative value disables the lookup *(default: 6)*
   
-- **`MAX_HISTORY_PER_USER`**: Maximum conversation history per user *(default: 50)*
-- **`CONVERSATION_TTL_SECONDS`**: Idle seconds before a conversation and its lock are evicted *(default: 1800)*
+- **`MAX_HISTORY_PER_USER`**: Maximum conversation history per user *(default: 100)*
+- **`CONVERSATION_TTL_SECONDS`**: Idle seconds before a conversation and its lock are evicted *(default: 7200)*
 - **`USER_LOCK_CLEANUP_INTERVAL`**: Memory cleanup interval in seconds *(default: 3600)*
 - **`ENTITY_DETECTION_MIN_WORDS`**: Minimum message length intended for entity detection *(default: 10)*. Note: this setting is parsed into config but not yet wired into the current routing implementation; changing it has no runtime effect in this release.
 - **`ROUTER_MODE`**: Router implementation, `heuristic` or `clef` *(default: "heuristic")*. `heuristic` is the deterministic gate and remains the fallback. `clef` sends each message to Ollama Cloud's decision model (about 0.4 seconds, billed per token); network, timeout, HTTP, or malformed-response failures fall back to the deterministic gate. `model` is not implemented and raises with a pointer to `ROUTER_MODE=clef`.
@@ -191,10 +191,10 @@ PERPLEXITY_API_URL=https://api.perplexity.ai
 PERPLEXITY_MODEL=perplexity/sonar
 
 # === TOKEN LIMITS ===
-INPUT_TOKENS=120000
-OUTPUT_TOKENS=8000
-PERPLEXITY_OUTPUT_TOKENS=8000
-CONTEXT_WINDOW=128000
+INPUT_TOKENS=250000
+OUTPUT_TOKENS=16384
+PERPLEXITY_OUTPUT_TOKENS=16384
+CONTEXT_WINDOW=1000000
 
 # === SYSTEM MESSAGE ===
 # Customize your bot's personality
@@ -219,10 +219,10 @@ RATE_LIMIT_PER=60
 
 [ConnectionPool]
 # HTTP/2 connection pool sizes for each provider
-OPENAI_MAX_CONNECTIONS=50
-OPENAI_MAX_KEEPALIVE=10
-PERPLEXITY_MAX_CONNECTIONS=30
-PERPLEXITY_MAX_KEEPALIVE=5
+OPENAI_MAX_CONNECTIONS=100
+OPENAI_MAX_KEEPALIVE=20
+PERPLEXITY_MAX_CONNECTIONS=40
+PERPLEXITY_MAX_KEEPALIVE=10
 
 [Orchestrator]
 # AI Orchestrator Configuration for advanced routing and optimization
@@ -230,10 +230,10 @@ PERPLEXITY_MAX_KEEPALIVE=5
 LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 
 # Maximum conversation entries per user before pruning
-MAX_HISTORY_PER_USER=50
+MAX_HISTORY_PER_USER=100
 
 # How long a conversation may sit idle before its history and lock are dropped
-CONVERSATION_TTL_SECONDS=1800
+CONVERSATION_TTL_SECONDS=7200
 
 # How often to clean up inactive user locks (seconds) - default 1 hour
 USER_LOCK_CLEANUP_INTERVAL=3600
@@ -282,24 +282,24 @@ export PERPLEXITY_API_URL="https://api.perplexity.ai"
 export PERPLEXITY_MODEL="perplexity/sonar"
 export GPT_MODEL="deepseek-v4.1-flash:1017"
 export REASONING_EFFORT="high"
-export INPUT_TOKENS="120000"
-export OUTPUT_TOKENS="8000"
-export PERPLEXITY_OUTPUT_TOKENS="8000"
-export CONTEXT_WINDOW="128000"
+export INPUT_TOKENS="250000"
+export OUTPUT_TOKENS="16384"
+export PERPLEXITY_OUTPUT_TOKENS="16384"
+export CONTEXT_WINDOW="1000000"
 export SYSTEM_MESSAGE="You are a helpful assistant."
 
 # Rate limiting and connection pooling
 export RATE_LIMIT="10"
 export RATE_LIMIT_PER="60"
-export OPENAI_MAX_CONNECTIONS="50"
-export OPENAI_MAX_KEEPALIVE="10"
-export PERPLEXITY_MAX_CONNECTIONS="30"
-export PERPLEXITY_MAX_KEEPALIVE="5"
+export OPENAI_MAX_CONNECTIONS="100"
+export OPENAI_MAX_KEEPALIVE="20"
+export PERPLEXITY_MAX_CONNECTIONS="40"
+export PERPLEXITY_MAX_KEEPALIVE="10"
 
 # Orchestrator settings
 export LOOKBACK_MESSAGES_FOR_CONSISTENCY="6"
-export MAX_HISTORY_PER_USER="50"
-export CONVERSATION_TTL_SECONDS="1800"
+export MAX_HISTORY_PER_USER="100"
+export CONVERSATION_TTL_SECONDS="7200"
 export USER_LOCK_CLEANUP_INTERVAL="3600"
 export ENTITY_DETECTION_MIN_WORDS="10"
 export ROUTER_MODE="heuristic"
@@ -351,7 +351,7 @@ DiscordianAI includes comprehensive configuration validation:
 
 ### Startup Validation
 - **Required Fields**: Ensures DISCORD_TOKEN and the credentials for every configured provider are present
-- **Errors Abort Startup**: Missing credentials, malformed base URLs, non-positive limits, and output caps above 128,000 stop the process
+- **Errors Abort Startup**: Missing credentials, malformed base URLs, non-positive limits, and output caps above 1,000,000 stop the process
 - **Warnings Continue**: Non-standard provider base URLs, small chat-provider output caps, non-`sk-` OpenAI-compatible keys, and other provider-tolerated settings are logged without blocking startup
 - **Value Validation**: Checks integer fields, validates rate limits, and ensures proper data types
 

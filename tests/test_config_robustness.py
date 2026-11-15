@@ -83,7 +83,7 @@ def _minimal_config() -> dict:
         "OPENAI_API_KEY": "sk-test",
         "RATE_LIMIT": 10,
         "RATE_LIMIT_PER": 60,
-        "OUTPUT_TOKENS": 8000,
+        "OUTPUT_TOKENS": 16384,
         "BOT_PRESENCE": "online",
         "ACTIVITY_TYPE": "watching",
         "ALLOWED_CHANNELS": ["general"],

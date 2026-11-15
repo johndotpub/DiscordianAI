@@ -50,7 +50,7 @@ PERPLEXITY_API_URL=https://api.perplexity.ai
 PERPLEXITY_MODEL=perplexity/sonar
 
 # Response settings
-OUTPUT_TOKENS=8000
+OUTPUT_TOKENS=16384
 
 # System message for web search
 SYSTEM_MESSAGE=You are a helpful assistant with access to current web information. When providing citations, include source URLs when available.
@@ -112,7 +112,7 @@ When URLs are detected in messages, the Agent API request already carries both
 2. **Answers from the page contents** and cites the sources it used
 3. **Falls back to `web_search`** and labels the answer as search-based when a page cannot be fetched
 4. **Reports fetch failures plainly** instead of adding a canned note
-5. **Handles multiple URLs** in the same message within the three-step tool budget
+5. **Handles multiple URLs** in the same message within the four-step tool budget
 
 ## Citation Processing Flow
 
@@ -177,7 +177,7 @@ Companies are investing heavily in machine learning capabilities [2].
 [Default]
 PERPLEXITY_API_KEY=pplx-your-key-here
 PERPLEXITY_MODEL=perplexity/sonar
-OUTPUT_TOKENS=8000
+OUTPUT_TOKENS=16384
 
 # Optimize for web search
 SYSTEM_MESSAGE=You are a research assistant with access to real-time web information. Always provide sources for factual claims.
@@ -197,21 +197,23 @@ LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 ## Orchestrator Integration
 
 ### Smart Query Analysis
-One evidence-based decision is built per message before any provider call:
+One decision is built per message before any provider call:
 
-- **Bearing evidence**: status, change/outcome events, prices, versions, volatile topics, and explicit URL
-  or web instructions can route to Perplexity.
-- **Framing evidence**: question shape, imperatives, opinions, creative requests, social text, and proper
-  names are weighted below 1 and cannot decide alone.
-- **Follow-up consistency**: a short anaphoric follow-up inherits the previous route from the same
-  conversation at +2/-2, unless the new message carries its own bearing evidence or changes topic.
+- **Overrides**: an explicit request for the web, a URL, an explicit "from memory" instruction, or a
+  pasted artifact decides immediately.
+- **Bearing cues**: status, change/outcome events, prices, versions, volatile topics, and similar mutable
+  values route to Perplexity.
+- **Follow-up inheritance**: a short anaphoric follow-up inherits the previous route from the same
+  conversation unless the new message carries its own bearing cue or changes topic.
+- **Local default**: everything else stays with the chat provider.
+- **Optional Clef**: with `ROUTER_MODE=clef`, a bounded decision model can make the call and falls back
+  to this gate on failure. See [routing/DESIGN.md](routing/DESIGN.md) for the full model.
 
 ### Routing Decision Logic
 1. **Build one input**: message text, channel kind, recent turns, and the previous route.
-2. **Score evidence**: bearing and framing cues produce a signed trace and a web probability.
-3. **Apply the gate**: no bearing cue and no override means local; otherwise the channel-kind threshold
-   decides web, local, or unsure.
-4. **Deliver and record**: the selected provider answers, and only the successful turn is written to
+2. **Apply the gate**: overrides, then bearing cues; otherwise inherit a live follow-up route or stay
+   local.
+3. **Deliver and record**: the selected provider answers, and only the successful turn is written to
    history.
 
 ## Best Practices
@@ -248,7 +250,7 @@ One evidence-based decision is built per message before any provider call:
 - Check if you have access to the specified model
 
 **Citations not formatting properly**:
-- Ensure OUTPUT_TOKENS is sufficient (recommended: 8000+)
+- Ensure OUTPUT_TOKENS is sufficient (recommended: 16000+)
 - Check that citation extraction patterns are working
 - Verify Discord message length limits aren't truncating citations
 

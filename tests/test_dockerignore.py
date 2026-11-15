@@ -38,14 +38,14 @@ def test_dockerignore_excludes_local_config_and_caches():
     """Private configs, runtime state, and tool caches stay out of the image."""
     patterns = _patterns()
 
-    assert "bender.ini" in patterns
+    assert "*.ini" in patterns
     assert "config.ini" in patterns
     assert "*.ini" in patterns
     assert "!config.ini.example" in patterns
     assert "!tox.ini" in patterns
 
     for path in (
-        "bender.ini",
+        "production.ini",
         "config.ini",
         ".bot.pid",
         ".pytest_cache/v/cache",

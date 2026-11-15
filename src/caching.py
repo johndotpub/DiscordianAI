@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # Constants for caching
 MIN_CACHABLE_RESPONSE_LENGTH = 10
 RESPONSE_LENGTH_TTL_THRESHOLD = 1000
-LONG_RESPONSE_TTL = 600.0
+LONG_RESPONSE_TTL = 1800.0
 SHORT_RESPONSE_TTL = DEFAULT_CACHE_TTL
 POSITIONAL_CONFIG_INDEX = 3
 
@@ -247,7 +247,7 @@ class CacheEntry:
 
     value: Any
     timestamp: float
-    ttl: float = DEFAULT_CACHE_TTL  # 5 minutes default
+    ttl: float = DEFAULT_CACHE_TTL  # 10 minutes default
 
     def is_expired(self) -> bool:
         """Check if cache entry has expired."""
@@ -531,7 +531,7 @@ class RequestDeduplicator:
 
 
 # Global cache instances
-response_cache = ResponseCache(max_size=1000, default_ttl=DEFAULT_CACHE_TTL)
+response_cache = ResponseCache(max_size=2000, default_ttl=DEFAULT_CACHE_TTL)
 request_deduplicator = RequestDeduplicator()
 
 

@@ -25,7 +25,7 @@ The live provider behaviour behind these checks is recorded in
   Perplexity key that does not match the `pplx-` shape.
 - A base URL that is not an absolute `http(s)` URL with a host.
 - `OUTPUT_TOKENS` or `PERPLEXITY_OUTPUT_TOKENS` that is not an integer, is
-  non-positive, or exceeds the documented maximum of **128,000**.
+  non-positive, or exceeds the documented maximum of **1,000,000**.
 - Non-positive `INPUT_TOKENS`, `CONTEXT_WINDOW`, `RATE_LIMIT`, or
   `RATE_LIMIT_PER` values.
 
@@ -54,7 +54,7 @@ The live provider behaviour behind these checks is recorded in
 - `reasoning_effort` is sent from `REASONING_EFFORT` and is not validated
   against a local enum; valid values are model-defined.
 - That cap covers **visible output plus reasoning tokens**.
-- The documented maximum is **128,000** completion tokens. A larger value is an
+- The documented maximum is **1,000,000** completion tokens. A larger value is an
   error; it is not silently clamped.
 - Chat-generation-specific parameter validation does **not** exist in this codebase. The
   old check was removed, and this document no longer claims otherwise.
@@ -64,7 +64,7 @@ The live provider behaviour behind these checks is recorded in
 
 - The output cap is sent as `max_output_tokens` to the Agent API, which covers
   output only.
-- The documented range is **1..128,000**. Values outside that range are errors.
+- The documented range is **1..1,000,000**. Values outside that range are errors.
 - The current Agent API catalogue has one Sonar model, `perplexity/sonar`. A
   different name produces a warning that lists the known set; it does not
   prevent startup. Legacy names such as `sonar-pro` still answer on Chat
@@ -82,10 +82,10 @@ The live provider behaviour behind these checks is recorded in
 
 ```ini
 [Default]
-INPUT_TOKENS=120000
-OUTPUT_TOKENS=8000                # chat provider max_tokens, includes reasoning
-PERPLEXITY_OUTPUT_TOKENS=8000     # Perplexity max_output_tokens, output only
-CONTEXT_WINDOW=128000
+INPUT_TOKENS=250000
+OUTPUT_TOKENS=16384               # chat provider max_tokens, includes reasoning
+PERPLEXITY_OUTPUT_TOKENS=16384    # Perplexity max_output_tokens, output only
+CONTEXT_WINDOW=1000000
 
 [Limits]
 RATE_LIMIT=10

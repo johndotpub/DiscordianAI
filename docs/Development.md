@@ -204,6 +204,6 @@ line-length = 99
 ### Enhanced AI Routing
 - **Evidence model**: Bearing cues (status, price, version, events, volatile topics) may route to the web;
   framing cues (question shape, opinion, creative, social, proper names) never decide alone.
-- **No early-return chain**: One score produces the decision and the logged reason trace.
+- **No early-return chain**: One decision is produced and the reason trace is logged.
 - **Entity threshold**: `ENTITY_DETECTION_MIN_WORDS=10` is parsed but is not consulted by the router at
   runtime.

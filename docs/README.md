@@ -13,7 +13,7 @@ Welcome to the DiscordianAI documentation! This guide covers everything you need
 - **[OpenAI-Compatible Integration](OpenAI.md)** - Ollama Cloud by default; OpenAI remains supported
 - **[Perplexity Integration](Perplexity.md)** - Web search, citations, and Sonar models
 - **[Smart Orchestration](HybridMode.md)** - How the bot chooses between AI services
-- **[Web Scraping](WebScraping.md)** - URL content extraction for context
+- **[Web Access](WebScraping.md)** – provider-side search and page fetch
 
 ### 💬 Message Handling
 - **[Message Splitting](MessageSplitting.md)** - How long messages are handled

@@ -93,10 +93,10 @@ The launcher resolves Python in this order: pyenv → project-local `.venv` → 
 | `PERPLEXITY_MODEL` | Perplexity model name. Default `perplexity/sonar`, the current Agent API Sonar model. Legacy Sonar names still answer on Chat Completions but are not used by this bot.
 | `INPUT_TOKENS` / `OUTPUT_TOKENS` | Prompt budget and chat completion cap. `OUTPUT_TOKENS` is sent as `max_tokens` and includes reasoning tokens.
 | `PERPLEXITY_OUTPUT_TOKENS` | Perplexity completion cap, sent as `max_output_tokens` to the Agent API (output only). Defaults to `OUTPUT_TOKENS`.
-| `CONTEXT_WINDOW` | Shared context window (default 128000). It stays 128000 because it is shared with the OpenAI-compatible path, and Sonar's window is the smaller of the two.
+| `CONTEXT_WINDOW` | Shared context window (default 1000000). The default chat model's window is 1,000,000 tokens; the value feeds the prompt budget and truncation, not billing.
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | How many recent messages to inspect when a follow-up inherits the previous provider.
 | `ROUTER_MODE` | Router implementation, `heuristic` by default (deterministic, no network). `clef` uses Ollama Cloud's decision model (~0.4 s per message, billed per token) and falls back to the heuristic on failure; `model` is retired and raises.
-| `CONVERSATION_TTL_SECONDS` | Idle seconds before a conversation and its lock are evicted (default 1800).
+| `CONVERSATION_TTL_SECONDS` | Idle seconds before a conversation and its lock are evicted (default 7200).
 | `WEB_TOOLS` | Offer native web search and page fetch to Ollama-compatible chat providers (default true); OpenAI endpoints never receive these tools.
 | `OPENAI_MAX_CONNECTIONS` / `PERPLEXITY_MAX_CONNECTIONS` | HTTP/2 pool connection limits for each API client.
 
@@ -122,8 +122,8 @@ GPT_MODEL=deepseek-v4.1-flash:1017
 REASONING_EFFORT=high
 PERPLEXITY_API_KEY=pplx-your-perplexity-key
 PERPLEXITY_MODEL=perplexity/sonar
-INPUT_TOKENS=120000
-OUTPUT_TOKENS=8000
+INPUT_TOKENS=250000
+OUTPUT_TOKENS=16384
 SYSTEM_MESSAGE=You are a helpful assistant with access to current web information.
 
 [Limits]
@@ -144,7 +144,7 @@ RATE_LIMIT_PER=60
 - [src/message_router.py](src/message_router.py) handles mentions, DMs, channel and thread allowlists, bot-authored senders, and dispatch to the DM/channel processors.
 
 ### Reliability & Ops
-- [src/connection_pool.py](src/connection_pool.py) creates HTTP/2 clients with 50/10 connections for the chat provider and 30/5 for Perplexity, falling back to HTTP/1.1 when `h2` is unavailable.
+- [src/connection_pool.py](src/connection_pool.py) creates HTTP/2 clients with 100/20 connections for the chat provider and 40/10 for Perplexity, falling back to HTTP/1.1 when `h2` is unavailable.
 - [src/health_checks.py](src/health_checks.py) checks each configured provider after login; any non-empty model identifier is accepted. [src/health_server.py](src/health_server.py) serves liveness/readiness and reports observed provider and breaker state.
 - [src/api_validation.py](src/api_validation.py) rejects missing credentials, malformed URLs, and invalid limits, and warns when an `OPENAI_API_KEY` does not match OpenAI's `sk-` shape (other compatible providers are supported). [src/error_handling.py](src/error_handling.py) classifies errors and owns the retry and circuit-breaker policy.
 

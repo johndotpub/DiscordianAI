@@ -136,8 +136,8 @@ def test_model_default_literal_appears_once_in_src(literal):
 @pytest.mark.parametrize(
     ("constant_name", "value"),
     [
-        ("DEFAULT_OUTPUT_TOKENS", 8000),
-        ("DEFAULT_CONTEXT_WINDOW", 128000),
+        ("DEFAULT_OUTPUT_TOKENS", 16384),
+        ("DEFAULT_CONTEXT_WINDOW", 1000000),
     ],
 )
 def test_default_value_literal_lives_only_in_its_constant(constant_name, value):

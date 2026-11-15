@@ -15,10 +15,10 @@ class TestConnectionPoolManager:
         """Test initialization with default parameters."""
         manager = ConnectionPoolManager()
 
-        assert manager.openai_max_connections == 50
-        assert manager.openai_max_keepalive == 10
-        assert manager.perplexity_max_connections == 30
-        assert manager.perplexity_max_keepalive == 5
+        assert manager.openai_max_connections == 100
+        assert manager.openai_max_keepalive == 20
+        assert manager.perplexity_max_connections == 40
+        assert manager.perplexity_max_keepalive == 10
         assert manager._logger is not None
 
     def test_init_with_custom_params(self):
@@ -188,7 +188,7 @@ class TestGetConnectionPoolManager:
         manager = get_connection_pool_manager()
 
         assert isinstance(manager, ConnectionPoolManager)
-        assert manager.openai_max_connections == 50  # default
+        assert manager.openai_max_connections == 100  # default
 
     def test_get_manager_with_config(self):
         """Test getting manager with configuration."""
@@ -217,9 +217,9 @@ class TestGetConnectionPoolManager:
         manager = get_connection_pool_manager(config)
 
         assert manager.openai_max_connections == 75
-        assert manager.openai_max_keepalive == 10  # default
-        assert manager.perplexity_max_connections == 30  # default
-        assert manager.perplexity_max_keepalive == 5  # default
+        assert manager.openai_max_keepalive == 20  # default
+        assert manager.perplexity_max_connections == 40  # default
+        assert manager.perplexity_max_keepalive == 10  # default
 
 
 class TestPoolMetrics:
@@ -243,8 +243,8 @@ class TestPoolMetrics:
 
         metrics = manager.get_pool_metrics()
         assert "openai" in metrics
-        assert metrics["openai"]["max_connections"] == 50
-        assert metrics["openai"]["max_keepalive"] == 10
+        assert metrics["openai"]["max_connections"] == 100
+        assert metrics["openai"]["max_keepalive"] == 20
         assert metrics["openai"]["status"] == "active"
 
     @patch("src.connection_pool.httpx.AsyncClient")

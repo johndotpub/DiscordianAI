@@ -126,7 +126,7 @@ flowchart TD
 - `api_validation.validate_openai_config()` accepts any non-empty `GPT_MODEL`; provider model
   ids are not gated, so an unknown name does not block startup.
 - Perplexity calls send `model`, `instructions`, `input`, `max_output_tokens`, the `web_search` and
-  `fetch_url` tools, and `max_steps: 3` via `extra_body` because the SDK exposes no `max_steps` kwarg.
+  `fetch_url` tools, and `max_steps: 4` via `extra_body` because the SDK exposes no `max_steps` kwarg.
   `perplexity/sonar` is the default, sampling is handled by the API, and no `temperature` is sent.
 - Citations come from the Agent API `search_results` and `fetch_url_results` items: each result's 1-based `id`
   maps to the `[n]` marker in the answer text.
@@ -154,7 +154,7 @@ LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 | `ROUTER_CLEF_THRESHOLD` | 0.5 | Probability at or above which Clef routes to the web. |
 | `ROUTER_CLEF_TIMEOUT_MS` | 2000 | Clef request timeout before falling back to the deterministic gate. |
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | 6 | How many recent messages a follow-up may inspect; `0` disables the lookup. |
-| `MAX_HISTORY_PER_USER` | 50 | Maximum conversation entries stored per user. |
+| `MAX_HISTORY_PER_USER` | 100 | Maximum conversation entries stored per user. |
 | `USER_LOCK_CLEANUP_INTERVAL` | 3600 | How often to clean up inactive user locks, in seconds. |
 
 `ENTITY_DETECTION_MIN_WORDS=10` is parsed into config but is not consulted by the current router; changing
@@ -165,8 +165,9 @@ it has no runtime effect.
 - The route decision is built even when a response comes from cache.
 - Cache keys include the service (`openai` or `perplexity`), router id, policy version, decision source,
   function, route salt, and degraded flag. A web answer and a local answer never share an entry.
-- An unsure decision is not cached. A local decision that carried bearing evidence is not cached. A URL
-  instruction is not cached.
+- Perplexity answers are cached under the same scoped key as chat answers when the cache policy marks
+  them cacheable.
+- A local decision that carried bearing evidence is not cached. A URL instruction is not cached.
 - A degraded fallback (web failed, local answer returned) is stored with `degraded=true` and is reachable
   only from the fallback path.
 - A missing conversation manager or a history lookup that raises still produces a decision with empty
