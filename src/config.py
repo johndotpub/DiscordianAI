@@ -142,7 +142,9 @@ DEFAULT_VISION_TOKEN_ESTIMATE = 1000
 # VALIDATION THRESHOLDS
 # ============================================================================
 
-MAX_OUTPUT_TOKENS_CEILING = DEFAULT_CONTEXT_WINDOW
+# Provider completion ceiling: the model rejects `max_tokens` above 128,000
+# (see docs/API-CONTRACT.md). Intentionally independent of CONTEXT_WINDOW.
+MAX_OUTPUT_TOKENS_CEILING = 128_000
 MAX_OUTPUT_TOKENS_COST_WARNING = 50000
 MIN_OPENAI_OUTPUT_TOKENS_WARNING = 512
 # Warning threshold tracks the default chat model's real context window.

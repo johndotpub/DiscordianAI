@@ -26,7 +26,7 @@ is not a contract.
 | Web tools | `tools` carries `web_search` and `web_fetch` function schemas only when the base URL is Ollama-compatible and `WEB_TOOLS` is true; the model may request up to four tool rounds | `src/providers/openai_chat.py`, `src/web_tools.py` |
 | Image content | When a message carries images, the current user message becomes a content list of one `text` part followed by one `image_url` part per image, with the part's `url` field set to `data:<mime>;base64,<payload>`. History turns remain text-only | `src/message_builder.py`, `src/image_attachments.py` |
 | OpenAI alternative | change `OPENAI_API_URL` to `https://api.openai.com/v1/`, set an `sk-` key, and choose a model; chat requests then send `max_completion_tokens` and `reasoning_effort`, not `max_tokens` | OpenAI Chat reference |
-| Maximum completion tokens | 128,000 provider-reported (the bot's validation ceiling follows `CONTEXT_WINDOW`) | probe (error text) |
+| Maximum completion tokens | 128,000 provider-reported; the bot enforces a fixed 128,000 validation ceiling, independent of `CONTEXT_WINDOW` | probe (error text) |
 | Oversized output cap | HTTP 400, `error.type: invalid_request_error`, `error.code: invalid_value`, message `max_tokens is too large: … This model supports at most 128000 completion tokens` | probe |
 | Prompt-too-long | code `context_length_exceeded` is the documented family, **not verified here** — probing it means paying to send a 128k-token prompt. Treat as `UNVERIFIED` until someone does | unverified |
 | Idempotency key | no documented header for chat completions. Retries must therefore be limited to requests that provably never reached the server | unverified |

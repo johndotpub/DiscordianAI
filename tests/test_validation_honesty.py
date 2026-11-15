@@ -105,7 +105,7 @@ def test_output_cap_above_documented_ceiling_aborts_startup(key):
 
     warnings, errors = validate_full_config(config)
 
-    assert any(key in error and "1000000" in error for error in errors), (warnings, errors)
+    assert any(key in error and "128000" in error for error in errors), (warnings, errors)
 
     exit_code, run_bot = _run_main_with_config(config)
     assert exit_code not in (None, 0)
