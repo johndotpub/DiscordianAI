@@ -225,7 +225,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Implementation scope**: critical bug fixes, config cleanup, async HTTP modernization, docs refresh, and test hardening.
 - **Release quality**: all changes are aligned to current code paths and no stale descriptions remain.
 
-### Fixed 🔧 — Dependency & Configuration (VectorContext QA)
+### Fixed 🔧 — Dependency & Configuration (internal QA)
 - **`websockets` dependency**: Added `websockets>=16.0` to `requirements.txt` to match `pyproject.toml` declaration and ensure Docker builds include the runtime dependency.
 - **`ConnectionPool` config parsing**: Wired `[ConnectionPool]` section parser (`_parse_connection_pool_config()`) into `load_config()` — this section was documented in `config.ini.example` and had defaults defined, but was silently ignored at runtime.
 - **`ENTITY_DETECTION_MIN_WORDS`**: Now reads from config file and environment variables (was documented but unimplemented in the parser).

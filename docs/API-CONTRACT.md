@@ -96,7 +96,7 @@ The bot uses the current Agent API, not Sonar Chat Completions. The OpenAI SDK's
 ## How to re-verify
 
 ```bash
-set -a && . ~/.config/environment.d/hermes.conf && set +a
+# export the provider credentials for your deployment, then:
 .venv/bin/python scripts/probe_providers.py
 ```
 

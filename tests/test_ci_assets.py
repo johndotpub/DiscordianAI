@@ -217,7 +217,7 @@ def test_local_config_names_are_git_ignored():
     git = which("git")
     assert git is not None
 
-    names = ("bot.ini", "production.ini", "bender.ini", "config.ini")
+    names = ("bot.ini", "production.ini", "config.ini")
     missing = []
     for name in names:
         result = subprocess.run(  # noqa: S603 - fixed git command, no shell

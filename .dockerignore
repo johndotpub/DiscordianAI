@@ -91,9 +91,8 @@ venv/
 # VS Code
 .vscode/
 
-# Local configuration and secrets. bender.ini is a private local config and
-# must never enter the build context. Keep the shipped templates available.
-bender.ini
+# Local configuration and secrets must never enter the build context.
+# Keep the shipped templates available.
 *.ini
 !config.ini.example
 !tox.ini

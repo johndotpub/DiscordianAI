@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Probe the live OpenAI and Perplexity contracts. Prints shapes, never secrets.
 
-Run:  set -a && . ~/.config/environment.d/hermes.conf && set +a
+Run with the provider credentials for your own deployment exported, e.g.:
+      export OPENAI_API_KEY=... PERPLEXITY_API_KEY=...
       .venv/bin/python scripts/probe_providers.py
 """
 import json
