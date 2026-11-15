@@ -73,7 +73,7 @@ async def _execute_web_tool_call(
     arguments = function.get("arguments") or "{}"
     if not isinstance(arguments, str):
         arguments = json.dumps(arguments)
-    logger.debug("web_tool=%s arguments=%s", name, arguments)
+    logger.debug("web_tool=%s arguments_bytes=%d", name, len(arguments))
 
     try:
         json.loads(arguments)

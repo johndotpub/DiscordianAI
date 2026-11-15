@@ -139,6 +139,8 @@ class ClefRouter:
             reasons=(f"clef:{route}:p={probability:.3f}",),
             latency_ms=latency_ms,
             text=request.text,
+            router_id=self.router_id,
+            policy_version=self.policy_version,
         )
 
     def _fallback(
@@ -158,6 +160,8 @@ class ClefRouter:
             reasons=(f"clef:fallback:{_failure_reason(exc)}", *gate.reasons),
             latency_ms=latency_ms,
             text=gate.text or request.text,
+            router_id=self.router_id,
+            policy_version=self.policy_version,
         )
 
 

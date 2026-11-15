@@ -47,6 +47,8 @@ class RouteDecision:
     reasons: tuple[str, ...] = ()
     latency_ms: float = 0.0
     text: str = ""
+    router_id: str = "gate"
+    policy_version: str = "1"
 
 
 class Router(Protocol):

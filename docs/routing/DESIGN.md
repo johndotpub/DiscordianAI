@@ -97,10 +97,12 @@ Clef never widens the routing surface or changes the prompt.
 
 ## Cache and identity
 
-Responses are cached under `salt = "{route}:gate:1"` (`:reroute` for the safety-net reply), combined with
-service/provider/source/degraded flags. A web answer and a local answer can never share an entry. Cache
-policy remains "cacheable unless URL-forced or the route was local-with-bearing-cue", expressed at the
-call site — there is no router-emitted TTL object anymore.
+Responses are cached under `salt = "{route}:{router_id}:{policy_version}"` (`:reroute` for the safety-net
+reply), combined with service/provider/source/degraded flags. Each decision carries its router identity:
+the gate stamps `gate`/`1`, and Clef stamps `clef`/`1`, including its fallback decision. The orchestrator's
+lexicon-error fallback keeps the gate defaults. A web answer and a local answer, or a gate answer and a
+Clef answer, can never share an entry. Cache policy remains "cacheable unless URL-forced or the route was
+local-with-bearing-cue", expressed at the call site — there is no router-emitted TTL object anymore.
 
 ## Failure modes
 

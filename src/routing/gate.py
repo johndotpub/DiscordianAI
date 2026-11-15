@@ -56,6 +56,8 @@ def decide(
         reasons=("local:default",),
         latency_ms=latency_ms,
         text=text,
+        router_id="gate",
+        policy_version="1",
     )
 
 
@@ -77,6 +79,8 @@ def _decision(
         reasons=tuple(reasons),
         latency_ms=latency_ms,
         text=text,
+        router_id="gate",
+        policy_version="1",
     )
 
 

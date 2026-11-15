@@ -16,6 +16,8 @@ _FETCH_CONTENT_LIMIT = 8000
 _DEFAULT_MAX_RESULTS = 5
 _MIN_MAX_RESULTS = 1
 _MAX_MAX_RESULTS = 10
+_MAX_QUERY_LENGTH = 500
+_MAX_URL_LENGTH = 2048
 _DEFAULT_OLLAMA_ORIGIN = "https://ollama.com"
 
 WEB_TOOLS = [
@@ -34,6 +36,7 @@ WEB_TOOLS = [
                     "query": {
                         "type": "string",
                         "description": "The search query.",
+                        "maxLength": _MAX_QUERY_LENGTH,
                     },
                     "max_results": {
                         "type": "integer",
@@ -63,6 +66,7 @@ WEB_TOOLS = [
                     "url": {
                         "type": "string",
                         "description": "The absolute http(s) URL to fetch.",
+                        "maxLength": _MAX_URL_LENGTH,
                     },
                 },
                 "required": ["url"],
@@ -128,6 +132,9 @@ def _normalise_arguments(name: str, arguments: dict[str, Any]) -> dict[str, Any]
         if not query:
             msg = "query is required"
             raise ValueError(msg)
+        if len(query) > _MAX_QUERY_LENGTH:
+            msg = f"query exceeds {_MAX_QUERY_LENGTH} characters"
+            raise ValueError(msg)
         raw_max = arguments.get("max_results", _DEFAULT_MAX_RESULTS)
         try:
             max_results = int(raw_max)
@@ -139,6 +146,9 @@ def _normalise_arguments(name: str, arguments: dict[str, Any]) -> dict[str, Any]
         url = str(arguments.get("url") or "").strip()
         if not url:
             msg = "url is required"
+            raise ValueError(msg)
+        if len(url) > _MAX_URL_LENGTH:
+            msg = f"url exceeds {_MAX_URL_LENGTH} characters"
             raise ValueError(msg)
         return {"url": url}
     msg = f"unknown tool: {name}"

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -83,6 +85,83 @@ async def test_web_search_requires_query(monkeypatch):
     )
     assert "error" in out
     assert fake.requests == []
+
+
+@pytest.mark.asyncio
+async def test_web_search_rejects_an_oversized_query(monkeypatch):
+    fake = _FakeClient()
+    _patch_client(monkeypatch, fake)
+    arguments = json.dumps({"query": "q" * 501})
+    out = await web_tools.call_web_tool(
+        "web_search", arguments, api_key="k", base_url="https://ollama.com"
+    )
+    assert "error" in out
+    assert "500" in out
+    assert fake.requests == []
+
+
+@pytest.mark.asyncio
+async def test_web_fetch_rejects_an_oversized_url(monkeypatch):
+    fake = _FakeClient()
+    _patch_client(monkeypatch, fake)
+    arguments = json.dumps({"url": "u" * 2049})
+    out = await web_tools.call_web_tool(
+        "web_fetch", arguments, api_key="k", base_url="https://ollama.com"
+    )
+    assert "error" in out
+    assert "2048" in out
+    assert fake.requests == []
+
+
+@pytest.mark.asyncio
+async def test_web_search_clamps_max_results_to_ten(monkeypatch):
+    fake = _FakeClient(payload={"results": []})
+    _patch_client(monkeypatch, fake)
+    out = await web_tools.call_web_tool(
+        "web_search",
+        '{"query": "news", "max_results": 99}',
+        api_key="k",
+        base_url="https://ollama.com",
+    )
+    assert "error" not in out
+    assert fake.requests[0][1]["json"]["max_results"] == 10
+
+
+def test_tool_schemas_cap_user_controlled_input():
+    schemas = {
+        tool["function"]["name"]: tool["function"]["parameters"]["properties"]
+        for tool in web_tools.WEB_TOOLS
+    }
+    assert schemas["web_search"]["query"]["maxLength"] == 500
+    assert schemas["web_fetch"]["url"]["maxLength"] == 2048
+
+
+@pytest.mark.asyncio
+async def test_tool_arguments_never_reach_the_debug_log(monkeypatch, caplog):
+    fake = _FakeClient(payload={"title": "T", "content": "body"})
+    _patch_client(monkeypatch, fake)
+    canary = "SECRET-CANARY-123"
+    call = {
+        "id": "call-1",
+        "type": "function",
+        "function": {
+            "name": "web_fetch",
+            "arguments": f'{{"url": "https://example.com/?token={canary}"}}',
+        },
+    }
+
+    with caplog.at_level(logging.DEBUG):
+        result = await openai_processing._execute_web_tool_call(
+            call,
+            api_key="k",
+            base_url="https://ollama.com",
+            logger=logging.getLogger("web-tool-canary-test"),
+        )
+
+    assert canary not in caplog.text
+    assert "arguments_bytes=" in caplog.text
+    assert "body" in result
+    assert fake.requests
 
 
 @pytest.mark.asyncio

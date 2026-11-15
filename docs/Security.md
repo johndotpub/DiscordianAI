@@ -187,10 +187,13 @@ The bot does not validate or fetch user-supplied URLs locally. Perplexity opens
 them with the Agent API's `fetch_url` tool, and Ollama-compatible chat providers
 open them with `web_fetch` and `web_search` when `WEB_TOOLS` is enabled.
 
-Tool output is bounded before it reaches the model: search results at 6,000
-characters and fetched page text at 8,000 characters. Content is still
-untrusted and is not inspected by the bot. The residual prompt-injection risk
-described above applies to every page a provider fetches.
+Tool inputs are bounded before the provider request: `query` at 500 characters,
+`url` at 2,048 characters, and `max_results` at 1–10. Oversized inputs become
+error tool results and are not sent. Tool output is bounded before it reaches
+the model: search results at 6,000 characters and fetched page text at 8,000
+characters. Content is still untrusted and is not inspected by the bot. The
+residual prompt-injection risk described above applies to every page a provider
+fetches.
 
 Tools are offered only on the Ollama-compatible chat path and when `WEB_TOOLS`
 is true; OpenAI endpoints receive plain chat requests.

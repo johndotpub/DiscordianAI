@@ -343,11 +343,11 @@ def _routing_metadata(
     suffix = ":reroute" if rerouted else ""
     return RoutingMetadata(
         service=service,
-        router_id="gate",
-        policy_version="1",
+        router_id=decision.router_id,
+        policy_version=decision.policy_version,
         decision_source=decision.reasons[0] if decision.reasons else "unknown",
         route=decision.route,
-        salt=f"{decision.route}:gate:1{suffix}",
+        salt=f"{decision.route}:{decision.router_id}:{decision.policy_version}{suffix}",
         cacheable=_cacheable(decision),
         degraded=degraded,
     )

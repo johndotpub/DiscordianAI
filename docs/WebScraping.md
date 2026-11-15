@@ -28,6 +28,10 @@ daemon on `localhost`/`127.0.0.1`), the bot offers two function tools:
 - `web_search(query, max_results=5)` returns bounded search results.
 - `web_fetch(url)` returns a bounded page title and body.
 
+Model-supplied inputs are capped before the request: `query` at 500 characters,
+`url` at 2,048 characters, and `max_results` is clamped to 1–10. An oversized
+input becomes an error tool result and is never sent to the provider.
+
 The model may request up to four rounds of tool calls. Each round is executed,
 fed back as a tool message, and followed by another completion request. If the
 model is still asking for tools after four rounds, the request stops and keeps
@@ -67,8 +71,9 @@ Tool output is bounded before it reaches the model:
 ## Logging
 
 Each chat-path tool call logs one INFO line with its name and outcome, for
-example `web_tool=web_search ok=true`. Arguments (the query or URL) are logged
-only at DEBUG level. API keys are never logged.
+example `web_tool=web_search ok=true`. Arguments (the query or URL) are never
+logged; a DEBUG line records only the tool name and the argument payload's byte
+length. API keys are never logged.
 
 ## Caching
 

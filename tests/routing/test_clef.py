@@ -87,6 +87,21 @@ def test_local_decision_keeps_the_probability_in_the_reason(monkeypatch) -> None
 
     assert decision.route == "local"
     assert decision.reasons == ("clef:local:p=0.123",)
+    assert decision.router_id == "clef"
+    assert decision.policy_version == "1"
+
+
+def test_fallback_decision_carries_the_clef_identity(monkeypatch) -> None:
+    """A fallback answer is still produced under Clef's cache identity."""
+    _install_sync(
+        monkeypatch,
+        httpx.ConnectError("offline", request=httpx.Request("POST", _ENDPOINT)),
+    )
+
+    decision = ClefRouter(api_key="test-key").decide_sync(RouterInput(text="is github down"))
+
+    assert decision.router_id == "clef"
+    assert decision.policy_version == "1"
 
 
 @pytest.mark.asyncio
