@@ -227,6 +227,30 @@ shared contract suite in `tests/providers/` runs both adapters against stubbed
 SDK clients so request shape, parsing, tool-loop bounds, breaker behaviour,
 probes, and cache parity stay aligned.
 
+### Wire format: Chat Completions vs Responses API (decision)
+
+The chat path speaks **Chat Completions**; the Perplexity path speaks the
+**Agent (Responses) API**. That split is deliberate, not inertia:
+
+- Ollama Cloud — the shipped chat provider — serves its most mature
+  OpenAI-compatible surface on chat completions (and native `/api/chat`). Its
+  Responses endpoint is stateless (no `previous_response_id`) and still settling.
+- The rest of the ecosystem converges on the same split: LangChain, LiteLLM,
+  Open WebUI, LibreChat and the OpenAI Agents SDK all default non-OpenAI
+  providers to chat completions; Responses is adopted per-provider, typically
+  for first-party OpenAI only.
+- Responses' signature advantage — server-side conversation state — does not
+  exist on Ollama, and we replay history manually on both providers anyway.
+  Reasoning tokens bill as output tokens on both APIs.
+- OpenAI does recommend Responses for new OpenAI-side work, and GPT-5.x tool
+  calling with non-default reasoning effort requires it — so if the OpenAI
+  path ever becomes primary, the swap is confined to `providers/openai_chat.py`
+  plus fixtures.
+
+Reopen this decision if: OpenAI becomes the primary provider, hosted tools
+(web/file search, code interpreter) become desirable, or Ollama ships stateful
+Responses support. Wire-level details live in `docs/API-CONTRACT.md`.
+
 ### 4. Decorator-Based Caching
 
 ```python
