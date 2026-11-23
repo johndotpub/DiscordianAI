@@ -782,11 +782,10 @@ class TestCircuitBreakerStateTransitions:
                 await sometimes_failing_function(True)
         assert breaker.failure_count == 2
 
-        # Success should not reset in CLOSED state (only in HALF_OPEN)
+        # A success while CLOSED clears the consecutive-failure count.
         result = await sometimes_failing_function(False)
         assert result == "success"
-        # Failure count remains (only resets in HALF_OPEN)
-        assert breaker.failure_count == 2
+        assert breaker.failure_count == 0
 
 
 class TestRetryLogicScenarios:

@@ -283,3 +283,50 @@ async def test_accessor_reports_per_provider_state():
     assert states["perplexity"]["state"] == "CLOSED"
     assert states["perplexity"]["consecutive_failures"] == 0
     assert states["perplexity"]["last_failure_time"] == 0
+
+
+@pytest.mark.asyncio
+async def test_deterministic_client_errors_do_not_open_the_breaker():
+    """Five 4xx answers must leave the provider healthy and admit later calls."""
+    breaker = get_circuit_breaker("openai")
+    bad_request = openai.BadRequestError(
+        "invalid request",
+        response=_mock_response(400),
+        body=None,
+    )
+
+    async def rejected():
+        raise bad_request
+
+    for _ in range(5):
+        with pytest.raises(openai.BadRequestError):
+            await breaker.call(rejected)
+
+    assert breaker.state == "CLOSED"
+    assert breaker.failure_count == 0
+
+    async def healthy_call():
+        return "ok"
+
+    for _ in range(20):
+        assert await breaker.call(healthy_call) == "ok"
+
+
+@pytest.mark.asyncio
+async def test_a_success_while_closed_resets_consecutive_failures():
+    """One transient failure followed by a success leaves a clean count."""
+    breaker = CircuitBreaker(failure_threshold=5)
+
+    async def server_error():
+        raise _server_error()
+
+    with pytest.raises(openai.InternalServerError):
+        await breaker.call(server_error)
+    assert breaker.failure_count == 1
+
+    async def healthy_call():
+        return "ok"
+
+    assert await breaker.call(healthy_call) == "ok"
+    assert breaker.failure_count == 0
+    assert breaker.state == "CLOSED"

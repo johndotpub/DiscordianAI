@@ -150,7 +150,7 @@ class CircuitBreaker:
         async with self._lock:
             if self.state == "HALF_OPEN":
                 self.state = "CLOSED"
-                self.failure_count = 0
+            self.failure_count = 0
             self._probe_in_flight = False
             self.last_success_time = time.monotonic()
 
@@ -165,8 +165,13 @@ class CircuitBreaker:
 
         try:
             result = await func(*args, **kwargs)
-        except self.expected_exception:
-            await self._record_failure()
+        except self.expected_exception as exc:
+            if _is_provider_failure(exc):
+                await self._record_failure()
+            else:
+                # A deterministic client error proves the provider answered;
+                # it must not push the breaker towards OPEN.
+                await self._record_success()
             raise
         except BaseException:
             await self._release_probe()
@@ -376,7 +381,8 @@ if httpx2 is not None:
     _HTTPX_CONNECT_TIMEOUT_ERRORS += (httpx2.ConnectTimeout,)
 
 
-def _status_code_from_exception(exception: Exception) -> int | None:
+def _structured_status_code(exception: Exception) -> int | None:
+    """Return an HTTP status from the exception or its response, without parsing text."""
     for source in (exception, getattr(exception, "response", None)):
         if source is None:
             continue
@@ -384,9 +390,40 @@ def _status_code_from_exception(exception: Exception) -> int | None:
             value = getattr(source, attribute, None)
             if isinstance(value, int):
                 return value
+    return None
+
+
+def _status_code_from_exception(exception: Exception) -> int | None:
+    status_code = _structured_status_code(exception)
+    if status_code is not None:
+        return status_code
 
     match = _HTTP_4XX_IN_MESSAGE_PATTERN.search(str(exception))
     return int(match.group(1)) if match else None
+
+
+def _is_provider_failure(exception: Exception) -> bool:
+    """Return whether an exception is evidence of provider ill health.
+
+    A deterministic 4xx means the request was received and rejected; it is not
+    a transient provider failure. Timeouts, 408, 429, 5xx, and unclassified
+    errors still count.
+    """
+    if isinstance(exception, CircuitBreakerOpenError):
+        return False
+
+    status_code = _structured_status_code(exception)
+    if status_code is not None:
+        if _HTTP_STATUS_BAD_REQUEST <= status_code < _HTTP_STATUS_SERVER_ERROR:
+            return status_code in {_HTTP_STATUS_REQUEST_TIMEOUT, HTTP_STATUS_TOO_MANY_REQUESTS}
+        return True
+
+    error_details = classify_error(exception)
+    return error_details.error_type not in {
+        ErrorType.API_AUTH_ERROR,
+        ErrorType.CONFIG_ERROR,
+        ErrorType.VALIDATION_ERROR,
+    }
 
 
 def is_retryable_status(status: int | None) -> bool:

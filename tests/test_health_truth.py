@@ -7,6 +7,7 @@ import socket
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -336,3 +337,37 @@ def test_health_json_keeps_every_documented_key():
     } <= set(body["services"])
     assert body["services"]["openai"] in {"configured", "not_configured"}
     assert body["services"]["perplexity"] in {"configured", "not_configured"}
+
+
+def test_client_errors_keep_provider_health_healthy():
+    """A user-caused 400 must not degrade the provider or make /health 503."""
+    import openai
+
+    from src.error_handling import get_circuit_breaker
+
+    async def exercise_breaker():
+        breaker = get_circuit_breaker("openai")
+        error = openai.BadRequestError(
+            "invalid request",
+            response=SimpleNamespace(status_code=400, headers={}, request=SimpleNamespace()),
+            body=None,
+        )
+
+        async def rejected():
+            raise error
+
+        for _ in range(5):
+            with pytest.raises(openai.BadRequestError):
+                await breaker.call(rejected)
+
+    asyncio.run(exercise_breaker())
+    app = create_health_app(_deps())
+
+    with TestClient(app) as client:
+        response = client.get("/health")
+
+    body = response.json()
+    assert response.status_code == 200, body
+    assert body["status"] == "healthy", body
+    assert body["providers"]["openai"]["status"] == "healthy", body
+    assert body["providers"]["openai"]["consecutive_failures"] == 0, body
