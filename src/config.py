@@ -213,6 +213,10 @@ ERROR_MESSAGES = {
     "rate_limit_exceeded": (
         "⏱️ Rate limit exceeded! Please wait a moment before sending another message."
     ),
+    "processing_error": (
+        "🔧 Sorry, I encountered an error while processing your message. "
+        "Please try again in a moment."
+    ),
     "api_error": (
         "🔧 There was an issue connecting to the AI service. Please try again in a moment."
     ),

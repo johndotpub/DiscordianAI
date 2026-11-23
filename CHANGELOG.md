@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A routing lexicon may still carry a per-class weight field.** The field is
   ignored when the lexicon loads, so an existing data file keeps working while the
   removed scoring layer stays removed.
+- **The channel rate-limit notice uses the standard message.** A rate-limited
+  channel reply now asks the user to wait before sending another message, matching
+  the direct-message notice, instead of using a second hand-written copy.
+
 - **The launcher survives a restart wait and leaves other instances alone.** The restart
   loop no longer exits the script on its first second under `set -e`, the PID file is
   removed even when the old process is gone, and straggler cleanup matches only the

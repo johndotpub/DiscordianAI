@@ -8,6 +8,7 @@ import pytest
 from src.bot import (
     initialize_bot_and_dependencies,
 )
+from src.config import get_error_messages
 from src.message_processor import (
     _process_message_core,
     process_channel_message,
@@ -159,6 +160,26 @@ class TestMessageProcessing:
             message.channel.send.assert_called_once()
             sent_message = message.channel.send.call_args[0][0]
             assert "rate limit" in sent_message.lower()
+
+    @pytest.mark.asyncio
+    async def test_channel_rate_limit_uses_the_standard_notice(self, deps_factory):
+        """A rate-limited channel reply reuses the one standard notice."""
+        message = MagicMock(spec=discord.Message)
+        message.author.name = "TestUser"
+        message.author.id = 12345
+        message.author.mention = "<@12345>"
+        message.content = "<@123> Hello bot!"
+        message.channel = MagicMock(spec=discord.TextChannel)
+        message.channel.send = AsyncMock()
+
+        deps = deps_factory(RATE_LIMIT=10, RATE_LIMIT_PER=60)
+
+        with patch("src.message_processor.check_rate_limit", return_value=False):
+            await _process_message_core(message, deps, is_dm=False)
+
+        assert message.channel.send.call_args[0][0] == (
+            f"<@12345> {get_error_messages()['rate_limit_exceeded']}"
+        )
 
     @pytest.mark.asyncio
     async def test_process_message_core_channel(self, deps_factory):

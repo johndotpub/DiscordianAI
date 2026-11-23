@@ -30,6 +30,8 @@ from .models import AIClients, AIConfig, AIRequest, OpenAIConfig, PerplexityConf
 from .rate_limits import check_rate_limit
 from .smart_orchestrator import get_smart_response
 
+ERROR_MESSAGES = get_error_messages()
+
 
 def _token_limits(
     deps: dict[str, Any] | Any,
@@ -140,16 +142,6 @@ def _reply_policy(
     return prefix, users
 
 
-def _channel_kind(message: discord.Message, is_dm: bool) -> str:
-    """Return the router channel kind for this message."""
-    if is_dm:
-        return "dm"
-    channel = getattr(message, "channel", None)
-    if getattr(channel, "type", None) == discord.ChannelType.news:
-        return "announcement"
-    return "channel"
-
-
 def _guard_bot_turn(
     message: discord.Message,
     conversation_manager: Any,
@@ -185,7 +177,7 @@ async def _send_empty_fallback(
 ) -> None:
     """Send the fixed notice for a message that has no body after cleaning."""
     logger.info("Skipping empty message after cleaning")
-    fallback = get_error_messages()["no_response_generated"]
+    fallback = ERROR_MESSAGES["no_response_generated"]
     if not await safe_discord_send(
         channel,
         fallback,
@@ -247,24 +239,12 @@ async def _process_message_core(
 
     reply_mention, mention_users = _reply_policy(message, author_is_bot)
 
-    # Prepare context-specific strings for logging and error messages
-    if is_dm:
-        rate_limit_msg = (
-            "⏱️ Rate limit exceeded! Please wait a moment before sending another message."
-        )
-        error_msg = (
-            "🔧 Sorry, I encountered an error while processing your message. "
-            "Please try again in a moment."
-        )
-    else:
+    rate_limit_msg = ERROR_MESSAGES["rate_limit_exceeded"]
+    error_msg = ERROR_MESSAGES["processing_error"]
+    if not is_dm:
         # Clean message content for logging (remove mentions)
         clean_content = re.sub(r"<@[!&]?\d+>", "", clean_content).strip()
-        rate_limit_msg = "⏱️ Rate limit exceeded! Please wait a moment before mentioning me again."
-        error_msg = (
-            f"{reply_mention}"
-            "🔧 Sorry, I encountered an error while processing your message. "
-            "Please try again in a moment."
-        )
+        error_msg = f"{reply_mention}{error_msg}"
 
     logger.info(
         "Processing message (ID: %s, length: %d)",
@@ -332,9 +312,6 @@ async def _process_message_core(
             key: config[key]
             for key in (
                 "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
-                "MAX_HISTORY_PER_USER",
-                "USER_LOCK_CLEANUP_INTERVAL",
-                "ENTITY_DETECTION_MIN_WORDS",
                 "ROUTER_MODE",
                 "ROUTER_CLEF_MODEL",
                 "ROUTER_CLEF_THRESHOLD",
@@ -354,7 +331,6 @@ async def _process_message_core(
             conversation_manager=conversation_manager,
             logger=logger,
             conversation_key=conversation_key,
-            channel_kind=_channel_kind(message, is_dm),
             images=images,
         )
 
