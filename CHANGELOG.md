@@ -192,6 +192,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Clef returns it without a network call instead of relying on a `reasons` prefix.
 - **Clef failures cannot strand a message.** Any unexpected router exception falls back to the
   deterministic gate with a `fallback:router_error` reason and an ERROR log.
+- **Structured logs carry the Discord context they were given.** The formatter now reads the
+  stdlib record extras before removing the record, so `user_id`, `channel_id`, `guild_id`, and
+  the logger name appear in both console and JSON output. The adapter attaches ids only; a guild
+  name is no longer copied into every line.
 
 ### Operations ⚙️
 

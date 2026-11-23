@@ -4,11 +4,13 @@ from io import StringIO
 import logging
 import os
 import re
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 import structlog
 
+from src.logging_adapter import get_logger_with_context
 from src.structured_logging import configure_structlog, get_structured_logger
 
 _CANARY_VALUE = "SENTINEL-VALUE-IN-FRAME-LOCALS"
@@ -29,9 +31,9 @@ def test_configure_structlog_defaults():
     root = logging.getLogger()
     assert root.level == logging.INFO
     assert len(root.handlers) == 1
+    formatter = root.handlers[0].formatter
     assert any(
-        isinstance(proc, structlog.stdlib.ExtraAdder)
-        for proc in root.handlers[0].formatter.processors
+        isinstance(proc, structlog.stdlib.ExtraAdder) for proc in formatter.foreign_pre_chain
     )
 
 
@@ -120,17 +122,6 @@ def test_add_logger_name_no_record():
     assert "logger_name" not in result
 
 
-def test_drop_record():
-    """_drop_record removes internal record keys."""
-    from src.structured_logging import _drop_record
-
-    event = {"_record": object(), "record": object(), "msg": "hello"}
-    result = _drop_record(logging.getLogger("test"), "info", event)
-    assert "_record" not in result
-    assert "record" not in result
-    assert "msg" in result
-
-
 def test_structured_logger_binds_context():
     """Bound context is rendered into the structured log output."""
     stream = StringIO()
@@ -166,3 +157,32 @@ def test_rendered_tracebacks_never_include_frame_locals(json_logs, log_colors):
     assert _CANARY_VALUE not in plain_output
     assert "Traceback (most recent call last)" in plain_output
     assert "RuntimeError: boom" in plain_output
+
+
+@pytest.mark.parametrize("json_logs", [False, True])
+def test_adapter_context_ids_are_rendered(json_logs):
+    """Stdlib adapter extras and the logger name reach console and JSON output."""
+    stream = StringIO()
+    configure_structlog(json_logs=json_logs, log_colors=False, stream=stream)
+    message = SimpleNamespace(
+        author=SimpleNamespace(id=987654321),
+        channel=SimpleNamespace(id=123456789),
+        guild=SimpleNamespace(id=555444333, name="FREE-TEXT-GUILD-NAME"),
+    )
+
+    logger = get_logger_with_context(logging.getLogger("test.adapter_render"), message)
+    logger.info("hello context")
+
+    output = stream.getvalue()
+    assert "hello context" in output
+    assert "user_id" in output
+    assert "987654321" in output
+    assert "channel_id" in output
+    assert "123456789" in output
+    assert "guild_id" in output
+    assert "555444333" in output
+    if json_logs:
+        assert '"logger_name": "test.adapter_render"' in output
+    else:
+        assert "[test.adapter_render]" in output
+    assert "FREE-TEXT-GUILD-NAME" not in output

@@ -59,4 +59,4 @@ def test_get_logger_with_context_returns_adapter():
     assert adapter.extra["user_id"] == 111
     assert adapter.extra["channel_id"] == 222
     assert adapter.extra["guild_id"] == 333
-    assert adapter.extra["guild_name"] == "Test Guild"
+    assert "guild_name" not in adapter.extra

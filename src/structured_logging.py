@@ -45,17 +45,6 @@ def _add_logger_name(
     return event_dict
 
 
-def _drop_record(
-    _logger: logging.Logger,
-    _method_name: str,
-    event_dict: dict[str, Any],
-) -> dict[str, Any]:
-    """Remove internal ``_record`` / ``record`` keys before rendering."""
-    event_dict.pop("_record", None)
-    event_dict.pop("record", None)
-    return event_dict
-
-
 def _parse_flag(raw_value: str | None) -> bool | None:
     """Parse a tri-state boolean flag value."""
     if raw_value is None:
@@ -129,9 +118,6 @@ def configure_structlog(
     shared_processors: list[Any] = [
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
-        _add_logger_name,
-        structlog.stdlib.ExtraAdder(),
-        _drop_record,
     ]
 
     color_reason: str | None = None
@@ -166,7 +152,9 @@ def configure_structlog(
     )
 
     formatter = structlog.stdlib.ProcessorFormatter(
+        foreign_pre_chain=[structlog.stdlib.ExtraAdder()],
         processors=[
+            _add_logger_name,
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             *shared_processors,
             *exception_processors,

@@ -9,8 +9,9 @@ import discord
 class ContextualLoggerAdapter(logging.LoggerAdapter):
     """Logger adapter that injects Discord context into log records.
 
-    This ensures that every log record contains relevant metadata like
-    guild_id, channel_id, and user_id when available.
+    This ensures that every log record contains relevant ids like
+    guild_id, channel_id, and user_id when available. Free text such as a
+    guild name stays out of the log.
     """
 
     def process(self, msg: Any, kwargs: Any) -> tuple[Any, Any]:
@@ -36,6 +37,5 @@ def get_logger_with_context(
 
     if message.guild:
         context["guild_id"] = message.guild.id
-        context["guild_name"] = message.guild.name
 
     return ContextualLoggerAdapter(logger, context)
