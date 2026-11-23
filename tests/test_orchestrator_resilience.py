@@ -321,7 +321,8 @@ async def test_openai_only_mode_reports_the_classified_outage_not_a_rephrase_hin
         perplexity=None,
     )
 
-    with patch("src.error_handling.asyncio.sleep", new=AsyncMock()):
+    retry_sleep = AsyncMock()
+    with patch("src.error_handling.asyncio.sleep", new=retry_sleep):
         response, suppress, embed = await get_smart_response(
             request,
             [],
@@ -329,6 +330,7 @@ async def test_openai_only_mode_reports_the_classified_outage_not_a_rephrase_hin
             AIConfig(openai=OpenAIConfig()),
         )
 
+    assert retry_sleep.await_count == 1
     assert response == classify_error(error).user_message
     assert response != get_error_messages()["no_response_generated"]
     assert suppress is False
@@ -357,7 +359,8 @@ async def test_perplexity_only_mode_reports_the_classified_outage_not_a_rephrase
         perplexity=_failing_responses_client(error),
     )
 
-    with patch("src.error_handling.asyncio.sleep", new=AsyncMock()):
+    retry_sleep = AsyncMock()
+    with patch("src.error_handling.asyncio.sleep", new=retry_sleep):
         response, suppress, embed = await get_smart_response(
             request,
             [],
@@ -365,6 +368,7 @@ async def test_perplexity_only_mode_reports_the_classified_outage_not_a_rephrase
             AIConfig(perplexity=PerplexityConfig()),
         )
 
+    assert retry_sleep.await_count == 1
     assert response == classify_error(error).user_message
     assert response != get_error_messages()["no_response_generated"]
     assert suppress is False

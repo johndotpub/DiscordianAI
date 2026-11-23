@@ -183,6 +183,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests ✅
 
+- **Single-provider outage tests no longer wait for retry backoff.** The retry sleep is
+  patched at its real boundary in `src.error_handling`, and each test asserts that one
+  backoff sleep was intercepted, so the suite proves the retry path while running in
+  milliseconds.
 - **Default-provider regression coverage** pins the Ollama Cloud URL and model, permissive model
   validation, `REASONING_EFFORT` overriding, and the `max_tokens` request payload.
 - **Provider contract coverage** runs both adapters against stubbed SDK clients: request shape,
