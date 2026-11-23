@@ -39,7 +39,9 @@ OpenAI remains supported by setting all three of `OPENAI_API_URL`, `GPT_MODEL`, 
 - **`INPUT_TOKENS`**: Maximum input context tokens *(default: 250000)*
 - **`OUTPUT_TOKENS`**: Maximum chat output tokens per response, sent as `max_tokens` to Ollama-compatible providers and `max_completion_tokens` to `api.openai.com` *(default: 16384)*
 - **`PERPLEXITY_OUTPUT_TOKENS`**: Maximum Perplexity output tokens per response, sent as `max_output_tokens` to the Agent API *(default: the value of `OUTPUT_TOKENS`)*
-- **`CONTEXT_WINDOW`**: Total context window size *(default: 1000000)*. The default chat model's window is 1,000,000 tokens, so this value may be set that high; it feeds the prompt budget and truncation, not billing.
+- **`PERPLEXITY_INPUT_TOKENS`**: Prompt budget for the Perplexity Sonar path only *(default: 111000)*. It leaves room for `PERPLEXITY_OUTPUT_TOKENS` and the fixed `fetch_url` instruction suffix inside the Sonar context window.
+- **`CONTEXT_WINDOW`**: Total chat-provider context window size *(default: 1000000)*. The default chat model's window is 1,000,000 tokens, so this value may be set that high; it feeds the prompt budget and truncation, not billing.
+- **`PERPLEXITY_CONTEXT_WINDOW`**: Total Perplexity Sonar context window *(default: 128000)*. Sonar documents a 128K-token window, so the Perplexity path uses this value instead of the larger chat-provider window.
 - **`SYSTEM_MESSAGE`**: System prompt for AI personality *(default: "You are a helpful assistant.")*
 
 `OUTPUT_TOKENS` and `PERPLEXITY_OUTPUT_TOKENS` mean different things. The chat
@@ -57,6 +59,13 @@ trimmed first; an oversized message is truncated with a visible marker. The prom
 also leaves room for the provider's output cap inside `CONTEXT_WINDOW`; if the input and
 output budgets exceed `CONTEXT_WINDOW`, the context window wins and a warning naming the
 conflicting settings is logged.
+
+The chat and Perplexity paths have different windows. Chat requests use `INPUT_TOKENS` and
+`CONTEXT_WINDOW`; Perplexity requests use `PERPLEXITY_INPUT_TOKENS` and
+`PERPLEXITY_CONTEXT_WINDOW` because the Sonar model documents a 128K-token context length,
+not the chat model's 1,000,000. The Perplexity prompt budget also reserves the fixed
+`fetch_url` instruction suffix before history is trimmed, so a full prompt plus
+`PERPLEXITY_OUTPUT_TOKENS` fits the Sonar window.
 
 #### Web Tools
 - **`WEB_TOOLS`**: Offer native web search and page fetch to Ollama-compatible chat providers; OpenAI endpoints never receive these tools *(default: true)*
@@ -195,7 +204,9 @@ PERPLEXITY_MODEL=perplexity/sonar
 INPUT_TOKENS=250000
 OUTPUT_TOKENS=16384
 PERPLEXITY_OUTPUT_TOKENS=16384
+PERPLEXITY_INPUT_TOKENS=111000
 CONTEXT_WINDOW=1000000
+PERPLEXITY_CONTEXT_WINDOW=128000
 
 # === SYSTEM MESSAGE ===
 # Customize your bot's personality
@@ -287,7 +298,9 @@ export REASONING_EFFORT="high"
 export INPUT_TOKENS="250000"
 export OUTPUT_TOKENS="16384"
 export PERPLEXITY_OUTPUT_TOKENS="16384"
+export PERPLEXITY_INPUT_TOKENS="111000"
 export CONTEXT_WINDOW="1000000"
+export PERPLEXITY_CONTEXT_WINDOW="128000"
 export SYSTEM_MESSAGE="You are a helpful assistant."
 
 # Rate limiting and connection pooling

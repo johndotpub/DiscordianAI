@@ -8,6 +8,8 @@ import discord
 from .config import (
     DEFAULT_CONTEXT_WINDOW,
     DEFAULT_INPUT_TOKENS,
+    DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
+    DEFAULT_PERPLEXITY_INPUT_TOKENS,
     DEFAULT_PERPLEXITY_MODEL,
     DEFAULT_REASONING_EFFORT,
     DEFAULT_VISION_ENABLED,
@@ -41,6 +43,22 @@ def _token_limits(
     return config, input_tokens, context_window
 
 
+def _perplexity_token_limits(
+    deps: dict[str, Any] | Any,
+    config: dict[str, Any],
+) -> tuple[int, int]:
+    """Return the Sonar prompt budget and context window."""
+    input_tokens = config.get(
+        "PERPLEXITY_INPUT_TOKENS",
+        deps.get("PERPLEXITY_INPUT_TOKENS", DEFAULT_PERPLEXITY_INPUT_TOKENS),
+    )
+    context_window = config.get(
+        "PERPLEXITY_CONTEXT_WINDOW",
+        deps.get("PERPLEXITY_CONTEXT_WINDOW", DEFAULT_PERPLEXITY_CONTEXT_WINDOW),
+    )
+    return input_tokens, context_window
+
+
 def _perplexity_output_tokens(deps: dict[str, Any] | Any, config: dict[str, Any]) -> int:
     """Resolve the Perplexity cap without falling back to a false value."""
     output_tokens = config.get("PERPLEXITY_OUTPUT_TOKENS")
@@ -49,6 +67,22 @@ def _perplexity_output_tokens(deps: dict[str, Any] | Any, config: dict[str, Any]
     if output_tokens is None:
         output_tokens = deps["OUTPUT_TOKENS"]
     return output_tokens
+
+
+def _perplexity_service_config(
+    deps: dict[str, Any] | Any,
+    config: dict[str, Any],
+    model: str,
+) -> PerplexityConfig:
+    """Build the Perplexity config with its own Sonar budget."""
+    input_tokens, context_window = _perplexity_token_limits(deps, config)
+    return PerplexityConfig(
+        model=model,
+        system_message=deps["SYSTEM_MESSAGE"],
+        output_tokens=_perplexity_output_tokens(deps, config),
+        input_tokens=input_tokens,
+        context_window=context_window,
+    )
 
 
 def _vision_settings(deps: dict[str, Any] | Any) -> tuple[bool, int, int, int]:
@@ -295,13 +329,7 @@ async def _process_message_core(
             or config.get("PERPLEXITY_MODEL")
             or DEFAULT_PERPLEXITY_MODEL
         )
-        perplexity_config = PerplexityConfig(
-            model=perplexity_model,
-            system_message=deps["SYSTEM_MESSAGE"],
-            output_tokens=_perplexity_output_tokens(deps, config),
-            input_tokens=input_tokens,
-            context_window=context_window,
-        )
+        perplexity_config = _perplexity_service_config(deps, config, perplexity_model)
         ai_config = AIConfig(openai=openai_config, perplexity=perplexity_config)
         orchestrator_config = {
             key: config[key]

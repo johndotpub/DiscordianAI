@@ -9,6 +9,8 @@ from .config import (
     DEFAULT_INPUT_TOKENS,
     DEFAULT_OPENAI_MODEL,
     DEFAULT_OUTPUT_TOKENS,
+    DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
+    DEFAULT_PERPLEXITY_INPUT_TOKENS,
     DEFAULT_PERPLEXITY_MODEL,
     DEFAULT_PERPLEXITY_OUTPUT_TOKENS,
     DEFAULT_REASONING_EFFORT,
@@ -69,8 +71,8 @@ class PerplexityConfig:
         "When providing citations, include source URLs when available."
     )
     output_tokens: int = DEFAULT_PERPLEXITY_OUTPUT_TOKENS
-    input_tokens: int = DEFAULT_INPUT_TOKENS
-    context_window: int = DEFAULT_CONTEXT_WINDOW
+    input_tokens: int = DEFAULT_PERPLEXITY_INPUT_TOKENS
+    context_window: int = DEFAULT_PERPLEXITY_CONTEXT_WINDOW
 
 
 @dataclass(frozen=True)

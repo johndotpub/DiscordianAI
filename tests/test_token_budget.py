@@ -221,3 +221,38 @@ async def test_context_window_conflict_warns_and_still_sends_fitting_request():
     assert "OUTPUT_TOKENS" in warning_text
     messages = client.calls[0]["messages"]
     assert estimate_messages_tokens(messages) + config.output_tokens <= config.context_window
+
+
+def test_perplexity_defaults_fit_the_sonar_context_window():
+    """The Perplexity path budgets for Sonar's documented 128K window."""
+    from src.models import PerplexityConfig
+
+    config = PerplexityConfig()
+
+    assert config.context_window == 128000
+    assert config.input_tokens == 111000
+    assert config.input_tokens + config.output_tokens <= config.context_window
+
+
+@pytest.mark.asyncio
+async def test_perplexity_prompt_budget_charges_the_fetch_url_suffix():
+    """The fixed instruction suffix is part of the prompt, not free extra text."""
+    from src.models import PerplexityConfig
+    from src.providers.perplexity import (
+        FETCH_URL_INSTRUCTIONS,
+        AgentResponsesProvider,
+    )
+
+    client = RecordingClient()
+    config = PerplexityConfig(
+        output_tokens=100,
+        input_tokens=500,
+        context_window=200000,
+    )
+    provider = AgentResponsesProvider(client, config)
+
+    request = provider.build_request("System prompt", "Z" * 5000, [], 100)
+
+    assert FETCH_URL_INSTRUCTIONS in request.messages[0]["content"]
+    assert estimate_messages_tokens(request.messages) <= config.input_tokens
+    assert request.max_output_tokens == 100

@@ -14,7 +14,7 @@ TRUNCATION_MARKER = "\n\n[truncated to fit the token budget]"
 MINIMUM_PROMPT_TOKENS = 32
 
 
-def _estimate_text_tokens(text: Any) -> int:
+def estimate_text_tokens(text: Any) -> int:
     """Estimate tokens for text using a conservative character ratio."""
     characters = len(str(text or ""))
     if characters == 0:
@@ -25,7 +25,7 @@ def _estimate_text_tokens(text: Any) -> int:
 def _estimate_content_tokens(content: Any, vision_token_estimate: int) -> int:
     """Estimate tokens for text content or a multimodal content list."""
     if not isinstance(content, list):
-        return _estimate_text_tokens(content)
+        return estimate_text_tokens(content)
 
     total = 0
     image_tokens = max(0, int(vision_token_estimate))
@@ -33,7 +33,7 @@ def _estimate_content_tokens(content: Any, vision_token_estimate: int) -> int:
         if not isinstance(part, dict):
             continue
         if part.get("type") == "text":
-            total += _estimate_text_tokens(part.get("text"))
+            total += estimate_text_tokens(part.get("text"))
         elif part.get("type") == "image_url":
             total += image_tokens
     return total
@@ -182,7 +182,7 @@ def _truncate_content_to_tokens(content: Any, max_message_tokens: int) -> str:
     if text_budget <= 0:
         return ""
 
-    marker_tokens = _estimate_text_tokens(TRUNCATION_MARKER)
+    marker_tokens = estimate_text_tokens(TRUNCATION_MARKER)
     if text_budget <= marker_tokens:
         marker_chars = int(text_budget * CHARS_PER_TOKEN / TOKEN_ESTIMATE_MARGIN)
         return TRUNCATION_MARKER[: max(0, marker_chars)]
@@ -191,7 +191,7 @@ def _truncate_content_to_tokens(content: Any, max_message_tokens: int) -> str:
     available_chars = max(0, min(len(text), available_chars))
     while (
         available_chars > 0
-        and _estimate_text_tokens(text[:available_chars] + TRUNCATION_MARKER) > text_budget
+        and estimate_text_tokens(text[:available_chars] + TRUNCATION_MARKER) > text_budget
     ):
         available_chars -= 1
 
@@ -218,7 +218,7 @@ def _fit_messages_to_budget(
         for message in messages
     ]
     total = sum(estimates)
-    minimum = MESSAGE_OVERHEAD_TOKENS + _estimate_text_tokens(TRUNCATION_MARKER)
+    minimum = MESSAGE_OVERHEAD_TOKENS + estimate_text_tokens(TRUNCATION_MARKER)
 
     while total > budget:
         truncatable = [
@@ -255,7 +255,7 @@ def _fit_messages_to_budget(
             target = estimates[index] - 1
 
         content = _truncate_content_to_tokens(messages[index].get("content"), target)
-        new_estimate = MESSAGE_OVERHEAD_TOKENS + _estimate_text_tokens(content)
+        new_estimate = MESSAGE_OVERHEAD_TOKENS + estimate_text_tokens(content)
         if new_estimate >= estimates[index]:
             break
 

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Behaviour changes
 
+- **Perplexity prompts fit the Sonar context window.** The web path now budgets prompts with
+  `PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW` (111,000 and 128,000 by default)
+  instead of the chat provider's 250,000 and 1,000,000. The fixed `fetch_url` instruction
+  suffix is charged against the prompt budget before history is trimmed, so a full prompt
+  plus `PERPLEXITY_OUTPUT_TOKENS` stays inside the documented 128K window.
 - **Pasted code and logs stay local.** A version string, current year, price, or other bearing cue inside
   a fenced code block no longer routes the message to web search; every cue is now extracted from the
   code-masked view, and text outside the fence still counts as before.
@@ -89,6 +94,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added ✨
 
+- **`PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW`**: control the prompt budget
+  and context window for the Perplexity Sonar path only. Defaults are 111,000 and 128,000,
+  matching Sonar's documented 128K context length; the chat path keeps `INPUT_TOKENS` and
+  `CONTEXT_WINDOW`.
 - **`ROUTER_CLEF_API_KEY`**: optional dedicated credential for the Clef decision endpoint. When it is
   unset, `OLLAMA_API_KEY` from the environment is eligible, and `OPENAI_API_KEY` is eligible only when
   `OPENAI_API_URL` is an Ollama Cloud URL. A key issued for another provider is never sent to Clef.

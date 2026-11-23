@@ -131,6 +131,12 @@ DEFAULT_OUTPUT_TOKENS = 16384
 DEFAULT_PERPLEXITY_OUTPUT_TOKENS = DEFAULT_OUTPUT_TOKENS
 DEFAULT_CONTEXT_WINDOW = 1000000
 
+# Sonar has a 128K context window. The Perplexity prompt budget leaves room
+# for its output cap and the fixed fetch-url instruction suffix, while the
+# chat path keeps the 1M-token defaults above.
+DEFAULT_PERPLEXITY_CONTEXT_WINDOW = 128000
+DEFAULT_PERPLEXITY_INPUT_TOKENS = 111000
+
 # Image attachment policy. Images travel only to the OpenAI-compatible chat
 # provider; Perplexity never receives them.
 DEFAULT_VISION_ENABLED = True
@@ -251,7 +257,9 @@ _CONFIG_DEFAULTS: dict[str, Any] = {
     "INPUT_TOKENS": DEFAULT_INPUT_TOKENS,
     "OUTPUT_TOKENS": DEFAULT_OUTPUT_TOKENS,
     "PERPLEXITY_OUTPUT_TOKENS": None,
+    "PERPLEXITY_INPUT_TOKENS": DEFAULT_PERPLEXITY_INPUT_TOKENS,
     "CONTEXT_WINDOW": DEFAULT_CONTEXT_WINDOW,
+    "PERPLEXITY_CONTEXT_WINDOW": DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
     "SYSTEM_MESSAGE": "You are a helpful assistant.",
     "RATE_LIMIT": DEFAULT_RATE_LIMIT,
     "RATE_LIMIT_PER": DEFAULT_RATE_LIMIT_PER,
@@ -458,7 +466,9 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "INPUT_TOKENS",
         "OUTPUT_TOKENS",
         "PERPLEXITY_OUTPUT_TOKENS",
+        "PERPLEXITY_INPUT_TOKENS",
         "CONTEXT_WINDOW",
+        "PERPLEXITY_CONTEXT_WINDOW",
         "SYSTEM_MESSAGE",
         "RATE_LIMIT",
         "RATE_LIMIT_PER",
@@ -504,7 +514,9 @@ def _apply_single_env_override(
         "INPUT_TOKENS",
         "OUTPUT_TOKENS",
         "PERPLEXITY_OUTPUT_TOKENS",
+        "PERPLEXITY_INPUT_TOKENS",
         "CONTEXT_WINDOW",
+        "PERPLEXITY_CONTEXT_WINDOW",
         "RATE_LIMIT",
         "RATE_LIMIT_PER",
         "OPENAI_MAX_CONNECTIONS",
@@ -821,7 +833,13 @@ def _parse_default_config(
         "Default", "PERPLEXITY_MODEL", fallback=_CONFIG_DEFAULTS["PERPLEXITY_MODEL"]
     )
 
-    settings = ["INPUT_TOKENS", "OUTPUT_TOKENS", "CONTEXT_WINDOW"]
+    settings = [
+        "INPUT_TOKENS",
+        "OUTPUT_TOKENS",
+        "PERPLEXITY_INPUT_TOKENS",
+        "CONTEXT_WINDOW",
+        "PERPLEXITY_CONTEXT_WINDOW",
+    ]
     for key in settings:
         config_data[key] = _get_int_safe(config, key, _CONFIG_DEFAULTS[key], logger)
 

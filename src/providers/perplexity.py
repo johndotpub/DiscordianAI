@@ -13,8 +13,8 @@ from typing import Any
 
 from src.config import (
     CITATION_PATTERN,
-    DEFAULT_CONTEXT_WINDOW,
-    DEFAULT_INPUT_TOKENS,
+    DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
+    DEFAULT_PERPLEXITY_INPUT_TOKENS,
     URL_PATTERN,
 )
 from src.error_handling import (
@@ -22,7 +22,11 @@ from src.error_handling import (
     get_circuit_breaker,
     retry_with_backoff,
 )
-from src.message_builder import build_messages, resolve_completion_budget
+from src.message_builder import (
+    build_messages,
+    estimate_text_tokens,
+    resolve_completion_budget,
+)
 from src.message_splitter import CitationMap
 from src.models import PerplexityConfig
 
@@ -38,6 +42,7 @@ FETCH_URL_INSTRUCTIONS = (
     "search results, clearly labelled as such."
 )
 WEB_TOOLS = [{"type": "web_search"}, {"type": "fetch_url"}]
+FETCH_URL_SUFFIX_TOKENS = estimate_text_tokens(FETCH_URL_INSTRUCTIONS)
 DEFAULT_MAX_STEPS = 4
 _DEFAULT_PROBE_TIMEOUT = 10.0
 
@@ -316,9 +321,9 @@ def _build_api_params(  # noqa: PLR0913
     tokens: int,
     history: list[dict] | None = None,
     *,
-    input_tokens: int = DEFAULT_INPUT_TOKENS,
+    input_tokens: int = DEFAULT_PERPLEXITY_INPUT_TOKENS,
     output_tokens: int | None = None,
-    context_window: int = DEFAULT_CONTEXT_WINDOW,
+    context_window: int = DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
     logger=None,
 ) -> dict[str, Any]:
     """Prepare Perplexity Agent API request parameters.
@@ -329,11 +334,14 @@ def _build_api_params(  # noqa: PLR0913
     questions.
     """
     completion_tokens = tokens if output_tokens is None else output_tokens
+    prompt_budget = (
+        None if input_tokens is None else max(0, int(input_tokens) - FETCH_URL_SUFFIX_TOKENS)
+    )
     messages = build_messages(
         system,
         user_msg,
         history,
-        input_tokens=input_tokens,
+        input_tokens=prompt_budget,
         output_tokens=completion_tokens,
         context_window=context_window,
         logger=logger,
@@ -351,7 +359,7 @@ def _build_api_params(  # noqa: PLR0913
         "instructions": instructions,
         "input": input_messages,
         "max_output_tokens": resolve_completion_budget(
-            completion_tokens, context_window, input_tokens
+            completion_tokens, context_window, prompt_budget
         ),
         "tools": WEB_TOOLS,
         "extra_body": {"max_steps": DEFAULT_MAX_STEPS},
