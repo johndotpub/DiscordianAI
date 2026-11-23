@@ -29,7 +29,7 @@ ARCHITECTURE = DOCS / "Architecture.md"
 CONFIG_KEY_PATTERN = re.compile(r"\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b")
 DEFAULT_MARKER_PATTERN = re.compile(r"\*\*`([A-Z][A-Z0-9_]+)`\*\*.*?\*\(default:\s*(.+?)\)\*")
 AUTOMODULE_PATTERN = re.compile(r"\.\.\s+automodule::\s+(src\.[A-Za-z0-9_.]+)")
-SOURCE_PATH_PATTERN = re.compile(r"src/([A-Za-z_][A-Za-z0-9_]*)\.py")
+SOURCE_PATH_PATTERN = re.compile(r"src/((?:[A-Za-z_][A-Za-z0-9_]*/)*[A-Za-z_][A-Za-z0-9_]*)\.py")
 BARE_PYTHON_FILE_PATTERN = re.compile(r"(?<![\w./-])([A-Za-z_][A-Za-z0-9_]*\.py)\b")
 DOTTED_PATTERN = re.compile(r"(?<![\w.])((?:[A-Za-z_]\w*\.)+[A-Za-z_]\w*)\b")
 MEMORY_FIGURE_PATTERN = re.compile(
@@ -71,7 +71,22 @@ NON_MODULE_SUFFIXES = {
     ".yaml",
     ".yml",
 }
-SOURCE_MODULES = {path.stem for path in (ROOT / "src").glob("*.py") if path.stem != "__init__"}
+
+
+def _source_paths() -> list[Path]:
+    """Return every Python source file, including package subdirectories."""
+    return sorted((ROOT / "src").rglob("*.py"))
+
+
+def _module_name(path: Path) -> str:
+    """Return the dotted module name for a source file below ``src``."""
+    relative = path.relative_to(ROOT / "src").with_suffix("")
+    parts = [part for part in relative.parts if part != "__init__"]
+    return ".".join(parts)
+
+
+SOURCE_MODULES = {_module_name(path) for path in _source_paths()} - {""}
+DOCUMENTED_DEFAULT_FLOOR = 40
 
 
 def _documented_python_file_exists(filename: str) -> bool:
@@ -220,7 +235,7 @@ def _markdown_section(text: str, title: str) -> str:
 
 
 def _doc_files() -> list[Path]:
-    return [README, *sorted(DOCS.glob("*.md"))]
+    return [README, *sorted(DOCS.rglob("*.md"))]
 
 
 def _doc_commands() -> list[tuple[Path, int, str]]:
@@ -356,7 +371,10 @@ def test_b2_documented_defaults_match_code() -> None:
             failures.append(
                 f"line {line_number}: {key} documented as {actual!r}, code default is {expected!r}"
             )
-    assert documented, "No documented defaults found in docs/Configuration.md"
+    assert documented >= DOCUMENTED_DEFAULT_FLOOR, (
+        f"documented defaults dropped to {documented}; the guard must match at least "
+        f"{DOCUMENTED_DEFAULT_FLOOR} markers"
+    )
     assert not failures, "\n".join(failures)
 
 
@@ -397,7 +415,10 @@ def _importable(module_name: str) -> bool:
 
 def _source_symbols() -> dict[str, set[str]]:
     symbols: dict[str, set[str]] = {}
-    for path in sorted((ROOT / "src").glob("*.py")):
+    for path in _source_paths():
+        module = _module_name(path)
+        if not module:
+            continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         names: set[str] = set()
         for node in tree.body:
@@ -409,12 +430,26 @@ def _source_symbols() -> dict[str, set[str]]:
                 names.add(node.target.id)
             elif isinstance(node, (ast.Import, ast.ImportFrom)):
                 names.update(alias.asname or alias.name.split(".")[0] for alias in node.names)
-        symbols[path.stem] = names
+        symbols[module] = names
     return symbols
 
 
 def _module_target_exists(module_name: str) -> bool:
-    return (ROOT / "src" / f"{module_name}.py").exists()
+    parts = module_name.split(".")
+    if parts and parts[0] == "src":
+        parts = parts[1:]
+    candidate = ROOT / "src" / Path(*parts)
+    return candidate.with_suffix(".py").is_file() or (candidate / "__init__.py").is_file()
+
+
+def _source_target(parts: list[str]) -> tuple[str | None, str | None]:
+    """Return the longest known module prefix and the attribute after it."""
+    for split in range(len(parts), 0, -1):
+        candidate = ".".join(parts[:split])
+        if candidate in SOURCE_MODULES:
+            attribute = parts[split] if len(parts) > split else None
+            return candidate, attribute
+    return None, None
 
 
 def test_b4_no_dead_documentation_references() -> None:  # noqa: PLR0912
@@ -432,10 +467,8 @@ def test_b4_no_dead_documentation_references() -> None:  # noqa: PLR0912
                 failures.append(f"{relative}: missing {target}")
         for match in AUTOMODULE_PATTERN.finditer(text):
             target = match.group(1)
-            parts = target.split(".")
-            module = parts[1] if len(parts) > 1 else ""
-            if not _module_target_exists(module) and not _allowed("B4", target):
-                failures.append(f"{relative}: {target} has no matching src/{module}.py")
+            if not _module_target_exists(target) and not _allowed("B4", target):
+                failures.append(f"{relative}: {target} has no matching module under src/")
         for line_number, line in enumerate(text.splitlines(), 1):
             for match in BARE_PYTHON_FILE_PATTERN.finditer(line):
                 filename = match.group(1)
@@ -451,12 +484,12 @@ def test_b4_no_dead_documentation_references() -> None:  # noqa: PLR0912
                 if parts[0] == "src":
                     if len(parts) < 2:
                         continue
-                    module = parts[1]
-                    attribute = parts[2] if len(parts) > 2 else None
-                    if module not in SOURCE_MODULES:
+                    module, attribute = _source_target(parts[1:])
+                    if module is None:
+                        missing = ".".join(parts[1:])
                         if not _allowed("B4", chain):
                             failures.append(
-                                f"{relative}:{line_number}: src.{module} is not a module"
+                                f"{relative}:{line_number}: src.{missing} is not a module"
                             )
                         continue
                     if (
@@ -470,10 +503,15 @@ def test_b4_no_dead_documentation_references() -> None:  # noqa: PLR0912
                     continue
                 first = parts[0]
                 if first in SOURCE_MODULES:
-                    attribute = parts[1]
-                    if attribute not in symbols.get(first, set()) and not _allowed("B4", chain):
+                    module, attribute = _source_target(parts)
+                    if (
+                        module
+                        and attribute
+                        and attribute not in symbols.get(module, set())
+                        and not _allowed("B4", chain)
+                    ):
                         failures.append(
-                            f"{relative}:{line_number}: {first}.{attribute} does not exist"
+                            f"{relative}:{line_number}: {module}.{attribute} does not exist"
                         )
                     continue
                 if "_" in first and not _importable(first) and not _allowed("B4", chain):
@@ -483,8 +521,12 @@ def test_b4_no_dead_documentation_references() -> None:  # noqa: PLR0912
     assert not failures, "\n".join(failures)
 
 
-def test_b5_documented_commands_are_runnable() -> None:
-    """Fenced commands have working entry points; unsafe commands are listed when skipped."""
+def test_b5_documented_commands_have_safe_entry_points() -> None:
+    """Fenced commands have working help/config forms; skips are reported.
+
+    The documented command itself is never executed: a bot launch or a
+    destructive command would not be safe in the test suite.
+    """
     commands = _doc_commands()
     assert commands, "No documented commands found"
     invocations: dict[tuple[str, ...], tuple[list[str], str]] = {}
@@ -525,7 +567,7 @@ def test_b5_documented_commands_are_runnable() -> None:
 
 def _source_constants() -> dict[str, list[object]]:
     constants: dict[str, list[object]] = {}
-    for path in sorted((ROOT / "src").glob("*.py")):
+    for path in _source_paths():
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in tree.body:
             if isinstance(node, ast.Assign):

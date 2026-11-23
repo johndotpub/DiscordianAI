@@ -86,9 +86,13 @@ def _collect_imports(tree: ast.AST) -> set[str]:
 
 
 def _third_party_imports_in_src() -> set[str]:
-    local_modules = {path.stem for path in SRC_DIR.glob("*.py")} | {"src"}
+    local_modules = (
+        {path.stem for path in SRC_DIR.rglob("*.py")}
+        | {path.name for path in SRC_DIR.iterdir() if path.is_dir()}
+        | {"src"}
+    )
     imported: set[str] = set()
-    for path in SRC_DIR.glob("*.py"):
+    for path in SRC_DIR.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         imported.update(_collect_imports(tree))
     return {
