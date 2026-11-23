@@ -81,6 +81,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added ✨
 
+- **`ROUTER_CLEF_API_KEY`**: optional dedicated credential for the Clef decision endpoint. When it is
+  unset, `OLLAMA_API_KEY` from the environment is eligible, and `OPENAI_API_KEY` is eligible only when
+  `OPENAI_API_URL` is an Ollama Cloud URL. A key issued for another provider is never sent to Clef.
+  Prefer the environment variable because the value is a secret.
 - **`REASONING_EFFORT`**: sent as `reasoning_effort` with chat requests; defaults to `high`. Valid
   values are model-defined, and reasoning tokens are billed as output.
 - **Optional Clef decision-model router.** `ROUTER_MODE=clef` asks Ollama Cloud's Clef model
@@ -123,6 +127,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `safe_discord_send()`, which delegates to the same helper. The source guard now detects
   qualified, unqualified, and aliased construction calls, and an end-to-end test checks that
   model-output mentions are neutralised in the text actually sent.
+
+### Security 🛡️
+
+- **The Clef key is scoped to its endpoint.** `ROUTER_MODE=clef` no longer sends the chat provider's
+  `OPENAI_API_KEY` to Ollama Cloud when `OPENAI_API_URL` points at another host. Existing Ollama Cloud
+  deployments keep working with no config change.
 
 ### Tests ✅
 

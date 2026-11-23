@@ -139,6 +139,8 @@ flowchart TD
 ROUTER_MODE=heuristic
 
 # Clef settings; ignored unless ROUTER_MODE=clef
+# Prefer the environment variable for this secret.
+ROUTER_CLEF_API_KEY=
 ROUTER_CLEF_MODEL=clef
 ROUTER_CLEF_THRESHOLD=0.5
 ROUTER_CLEF_TIMEOUT_MS=2000
@@ -150,6 +152,7 @@ LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 | Setting | Default | Description |
 |---|---|---|
 | `ROUTER_MODE` | `heuristic` | Selects the router implementation. `clef` uses Ollama Cloud's decision model and falls back to the deterministic gate; `model` is retired and raises. |
+| `ROUTER_CLEF_API_KEY` | unset | Dedicated Clef key. Prefer the environment variable. Without it, `OLLAMA_API_KEY` is used, and `OPENAI_API_KEY` is used only when `OPENAI_API_URL` is an Ollama Cloud URL. |
 | `ROUTER_CLEF_MODEL` | `clef` | Decision model used when `ROUTER_MODE=clef`. |
 | `ROUTER_CLEF_THRESHOLD` | 0.5 | Probability at or above which Clef routes to the web. |
 | `ROUTER_CLEF_TIMEOUT_MS` | 2000 | Clef request timeout before falling back to the deterministic gate. |

@@ -96,6 +96,7 @@ Advanced configuration for intelligent AI service routing.
 - **`USER_LOCK_CLEANUP_INTERVAL`**: Memory cleanup interval in seconds *(default: 3600)*
 - **`ENTITY_DETECTION_MIN_WORDS`**: Minimum message length intended for entity detection *(default: 10)*. Note: this setting is parsed into config but not yet wired into the current routing implementation; changing it has no runtime effect in this release.
 - **`ROUTER_MODE`**: Router implementation, `heuristic` or `clef` *(default: "heuristic")*. `heuristic` is the deterministic gate and remains the fallback. `clef` sends each message to Ollama Cloud's decision model (about 0.4 seconds, billed per token); network, timeout, HTTP, or malformed-response failures fall back to the deterministic gate. `model` is not implemented and raises with a pointer to `ROUTER_MODE=clef`.
+- **`ROUTER_CLEF_API_KEY`**: Optional dedicated key for the Clef decision endpoint. Prefer the environment variable because it is a secret. Resolution order is this key, `OLLAMA_API_KEY` from the environment, then `OPENAI_API_KEY` only when `OPENAI_API_URL` points at `ollama.com`; a key issued by another provider is never sent to Clef. When no eligible key exists, startup warns once and uses the deterministic gate. Unset by default.
 - **`ROUTER_CLEF_MODEL`**: Decision model used when `ROUTER_MODE=clef` *(default: "clef")*
 - **`ROUTER_CLEF_THRESHOLD`**: Probability at or above which Clef routes to the web *(default: 0.5)*
 - **`ROUTER_CLEF_TIMEOUT_MS`**: Clef request timeout in milliseconds before falling back to the deterministic gate *(default: 2000)*
@@ -243,6 +244,7 @@ ENTITY_DETECTION_MIN_WORDS=10
 
 # Router implementation: heuristic (default) or clef (optional decision model)
 ROUTER_MODE=heuristic
+ROUTER_CLEF_API_KEY=
 ROUTER_CLEF_MODEL=clef
 ROUTER_CLEF_THRESHOLD=0.5
 ROUTER_CLEF_TIMEOUT_MS=2000
@@ -303,6 +305,7 @@ export CONVERSATION_TTL_SECONDS="7200"
 export USER_LOCK_CLEANUP_INTERVAL="3600"
 export ENTITY_DETECTION_MIN_WORDS="10"
 export ROUTER_MODE="heuristic"
+export ROUTER_CLEF_API_KEY="your_clef_key"
 export ROUTER_CLEF_MODEL="clef"
 export ROUTER_CLEF_THRESHOLD="0.5"
 export ROUTER_CLEF_TIMEOUT_MS="2000"

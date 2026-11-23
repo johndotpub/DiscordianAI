@@ -264,6 +264,7 @@ _CONFIG_DEFAULTS: dict[str, Any] = {
     "CONVERSATION_TTL_SECONDS": DEFAULT_CONVERSATION_TTL_SECONDS,
     "USER_LOCK_CLEANUP_INTERVAL": DEFAULT_USER_LOCK_CLEANUP_INTERVAL,
     "ROUTER_MODE": DEFAULT_ROUTER_MODE,
+    "ROUTER_CLEF_API_KEY": None,
     "ROUTER_CLEF_MODEL": DEFAULT_ROUTER_CLEF_MODEL,
     "ROUTER_CLEF_THRESHOLD": DEFAULT_ROUTER_CLEF_THRESHOLD,
     "ROUTER_CLEF_TIMEOUT_MS": DEFAULT_ROUTER_CLEF_TIMEOUT_MS,
@@ -470,6 +471,7 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "CONVERSATION_TTL_SECONDS",
         "USER_LOCK_CLEANUP_INTERVAL",
         "ROUTER_MODE",
+        "ROUTER_CLEF_API_KEY",
         "ROUTER_CLEF_MODEL",
         "ROUTER_CLEF_THRESHOLD",
         "ROUTER_CLEF_TIMEOUT_MS",
@@ -671,6 +673,11 @@ def _parse_orchestrator_config(
         "Orchestrator",
         "ROUTER_MODE",
         fallback=_CONFIG_DEFAULTS["ROUTER_MODE"],
+    )
+    config_data["ROUTER_CLEF_API_KEY"] = config.get(
+        "Orchestrator",
+        "ROUTER_CLEF_API_KEY",
+        fallback=_CONFIG_DEFAULTS["ROUTER_CLEF_API_KEY"],
     )
     config_data["ROUTER_CLEF_MODEL"] = config.get(
         "Orchestrator",

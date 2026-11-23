@@ -122,6 +122,10 @@ ENTITY_DETECTION_MIN_WORDS=10
 # decision model, ~0.4 s per message and billed per token). "model" is retired.
 ROUTER_MODE=heuristic
 # Clef settings; ignored unless ROUTER_MODE=clef
+# Optional dedicated Clef key. Prefer the environment variable. When unset,
+# OLLAMA_API_KEY is used, and OPENAI_API_KEY is used only if OPENAI_API_URL is
+# an Ollama Cloud URL. A key issued by another provider is never sent to Clef.
+ROUTER_CLEF_API_KEY=
 ROUTER_CLEF_MODEL=clef
 ROUTER_CLEF_THRESHOLD=0.5
 ROUTER_CLEF_TIMEOUT_MS=2000

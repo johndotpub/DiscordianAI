@@ -17,3 +17,9 @@ follow_up = "Remove LOG_FILE parsing when the backward-compatibility window clos
 check = "B1"
 target = "WEB_TOOLS@config.ini.example"
 reason = "WEB_TOOLS defaults to true; the example documents the switch in a comment rather than adding a redundant active key."
+
+[[exception]]
+check = "B1"
+target = "OLLAMA_API_KEY@not-in-loader"
+reason = "OLLAMA_API_KEY is an environment-only fallback read directly by the routing credential resolver, not a config.ini key."
+follow_up = "Move the fallback into the central loader only if it becomes a supported config.ini key."
