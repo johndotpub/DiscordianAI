@@ -59,6 +59,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Perplexity adapters report the normalised length signal, and delivery appends one fixed
   notice line after the visible partial answer. The notice is bot text, is not written into
   conversation history, and does not change the system prompt.
+- **An answer survives its question being deleted.** If the invoking message is gone when
+  the reply is sent, the bot posts the same content once to the channel with the same mention
+  policy instead of losing the answer and claiming a reconnect.
+- **Connection notices describe the bot's situation.** The fixed network and Discord notices
+  say the bot could not reach its service and ask the user to try again shortly; neither asks
+  the user to check their own network or claims a reconnect that does not happen.
 - **Embed heads never split a citation marker or a code fence.** A split that would land
   inside `[n]` moves the marker whole into the next embed, and long fences are closed and
   reopened with the same language tag.

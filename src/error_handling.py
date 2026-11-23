@@ -362,6 +362,11 @@ _HTTP_STATUS_SERVER_ERROR = 500
 _RATE_LIMIT_MAX_RETRY_AFTER = 30.0
 _HTTP_4XX_IN_MESSAGE_PATTERN = re.compile(r"(?<!\d)(4\d{2})(?!\d)")
 
+NETWORK_ERROR_USER_MESSAGE = "🌐 I couldn't reach the AI service. Please try again shortly."
+DISCORD_CONNECTION_USER_MESSAGE = (
+    "🤖 I'm having trouble connecting to Discord. Please try again shortly."
+)
+
 _HTTPX_TIMEOUT_ERRORS: tuple[type[Exception], ...] = (httpx.TimeoutException,)
 _HTTPX_TRANSPORT_ERRORS: tuple[type[Exception], ...] = (httpx.TransportError,)
 _HTTPX_CONNECT_TIMEOUT_ERRORS: tuple[type[Exception], ...] = (httpx.ConnectTimeout,)
@@ -588,7 +593,7 @@ def _classify_typed_error(exception: Exception) -> ErrorDetails | None:
             ErrorType.NETWORK_ERROR,
             ErrorSeverity.HIGH,
             exception,
-            "🌐 Connection issue. Please check your network.",
+            NETWORK_ERROR_USER_MESSAGE,
             15,
         )
 
@@ -600,7 +605,7 @@ def _classify_typed_error(exception: Exception) -> ErrorDetails | None:
             ErrorType.DISCORD_CONNECTION,
             ErrorSeverity.HIGH,
             exception,
-            "🤖 Bot connection issue. Reconnecting...",
+            DISCORD_CONNECTION_USER_MESSAGE,
             retry_after_seconds(getattr(getattr(exception, "response", None), "headers", None)),
         )
 
@@ -665,7 +670,7 @@ def classify_error(exception: Exception) -> ErrorDetails:
     elif any(term in error_msg.lower() for term in ["connection", "network", "dns"]):
         error_type = ErrorType.NETWORK_ERROR
         severity = ErrorSeverity.HIGH
-        user_message = "🌐 Connection issue. Please check your network."
+        user_message = NETWORK_ERROR_USER_MESSAGE
         retry_after = 15
 
     # Discord specific errors
@@ -674,7 +679,7 @@ def classify_error(exception: Exception) -> ErrorDetails:
     ):
         error_type = ErrorType.DISCORD_CONNECTION
         severity = ErrorSeverity.HIGH
-        user_message = "🤖 Bot connection issue. Reconnecting..."
+        user_message = DISCORD_CONNECTION_USER_MESSAGE
 
     # Configuration errors
     elif any(term in error_msg.lower() for term in ["config", "missing", "invalid"]):

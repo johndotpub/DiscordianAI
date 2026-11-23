@@ -1,5 +1,6 @@
 """Tests for the single outbound delivery helper."""
 
+import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -35,6 +36,16 @@ def _original_message() -> MagicMock:
     return original_message
 
 
+def _http_exception(status: int, code: int = 0) -> discord.HTTPException:
+    response = MagicMock()
+    response.status = status
+    response.reason = "Bad Request"
+    return discord.HTTPException(
+        response=response,
+        message={"code": code, "message": "Unknown Message"},
+    )
+
+
 def _assert_reply_policy(original_message: MagicMock) -> None:
     for call in original_message.reply.call_args_list:
         kwargs = call.kwargs
@@ -61,6 +72,51 @@ def test_only_one_allowed_mentions_construction() -> None:
     """All outbound mention policy must come from the single delivery helper."""
     source = "\n".join(path.read_text(encoding="utf-8") for path in SRC_DIR.rglob("*.py"))
     assert source.count("discord.AllowedMentions") == 1
+
+
+@pytest.mark.asyncio
+async def test_deleted_question_falls_back_to_one_channel_send(caplog) -> None:
+    channel = _channel()
+    original_message = _original_message()
+    original_message.reply = AsyncMock(side_effect=_http_exception(400, 10008))
+
+    with caplog.at_level(logging.WARNING, logger="src.message_splitter"):
+        await send_formatted_message(
+            channel,
+            "The answer",
+            _deps(),
+            original_message=original_message,
+            mention_prefix=f"{original_message.author.mention} ",
+        )
+
+    original_message.reply.assert_awaited_once()
+    channel.send.assert_awaited_once()
+    attempted = original_message.reply.call_args.args[0]
+    sent = channel.send.call_args.args[0]
+    assert sent == attempted == f"{original_message.author.mention} The answer"
+    fallback_allowed = channel.send.call_args.kwargs["allowed_mentions"]
+    assert fallback_allowed.users == [original_message.author]
+    assert fallback_allowed.roles == []
+    assert fallback_allowed.everyone is False
+    assert "sending the answer to the channel" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_reply_failure_for_another_reason_is_not_replaced() -> None:
+    channel = _channel()
+    original_message = _original_message()
+    original_message.reply = AsyncMock(side_effect=_http_exception(403, 50013))
+
+    with pytest.raises(discord.HTTPException):
+        await send_formatted_message(
+            channel,
+            "The answer",
+            _deps(),
+            original_message=original_message,
+        )
+
+    original_message.reply.assert_awaited_once()
+    channel.send.assert_not_awaited()
 
 
 @pytest.mark.asyncio

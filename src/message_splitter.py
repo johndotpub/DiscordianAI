@@ -8,6 +8,7 @@ This module provides comprehensive message utilities, including:
 """
 
 from dataclasses import dataclass
+import logging
 import re
 from typing import Any
 
@@ -35,6 +36,10 @@ _FENCE_BLOCK_PATTERN = re.compile(r"(`{3,})[\s\S]*?\1")
 _URL_TRAILING_PUNCTUATION = ".,;:!?)]}'\""
 _CONTINUED_FOOTER = "🌐 Web search results (continued)"
 TRUNCATION_NOTICE = "✂️ The answer was cut off at the length limit."
+_MISSING_REPLY_REFERENCE_CODES = frozenset({10008})
+_HTTP_STATUS_NOT_FOUND = 404
+
+logger = logging.getLogger(__name__)
 
 
 class CitationMap(dict[str, str]):
@@ -83,6 +88,13 @@ def _sanitize_embed_description(
 # ============================================================================
 
 
+def _reply_reference_is_gone(exc: discord.HTTPException) -> bool:
+    """Return True when a reply failed because its target message no longer exists."""
+    if getattr(exc, "code", None) in _MISSING_REPLY_REFERENCE_CODES:
+        return True
+    return getattr(exc, "status", None) == _HTTP_STATUS_NOT_FOUND
+
+
 async def _deliver(
     channel: discord.TextChannel | discord.DMChannel,
     content: str,
@@ -109,10 +121,23 @@ async def _deliver(
         roles=[],
         replied_user=False,
     )
-    if original_message is not None:
-        await original_message.reply(content, **kwargs)
-    else:
+    if original_message is None:
         await channel.send(content, **kwargs)
+        return
+
+    try:
+        await original_message.reply(content, **kwargs)
+    except discord.HTTPException as exc:
+        if not _reply_reference_is_gone(exc):
+            raise
+        logger.warning(
+            "Reply target is gone (status=%s code=%s); sending the answer to the channel",
+            getattr(exc, "status", None),
+            getattr(exc, "code", None),
+        )
+        fallback_kwargs = dict(kwargs)
+        fallback_kwargs.pop("mention_author", None)
+        await channel.send(content, **fallback_kwargs)
 
 
 def append_truncation_notice(text: str) -> str:

@@ -465,7 +465,18 @@ class TestClassifyError:
 
         assert details.error_type == ErrorType.NETWORK_ERROR
         assert details.severity == ErrorSeverity.HIGH
-        assert "connection" in details.user_message.lower()
+        assert "couldn't reach the ai service" in details.user_message.lower()
+        assert "check your network" not in details.user_message.lower()
+
+    def test_connection_notices_describe_the_bot_situation(self):
+        """Fixed notices name the bot's problem instead of blaming the user."""
+        network = classify_error(Exception("Connection failed: Unable to reach server"))
+        discord_error = classify_error(Exception("Discord API error: websocket closed"))
+
+        assert "I couldn't reach" in network.user_message
+        assert "try again shortly" in network.user_message.lower()
+        assert "Reconnecting" not in discord_error.user_message
+        assert "try again shortly" in discord_error.user_message.lower()
 
     def test_classify_discord_error(self):
         """Test classification of Discord-specific errors."""
