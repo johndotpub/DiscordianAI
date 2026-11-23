@@ -261,5 +261,4 @@ def mock_conversation_manager():
     cm = MagicMock()
     cm.add_message = MagicMock()
     cm.get_conversation = MagicMock(return_value=[])
-    cm.get_conversation_summary = MagicMock(return_value=[])
     return cm
