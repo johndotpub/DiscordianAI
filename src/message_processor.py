@@ -4,7 +4,6 @@ import re
 from typing import Any
 
 import discord
-from discord import AllowedMentions
 
 from .config import (
     DEFAULT_CONTEXT_WINDOW,
@@ -100,16 +99,11 @@ async def _prepare_images(
 def _reply_policy(
     message: discord.Message,
     author_is_bot: bool,
-) -> tuple[str, AllowedMentions]:
-    """Return the single reply prefix and mention allowlist for this message."""
+) -> tuple[str, list[Any]]:
+    """Return the single reply prefix and the users a notice may mention."""
     prefix = "" if author_is_bot else f"{message.author.mention} "
     users = [] if author_is_bot else [message.author]
-    return prefix, AllowedMentions(
-        users=users,
-        roles=[],
-        everyone=False,
-        replied_user=False,
-    )
+    return prefix, users
 
 
 def _channel_kind(message: discord.Message, is_dm: bool) -> str:
@@ -153,7 +147,7 @@ def _guard_bot_turn(
 async def _send_empty_fallback(
     channel: Any,
     logger: Any,
-    allowed_mentions: AllowedMentions,
+    mention_users: list[Any],
 ) -> None:
     """Send the fixed notice for a message that has no body after cleaning."""
     logger.info("Skipping empty message after cleaning")
@@ -162,7 +156,7 @@ async def _send_empty_fallback(
         channel,
         fallback,
         logger,
-        allowed_mentions=allowed_mentions,
+        mention_users=mention_users,
     ):
         logger.error("Failed to send empty-message fallback")
 
@@ -189,7 +183,7 @@ async def _process_message_core(
     ):
         return
 
-    reply_mention, allowed_mentions = _reply_policy(message, author_is_bot)
+    reply_mention, mention_users = _reply_policy(message, author_is_bot)
 
     # Prepare context-specific strings for logging and error messages
     if is_dm:
@@ -233,7 +227,7 @@ async def _process_message_core(
                 message.channel,
                 rate_msg,
                 logger,
-                allowed_mentions=allowed_mentions,
+                mention_users=mention_users,
             ):
                 logger.error("Failed to send rate limit message")
             logger.warning("Rate limit exceeded")
@@ -247,7 +241,7 @@ async def _process_message_core(
             await _send_empty_fallback(
                 message.channel,
                 logger,
-                allowed_mentions,
+                mention_users,
             )
             return
 
@@ -347,7 +341,7 @@ async def _process_message_core(
             message.channel,
             user_friendly_msg,
             logger,
-            allowed_mentions=allowed_mentions,
+            mention_users=mention_users,
         ):
             logger.error(  # noqa: TRY400 — intentional: exception already logged above
                 "Failed to send error message"

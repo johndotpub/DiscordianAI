@@ -112,6 +112,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ships; the sealed corpora are a behaviour-pinning fixture, not a scoreboard; the previously
   assert-free `test_corpus.py` fails on drift; overrides are evaluated on code-masked text, so an
   instruction inside a fenced block no longer routes web.
+- **Mention policy has one owner.** Only `message_splitter._deliver()` constructs
+  `discord.AllowedMentions`; operational notices pass their permitted user to
+  `safe_discord_send()`, which delegates to the same helper. The source guard now detects
+  qualified, unqualified, and aliased construction calls, and an end-to-end test checks that
+  model-output mentions are neutralised in the text actually sent.
 
 ### Tests ✅
 

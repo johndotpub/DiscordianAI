@@ -7,6 +7,7 @@ This module provides comprehensive message utilities, including:
 - User context and mention extraction
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 import logging
 import re
@@ -95,26 +96,34 @@ def _reply_reference_is_gone(exc: discord.HTTPException) -> bool:
     return getattr(exc, "status", None) == _HTTP_STATUS_NOT_FOUND
 
 
-async def _deliver(
+async def _deliver(  # noqa: PLR0913 - one helper carries every delivery option
     channel: discord.TextChannel | discord.DMChannel,
     content: str,
     *,
     original_message: discord.Message | None = None,
     embed: discord.Embed | None = None,
     suppress_embeds: bool = False,
+    mention_users: Sequence[Any] | None = None,
 ) -> None:
-    """Reply to the invoking message or send to the channel under one policy."""
+    """Send content under the one mention policy owned by this helper.
+
+    A reply to ``original_message`` allows only that human author to be
+    mentioned. A plain channel send with ``mention_users`` allows exactly the
+    supplied users. Everyone, roles, and replied-user pings are always denied.
+    """
     kwargs: dict[str, Any] = {}
     if embed is not None:
         kwargs["embed"] = embed
     if embed is None or suppress_embeds:
         kwargs["suppress_embeds"] = suppress_embeds
-    mentioned_users: list[discord.abc.User] = []
+    mentioned_users: list[Any] = []
     if original_message is not None:
         author = original_message.author
         if getattr(author, "bot", False) is not True:
             mentioned_users = [author]
         kwargs["mention_author"] = False
+    elif mention_users is not None:
+        mentioned_users = list(mention_users)
     kwargs["allowed_mentions"] = discord.AllowedMentions(
         users=mentioned_users,
         everyone=False,

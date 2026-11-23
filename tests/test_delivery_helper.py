@@ -1,5 +1,6 @@
 """Tests for the single outbound delivery helper."""
 
+import ast
 import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -68,10 +69,83 @@ def _assert_deny_all_mentions(kwargs: dict) -> None:
     assert "roles" not in parse
 
 
+class _AllowedMentionsVisitor(ast.NodeVisitor):
+    """Find AllowedMentions construction calls and their enclosing function."""
+
+    def __init__(
+        self,
+        discord_names: set[str],
+        allowed_names: set[str],
+        path_label: str,
+        constructions: list[tuple[str, str]],
+    ) -> None:
+        self.discord_names = discord_names
+        self.allowed_names = allowed_names
+        self.path_label = path_label
+        self.constructions = constructions
+        self.function_stack: list[str] = []
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_AsyncFunctionDef(
+        self,
+        node: ast.AsyncFunctionDef,
+    ) -> None:
+        self._visit_function(node)
+
+    def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        self.function_stack.append(node.name)
+        self.generic_visit(node)
+        self.function_stack.pop()
+
+    def visit_Call(self, node: ast.Call) -> None:
+        func = node.func
+        is_construction = isinstance(func, ast.Name) and func.id in self.allowed_names
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr == "AllowedMentions"
+            and isinstance(func.value, ast.Name)
+            and func.value.id in self.discord_names
+        ):
+            is_construction = True
+        if is_construction:
+            location = self.function_stack[-1] if self.function_stack else "<module>"
+            self.constructions.append((self.path_label, location))
+        self.generic_visit(node)
+
+
+def _allowed_mentions_constructions() -> list[tuple[str, str]]:
+    """Return every module and function that constructs AllowedMentions."""
+    constructions: list[tuple[str, str]] = []
+
+    for path in SRC_DIR.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        discord_names = {"discord"}
+        allowed_names = {"AllowedMentions"}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "discord":
+                        discord_names.add(alias.asname or alias.name)
+            elif isinstance(node, ast.ImportFrom) and node.module == "discord":
+                for alias in node.names:
+                    if alias.name == "AllowedMentions":
+                        allowed_names.add(alias.asname or alias.name)
+
+        _AllowedMentionsVisitor(
+            discord_names,
+            allowed_names,
+            str(path.relative_to(SRC_DIR)),
+            constructions,
+        ).visit(tree)
+
+    return constructions
+
+
 def test_only_one_allowed_mentions_construction() -> None:
     """All outbound mention policy must come from the single delivery helper."""
-    source = "\n".join(path.read_text(encoding="utf-8") for path in SRC_DIR.rglob("*.py"))
-    assert source.count("discord.AllowedMentions") == 1
+    assert _allowed_mentions_constructions() == [("message_splitter.py", "_deliver")]
 
 
 @pytest.mark.asyncio

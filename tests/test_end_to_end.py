@@ -255,3 +255,54 @@ async def test_length_finish_reason_delivers_partial_answer_with_one_notice():
     conversation = deps.conversation_manager.get_conversation(conversation_key=conversation_key)
     assert conversation[1]["content"] == partial
     assert "cut off at the length limit" not in conversation[1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_model_output_mentions_are_neutralised_in_delivery():
+    guild = FakeGuild(1)
+    channel = FakeChannel(555, "general", guild)
+    guild.text_channels.append(channel)
+    guild.channels = guild.text_channels
+    bot_user = FakeUser(1, bot=True)
+    author = FakeUser(42)
+    bot = SimpleNamespace(user=bot_user, guilds=[guild])
+    message = FakeMessage(
+        author=author,
+        channel=channel,
+        guild=guild,
+        mentions=[bot_user],
+        content=f"{bot_user.mention} {USER_TEXT}",
+    )
+    hostile = "Hello @everyone @here <@123> <@&456> <#789>"
+
+    response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content=hostile),
+                finish_reason="stop",
+            )
+        ]
+    )
+    create = AsyncMock(return_value=response)
+    openai_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
+        base_url="https://ollama.com/v1/",
+    )
+    deps = _build_dependencies(bot, channel, openai_client)
+
+    await message_router.handle_incoming_message(message, deps, bot)
+
+    assert len(message.replies) == 1
+    content, kwargs = message.replies[0]
+    for raw in ("@everyone", "@here", "<@123>", "<@&456>", "<#789>"):
+        assert raw not in content
+    assert "@\u200beveryone" in content
+    assert "@\u200bhere" in content
+    assert "<@\u200b123>" in content
+    assert "<@&\u200b456>" in content
+    assert "<#\u200b789>" in content
+    allowed_mentions = kwargs["allowed_mentions"]
+    assert isinstance(allowed_mentions, discord.AllowedMentions)
+    assert allowed_mentions.everyone is False
+    assert allowed_mentions.roles == []
+    assert allowed_mentions.users == [author]

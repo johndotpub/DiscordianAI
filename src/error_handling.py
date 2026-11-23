@@ -9,7 +9,7 @@ This module provides robust error handling patterns including:
 """
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -23,7 +23,6 @@ import time
 from typing import Any
 
 import discord
-from discord import AllowedMentions
 import httpx
 import openai
 
@@ -772,7 +771,7 @@ async def safe_discord_send(
     logger: logging.Logger,
     max_retries: int = 3,
     *,
-    allowed_mentions: AllowedMentions | None = None,
+    mention_users: Sequence[Any] | None = None,
 ) -> bool:
     """Safely send message to Discord with retry logic and error handling.
 
@@ -781,17 +780,22 @@ async def safe_discord_send(
         content: Message content
         logger: Logger instance
         max_retries: Maximum retry attempts
-        allowed_mentions: Optional mention allowlist for the send
+        mention_users: Optional users the notice may mention. ``None`` keeps a
+            bare channel send; a sequence routes through the delivery helper,
+            which owns the ``AllowedMentions`` construction.
 
     Returns:
         bool: True if message sent successfully, False otherwise
     """
 
     async def _send_once() -> None:
-        kwargs: dict[str, Any] = {}
-        if allowed_mentions is not None:
-            kwargs["allowed_mentions"] = allowed_mentions
-        await channel.send(content, **kwargs)
+        if mention_users is None:
+            await channel.send(content)
+            return
+
+        from .message_splitter import _deliver  # noqa: PLC0415 - avoids an import cycle
+
+        await _deliver(channel, content, mention_users=mention_users)
 
     try:
         await retry_with_backoff(_send_once, _discord_retry_config(max_retries), logger)
