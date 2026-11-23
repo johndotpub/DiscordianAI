@@ -6,62 +6,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.config import ConfigFileError, get_error_messages, load_config, parse_arguments
+from tests.helpers import config_env_keys
 
 
 @pytest.fixture(autouse=True)
 def isolate_config_env(monkeypatch):
     """Scrub env vars that load_config reads so the host env never leaks into tests."""
-    keys = [
-        "DISCORD_TOKEN",
-        "ADDRESS",
-        "ALLOWED_CHANNELS",
-        "ALLOWED_CHANNEL_IDS",
-        "ALLOWED_GUILDS",
-        "ALLOWED_GUILD_IDS",
-        "BOT_PRESENCE",
-        "ACTIVITY_TYPE",
-        "ACTIVITY_STATUS",
-        "OPENAI_API_KEY",
-        "OPENAI_API_URL",
-        "PERPLEXITY_API_KEY",
-        "PERPLEXITY_API_URL",
-        "PERPLEXITY_MODEL",
-        "GPT_MODEL",
-        "REASONING_EFFORT",
-        "INPUT_TOKENS",
-        "OUTPUT_TOKENS",
-        "PERPLEXITY_OUTPUT_TOKENS",
-        "CONTEXT_WINDOW",
-        "SYSTEM_MESSAGE",
-        "RATE_LIMIT",
-        "RATE_LIMIT_PER",
-        "OPENAI_MAX_CONNECTIONS",
-        "OPENAI_MAX_KEEPALIVE",
-        "PERPLEXITY_MAX_CONNECTIONS",
-        "PERPLEXITY_MAX_KEEPALIVE",
-        "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
-        "MAX_HISTORY_PER_USER",
-        "CONVERSATION_TTL_SECONDS",
-        "USER_LOCK_CLEANUP_INTERVAL",
-        "ENTITY_DETECTION_MIN_WORDS",
-        "ROUTER_MODE",
-        "ROUTER_CLEF_MODEL",
-        "ROUTER_CLEF_THRESHOLD",
-        "ROUTER_CLEF_TIMEOUT_MS",
-        "WEB_TOOLS",
-        "VISION_ENABLED",
-        "VISION_MAX_IMAGES",
-        "VISION_MAX_BYTES",
-        "VISION_TOKEN_ESTIMATE",
-        "LOG_FILE",
-        "LOG_LEVEL",
-        "DISCORDIANAI_LOG_COLOR",
-        "HEALTH_ENABLED",
-        "HEALTH_HOST",
-        "HEALTH_PORT",
-    ]
-    for k in keys:
-        monkeypatch.delenv(k, raising=False)
+    for key in config_env_keys():
+        monkeypatch.delenv(key, raising=False)
 
 
 class TestParseArguments:

@@ -5,7 +5,226 @@ This module contains common fake classes and helper functions used across
 multiple test files to eliminate duplication and maintain DRY principles.
 """
 
-from unittest.mock import AsyncMock
+import ast
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
+
+
+class FakeTyping:
+    """Minimal async typing context manager for Discord doubles."""
+
+    async def __aenter__(self):
+        """Enter the typing context."""
+
+    async def __aexit__(self, exc_type, exc, tb):
+        """Leave the typing context without suppressing exceptions."""
+        return False
+
+
+class FakeUser:
+    """Discord user double with id-based equality."""
+
+    def __init__(self, user_id: int, *, bot: bool = False, name: str | None = None):
+        """Create a user with a stable synthetic id."""
+        self.id = user_id
+        self.bot = bot
+        self.name = name or f"user-{user_id}"
+        self.mention = f"<@{user_id}>"
+
+    def __eq__(self, other):
+        """Compare users by id, as Discord objects do."""
+        return getattr(other, "id", None) == self.id
+
+    def __hash__(self):
+        """Hash by id so users can be set members."""
+        return hash(self.id)
+
+
+class FakeGuild:
+    """Discord guild double with text channels and forums."""
+
+    def __init__(self, guild_id: int, name: str = "Guild", channels=None):
+        """Create a guild, optionally seeded with channels."""
+        self.id = guild_id
+        self.name = name
+        self.text_channels = list(channels or [])
+        self.forums: list = []
+        self.channels = self.text_channels
+
+
+class FakeChannel:
+    """Discord channel double that records sends."""
+
+    def __init__(self, channel_id: int, name: str = "general", guild=None):
+        """Create a channel bound to an optional guild."""
+        self.id = channel_id
+        self.name = name
+        self.guild = guild
+        self.sent_messages: list[tuple[str, dict]] = []
+
+    def typing(self):
+        """Return an async typing context manager."""
+        return FakeTyping()
+
+    async def send(self, content: str, **kwargs):
+        """Record one outgoing message."""
+        self.sent_messages.append((content, kwargs))
+
+
+class FakeDMChannel(FakeChannel):
+    """Direct-message channel double."""
+
+    def __init__(self, channel_id: int = 1, guild=None):
+        """Create a DM channel."""
+        super().__init__(channel_id, "dm", guild)
+
+
+class FakeGroupChannel(FakeChannel):
+    """Group direct-message channel double."""
+
+    def __init__(self, channel_id: int = 2, guild=None):
+        """Create a group DM channel."""
+        super().__init__(channel_id, "group", guild)
+
+
+class FakeThread(FakeChannel):
+    """Thread double that points at its parent channel."""
+
+    def __init__(self, channel_id: int, parent: FakeChannel):
+        """Create a thread under ``parent``."""
+        super().__init__(channel_id, "thread", parent.guild)
+        self.parent = parent
+        self.parent_id = parent.id
+
+
+class FakeMessage:
+    """Discord message double that records replies."""
+
+    def __init__(  # noqa: PLR0913 - mirrors the Discord message fields
+        self,
+        *,
+        message_id: int = 100,
+        author=None,
+        channel=None,
+        guild=None,
+        mentions=None,
+        content: str = "hello",
+    ):
+        """Create a message with optional author, channel, and mentions."""
+        self.id = message_id
+        self.author = author or FakeUser(42)
+        self.channel = channel
+        self.guild = guild
+        self.mentions = list(mentions or [])
+        self.content = content
+        self.replies: list[tuple[str, dict]] = []
+
+    async def reply(self, content: str, **kwargs):
+        """Record one reply."""
+        self.replies.append((content, kwargs))
+
+
+def make_router_message(channel, *, author=None, mentions=None, guild=None, content="hello"):
+    """Build a router-shaped message for the real handle_incoming_message."""
+    return SimpleNamespace(
+        id=100,
+        author=author or FakeUser(42),
+        channel=channel,
+        mentions=list(mentions or []),
+        guild=guild,
+        content=content,
+    )
+
+
+def guild_with_channel(channel: FakeChannel) -> FakeGuild:
+    """Create a guild whose text channels contain ``channel``."""
+    guild = FakeGuild(1, channels=[channel])
+    channel.guild = guild
+    return guild
+
+
+def bot_for_guild(guild: FakeGuild):
+    """Return a bot double whose user is synthetic id 1."""
+    return SimpleNamespace(user=FakeUser(1, bot=True), guilds=[guild])
+
+
+class FakeBreaker:
+    """Minimal circuit-breaker snapshot provider for health tests."""
+
+    def __init__(self, last_success_time: float):
+        """Create a closed breaker with the supplied last success time."""
+        self._last_success_time = last_success_time
+
+    def snapshot(self) -> dict:
+        """Return a closed breaker snapshot."""
+        return {
+            "state": "CLOSED",
+            "consecutive_failures": 0,
+            "last_failure_time": 0.0,
+            "last_success_time": self._last_success_time,
+        }
+
+
+def health_deps(  # noqa: PLR0913 - one keyword per health fixture knob
+    *,
+    connected=True,
+    has_openai=True,
+    has_perplexity=True,
+    latency=0.05,
+    guilds=None,
+    config=None,
+    breakers=None,
+    pool_manager=None,
+):
+    """Create dependency data for the health HTTP app."""
+    bot = MagicMock()
+    bot.is_ready.return_value = connected
+    bot.guilds = [MagicMock(), MagicMock()] if guilds is None else guilds
+    bot.latency = latency
+
+    settings = {
+        "OPENAI_API_KEY": "sk-test-key" if has_openai else None,
+        "PERPLEXITY_API_KEY": "pplx-test-key" if has_perplexity else None,
+        "GPT_MODEL": "gpt-5-mini",
+        "PERPLEXITY_MODEL": "perplexity/sonar",
+        "HEALTH_ENABLED": True,
+    }
+    settings.update(config or {})
+
+    deps = {
+        "bot": bot,
+        "client": MagicMock() if has_openai else None,
+        "perplexity_client": MagicMock() if has_perplexity else None,
+        "config": settings,
+    }
+    if breakers is not None:
+        deps["circuit_breakers"] = breakers
+    if pool_manager is not None:
+        deps["connection_pool_manager"] = pool_manager
+    return deps
+
+
+def config_env_keys() -> set[str]:
+    """Return every environment key the config loader reads."""
+    from src.config import _CONFIG_DEFAULTS
+
+    source = Path(__file__).resolve().parents[1] / "src" / "config.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef) or node.name != "_apply_env_overrides":
+            continue
+        for statement in node.body:
+            if not isinstance(statement, ast.Assign):
+                continue
+            if not any(
+                isinstance(target, ast.Name) and target.id == "env_keys"
+                for target in statement.targets
+            ):
+                continue
+            return set(_CONFIG_DEFAULTS) | set(ast.literal_eval(statement.value))
+    msg = "Could not find env_keys in src/config.py"
+    raise AssertionError(msg)
 
 
 def _search_results_for(citations: list[str]) -> list[dict[str, str]]:
@@ -51,11 +270,11 @@ class FakeChoice:
     """Fake choice object for API testing."""
 
     def __init__(self, content):
-        self.message = FakeMessage(content)
+        self.message = _FakeResponseMessage(content)
 
 
-class FakeMessage:
-    """Fake message object for API testing."""
+class _FakeResponseMessage:
+    """Response message payload for the API fakes above."""
 
     def __init__(self, content):
         self.content = content

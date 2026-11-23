@@ -10,64 +10,15 @@ from src.api_validation import validate_discord_config
 from src.config import _apply_config_defaults, load_config
 from src.dependencies import BotDependencies
 from src.main import validate_critical_config
+from tests.helpers import config_env_keys
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-
-ENV_KEYS = [
-    "DISCORD_TOKEN",
-    "ADDRESS",
-    "ALLOWED_CHANNELS",
-    "ALLOWED_CHANNEL_IDS",
-    "ALLOWED_GUILDS",
-    "ALLOWED_GUILD_IDS",
-    "BOT_PRESENCE",
-    "ACTIVITY_TYPE",
-    "ACTIVITY_STATUS",
-    "OPENAI_API_KEY",
-    "OPENAI_API_URL",
-    "PERPLEXITY_API_KEY",
-    "PERPLEXITY_API_URL",
-    "PERPLEXITY_MODEL",
-    "GPT_MODEL",
-    "REASONING_EFFORT",
-    "INPUT_TOKENS",
-    "OUTPUT_TOKENS",
-    "PERPLEXITY_OUTPUT_TOKENS",
-    "CONTEXT_WINDOW",
-    "SYSTEM_MESSAGE",
-    "RATE_LIMIT",
-    "RATE_LIMIT_PER",
-    "OPENAI_MAX_CONNECTIONS",
-    "OPENAI_MAX_KEEPALIVE",
-    "PERPLEXITY_MAX_CONNECTIONS",
-    "PERPLEXITY_MAX_KEEPALIVE",
-    "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
-    "MAX_HISTORY_PER_USER",
-    "CONVERSATION_TTL_SECONDS",
-    "USER_LOCK_CLEANUP_INTERVAL",
-    "ENTITY_DETECTION_MIN_WORDS",
-    "ROUTER_MODE",
-    "ROUTER_CLEF_MODEL",
-    "ROUTER_CLEF_THRESHOLD",
-    "ROUTER_CLEF_TIMEOUT_MS",
-    "WEB_TOOLS",
-    "VISION_ENABLED",
-    "VISION_MAX_IMAGES",
-    "VISION_MAX_BYTES",
-    "VISION_TOKEN_ESTIMATE",
-    "LOG_FILE",
-    "LOG_LEVEL",
-    "DISCORDIANAI_LOG_COLOR",
-    "HEALTH_ENABLED",
-    "HEALTH_HOST",
-    "HEALTH_PORT",
-]
 
 
 @pytest.fixture(autouse=True)
 def isolate_config_environment(monkeypatch):
     """Keep host environment variables from leaking into these tests."""
-    for key in ENV_KEYS:
+    for key in config_env_keys():
         monkeypatch.delenv(key, raising=False)
 
 

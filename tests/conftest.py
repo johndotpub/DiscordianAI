@@ -55,6 +55,23 @@ def restore_root_logger():
         root.setLevel(original_level)
 
 
+@pytest.fixture
+def fake_discord_types(monkeypatch):
+    """Patch the router's Discord type checks with shared test doubles."""
+    from src import message_router
+    from tests.helpers import (
+        FakeChannel,
+        FakeDMChannel,
+        FakeGroupChannel,
+        FakeThread,
+    )
+
+    monkeypatch.setattr(message_router.discord, "DMChannel", FakeDMChannel)
+    monkeypatch.setattr(message_router.discord, "TextChannel", FakeChannel)
+    monkeypatch.setattr(message_router.discord, "GroupChannel", FakeGroupChannel)
+    monkeypatch.setattr(message_router.discord, "Thread", FakeThread)
+
+
 @pytest.fixture(autouse=True)
 def reset_provider_circuit_breakers():
     """Keep provider breaker state isolated between tests."""

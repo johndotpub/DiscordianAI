@@ -7,25 +7,20 @@ from unittest.mock import AsyncMock
 import pytest
 
 from src import message_router
-from tests.test_message_router_auth import (
+from tests.helpers import (
     FakeChannel,
     FakeDMChannel,
-    FakeGroupChannel,
     FakeGuild,
-    FakeThread,
     FakeUser,
-    _bot,
-    _guild_with,
-    _message,
+    bot_for_guild,
+    guild_with_channel,
+    make_router_message,
 )
 
-
-@pytest.fixture(autouse=True)
-def fake_discord_types(monkeypatch):
-    monkeypatch.setattr(message_router.discord, "DMChannel", FakeDMChannel)
-    monkeypatch.setattr(message_router.discord, "TextChannel", FakeChannel)
-    monkeypatch.setattr(message_router.discord, "GroupChannel", FakeGroupChannel)
-    monkeypatch.setattr(message_router.discord, "Thread", FakeThread)
+pytestmark = pytest.mark.usefixtures("fake_discord_types")
+_bot = bot_for_guild
+_guild_with = guild_with_channel
+_message = make_router_message
 
 
 @pytest.fixture

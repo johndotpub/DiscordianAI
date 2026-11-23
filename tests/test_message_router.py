@@ -5,51 +5,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 from src import message_router
+from tests.helpers import FakeChannel, FakeDMChannel, FakeUser
+
+pytestmark = pytest.mark.usefixtures("fake_discord_types")
 
 
-class DummyContextManager:
-    async def __aenter__(self):
-        return None
-
-    async def __aexit__(self, exc_type, exc, tb):
-        return False
-
-
-class DummyUser:
-    def __init__(self, user_id: int):
-        self.id = user_id
-
-    def __eq__(self, other):
-        return getattr(other, "id", None) == self.id
-
-    def __hash__(self):
-        return hash(self.id)
-
-
-class DummyChannel:
-    def __init__(self, channel_id: int):
-        self.id = channel_id
-        self.sent_messages: list[str] = []
-
-    def typing(self):
-        return DummyContextManager()
-
-    async def send(self, content: str):
-        self.sent_messages.append(content)
-
-
-class DummyDMChannel(DummyChannel):
-    def __init__(self, channel_id: int = 1):
-        super().__init__(channel_id=channel_id)
-
-
-class DummyTextChannel(DummyChannel):
-    def __init__(self, name: str = "allowed", channel_id: int = 2):
-        super().__init__(channel_id=channel_id)
-        self.name = name
-
-
-class DummyFailingChannel(DummyDMChannel):
+class DummyFailingChannel(FakeDMChannel):
     def __init__(self, channel_id: int = 3):
         super().__init__(channel_id=channel_id)
         self.send_attempts = 0
@@ -58,12 +19,6 @@ class DummyFailingChannel(DummyDMChannel):
         self.send_attempts += 1
         message = "send failed"
         raise RuntimeError(message)
-
-
-@pytest.fixture(autouse=True)
-def patch_discord_channel_types(monkeypatch):
-    monkeypatch.setattr(message_router.discord, "DMChannel", DummyDMChannel)
-    monkeypatch.setattr(message_router.discord, "TextChannel", DummyTextChannel)
 
 
 @pytest.fixture
@@ -75,9 +30,9 @@ def deps():
 
 @pytest.mark.asyncio
 async def test_ignores_self_message(monkeypatch, deps):
-    bot_user = DummyUser(1)
+    bot_user = FakeUser(1)
     bot = SimpleNamespace(user=bot_user)
-    channel = DummyTextChannel(name="allowed")
+    channel = FakeChannel(2, "allowed")
     message = SimpleNamespace(
         author=bot_user,
         channel=channel,
@@ -100,7 +55,7 @@ async def test_ignores_self_message(monkeypatch, deps):
 @pytest.mark.asyncio
 async def test_routes_dm_message(monkeypatch, deps):
     bot = SimpleNamespace(user=object())
-    channel = DummyDMChannel()
+    channel = FakeDMChannel(1)
     author = SimpleNamespace(id=123)
     message = SimpleNamespace(
         author=author,
@@ -120,10 +75,10 @@ async def test_routes_dm_message(monkeypatch, deps):
 
 @pytest.mark.asyncio
 async def test_routes_channel_message(monkeypatch, deps):
-    bot_user = DummyUser(1)
+    bot_user = FakeUser(1)
     bot = SimpleNamespace(user=bot_user)
-    channel = DummyTextChannel(name="allowed")
-    author = DummyUser(456)
+    channel = FakeChannel(2, "allowed")
+    author = FakeUser(456)
     message = SimpleNamespace(
         author=author,
         channel=channel,
@@ -146,7 +101,7 @@ async def test_routes_channel_message(monkeypatch, deps):
 @pytest.mark.asyncio
 async def test_notifies_on_processing_error(monkeypatch, deps):
     bot = SimpleNamespace(user=object())
-    channel = DummyDMChannel()
+    channel = FakeDMChannel(1)
     author = SimpleNamespace(id=789)
     message = SimpleNamespace(
         author=author,
@@ -160,7 +115,9 @@ async def test_notifies_on_processing_error(monkeypatch, deps):
 
     await message_router.handle_incoming_message(message, deps, bot)
 
-    assert channel.sent_messages == ["🔧 An unexpected error occurred. The issue has been logged."]
+    assert [content for content, _kwargs in channel.sent_messages] == [
+        "🔧 An unexpected error occurred. The issue has been logged."
+    ]
 
 
 @pytest.mark.asyncio

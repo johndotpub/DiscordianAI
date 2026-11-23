@@ -7,48 +7,24 @@ snapshot must not be reported as a provider failure.
 import asyncio
 import logging
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from starlette.testclient import TestClient
 import uvicorn
 
 from src.health_server import HealthServer, create_health_app
+from tests.helpers import FakeBreaker, health_deps
+
+_Breaker = FakeBreaker
 
 
 def _deps():
     """Create a ready bot and both API clients for health endpoint tests."""
-    bot = MagicMock()
-    bot.is_ready.return_value = True
-    bot.guilds = []
-    bot.latency = 0.05
-    return {
-        "bot": bot,
-        "client": MagicMock(),
-        "perplexity_client": MagicMock(),
-        "config": {
-            "OPENAI_API_KEY": "sk-test-key",
-            "PERPLEXITY_API_KEY": "pplx-test-key",
-            "HEALTH_ENABLED": True,
-            "HEALTH_PROVIDER_STALE_SECONDS": 300,
-        },
-    }
-
-
-class _Breaker:
-    """Return a fixed breaker snapshot for the health endpoint."""
-
-    def __init__(self, last_success_time: float) -> None:
-        self._last_success_time = last_success_time
-
-    def snapshot(self) -> dict:
-        """Return a closed breaker that succeeded at the supplied time."""
-        return {
-            "state": "CLOSED",
-            "consecutive_failures": 0,
-            "last_failure_time": 0.0,
-            "last_success_time": self._last_success_time,
-        }
+    return health_deps(
+        guilds=[],
+        config={"HEALTH_PROVIDER_STALE_SECONDS": 300},
+    )
 
 
 class _FakeServer:

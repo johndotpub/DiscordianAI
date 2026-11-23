@@ -7,31 +7,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.health_server import HealthServer, _detect_mode, create_health_app
+from tests.helpers import health_deps
 
-
-def _mock_deps(connected=True, has_openai=True, has_perplexity=True):
-    """Create a mock deps dict for health server tests."""
-    bot = MagicMock()
-    bot.is_ready.return_value = connected
-    bot.guilds = [MagicMock(), MagicMock()]
-    bot.latency = 0.05
-
-    config = {
-        "OPENAI_API_KEY": "sk-test-key" if has_openai else None,
-        "PERPLEXITY_API_KEY": "pplx-test-key" if has_perplexity else None,
-        "GPT_MODEL": "gpt-5-mini",
-        "PERPLEXITY_MODEL": "perplexity/sonar",
-        "HEALTH_ENABLED": True,
-        "HEALTH_HOST": "127.0.0.1",
-        "HEALTH_PORT": 8080,
-    }
-
-    return {
-        "bot": bot,
-        "client": MagicMock() if has_openai else None,
-        "perplexity_client": MagicMock() if has_perplexity else None,
-        "config": config,
-    }
+_mock_deps = health_deps
 
 
 def test_liveness_probe():

@@ -6,50 +6,28 @@ the past may be negative. Zero is the only value that means "never".
 """
 
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from starlette.testclient import TestClient
 
 from src.health_server import create_health_app
 from src.rate_limits import RateLimiter
+from tests.helpers import FakeBreaker, health_deps
 
-
-class _Breaker:
-    """Minimal breaker snapshot provider for the health endpoint."""
-
-    def __init__(self, last_success_time: float) -> None:
-        self._last_success_time = last_success_time
-
-    def snapshot(self) -> dict:
-        """Return a closed breaker with the supplied last success time."""
-        return {
-            "state": "CLOSED",
-            "consecutive_failures": 0,
-            "last_failure_time": 0.0,
-            "last_success_time": self._last_success_time,
-        }
+_Breaker = FakeBreaker
 
 
 def _health_app(openai_success: float, perplexity_success: float):
     """Build a ready health app with explicit breaker snapshots."""
-    bot = MagicMock()
-    bot.is_ready.return_value = True
-    bot.guilds = []
-    bot.latency = 0.05
-    deps = {
-        "bot": bot,
-        "client": MagicMock(),
-        "perplexity_client": MagicMock(),
-        "config": {
-            "OPENAI_API_KEY": "sk-test-key",
-            "PERPLEXITY_API_KEY": "pplx-test-key",
-        },
-        "circuit_breakers": {
-            "openai": _Breaker(openai_success),
-            "perplexity": _Breaker(perplexity_success),
-        },
-    }
-    return create_health_app(deps)
+    return create_health_app(
+        health_deps(
+            guilds=[],
+            breakers={
+                "openai": _Breaker(openai_success),
+                "perplexity": _Breaker(perplexity_success),
+            },
+        )
+    )
 
 
 def test_first_request_on_young_clock_starts_the_window():

@@ -7,76 +7,18 @@ from unittest.mock import AsyncMock
 import pytest
 
 from src import message_router
+from tests.helpers import (
+    FakeChannel,
+    FakeDMChannel,
+    FakeGuild,
+    FakeThread,
+    FakeUser,
+    bot_for_guild,
+    guild_with_channel,
+    make_router_message,
+)
 
-
-class FakeTyping:
-    async def __aenter__(self):
-        return None
-
-    async def __aexit__(self, exc_type, exc, tb):
-        return False
-
-
-class FakeUser:
-    def __init__(self, user_id: int, *, bot: bool = False):
-        self.id = user_id
-        self.bot = bot
-        self.name = f"user-{user_id}"
-        self.mention = f"<@{user_id}>"
-
-    def __eq__(self, other):
-        return getattr(other, "id", None) == self.id
-
-    def __hash__(self):
-        return hash(self.id)
-
-
-class FakeChannel:
-    def __init__(self, channel_id: int, name: str = "general", guild=None):
-        self.id = channel_id
-        self.name = name
-        self.guild = guild
-        self.sent_messages: list[tuple[str, dict]] = []
-
-    def typing(self):
-        return FakeTyping()
-
-    async def send(self, content: str, **kwargs):
-        self.sent_messages.append((content, kwargs))
-
-
-class FakeDMChannel(FakeChannel):
-    def __init__(self, channel_id: int = 1):
-        super().__init__(channel_id, name="dm")
-
-
-class FakeGroupChannel(FakeChannel):
-    def __init__(self, channel_id: int = 2):
-        super().__init__(channel_id, name="group")
-
-
-class FakeThread(FakeChannel):
-    def __init__(self, channel_id: int, parent: FakeChannel):
-        super().__init__(channel_id, name="thread", guild=parent.guild)
-        self.parent = parent
-        self.parent_id = parent.id
-
-
-class FakeGuild:
-    def __init__(self, guild_id: int, name: str = "Guild", channels=None):
-        self.id = guild_id
-        self.name = name
-        self.text_channels = list(channels or [])
-        self.forums = []
-        self.channels = self.text_channels
-
-
-@pytest.fixture(autouse=True)
-def fake_discord_types(monkeypatch):
-    monkeypatch.setattr(message_router.discord, "DMChannel", FakeDMChannel)
-    monkeypatch.setattr(message_router.discord, "TextChannel", FakeChannel)
-    monkeypatch.setattr(message_router.discord, "GroupChannel", FakeGroupChannel)
-    monkeypatch.setattr(message_router.discord, "Thread", FakeThread)
+pytestmark = pytest.mark.usefixtures("fake_discord_types")
 
 
 @pytest.fixture
@@ -95,25 +37,9 @@ def spies(monkeypatch):
     return SimpleNamespace(channel=channel, dm=dm)
 
 
-def _message(channel, *, author=None, mentions=None, guild=None, content="hello"):
-    return SimpleNamespace(
-        id=100,
-        author=author or FakeUser(42),
-        channel=channel,
-        mentions=list(mentions or []),
-        guild=guild,
-        content=content,
-    )
-
-
-def _guild_with(channel):
-    guild = FakeGuild(1, channels=[channel])
-    channel.guild = guild
-    return guild
-
-
-def _bot(guild):
-    return SimpleNamespace(user=FakeUser(1, bot=True), guilds=[guild])
+_message = make_router_message
+_guild_with = guild_with_channel
+_bot = bot_for_guild
 
 
 @pytest.mark.asyncio

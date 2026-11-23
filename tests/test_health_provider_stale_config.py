@@ -1,27 +1,14 @@
 """Regression tests for HEALTH_PROVIDER_STALE_SECONDS configuration wiring."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from starlette.testclient import TestClient
 
 from src.config import load_config
 from src.health_server import create_health_app
+from tests.helpers import FakeBreaker, health_deps
 
-
-class _Breaker:
-    """Minimal breaker snapshot provider for the health endpoint."""
-
-    def __init__(self, last_success_time: float) -> None:
-        self._last_success_time = last_success_time
-
-    def snapshot(self) -> dict:
-        """Return a closed breaker with an old successful call."""
-        return {
-            "state": "CLOSED",
-            "consecutive_failures": 0,
-            "last_failure_time": 0.0,
-            "last_success_time": self._last_success_time,
-        }
+_Breaker = FakeBreaker
 
 
 def test_provider_stale_seconds_from_config_sets_informational_flag(tmp_path, monkeypatch):
@@ -39,20 +26,14 @@ def test_provider_stale_seconds_from_config_sets_informational_flag(tmp_path, mo
     config = load_config(str(config_path))
     assert config["HEALTH_PROVIDER_STALE_SECONDS"] == 45
 
-    bot = MagicMock()
-    bot.is_ready.return_value = True
-    bot.guilds = []
-    bot.latency = 0.05
-    deps = {
-        "bot": bot,
-        "client": MagicMock(),
-        "perplexity_client": MagicMock(),
-        "config": config,
-        "circuit_breakers": {
+    deps = health_deps(
+        guilds=[],
+        config=config,
+        breakers={
             "openai": _Breaker(9_900.0),
             "perplexity": _Breaker(9_900.0),
         },
-    }
+    )
 
     with patch("src.health_server.time.monotonic", return_value=10_000.0):
         with TestClient(create_health_app(deps)) as client:

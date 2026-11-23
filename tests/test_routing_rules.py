@@ -18,74 +18,23 @@ from src.smart_orchestrator import (
     _process_hybrid_mode,
     _routing_metadata,
 )
+from tests.helpers import (
+    FakeChannel,
+    FakeDMChannel,
+    FakeGroupChannel,
+    FakeGuild,
+    FakeThread,
+    FakeUser,
+    make_router_message,
+)
 
-
-class DummyContextManager:
-    async def __aenter__(self):
-        return None
-
-    async def __aexit__(self, exc_type, exc, tb):
-        return False
-
-
-class DummyUser:
-    def __init__(self, user_id: int, *, bot: bool = False):
-        self.id = user_id
-        self.bot = bot
-
-    def __eq__(self, other):
-        return getattr(other, "id", None) == self.id
-
-    def __hash__(self):
-        return hash(self.id)
-
-
-class DummyChannel:
-    def __init__(self, channel_id: int, name: str, guild=None):
-        self.id = channel_id
-        self.name = name
-        self.guild = guild
-        self.sent_messages: list[str] = []
-
-    def typing(self):
-        return DummyContextManager()
-
-    async def send(self, content: str):
-        self.sent_messages.append(content)
-
-
-class DummyDMChannel(DummyChannel):
-    def __init__(self, channel_id: int = 1):
-        super().__init__(channel_id=channel_id, name="dm")
-
-
-class DummyGroupChannel(DummyChannel):
-    def __init__(self, channel_id: int = 9):
-        super().__init__(channel_id=channel_id, name="group")
-
-
-class DummyThread(DummyChannel):
-    def __init__(self, channel_id: int, parent: DummyChannel):
-        super().__init__(channel_id=channel_id, name="thread", guild=parent.guild)
-        self.parent = parent
-        self.parent_id = parent.id
-
-
-class DummyGuild:
-    def __init__(self, guild_id: int, name: str, channels: list[DummyChannel]):
-        self.id = guild_id
-        self.name = name
-        self.text_channels = channels
-        self.forums = []
-        self.channels = channels
-
-
-@pytest.fixture(autouse=True)
-def patch_discord_channel_types(monkeypatch):
-    monkeypatch.setattr(message_router.discord, "DMChannel", DummyDMChannel)
-    monkeypatch.setattr(message_router.discord, "TextChannel", DummyChannel)
-    monkeypatch.setattr(message_router.discord, "GroupChannel", DummyGroupChannel)
-    monkeypatch.setattr(message_router.discord, "Thread", DummyThread)
+pytestmark = pytest.mark.usefixtures("fake_discord_types")
+DummyChannel = FakeChannel
+DummyDMChannel = FakeDMChannel
+DummyGroupChannel = FakeGroupChannel
+DummyThread = FakeThread
+DummyGuild = FakeGuild
+DummyUser = FakeUser
 
 
 @pytest.fixture
@@ -100,15 +49,7 @@ def deps(logger):
     return {"logger": logger}
 
 
-def _message(channel, author=None, mentions=None, guild=None):
-    return SimpleNamespace(
-        id=100,
-        author=author or DummyUser(456),
-        channel=channel,
-        mentions=[] if mentions is None else mentions,
-        guild=guild,
-        content="hello",
-    )
+_message = make_router_message
 
 
 def _ignored_reasons(caplog):

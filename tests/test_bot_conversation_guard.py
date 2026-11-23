@@ -1,6 +1,5 @@
 """Bot-authored conversations: answered, never mentioned, and capped."""
 
-from dataclasses import dataclass, field
 import logging
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +14,7 @@ from src.conversation_manager import (
     conversation_key_for_message,
 )
 from src.rate_limits import RateLimiter
+from tests.helpers import FakeChannel, FakeGuild, FakeMessage, FakeUser
 
 BOT_ID = 1
 OTHER_BOT_ID = 999
@@ -25,89 +25,7 @@ RESPONSE = "A deterministic answer."
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-
-class FakeTyping:
-    async def __aenter__(self):
-        return None
-
-    async def __aexit__(self, exc_type, exc, tb):
-        return False
-
-
-class FakeUser:
-    def __init__(self, user_id: int, *, bot: bool = False, name: str | None = None):
-        self.id = user_id
-        self.bot = bot
-        self.name = name or f"user-{user_id}"
-        self.mention = f"<@{user_id}>"
-
-    def __eq__(self, other):
-        return getattr(other, "id", None) == self.id
-
-    def __hash__(self):
-        return hash(self.id)
-
-
-class FakeGuild:
-    def __init__(self, guild_id: int, name: str = "Guild"):
-        self.id = guild_id
-        self.name = name
-        self.text_channels: list[FakeChannel] = []
-        self.forums: list[FakeChannel] = []
-        self.channels = self.text_channels
-
-
-class FakeChannel:
-    def __init__(self, channel_id: int, name: str, guild: FakeGuild):
-        self.id = channel_id
-        self.name = name
-        self.guild = guild
-        self.sent_messages: list[tuple[str, dict]] = []
-
-    def typing(self):
-        return FakeTyping()
-
-    async def send(self, content: str, **kwargs):
-        self.sent_messages.append((content, kwargs))
-
-
-class FakeDMChannel(FakeChannel):
-    def __init__(self, channel_id: int = 7):
-        super().__init__(channel_id, "dm", FakeGuild(0))
-
-
-class FakeGroupChannel(FakeChannel):
-    def __init__(self, channel_id: int = 8):
-        super().__init__(channel_id, "group", FakeGuild(0))
-
-
-class FakeThread(FakeChannel):
-    def __init__(self, channel_id: int, parent: FakeChannel):
-        super().__init__(channel_id, "thread", parent.guild)
-        self.parent = parent
-        self.parent_id = parent.id
-
-
-@dataclass
-class FakeMessage:
-    id: int
-    author: FakeUser
-    channel: FakeChannel
-    guild: FakeGuild
-    mentions: list[FakeUser]
-    content: str
-    replies: list[tuple[str, dict]] = field(default_factory=list)
-
-    async def reply(self, content: str, **kwargs):
-        self.replies.append((content, kwargs))
-
-
-@pytest.fixture(autouse=True)
-def fake_discord_types(monkeypatch):
-    monkeypatch.setattr(message_router.discord, "DMChannel", FakeDMChannel)
-    monkeypatch.setattr(message_router.discord, "TextChannel", FakeChannel)
-    monkeypatch.setattr(message_router.discord, "GroupChannel", FakeGroupChannel)
-    monkeypatch.setattr(message_router.discord, "Thread", FakeThread)
+pytestmark = pytest.mark.usefixtures("fake_discord_types")
 
 
 class Harness:
@@ -176,7 +94,7 @@ class Harness:
     ) -> FakeMessage:
         self._sequence += 1
         message = FakeMessage(
-            id=1000 + self._sequence,
+            message_id=1000 + self._sequence,
             author=author,
             channel=self.channel,
             guild=self.guild,

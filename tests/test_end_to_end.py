@@ -18,6 +18,7 @@ from src.conversation_manager import (
 )
 from src.dependencies import BotDependencies
 from src.rate_limits import RateLimiter
+from tests.helpers import FakeChannel, FakeGuild, FakeMessage, FakeUser
 
 SYSTEM_PROMPT = "You are the end-to-end test assistant. Answer plainly."
 USER_TEXT = "Please explain the deterministic end-to-end path."
@@ -25,59 +26,6 @@ RESPONSE = " ".join(
     f"Paragraph {index}: this is a deterministic sentence used for splitting."
     for index in range(80)
 )
-
-
-class FakeTyping:
-    async def __aenter__(self):
-        return None
-
-    async def __aexit__(self, exc_type, exc, tb):
-        return False
-
-
-class FakeUser:
-    def __init__(self, user_id: int, *, bot: bool = False):
-        self.id = user_id
-        self.bot = bot
-        self.name = f"user-{user_id}"
-        self.mention = f"<@{user_id}>"
-
-
-class FakeGuild:
-    def __init__(self, guild_id: int, name: str = "Guild"):
-        self.id = guild_id
-        self.name = name
-        self.text_channels = []
-        self.forums = []
-        self.channels = self.text_channels
-
-
-class FakeChannel:
-    def __init__(self, channel_id: int, name: str, guild: FakeGuild):
-        self.id = channel_id
-        self.name = name
-        self.guild = guild
-        self.sent_messages: list[tuple[str, dict]] = []
-
-    def typing(self):
-        return FakeTyping()
-
-    async def send(self, content: str, **kwargs):
-        self.sent_messages.append((content, kwargs))
-
-
-class FakeMessage:
-    def __init__(self, *, author, channel, guild, mentions, content):
-        self.id = 7001
-        self.author = author
-        self.channel = channel
-        self.guild = guild
-        self.mentions = mentions
-        self.content = content
-        self.replies: list[tuple[str, dict]] = []
-
-    async def reply(self, content: str, **kwargs):
-        self.replies.append((content, kwargs))
 
 
 def _build_dependencies(bot, channel, openai_client):

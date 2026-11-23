@@ -8,7 +8,6 @@ import subprocess
 import sys
 import time
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 from starlette.testclient import TestClient
@@ -16,6 +15,7 @@ from starlette.testclient import TestClient
 from src.connection_pool import ConnectionPoolManager
 from src.error_handling import get_circuit_breaker
 from src.health_server import create_health_app
+from tests.helpers import health_deps
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -75,37 +75,7 @@ class _FakePoolManager:
         }
 
 
-def _deps(
-    *,
-    connected=True,
-    has_openai=True,
-    has_perplexity=True,
-    latency=0.05,
-    pool_manager=None,
-):
-    """Create dependency data for the health app."""
-    bot = MagicMock()
-    bot.is_ready.return_value = connected
-    bot.guilds = [MagicMock(), MagicMock()]
-    bot.latency = latency
-
-    config = {
-        "OPENAI_API_KEY": "sk-test-key" if has_openai else None,
-        "PERPLEXITY_API_KEY": "pplx-test-key" if has_perplexity else None,
-        "GPT_MODEL": "gpt-5-mini",
-        "PERPLEXITY_MODEL": "perplexity/sonar",
-        "HEALTH_ENABLED": True,
-    }
-
-    deps = {
-        "bot": bot,
-        "client": MagicMock() if has_openai else None,
-        "perplexity_client": MagicMock() if has_perplexity else None,
-        "config": config,
-    }
-    if pool_manager is not None:
-        deps["connection_pool_manager"] = pool_manager
-    return deps
+_deps = health_deps
 
 
 def _set_breaker(
