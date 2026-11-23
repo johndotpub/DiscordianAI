@@ -10,7 +10,9 @@ import pytest
 
 from src.error_handling import (
     DEFAULT_API_RETRY_CONFIG,
+    ErrorType,
     RetryConfig,
+    classify_error,
     retry_with_backoff,
 )
 
@@ -220,5 +222,37 @@ async def test_wrapped_remote_protocol_error_is_not_retried():
 
     attempts, delays = await _run_raising_from(error, cause)
 
+    assert attempts == 1
+    assert delays == []
+
+
+@pytest.mark.asyncio
+async def test_host_port_number_is_not_read_as_an_http_status():
+    """Port 443 in a connect message is not a 443 status code."""
+    error = openai.APIConnectionError(
+        message="Cannot connect to host discord.com:443 ssl:default",
+        request=SimpleNamespace(),
+    )
+
+    attempts, delays = await _run_raising(error)
+
+    assert attempts == 2
+    assert len(delays) == 1
+
+
+@pytest.mark.asyncio
+async def test_insufficient_quota_is_not_retried():
+    """A quota error keeps its auth classification and is not retried."""
+    error = openai.RateLimitError(
+        "quota exceeded",
+        response=_api_response(429),
+        body={"error": {"code": "insufficient_quota", "message": "quota exhausted"}},
+    )
+
+    details = classify_error(error)
+    attempts, delays = await _run_raising(error)
+
+    assert details.error_type == ErrorType.API_AUTH_ERROR
+    assert "quota exhausted" in details.user_message.lower()
     assert attempts == 1
     assert delays == []

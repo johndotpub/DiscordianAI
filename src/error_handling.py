@@ -9,7 +9,7 @@ This module provides robust error handling patterns including:
 """
 
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -364,12 +364,17 @@ HTTP_STATUS_TOO_MANY_REQUESTS = 429
 _HTTP_STATUS_SERVER_ERROR = 500
 
 _RATE_LIMIT_MAX_RETRY_AFTER = 30.0
-_HTTP_4XX_IN_MESSAGE_PATTERN = re.compile(r"(?<!\d)(4\d{2})(?!\d)")
+# Match a status token in prose, never the port in "host:443" or a dotted
+# version/IP fragment.
+_HTTP_4XX_IN_MESSAGE_PATTERN = re.compile(r"(?<![\d:.])(4\d{2})(?![\d:])")
 
 NETWORK_ERROR_USER_MESSAGE = "🌐 I couldn't reach the AI service. Please try again shortly."
 DISCORD_CONNECTION_USER_MESSAGE = (
     "🤖 I'm having trouble connecting to Discord. Please try again shortly."
 )
+QUOTA_EXHAUSTED_USER_MESSAGE = "💳 API quota exhausted. The provider returned insufficient quota."
+_QUOTA_EXHAUSTED_MARKERS = ("insufficient_quota", "exceeded your current quota")
+
 _HTTPX_TIMEOUT_ERRORS: tuple[type[Exception], ...] = (httpx.TimeoutException,)
 _HTTPX_TRANSPORT_ERRORS: tuple[type[Exception], ...] = (httpx.TransportError,)
 _HTTPX_CONNECT_ERRORS: tuple[type[Exception], ...] = (
@@ -434,6 +439,34 @@ def _chain_matches(exception: Exception, types: tuple[type[Exception], ...]) -> 
     return any(isinstance(item, types) for item in _exception_chain(exception))
 
 
+def _iter_error_body_strings(value: Any) -> Iterator[str]:
+    """Yield strings from a structured error body without assuming its shape."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield str(key)
+            yield from _iter_error_body_strings(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _iter_error_body_strings(item)
+
+
+def _is_quota_exhausted(exception: Exception) -> bool:
+    """Return True when the structured error body reports exhausted quota."""
+    candidates = [
+        getattr(exception, "code", None),
+        getattr(exception, "type", None),
+        getattr(exception, "body", None),
+    ]
+    for candidate in candidates:
+        for text in _iter_error_body_strings(candidate):
+            lowered = text.lower()
+            if any(marker in lowered for marker in _QUOTA_EXHAUSTED_MARKERS):
+                return True
+    return False
+
+
 def _is_provider_failure(exception: Exception) -> bool:
     """Return whether an exception is evidence of provider ill health.
 
@@ -468,6 +501,9 @@ def is_retryable_status(status: int | None) -> bool:
 def _is_retryable_error(error_details: ErrorDetails, exception: Exception) -> bool:
     if isinstance(exception, CircuitBreakerOpenError):
         return False
+    if _is_quota_exhausted(exception):
+        return False
+
     status_code = _status_code_from_exception(exception)
     if status_code is not None:
         return is_retryable_status(status_code)
@@ -592,6 +628,15 @@ def _classify_api_status_error(exception: openai.APIStatusError) -> ErrorDetails
     status_code = exception.status_code
     retry_after = retry_after_seconds(getattr(exception.response, "headers", None))
 
+    if _is_quota_exhausted(exception):
+        return _error_details(
+            ErrorType.API_AUTH_ERROR,
+            ErrorSeverity.HIGH,
+            exception,
+            QUOTA_EXHAUSTED_USER_MESSAGE,
+            retry_after,
+        )
+
     if status_code == HTTP_STATUS_TOO_MANY_REQUESTS:
         return _error_details(
             ErrorType.API_RATE_LIMIT,
@@ -700,13 +745,10 @@ def classify_error(exception: Exception) -> ErrorDetails:
     retry_after = None
 
     # Permanent billing/quota exhaustion — not a transient rate limit
-    if (
-        "insufficient_quota" in error_msg.lower()
-        or "exceeded your current quota" in error_msg.lower()
-    ):
+    if any(marker in error_msg.lower() for marker in _QUOTA_EXHAUSTED_MARKERS):
         error_type = ErrorType.API_AUTH_ERROR
         severity = ErrorSeverity.HIGH
-        user_message = "💳 API quota exhausted. The provider returned insufficient quota."
+        user_message = QUOTA_EXHAUSTED_USER_MESSAGE
 
     # OpenAI/API specific errors
     elif "rate limit" in error_msg.lower() or re.search(r"\b429\b", error_msg):
