@@ -77,7 +77,7 @@ _ONLY_MODE_SPECS: dict[str, _OnlyModeSpec] = {
 _EARLY_WEB_INABILITY_WINDOW = 300
 _QUOTED_SPAN_PATTERN = re.compile(r'"[^"\n]*"|“[^”\n]*”|`[^`\n]*`')
 _NARRATIVE_MARKERS_PATTERN = re.compile(
-    r"\b(poem|story|verse|tale|fiction|imagine|imagined|imagination|dream|"
+    r"\b(poem|haiku|story|verse|tale|fiction|imagine|imagined|imagination|dream|"
     r"dreamed|dreamt|pretend|narrator|character|once upon a time)\b",
     re.IGNORECASE,
 )
@@ -89,30 +89,27 @@ _OPENAI_WEB_INABILITY_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
         (
-            r"\b(can't|cannot|unable to|not able to)\s+"
-            r"(browse|search|access|look up|check)\s+"
-            r"(the\s+)?(web|internet|online|real.?time|current|live)\b"
+            r"\bi(?:'m\s+(?:unable|not able)|\s+(?:can't|cannot|can not|am unable|am not able))"
+            r"\s+(?:to\s+)?(?:browse|search|access)\s+(?:the\s+)?"
+            r"(?:web|internet|online|real.?time|current|live|website|webpage|web page)\b"
         ),
         (
-            r"\b(don't|do not|doesn't|does not)\s+have\s+"
-            r"(access to|the ability to access)\s+"
-            r"(?:the\s+)?(real.?time|current|live|external|web|internet)\b"
+            r"\bi(?:'m\s+(?:unable|not able)|\s+(?:can't|cannot|can not|am unable|am not able))"
+            r"\s+(?:to\s+)?(?:look up|check|verify|confirm|provide|retrieve|fetch)\s+"
+            r"(?:current|real.?time|up.?to.?date|live)\b"
         ),
         (
-            r"\b(no|without)\s+(access to|ability to access)\s+"
-            r"(the\s+)?(internet|web|real.?time|external|current)\b"
-        ),
-        r"\b(knowledge|training)\s+(cutoff|cut.?off)\b",
-        r"\bas of my (last|latest)\s+(update|training)\b",
-        r"\b(not equipped|not designed)\s+to\s+(browse|search|access)\b",
-        (
-            r"\b(can't|cannot|unable to)\s+(verify|confirm|check|provide)\s+"
-            r"(current|real.?time|up.?to.?date|live)\b"
+            r"\bi(?:'ve\s+no|\s+(?:don't|do not|have no|haven't got|have not got))\s+"
+            r"(?:have\s+)?(?:access to|the ability to access)\s+(?:the\s+)?"
+            r"(?:internet|web|online|real.?time|current|live|external)\b"
         ),
         (
-            r"\b(don't|do not)\s+have\s+(real.?time|current|live|up.?to.?date)\s+"
-            r"(information|data|access)\b"
+            r"\bi\s+(?:don't|do not)\s+have\s+(?:real.?time|current|live|up.?to.?date)\s+"
+            r"(?:information|data|access)\b"
         ),
+        r"\bmy\s+(?:knowledge|training)\s+(?:cutoff|cut.?off)\b",
+        r"\bas of my (?:last|latest)\s+(?:update|training)\b",
+        r"\bi\s+(?:am|'m)\s+(?:not equipped|not designed)\s+to\s+(?:browse|search|access)\b",
     )
 ]
 

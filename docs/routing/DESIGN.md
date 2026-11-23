@@ -139,3 +139,7 @@ local-with-bearing-cue", expressed at the call site — there is no router-emitt
 - 2026-11-15: optional Clef decision-model router added behind `ROUTER_MODE=clef`; the deterministic gate
   stays the default and the fallback on any Clef failure. `ROUTER_MODE=model` is retired and rejected at
   startup; use `heuristic` or `clef`.
+- 2026-11-23: all cue extraction runs on code-masked text; gate overrides are exposed as decision data so
+  Clef honours supplied artifacts; Clef uses a dedicated credential resolved per endpoint, one pooled
+  client, and a hard total deadline; image requests bypass the router; any router fault falls back to the
+  gate; the web-inability reroute requires a first-person admission.

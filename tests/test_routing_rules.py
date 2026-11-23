@@ -434,11 +434,25 @@ async def test_knowledge_cutoff_question_keeps_its_local_answer(caplog):
     assert any("decision holds" in record.getMessage() for record in caplog.records)
 
 
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "A knowledge cutoff is the date when a model's training data ends.",
+        "If you can't access the internet, try another network.",
+        "you cannot access the web page directly without permission.",
+        "Here is a haiku about a robot that cannot browse the web.",
+    ],
+)
+def test_general_statements_are_not_web_inability_admissions(answer: str) -> None:
+    """Only a first-person admission should trigger the safety-net reroute."""
+    assert not _detect_openai_web_inability(answer)
+
+
 @pytest.mark.asyncio
-async def test_haiku_mentioning_browsing_reroutes_under_the_local_gate() -> None:
+async def test_haiku_mentioning_browsing_keeps_its_local_answer() -> None:
     query = "Write a haiku about a robot"
-    answer = "Here is a haiku about a robot that cannot browse the web."
-    assert _detect_openai_web_inability(answer)
+    answer = "Here is a haiku about a robot:\nI cannot browse the web,\nyet I dream of stars."
+    assert not _detect_openai_web_inability(answer)
 
     request = AIRequest(
         query,
@@ -466,8 +480,8 @@ async def test_haiku_mentioning_browsing_reroutes_under_the_local_gate() -> None
             AIConfig(),
         )
 
-    assert response == "replacement"
-    perplexity.assert_awaited_once()
+    assert response == answer
+    perplexity.assert_not_awaited()
 
 
 @pytest.mark.asyncio

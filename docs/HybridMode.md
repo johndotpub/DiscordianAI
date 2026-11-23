@@ -218,9 +218,10 @@ The hybrid orchestrator (`smart_orchestrator.py`) provides bounded fallback betw
   once for a web-enabled fallback.
 - **Perplexity failure -> chat provider**: When the web answer fails, the orchestrator falls back to the
   OpenAI-compatible provider for a standard completion and marks the answer degraded.
-- **Web-inability reroute**: If the chat provider says it cannot browse the web and Perplexity has not been
-  tried in this request, the orchestrator reroutes once. If Perplexity already failed, the local answer is
-  returned with a warning instead of a second Perplexity call.
+- **Web-inability reroute**: If the chat provider makes a first-person admission that it cannot browse the
+  web, and Perplexity has not been tried in this request, the orchestrator reroutes once. General statements,
+  quoted text, and creative or narrative output do not trigger this reroute. If Perplexity already failed,
+  the local answer is returned with a warning instead of a second Perplexity call.
 - **Both unavailable**: Returns the `both_services_unavailable` message
   (`"🔧 All AI services are temporarily unavailable. Please try again later."`).
 

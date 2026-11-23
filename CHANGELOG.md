@@ -171,6 +171,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation 📝
 
+- **Routing docs describe the masking, credential, lifecycle, and reroute rules.** `docs/routing/DESIGN.md`,
+  `docs/HybridMode.md`, and `docs/Configuration.md` now state that all cues are code-masked, how the Clef
+  key is resolved, that the router is built once and closed at shutdown, and that only first-person
+  browsing admissions trigger the safety-net reroute.
+
 - **`docs/Vision.md`** documents how to send images, the provider used, limits, fallback
   behavior, and the privacy note that images leave the bot for the configured chat provider.
   The README documentation map and `docs/Configuration.md` link to it.
