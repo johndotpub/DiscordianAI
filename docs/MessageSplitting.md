@@ -283,7 +283,7 @@ cap. DiscordianAI treats that as a partial answer, not a complete one:
 
 - The chat-completions adapter reports its `finish_reason: length`.
 - The Perplexity Agent adapter normalises `status: incomplete` with
-  `incomplete_details.reason: max_output_tokens` to the same `length` signal.
+  an `incomplete_details` object whose reason is `max_output_tokens` to the same `length` signal.
 - The orchestrator passes the partial text to delivery unchanged; the fixed notice is appended
   only when the answer is sent.
 - The notice is one constant line, `TRUNCATION_NOTICE`, appended by
