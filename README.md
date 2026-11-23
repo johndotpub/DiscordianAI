@@ -140,7 +140,7 @@ RATE_LIMIT_PER=60
 
 ### Discord User Experience
 - [src/discord_embeds.py](src/discord_embeds.py) formats Perplexity citations into embed descriptions and truncates descriptions above the 4096-character hard limit to the 3840-character safe limit.
-- [src/message_splitter.py](src/message_splitter.py) splits at 2000 characters, uses 3840 as the safe embed split target and 4096 as the hard embed limit, avoids splitting code blocks, and provides the link-count check that the Perplexity path uses to suppress previews at two or more links. The OpenAI-compatible path always returns `False`.
+- [src/message_splitter.py](src/message_splitter.py) splits at 2000 characters, uses 3840 as the safe embed split target and 4096 as the hard embed limit, keeps long code fences balanced across chunks, and provides the link-count check that the Perplexity path uses to suppress previews at two or more links. The OpenAI-compatible path always returns `False`.
 - [src/message_router.py](src/message_router.py) handles mentions, DMs, channel and thread allowlists, bot-authored senders, and dispatch to the DM/channel processors.
 
 ### Reliability & Ops

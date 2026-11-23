@@ -367,9 +367,9 @@ class TestMessageSplittingIntegration:
                 mention_prefix=None,
             )
 
-            # First send uses rebuilt head embed aligned to the adjusted head chunk
-            split_index = find_optimal_split_point(message, EMBED_SAFE_LIMIT)
-            expected_head, expected_tail = adjust_split_for_code_blocks(message, split_index)
+            # First send uses a head that stays inside the safe limit; the rest follows
+            expected_head = message[:EMBED_SAFE_LIMIT]
+            expected_tail = message[EMBED_SAFE_LIMIT:]
 
             first_call = channel.send.call_args_list[0]
             head_embed = first_call.kwargs.get("embed")

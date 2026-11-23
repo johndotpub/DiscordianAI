@@ -48,6 +48,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against the declared content type and skips a mismatch. `VISION_ENABLED=false` restores the
   previous behaviour of ignoring attachments. Cache keys include a digest of each image, so the
   same text with a different image cannot reuse an answer.
+- **Long code fences are split, not dropped.** A fenced block larger than one Discord
+  message is split at a line boundary, closed at the end of the chunk, and reopened with the
+  same language tag in the next chunk. Every code line and the prose after the block are
+  delivered, and each chunk has balanced fences. A single line wider than the limit is
+  hard-wrapped rather than dropped; only the 50-chunk cap still truncates content.
+- **The truncation notice reports the original answer length.** It says the bot's delivery
+  limit was reached instead of blaming Discord for a cap the bot chose.
+- **Embed heads never split a citation marker or a code fence.** A split that would land
+  inside `[n]` moves the marker whole into the next embed, and long fences are closed and
+  reopened with the same language tag.
+- **Link neutralisation skips code spans and fenced blocks.** Discord does not render links
+  inside code, so `handlers[0](event)` and bare URLs in code stay unchanged. Mention
+  neutralisation (`@everyone`, `@here`, raw user/role/channel mentions) still applies
+  everywhere, including inside code.
 
 ### Added ✨
 
@@ -101,6 +115,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   round-tripping; multimodal message shape; image-aware token accounting and truncation; cache
   keys scoped by image digest; image-only messages; disabled-vision short-circuiting; local route
   forcing; Perplexity refusal; and history labels without base64.
+
+- **Delivery splitting coverage** checks a long fence spanning three or more messages with
+  every line delivered and balanced fences, prose after the fence, the first-chunk mention
+  limit, the chunk-cap notice's original length, citation-marker and fence safety in embed
+  heads, and code-preserving sanitisation while mentions stay neutralised.
 
 ### Documentation 📝
 

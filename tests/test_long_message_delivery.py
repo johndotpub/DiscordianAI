@@ -8,10 +8,23 @@ import discord
 import pytest
 
 from src.discord_embeds import citation_embed_formatter
-from src.message_splitter import send_split_message, send_split_message_with_embed
+from src.message_splitter import (
+    _split_embed_head,
+    send_split_message,
+    send_split_message_with_embed,
+)
 
 MENTION_PREFIX = "<@42> "
 EMBED_SAFE_LIMIT = 3840
+
+
+def _fence_lines_are_balanced(chunk: str) -> bool:
+    return chunk.count("```") % 2 == 0
+
+
+def _long_fence(line_count: int = 250) -> tuple[list[str], str]:
+    lines = [f"print('code line {index:03d}')" for index in range(line_count)]
+    return lines, "```python\n" + "\n".join(lines) + "\n```"
 
 
 class RecordingChannel:
@@ -210,7 +223,7 @@ async def test_delivery_count_does_not_grow_with_the_number_of_citations():
 
 
 @pytest.mark.asyncio
-async def test_indivisible_code_fence_is_truncated_with_a_notice():
+async def test_single_long_code_line_is_hard_wrapped_not_dropped():
     channel = RecordingChannel()
     fence = "```\n" + ("A" * 4992) + "\n```"
     assert len(fence) == 5000
@@ -218,9 +231,93 @@ async def test_indivisible_code_fence_is_truncated_with_a_notice():
     await send_split_message(channel, fence, {"logger": MagicMock()})
 
     chunks = [content for content, _ in channel.calls]
-    assert len(chunks) == 1
-    assert len(chunks[0]) <= 2000
-    assert "truncated" in chunks[0].lower()
+    assert len(chunks) > 1
+    assert all(len(chunk) <= 2000 for chunk in chunks)
+    assert sum(chunk.count("A") for chunk in chunks) == 4992
+    assert all(_fence_lines_are_balanced(chunk) for chunk in chunks)
+    assert not any("truncated" in chunk.lower() for chunk in chunks)
+
+
+@pytest.mark.asyncio
+async def test_long_fence_spanning_messages_delivers_every_line():
+    channel = RecordingChannel()
+    prose = ("Intro prose that arrives before the fence. " * 35).rstrip() + "\n"
+    code_lines, fence = _long_fence()
+    closing = "\nThe paragraph after the code still arrives."
+    message = prose + fence + closing
+
+    await send_split_message(channel, message, {"logger": MagicMock()})
+
+    chunks = [content for content, _ in channel.calls]
+    code_chunks = [chunk for chunk in chunks if chunk.startswith("```python")]
+    delivered = "".join(chunks)
+
+    assert len(chunks) >= 3
+    assert len(code_chunks) >= 3
+    assert all(len(chunk) <= 2000 for chunk in chunks)
+    assert all(_fence_lines_are_balanced(chunk) for chunk in chunks)
+    assert all(line in delivered for line in code_lines)
+    assert closing.strip() in delivered
+    assert not any("truncated" in chunk.lower() for chunk in chunks)
+
+
+@pytest.mark.asyncio
+async def test_long_fence_respects_the_first_chunk_mention_limit():
+    channel = RecordingChannel()
+    original = _original_message()
+    code_lines, fence = _long_fence(300)
+
+    await send_split_message(
+        channel,
+        fence,
+        {"logger": MagicMock()},
+        original_message=original,
+        mention_prefix=MENTION_PREFIX,
+    )
+
+    chunks = _reply_texts(original)
+    delivered = "".join(chunks)
+
+    assert chunks[0].startswith(MENTION_PREFIX)
+    assert all(len(chunk) <= 2000 for chunk in chunks)
+    assert all(_fence_lines_are_balanced(chunk) for chunk in chunks)
+    assert all(line in delivered for line in code_lines)
+
+
+@pytest.mark.asyncio
+async def test_chunk_cap_notice_reports_original_length_and_bot_limit():
+    channel = RecordingChannel()
+    body = "C" * 12000
+
+    await send_split_message(channel, body, {"logger": MagicMock()}, _chunk_budget=2)
+
+    chunks = [content for content, _ in channel.calls]
+    assert len(chunks) == 2
+    assert "12000" in chunks[-1]
+    assert "bot's delivery limit" in chunks[-1].lower()
+    assert "discord limits" not in chunks[-1].lower()
+
+
+def test_embed_split_never_cuts_a_citation_marker():
+    body = ("A" * 3839) + "[20]" + ("B" * 100)
+
+    head, tail = _split_embed_head(body, {"20": "https://example.com/source/20"})
+
+    assert head + tail == body
+    assert not head.endswith("[")
+    assert not tail.startswith("]")
+    assert tail.startswith("[20]")
+
+
+def test_embed_split_keeps_a_long_fence_balanced():
+    _, fence = _long_fence(600)
+
+    head, tail = _split_embed_head(fence, {})
+
+    assert len(head) <= EMBED_SAFE_LIMIT
+    assert _fence_lines_are_balanced(head)
+    assert head.endswith("```")
+    assert tail.startswith("```python")
 
 
 @pytest.mark.asyncio

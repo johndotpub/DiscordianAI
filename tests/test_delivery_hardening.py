@@ -71,6 +71,31 @@ def test_bare_url_and_autolink_are_neutralised_but_citation_is_not() -> None:
     assert f"[1]({TRUSTED_URL})" in sanitized
 
 
+def test_code_spans_and_fences_keep_link_like_syntax_unchanged() -> None:
+    """Discord does not render links in code, so the rewrites must skip it."""
+    inline = "Use `handlers[0](event)` and `https://example.com/inline` here."
+    fenced = "```python\nhandlers[0](event)\nurl = https://example.com/fenced\n```"
+
+    assert sanitize_for_discord(inline) == inline
+    assert "handlers[0](event)" in sanitize_for_discord(fenced)
+    assert "https://example.com/fenced" in sanitize_for_discord(fenced)
+    assert "\u200b" not in sanitize_for_discord(fenced)
+
+
+def test_mentions_are_still_neutralised_inside_code() -> None:
+    """Mention neutralisation is a security property and applies everywhere."""
+    message = "```\n@everyone @here <@123> <@&456> <#789>\n```"
+
+    sanitized = sanitize_for_discord(message)
+
+    assert "@everyone" not in sanitized
+    assert "@\u200beveryone" in sanitized
+    assert "@\u200bhere" in sanitized
+    assert "<@\u200b123>" in sanitized
+    assert "<@&\u200b456>" in sanitized
+    assert "<#\u200b789>" in sanitized
+
+
 @pytest.mark.asyncio
 async def test_text_derived_citation_is_labelled_but_not_linked() -> None:
     """A URL parsed from model text must not become a clickable embed link."""

@@ -80,27 +80,36 @@ flowchart TD
 
 ### Code Block Preservation
 
+A split never leaves a closed code fence unbalanced. If the split point falls inside a
+fenced block that fits in one chunk, the split moves after the block. If the
+block is longer than a chunk, the split moves to a line boundary inside it,
+closes the fence at the end of the chunk, and reopens it with the same language
+tag at the start of the next chunk. A single line longer than the available
+space is hard-wrapped; it is not dropped.
+
 ```mermaid
 flowchart TD
     A[Split Point Found] --> B{Inside Code Block?}
     B -->|No| C[Use Split Point]
-    B -->|Yes| D[Find Code Block Boundaries]
-    
-    D --> E{Can Fit Entire Block?}
-    E -->|Yes| F[Move Split After Block]
-    E -->|No| G[Move Split Before Block]
-    
-    F --> H[Add Closing Markers]
-    G --> I[Add Opening Markers]
-    
-    H --> J[Complete Split]
-    I --> J
-    C --> J
+    B -->|Yes| D{Block Fits in One Chunk?}
+
+    D -->|Yes| E[Move Split After Block]
+    D -->|No| F{Content Before Block?}
+    F -->|Yes| G[Move Split Before Block]
+    F -->|No| H[Split at Line Boundary]
+
+    H --> I[Close Fence at End of Chunk]
+    I --> J[Reopen Fence With Same Language Next Chunk]
+
+    E --> K[Complete Split]
+    G --> K
+    J --> K
+    C --> K
 ```
 
 ## Citation-Aware Splitting
 
-For Perplexity responses with citations, the splitting algorithm ensures citations remain functional:
+For Perplexity responses with citations, the splitting algorithm ensures citations remain functional. An embed head is also snapped so a split never falls inside a `[n]` citation marker or inside a code fence: a marker that would be cut moves whole into the next embed, and a long fence is closed and reopened with the same language tag.
 
 ```mermaid
 flowchart TD
@@ -214,8 +223,8 @@ def find_optimal_split_point(message: str, target_index: int) -> int:
 - Verify word boundary detection is working
 
 **Code blocks broken across messages**:
-- Ensure `adjust_split_for_code_blocks()` is called
-- Check code block detection patterns
+- Long fences are split at a line boundary, closed at the end of each chunk, and reopened with the same language tag
+- A closed fence split with an odd number of marker lines is a bug; check `split_fence_aware()`
 
 **Citations not working in split embeds**:
 - Verify citation mapping is preserved
@@ -224,7 +233,8 @@ def find_optimal_split_point(message: str, target_index: int) -> int:
 **Splitting stops at the chunk cap**:
 - Check the maximum chunk count (50)
 - Ensure the upstream provider is not returning far more text than its output budget allows
-- A single indivisible unit that cannot fit is truncated with a visible notice; this is expected
+- Only the chunk cap truncates content; a single line wider than the limit is hard-wrapped, not dropped
+- The notice reports the original answer length and says the bot's delivery limit was reached
 
 ### Performance Considerations
 
@@ -241,7 +251,8 @@ Splitting is iterative: the chunk list is computed up front and then sent in a l
 
 1. **Normal Splitting**: Messages are split using intelligent boundary detection until the remaining text fits.
 2. **Chunk Cap Hit**: At 50 chunks the splitter logs an ERROR and stops, because no legitimate provider response needs that many messages.
-3. **Indivisible Unit**: If one code fence or word cannot be split within the limit, the remaining text is truncated with a visible notice.
+3. **Indivisible Unit**: A code fence is split at a line boundary with balanced fences, and a single line wider than the limit is hard-wrapped. Only the chunk cap truncates content.
+4. **Cap Notice**: The final chunk carries a visible notice with the original answer length and the bot's delivery limit.
 
 ### Chunk Cap Flow
 
@@ -261,9 +272,9 @@ flowchart TD
 
 ### Benefits
 
-- **Content Preservation**: Full-length provider answers are delivered in full, with no recursion-depth cutoff.
+- **Content Preservation**: Full-length provider answers are delivered in full, with no recursion-depth cutoff; long code fences keep every line and each chunk has balanced fences.
 - **Runaway Guard**: A pathological response stops at a bounded number of messages.
-- **User Awareness**: A visible truncation notice is reserved for text that genuinely cannot be split.
+- **User Awareness**: The truncation notice is reserved for the chunk cap and reports the original answer length and the bot's delivery limit.
 
 ## Advanced Configuration
 
