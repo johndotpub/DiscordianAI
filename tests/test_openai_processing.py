@@ -99,18 +99,21 @@ class TestProcessOpenAIMessageBasic:
         openai_client.chat.completions.create = AsyncMock(side_effect=TimeoutError("Timeout"))
         logger = MagicMock()
 
-        result = await process_openai_message(
-            request=make_request(
-                "Test",
-                conversation_manager=conversation_manager,
-                logger=logger,
-            ),
-            conversation_summary=[],
-            openai_client=openai_client,
-            config=_config(),
-        )
+        with patch("src.error_handling.asyncio.sleep") as sleep:
+            result = await process_openai_message(
+                request=make_request(
+                    "Test",
+                    conversation_manager=conversation_manager,
+                    logger=logger,
+                ),
+                conversation_summary=[],
+                openai_client=openai_client,
+                config=_config(),
+            )
 
         assert result is None
+        openai_client.chat.completions.create.assert_awaited_once()
+        sleep.assert_not_awaited()
         logger.exception.assert_called()
         conversation_manager.add_message.assert_not_called()
 
@@ -121,18 +124,21 @@ class TestProcessOpenAIMessageBasic:
         openai_client.chat.completions.create = AsyncMock(side_effect=Exception("Generic error"))
         logger = MagicMock()
 
-        result = await process_openai_message(
-            request=make_request(
-                "Test",
-                conversation_manager=conversation_manager,
-                logger=logger,
-            ),
-            conversation_summary=[],
-            openai_client=openai_client,
-            config=_config(),
-        )
+        with patch("src.error_handling.asyncio.sleep") as sleep:
+            result = await process_openai_message(
+                request=make_request(
+                    "Test",
+                    conversation_manager=conversation_manager,
+                    logger=logger,
+                ),
+                conversation_summary=[],
+                openai_client=openai_client,
+                config=_config(),
+            )
 
         assert result is None
+        assert openai_client.chat.completions.create.await_count == 2
+        sleep.assert_awaited_once()
         logger.exception.assert_called()
         conversation_manager.add_message.assert_not_called()
 
@@ -144,26 +150,19 @@ class TestProcessOpenAIMessageAdditionalCoverage:
         openai_client = _client_returning(openai_response("Test response"))
         logger = MagicMock()
 
-        with patch("src.openai_processing.retry_with_backoff") as mock_retry:
+        result = await process_openai_message(
+            request=make_request(
+                "Test message for internal logic",
+                conversation_manager=conversation_manager,
+                logger=logger,
+            ),
+            conversation_summary=[{"role": "user", "content": "Previous message"}],
+            openai_client=openai_client,
+            config=_config(system_message="System message"),
+        )
 
-            async def call_function_directly(func, retry_config, logger_arg):
-                return await func()
-
-            mock_retry.side_effect = call_function_directly
-
-            result = await process_openai_message(
-                request=make_request(
-                    "Test message for internal logic",
-                    conversation_manager=conversation_manager,
-                    logger=logger,
-                ),
-                conversation_summary=[{"role": "user", "content": "Previous message"}],
-                openai_client=openai_client,
-                config=_config(system_message="System message"),
-            )
-
-            assert result == "Test response"
-            assert logger.debug.call_count >= 1
+        assert result == "Test response"
+        assert logger.debug.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_usage_logging(self, make_request, openai_response):
@@ -171,25 +170,18 @@ class TestProcessOpenAIMessageAdditionalCoverage:
         openai_client = _client_returning(openai_response("Response with detailed usage"))
         logger = MagicMock()
 
-        with patch("src.openai_processing.retry_with_backoff") as mock_retry:
+        result = await process_openai_message(
+            request=make_request(
+                "Test message with usage tracking",
+                conversation_manager=conversation_manager,
+                logger=logger,
+            ),
+            conversation_summary=[],
+            openai_client=openai_client,
+            config=_config(system_message="System message"),
+        )
 
-            async def call_function_directly(func, retry_config, logger_arg):
-                return await func()
-
-            mock_retry.side_effect = call_function_directly
-
-            result = await process_openai_message(
-                request=make_request(
-                    "Test message with usage tracking",
-                    conversation_manager=conversation_manager,
-                    logger=logger,
-                ),
-                conversation_summary=[],
-                openai_client=openai_client,
-                config=_config(system_message="System message"),
-            )
-
-            assert result == "Response with detailed usage"
+        assert result == "Response with detailed usage"
 
     @pytest.mark.asyncio
     async def test_whitespace_only_response(self, make_request, openai_response):
@@ -197,25 +189,18 @@ class TestProcessOpenAIMessageAdditionalCoverage:
         openai_client = _client_returning(openai_response("   \n\t   "))
         logger = MagicMock()
 
-        with patch("src.openai_processing.retry_with_backoff") as mock_retry:
+        result = await process_openai_message(
+            request=make_request(
+                "Test message",
+                conversation_manager=conversation_manager,
+                logger=logger,
+            ),
+            conversation_summary=[],
+            openai_client=openai_client,
+            config=_config(system_message="System message"),
+        )
 
-            async def call_function_directly(func, retry_config, logger_arg):
-                return await func()
-
-            mock_retry.side_effect = call_function_directly
-
-            result = await process_openai_message(
-                request=make_request(
-                    "Test message",
-                    conversation_manager=conversation_manager,
-                    logger=logger,
-                ),
-                conversation_summary=[],
-                openai_client=openai_client,
-                config=_config(system_message="System message"),
-            )
-
-            assert result is None
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_response_logging_message_counts(self, make_request, openai_response):
@@ -223,26 +208,19 @@ class TestProcessOpenAIMessageAdditionalCoverage:
         openai_client = _client_returning(openai_response("A" * 300))
         logger = MagicMock()
 
-        with patch("src.openai_processing.retry_with_backoff") as mock_retry:
+        result = await process_openai_message(
+            request=make_request(
+                "Test message for logging",
+                conversation_manager=conversation_manager,
+                logger=logger,
+            ),
+            conversation_summary=[],
+            openai_client=openai_client,
+            config=_config(system_message="System message"),
+        )
 
-            async def call_function_directly(func, retry_config, logger_arg):
-                return await func()
-
-            mock_retry.side_effect = call_function_directly
-
-            result = await process_openai_message(
-                request=make_request(
-                    "Test message for logging",
-                    conversation_manager=conversation_manager,
-                    logger=logger,
-                ),
-                conversation_summary=[],
-                openai_client=openai_client,
-                config=_config(system_message="System message"),
-            )
-
-            assert result == "A" * 300
-            conversation_manager.add_message.assert_not_called()
+        assert result == "A" * 300
+        conversation_manager.add_message.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_invalid_response_structure(self, make_request, openai_response):
@@ -252,22 +230,15 @@ class TestProcessOpenAIMessageAdditionalCoverage:
         openai_client = _client_returning(response)
         logger = MagicMock()
 
-        with patch("src.openai_processing.retry_with_backoff") as mock_retry:
+        result = await process_openai_message(
+            request=make_request(
+                "Test message",
+                conversation_manager=conversation_manager,
+                logger=logger,
+            ),
+            conversation_summary=[],
+            openai_client=openai_client,
+            config=_config(system_message="System message"),
+        )
 
-            async def call_function_directly(func, retry_config, logger_arg):
-                return await func()
-
-            mock_retry.side_effect = call_function_directly
-
-            result = await process_openai_message(
-                request=make_request(
-                    "Test message",
-                    conversation_manager=conversation_manager,
-                    logger=logger,
-                ),
-                conversation_summary=[],
-                openai_client=openai_client,
-                config=_config(system_message="System message"),
-            )
-
-            assert result is None
+        assert result is None

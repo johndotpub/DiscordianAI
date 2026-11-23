@@ -1,11 +1,7 @@
-"""Performance and concurrency integration tests.
+"""Concurrency and resource smoke tests.
 
-This test suite covers:
-- Concurrent conversation management
-- Rate limiting under load
-- Memory usage patterns
-- Response time benchmarks
-- Thread safety validation
+These cover concurrent conversation, rate-limit, and delivery paths without
+measuring elapsed time or asserting a wall-clock budget.
 """
 
 import asyncio
@@ -93,7 +89,7 @@ class TestConcurrentConversationManagement:
         assert len(conversation) == 3
 
     @pytest.mark.asyncio
-    async def test_conversation_pruning_under_load(self):
+    async def test_conversation_pruning_with_many_messages(self):
         """Test conversation pruning behavior under high load."""
         manager = ThreadSafeConversationManager(max_history_per_user=10)
 
@@ -115,7 +111,7 @@ class TestConcurrentConversationManagement:
         assert "Message 15" in conversation[0]["content"]
 
 
-class TestRateLimitingUnderLoad:
+class TestRateLimitingConcurrency:
     """Test rate limiting behavior under concurrent load."""
 
     @pytest.mark.asyncio
@@ -217,15 +213,13 @@ class TestRateLimitingUnderLoad:
                 logger=Mock(),
             )
 
-        # Verify internal data structures don't grow unbounded
-        # In a real implementation, old entries should be cleaned up
-        # This test ensures the data structure size is reasonable
-        assert len(rate_limiter.last_command_timestamps) <= 1000
-        assert len(rate_limiter.last_command_count) <= 1000
+        # One entry per user, with no duplicate bookkeeping keys.
+        assert len(rate_limiter.last_command_timestamps) == 1000
+        assert len(rate_limiter.last_command_count) == 1000
 
 
-class TestDiscordAPIPerformance:
-    """Test Discord API interaction performance."""
+class TestDiscordSendConcurrency:
+    """Exercise concurrent Discord send fallbacks."""
 
     @pytest.mark.asyncio
     async def test_concurrent_discord_sends(self):
@@ -315,8 +309,8 @@ class TestMemoryAndResourceManagement:
             assert len(conversation) == messages_per_user
 
     @pytest.mark.asyncio
-    async def test_lock_cleanup_performance(self):
-        """Test performance of lock cleanup process."""
+    async def test_lock_cleanup_removes_only_orphans(self):
+        """Test that lock cleanup removes only orphaned locks."""
         manager = ThreadSafeConversationManager(cleanup_interval=1)
 
         active_ids = list(range(250))
@@ -334,11 +328,11 @@ class TestMemoryAndResourceManagement:
         assert all(user_id not in manager._user_locks for user_id in inactive_ids)
 
 
-class TestSystemIntegrationBenchmarks:
-    """Benchmark tests for system integration performance."""
+class TestSystemIntegrationSmoke:
+    """Smoke tests for the complete processing path."""
 
     @pytest.mark.asyncio
-    async def test_end_to_end_response_time_benchmark(self):
+    async def test_end_to_end_processing_smoke(self):
         """Benchmark end-to-end response processing time."""
         # Mock all external dependencies
         user = Mock()
@@ -390,5 +384,4 @@ class TestSystemIntegrationBenchmarks:
 
 
 if __name__ == "__main__":
-    # Run performance tests with timing information
-    pytest.main([__file__, "-v", "-s"])
+    pytest.main([__file__, "-v"])

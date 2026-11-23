@@ -35,10 +35,10 @@ class TestThreadSafeConversationManager:
         assert len(manager._user_locks) == 0
 
     def test_init_with_custom_params(self):
-        """Test initialization with custom parameters."""
-        manager = ThreadSafeConversationManager(max_history_per_user=100, cleanup_interval=1800)
+        """Test initialization with non-default custom parameters."""
+        manager = ThreadSafeConversationManager(max_history_per_user=7, cleanup_interval=1800)
 
-        assert manager._max_history == 100
+        assert manager._max_history == 7
         assert manager._cleanup_interval == 1800
 
     def test_get_user_lock(self):

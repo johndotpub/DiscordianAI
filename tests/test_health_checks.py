@@ -302,21 +302,14 @@ class TestAPIHealthMonitor:
 
     @pytest.mark.asyncio
     async def test_run_all_health_checks(self):
-        """Test running health checks for all services."""
-        # Mock clients
+        """Every configured service is checked through the method it really calls."""
         openai_client = Mock()
-        openai_response = Mock()
-        openai_response.choices = [Mock()]
-        openai_response.choices[0].message.content = "OpenAI health check"
-        openai_response.usage = Mock()
-        openai_client.chat.completions.create.return_value = openai_response
+        openai_client.models.list = AsyncMock(return_value=Mock(data=[Mock(id="gpt-5-mini")]))
 
         perplexity_client = Mock()
-        perplexity_response = Mock()
-        perplexity_response.choices = [Mock()]
-        perplexity_response.choices[0].message.content = "Perplexity health check"
-        perplexity_response.usage = Mock()
-        perplexity_client.chat.completions.create.return_value = perplexity_response
+        perplexity_client.models.list = AsyncMock(
+            return_value=Mock(data=[Mock(id="perplexity/sonar")])
+        )
 
         discord_client = Mock()
         discord_client.is_ready.return_value = True
@@ -339,9 +332,10 @@ class TestAPIHealthMonitor:
         results = await self.monitor.run_all_health_checks(clients, config)
 
         assert len(results) == 3
-        assert "openai" in results
-        assert "perplexity" in results
-        assert "discord" in results
+        assert results["openai"].status == "healthy"
+        assert results["perplexity"].status == "healthy"
+        assert results["discord"].status == "healthy"
+        assert results["openai"].details["model_count"] == 1
 
         # Verify all checks were recorded
         assert len(self.monitor.metrics) == 3

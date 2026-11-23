@@ -55,7 +55,7 @@ async def test_bot_mention_is_processed_without_an_ignoring_line(deps, spies, ca
     guild = _guild_with(channel)
     bot = _bot(guild)
     deps["ALLOWED_CHANNEL_IDS"] = [42]
-    other_bot = FakeUser(1502038480144957510, bot=True)
+    other_bot = FakeUser(900_000_000_000_000_001, bot=True)
     message = _message(channel, author=other_bot, mentions=[bot.user], guild=guild)
 
     await message_router.handle_incoming_message(message, deps, bot)

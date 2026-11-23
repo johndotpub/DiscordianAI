@@ -269,6 +269,8 @@ def test_override_returns_gate_decision_without_a_fallback_marker(monkeypatch) -
 def test_http_500_falls_back_to_the_deterministic_gate(monkeypatch, caplog) -> None:
     """An HTTP failure is marked as a Clef fallback and keeps the gate's route."""
     _install_sync(monkeypatch, _status_response(500))
+    ticks = iter([10.0, 10.5])
+    monkeypatch.setattr("src.routing.clef.perf_counter", lambda: next(ticks))
     request = RouterInput(text="is github down")
     expected = HeuristicRouter().decide_sync(request)
 
@@ -279,7 +281,7 @@ def test_http_500_falls_back_to_the_deterministic_gate(monkeypatch, caplog) -> N
     assert decision.reasons[0] == "clef:fallback:http_500"
     assert decision.reasons[1:] == expected.reasons
     assert decision.text == expected.text
-    assert decision.latency_ms >= 0.0
+    assert decision.latency_ms == 500.0
     assert any("Clef routing failed" in record.getMessage() for record in caplog.records)
 
 

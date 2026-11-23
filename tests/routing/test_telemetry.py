@@ -34,7 +34,19 @@ def test_telemetry_has_the_required_content_free_fields() -> None:
     assert fields["service"] == "perplexity"
     assert fields["router_id"] == "gate"
     assert fields["reasons"] == "bearing:pred.status"
-    assert isinstance(fields["latency_ms"], float)
+
+
+def test_telemetry_reports_the_decision_latency() -> None:
+    """The latency field carries the decision's measured value unchanged."""
+    decision = RouteDecision(
+        route="web",
+        reasons=("bearing:pred.status",),
+        latency_ms=37.5,
+    )
+
+    fields = decision_log_fields(decision)
+
+    assert fields["latency_ms"] == 37.5
 
 
 @pytest.mark.parametrize(

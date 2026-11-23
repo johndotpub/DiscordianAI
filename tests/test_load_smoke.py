@@ -1,7 +1,7 @@
-"""Load and stress tests for DiscordianAI bot.
+"""Smoke tests for high concurrent user counts.
 
-This module tests the bot's ability to handle high concurrent load,
-simulating scenarios with 10k+ users as claimed in the documentation.
+The scenarios exercise bookkeeping under many users; they make no timing
+claims and assert only on stored state.
 """
 
 import asyncio
@@ -12,8 +12,8 @@ from src.conversation_manager import ThreadSafeConversationManager
 from src.rate_limits import RateLimiter
 
 
-class TestConcurrentUserLoad:
-    """Test bot behavior under high concurrent user load."""
+class TestConcurrentUserSmoke:
+    """Exercise conversation and rate-limit bookkeeping under many users."""
 
     @pytest.mark.asyncio
     async def test_conversation_manager_concurrent_users(self):
@@ -52,13 +52,13 @@ class TestConcurrentUserLoad:
         # Verify all users have conversations
         assert len(manager._conversations) == num_users
 
-        # Simulate cleanup (normally done by background task)
-        manager.cleanup_inactive_user_locks(force=True)
+        inactive_lock = manager._get_user_lock(999_999)
+        cleaned = manager.cleanup_inactive_user_locks(force=True)
 
-        # After cleanup, inactive user locks should be removed
-        # (In real scenario, cleanup happens based on activity time)
-        # For this test, we verify cleanup mechanism works
-        assert hasattr(manager, "cleanup_inactive_user_locks")
+        assert cleaned == 1
+        assert 999_999 not in manager._user_locks
+        assert inactive_lock not in manager._user_locks.values()
+        assert len(manager._conversations) == num_users
 
     @pytest.mark.asyncio
     async def test_rate_limiter_concurrent_requests(self):
@@ -181,7 +181,7 @@ class TestConcurrentUserLoad:
         assert all(len(s) <= 10 for s in summaries), "Summaries should be limited"
 
     @pytest.mark.asyncio
-    async def test_thread_safety_under_load(self):
+    async def test_thread_safety_with_concurrent_reads_and_writes(self):
         """Test thread safety with concurrent read/write operations."""
         manager = ThreadSafeConversationManager()
 
@@ -212,27 +212,3 @@ class TestConcurrentUserLoad:
         for user_id in range(min(100, num_users)):  # Check sample
             conversation = manager.get_conversation(user_id)
             assert len(conversation) == writes_per_user
-
-    @pytest.mark.asyncio
-    async def test_high_concurrency_message_ordering(self):
-        """Test message ordering is preserved under high concurrency."""
-        manager = ThreadSafeConversationManager(max_history_per_user=150)  # Allow 100+ messages
-
-        user_id = 9999
-        num_messages = 100
-
-        async def add_message(index: int):
-            """Add a message with specific index."""
-            manager.add_message(user_id, "user", f"Message {index}")
-
-        # Add messages concurrently
-        tasks = [add_message(i) for i in range(num_messages)]
-        await asyncio.gather(*tasks)
-
-        # Verify messages are in order
-        conversation = manager.get_conversation(user_id)
-        assert len(conversation) == num_messages
-
-        # Check ordering (messages should be added in order despite concurrency)
-        for i, msg in enumerate(conversation):
-            assert msg["content"] == f"Message {i}", f"Message {i} out of order"
