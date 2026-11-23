@@ -4,8 +4,6 @@ from io import StringIO
 import logging
 import re
 
-import pytest
-
 from src.structured_logging import configure_structlog
 
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
@@ -16,19 +14,6 @@ class _TTYStream(StringIO):
 
     def isatty(self) -> bool:
         return True
-
-
-@pytest.fixture(autouse=True)
-def _restore_root_logger():
-    """Keep the globally configured root logger isolated between tests."""
-    root = logging.getLogger()
-    original_handlers = list(root.handlers)
-    original_level = root.level
-    try:
-        yield
-    finally:
-        root.handlers[:] = original_handlers
-        root.setLevel(original_level)
 
 
 def _render(monkeypatch, stream, setting=None):

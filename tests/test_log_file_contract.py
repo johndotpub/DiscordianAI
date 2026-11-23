@@ -18,19 +18,6 @@ _LOG_FILE_CLAIM = re.compile(
 
 
 @pytest.fixture(autouse=True)
-def _restore_root_logger():
-    """Keep the globally configured root logger isolated between tests."""
-    root = logging.getLogger()
-    original_handlers = list(root.handlers)
-    original_level = root.level
-    try:
-        yield
-    finally:
-        root.handlers[:] = original_handlers
-        root.setLevel(original_level)
-
-
-@pytest.fixture(autouse=True)
 def _isolate_log_file_environment(monkeypatch):
     """Keep the host LOG_FILE from making the deprecated key look explicit."""
     monkeypatch.delenv("LOG_FILE", raising=False)

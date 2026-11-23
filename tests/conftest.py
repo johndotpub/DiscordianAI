@@ -1,6 +1,7 @@
 """Pytest configuration helpers and shared fixtures for DiscordianAI tests."""
 
 from copy import deepcopy
+import logging
 from unittest.mock import AsyncMock, MagicMock
 import warnings
 
@@ -39,6 +40,19 @@ def _reset_provider_circuit_breakers() -> None:
         for attribute, value in list(vars(module).items()):
             if id(value) in old_to_new:
                 setattr(module, attribute, old_to_new[id(value)])
+
+
+@pytest.fixture(autouse=True)
+def restore_root_logger():
+    """Keep a test that configures production logging from leaking its handlers."""
+    root = logging.getLogger()
+    original_handlers = list(root.handlers)
+    original_level = root.level
+    try:
+        yield
+    finally:
+        root.handlers[:] = original_handlers
+        root.setLevel(original_level)
 
 
 @pytest.fixture(autouse=True)

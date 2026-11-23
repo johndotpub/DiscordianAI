@@ -216,10 +216,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests ✅
 
-- **Single-provider outage tests no longer wait for retry backoff.** The retry sleep is
-  patched at its real boundary in `src.error_handling`, and each test asserts that one
-  backoff sleep was intercepted, so the suite proves the retry path while running in
-  milliseconds.
+- **Root logging is restored between tests.** A test that configures production logging
+  no longer leaves its rich handler installed for later tests, which had made traceback
+  rendering, not retry sleep, the slow part of the outage tests.
+- **Single-provider outage tests prove their retry sleep is intercepted.** The retry
+  sleep is patched at its real boundary in `src.error_handling`, and each test asserts
+  that one backoff sleep happened, so the suite exercises the retry path without a real
+  backoff wait.
 - **Default-provider regression coverage** pins the Ollama Cloud URL and model, permissive model
   validation, `REASONING_EFFORT` overriding, and the `max_tokens` request payload.
 - **Provider contract coverage** runs both adapters against stubbed SDK clients: request shape,
