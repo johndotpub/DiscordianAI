@@ -366,10 +366,10 @@ async def _build_route_decision(
             router_input,
             text=_sanitize_for_routing(router_input.text),
         )
-    except (NotImplementedError, ValueError):
-        raise
     except LexiconError as exc:
         return _lexicon_fallback_decision(request, exc)
+    except (NotImplementedError, ValueError):
+        raise
     except Exception as exc:
         request.logger.exception(
             "Routing setup failed (%s); falling back to a deterministic local decision",
@@ -551,7 +551,7 @@ async def _process_openai_only_mode(
     )
 
 
-async def get_smart_response(  # noqa: PLR0911, PLR0913 - explicit failures and the injected router
+async def get_smart_response(  # noqa: PLR0913 - the injected router
     request: AIRequest,
     conversation_summary: list[dict],
     clients: AIClients,
@@ -623,19 +623,6 @@ async def get_smart_response(  # noqa: PLR0911, PLR0913 - explicit failures and 
         request.logger.critical("No AI clients available")
         return ERROR_MESSAGES["configuration_error"], False, None
 
-    except LexiconError:
-        request.logger.exception(
-            "Routing lexicon unavailable; falling back to a direct local response"
-        )
-        if clients.openai is not None:
-            return await _process_only_mode(
-                request,
-                "openai",
-                clients.openai,
-                config,
-                conversation_summary,
-            )
-        return ERROR_MESSAGES["configuration_error"], False, None
     except (NotImplementedError, ValueError):
         request.logger.exception("Routing configuration error")
         raise
@@ -644,7 +631,7 @@ async def get_smart_response(  # noqa: PLR0911, PLR0913 - explicit failures and 
         return ERROR_MESSAGES["unexpected_error"], False, None
 
 
-async def _process_hybrid_mode(  # noqa: PLR0911, PLR0912, PLR0913 - one branch per fallback outcome
+async def _process_hybrid_mode(  # noqa: PLR0911, PLR0913 - one branch per fallback outcome
     request: AIRequest,
     conversation_summary: list[dict],
     clients: AIClients,
@@ -720,13 +707,6 @@ async def _process_hybrid_mode(  # noqa: PLR0911, PLR0912, PLR0913 - one branch 
                 "Discarding OpenAI answer after web-inability reroute: length=%d",
                 len(res_content),
             )
-            if ledger.already_tried("perplexity"):
-                request.logger.warning(
-                    "Perplexity already failed in this request; returning the local "
-                    "answer without a second attempt"
-                )
-                _record_conversation_turn(request, res_content, "openai", config.openai.model)
-                return res_content, False, None
             request.logger.warning(
                 "OpenAI response indicates web-inability; rerouting to Perplexity"
             )
