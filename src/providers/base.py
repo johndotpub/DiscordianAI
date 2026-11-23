@@ -6,8 +6,10 @@ adapter that offered them; callers never see an intermediate tool-call response.
 Citations are empty unless the provider itself yields source metadata.
 """
 
+import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+import time
 from typing import Any, Protocol
 
 
@@ -25,6 +27,34 @@ def model_ids_from_response(response: Any) -> list[str]:
         for item in object_field(response, "data", []) or []
         if (model_id := object_field(item, "id"))
     ]
+
+
+async def probe_models(client: Any, timeout_s: float) -> "ProbeResult":
+    """List models with one bounded timeout and return a reachability result."""
+    started_at = time.monotonic()
+    try:
+        response = await asyncio.wait_for(client.models.list(), timeout=timeout_s)
+    except Exception as exc:  # noqa: BLE001 - probes report, never raise
+        latency_ms = (time.monotonic() - started_at) * 1000
+        return ProbeResult(
+            ok=False,
+            detail=f"{type(exc).__name__}: {exc}",
+            latency_ms=round(latency_ms, 1),
+        )
+
+    latency_ms = (time.monotonic() - started_at) * 1000
+    model_ids = model_ids_from_response(response)
+    if not model_ids:
+        return ProbeResult(
+            ok=False,
+            detail="provider returned no models",
+            latency_ms=round(latency_ms, 1),
+        )
+    return ProbeResult(
+        ok=True,
+        detail=f"{len(model_ids)} models available",
+        latency_ms=round(latency_ms, 1),
+    )
 
 
 @dataclass(frozen=True)

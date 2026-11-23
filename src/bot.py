@@ -31,6 +31,7 @@ from .conversation_manager import ThreadSafeConversationManager
 from .dependencies import BotDependencies
 from .error_handling import get_circuit_breaker
 from .health_server import HealthServer
+from .providers.registry import build_configured_clients
 from .rate_limits import RateLimiter
 from .routing import build_router
 
@@ -64,42 +65,9 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
     router = build_router(config)
     logger.info("Routing configured with %s", router.router_id)
 
-    # Initialize OpenAI client if API key is provided
-    client = None
-    if config["OPENAI_API_KEY"]:
-        try:
-            client = pool_manager.create_openai_client(
-                api_key=config["OPENAI_API_KEY"],
-                base_url=config["OPENAI_API_URL"],
-            )
-            logger.info(
-                "OpenAI client initialized with model %s (connection pooling enabled)",
-                config["GPT_MODEL"],
-            )
-        except Exception as e:
-            logger.exception("Failed to initialize OpenAI client")
-            error_msg = "OpenAI client initialization failed"
-            raise RuntimeError(error_msg) from e
-    else:
-        logger.info("No OpenAI API key provided; GPT models disabled")
-
-    # Initialize Perplexity client for web search if API key is provided
-    perplexity_client = None
-    if config["PERPLEXITY_API_KEY"]:
-        try:
-            perplexity_client = pool_manager.create_perplexity_client(
-                api_key=config["PERPLEXITY_API_KEY"],
-                base_url=config["PERPLEXITY_API_URL"],
-            )
-            logger.info(
-                "Perplexity client initialized for web search (connection pooling enabled)",
-            )
-        except Exception as e:
-            logger.exception("Failed to initialize Perplexity client")
-            error_msg = "Perplexity client initialization failed"
-            raise RuntimeError(error_msg) from e
-    else:
-        logger.info("No Perplexity API key provided; web search disabled")
+    configured_clients = build_configured_clients(pool_manager, config, logger)
+    client = configured_clients.get("openai")
+    perplexity_client = configured_clients.get("perplexity")
 
     # Verify at least one API is configured
     if not client and not perplexity_client:

@@ -5,10 +5,8 @@ and parses answer text plus citation metadata. Discord-specific formatting and
 embed construction stay in :mod:`src.perplexity_processing`.
 """
 
-import asyncio
 import logging
 import re
-import time
 from typing import Any
 
 from src.config import (
@@ -34,8 +32,8 @@ from .base import (
     CompletionRequest,
     ProbeResult,
     ProviderResult,
-    model_ids_from_response,
     object_field,
+    probe_models,
 )
 
 perplexity_circuit_breaker = get_circuit_breaker("perplexity")
@@ -313,7 +311,7 @@ def _normalize_citation_text(text: str, citations: dict[str, str]) -> str:
     return "\n".join(cleaned_lines).strip()
 
 
-def _build_api_params(  # noqa: PLR0913
+def _completion_request(  # noqa: PLR0913
     model: str,
     system: str,
     user_msg: str,
@@ -324,13 +322,11 @@ def _build_api_params(  # noqa: PLR0913
     output_tokens: int | None = None,
     context_window: int = DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
     logger=None,
-) -> dict[str, Any]:
-    """Prepare Perplexity Agent API request parameters.
+) -> CompletionRequest:
+    """Build one normalised Agent API request.
 
-    The system prompt travels as ``instructions`` and everything else travels
-    as ``input`` messages, matching the Agent API request shape. Web search and
-    URL fetching are always enabled because this path exists for live-data
-    questions.
+    The fixed fetch-url instruction suffix is charged against the prompt budget
+    and carried in the system message exactly once.
     """
     completion_tokens = tokens if output_tokens is None else output_tokens
     prompt_budget = (
@@ -353,16 +349,69 @@ def _build_api_params(  # noqa: PLR0913
         input_messages = messages[1:]
     instructions = f"{instructions.rstrip()}\n\n{FETCH_URL_INSTRUCTIONS}"
 
-    return {
-        "model": model,
-        "instructions": instructions,
-        "input": input_messages,
-        "max_output_tokens": resolve_completion_budget(
+    return CompletionRequest(
+        model=model,
+        messages=[{"role": "system", "content": instructions}, *input_messages],
+        max_output_tokens=resolve_completion_budget(
             completion_tokens, context_window, prompt_budget
         ),
-        "tools": WEB_TOOLS,
-        "extra_body": {"max_steps": DEFAULT_MAX_STEPS},
+        reasoning_effort=None,
+        tools=tuple(WEB_TOOLS),
+        extra={"max_steps": DEFAULT_MAX_STEPS},
+    )
+
+
+def _api_params(req: CompletionRequest, *, default_system: str = "") -> dict[str, Any]:
+    """Convert a normalised request into Agent API parameters."""
+    messages = list(req.messages)
+    if messages and messages[0].get("role") == "system":
+        instructions = str(messages[0].get("content", ""))
+        input_messages = messages[1:]
+    else:
+        instructions = default_system
+        input_messages = messages
+
+    return {
+        "model": req.model,
+        "instructions": instructions,
+        "input": input_messages,
+        "max_output_tokens": req.max_output_tokens,
+        "tools": list(req.tools) or WEB_TOOLS,
+        "extra_body": {"max_steps": int(req.extra.get("max_steps", DEFAULT_MAX_STEPS))},
     }
+
+
+def _build_api_params(  # noqa: PLR0913
+    model: str,
+    system: str,
+    user_msg: str,
+    tokens: int,
+    history: list[dict] | None = None,
+    *,
+    input_tokens: int = DEFAULT_PERPLEXITY_INPUT_TOKENS,
+    output_tokens: int | None = None,
+    context_window: int = DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
+    logger=None,
+) -> dict[str, Any]:
+    """Prepare Perplexity Agent API request parameters.
+
+    The system prompt travels as ``instructions`` and everything else travels
+    as ``input`` messages, matching the Agent API request shape. Web search and
+    URL fetching are always enabled because this path exists for live-data
+    questions.
+    """
+    request = _completion_request(
+        model,
+        system,
+        user_msg,
+        tokens,
+        history,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        context_window=context_window,
+        logger=logger,
+    )
+    return _api_params(request, default_system=system)
 
 
 class AgentResponsesProvider:
@@ -406,7 +455,7 @@ class AgentResponsesProvider:
     ) -> CompletionRequest:
         """Build one normalised request using the Agent API shape."""
         config = self._config
-        params = _build_api_params(
+        return _completion_request(
             config.model,
             system,
             user_msg,
@@ -417,39 +466,10 @@ class AgentResponsesProvider:
             context_window=(config.context_window if context_window is None else context_window),
             logger=logger or self._logger,
         )
-        return CompletionRequest(
-            model=params["model"],
-            messages=[
-                {"role": "system", "content": params["instructions"]},
-                *params["input"],
-            ],
-            max_output_tokens=int(params["max_output_tokens"]),
-            reasoning_effort=None,
-            tools=tuple(params["tools"]),
-            extra=dict(params.get("extra_body", {})),
-        )
 
     def _api_params(self, req: CompletionRequest) -> dict[str, Any]:
         """Convert a normalised request into Agent API parameters."""
-        messages = list(req.messages)
-        if messages and messages[0].get("role") == "system":
-            instructions = str(messages[0].get("content", ""))
-            input_messages = messages[1:]
-        else:
-            instructions = self._config.system_message
-            input_messages = messages
-
-        if FETCH_URL_INSTRUCTIONS not in instructions:
-            instructions = f"{instructions.rstrip()}\n\n{FETCH_URL_INSTRUCTIONS}"
-
-        return {
-            "model": req.model,
-            "instructions": instructions,
-            "input": input_messages,
-            "max_output_tokens": req.max_output_tokens,
-            "tools": list(req.tools) or WEB_TOOLS,
-            "extra_body": {"max_steps": int(req.extra.get("max_steps", DEFAULT_MAX_STEPS))},
-        }
+        return _api_params(req, default_system=self._config.system_message)
 
     async def complete(self, req: CompletionRequest) -> ProviderResult:
         """Return answer text and citations from one Agent API call."""
@@ -481,30 +501,4 @@ class AgentResponsesProvider:
 
     async def probe(self) -> ProbeResult:
         """List models with a bounded timeout and report reachability."""
-        started_at = time.monotonic()
-        try:
-            response = await asyncio.wait_for(
-                self._client.models.list(),
-                timeout=self._probe_timeout,
-            )
-        except Exception as exc:  # noqa: BLE001 - probes report, never raise
-            latency_ms = (time.monotonic() - started_at) * 1000
-            return ProbeResult(
-                ok=False,
-                detail=f"{type(exc).__name__}: {exc}",
-                latency_ms=round(latency_ms, 1),
-            )
-
-        latency_ms = (time.monotonic() - started_at) * 1000
-        model_ids = model_ids_from_response(response)
-        if not model_ids:
-            return ProbeResult(
-                ok=False,
-                detail="provider returned no models",
-                latency_ms=round(latency_ms, 1),
-            )
-        return ProbeResult(
-            ok=True,
-            detail=f"{len(model_ids)} models available",
-            latency_ms=round(latency_ms, 1),
-        )
+        return await probe_models(self._client, self._probe_timeout)
