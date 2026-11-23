@@ -338,8 +338,8 @@ def test_ollama_key_is_accepted_when_openai_key_is_absent(monkeypatch) -> None:
 
 
 def test_build_router_selects_clef_and_clamps_the_threshold(monkeypatch) -> None:
-    """A configured Clef mode is selected and an out-of-range threshold clamps."""
-    _install_sync(monkeypatch, _response(0.9))
+    """A threshold above one clamps to one, so certainty still routes web."""
+    _install_sync(monkeypatch, _response(1.0))
 
     router = build_router(
         {
@@ -352,7 +352,8 @@ def test_build_router_selects_clef_and_clamps_the_threshold(monkeypatch) -> None
     decision = router.decide_sync(RouterInput(text="is github down"))
 
     assert isinstance(router, ClefRouter)
-    assert decision.route == "local"
+    assert decision.route == "web"
+    assert decision.reasons == ("clef:web:p=1.000",)
 
 
 def test_model_mode_raises_with_the_new_message() -> None:

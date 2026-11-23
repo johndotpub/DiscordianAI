@@ -1,9 +1,8 @@
 """Regression floor on the two sealed routing corpora.
 
 Measured when the scoring layer was removed (2026-11-14): sealed-a accuracy
-0.821, sealed-b accuracy 0.736, combined accuracy 0.779. The floors below sit
-roughly two points under each measurement, so a real regression fails while
-label noise does not.
+0.821, sealed-b accuracy 0.736, combined accuracy 0.779. Each floor sits just
+under its measurement, so a real regression fails while label noise does not.
 """
 
 from datetime import UTC, datetime
@@ -19,6 +18,7 @@ CORPORA = {
 }
 FIXED_NOW = datetime(2026, 10, 30, tzinfo=UTC)
 SEALED_A_FLOOR = 0.80
+SEALED_B_FLOOR = 0.73
 COMBINED_FLOOR = 0.75
 
 
@@ -81,4 +81,5 @@ def test_sealed_corpora_hold_their_measured_accuracy() -> None:
     )
 
     assert _accuracy(per_corpus["sealed-a"]) >= SEALED_A_FLOOR, "\n".join(mismatches)
+    assert _accuracy(per_corpus["sealed-b"]) >= SEALED_B_FLOOR, "\n".join(mismatches)
     assert _accuracy(combined) >= COMBINED_FLOOR, "\n".join(mismatches)

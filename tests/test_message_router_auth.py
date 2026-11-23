@@ -241,6 +241,40 @@ async def test_thread_whose_parent_is_not_allowed_is_ignored(deps, spies):
 
 
 @pytest.mark.asyncio
+async def test_thread_without_parent_object_uses_an_allowlisted_parent_id(deps, spies):
+    parent = FakeChannel(10, name="parent")
+    guild = _guild_with(parent)
+    thread = FakeThread(500, parent)
+    thread.parent = None
+    bot = _bot(guild)
+    deps["ALLOWED_CHANNEL_IDS"] = [10]
+    message = _message(thread, mentions=[bot.user], guild=guild)
+
+    await message_router.handle_incoming_message(message, deps, bot)
+
+    spies.channel.assert_awaited_once_with(message, deps)
+    spies.dm.assert_not_awaited()
+    assert thread.sent_messages == []
+
+
+@pytest.mark.asyncio
+async def test_thread_without_parent_object_rejects_an_unlisted_parent_id(deps, spies):
+    parent = FakeChannel(99, name="parent")
+    guild = _guild_with(parent)
+    thread = FakeThread(10, parent)
+    thread.parent = None
+    bot = _bot(guild)
+    deps["ALLOWED_CHANNEL_IDS"] = [10]
+    message = _message(thread, mentions=[bot.user], guild=guild)
+
+    await message_router.handle_incoming_message(message, deps, bot)
+
+    spies.channel.assert_not_awaited()
+    spies.dm.assert_not_awaited()
+    assert thread.sent_messages == []
+
+
+@pytest.mark.asyncio
 async def test_message_from_another_bot_is_processed(deps, spies):
     channel = FakeChannel(42)
     guild = _guild_with(channel)
