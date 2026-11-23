@@ -30,7 +30,13 @@ from src.message_builder import (
 from src.message_splitter import CitationMap
 from src.models import PerplexityConfig
 
-from .base import CompletionRequest, ProbeResult, ProviderResult
+from .base import (
+    CompletionRequest,
+    ProbeResult,
+    ProviderResult,
+    model_ids_from_response,
+    object_field,
+)
 
 perplexity_circuit_breaker = get_circuit_breaker("perplexity")
 
@@ -94,16 +100,9 @@ def extract_citations_from_response(
     return cleaned_text, citations
 
 
-def _field_value(value: Any, name: str, default: Any = None) -> Any:
-    """Read a field from an SDK model or a plain mapping."""
-    if isinstance(value, dict):
-        return value.get(name, default)
-    return getattr(value, name, default)
-
-
 def _response_output_items(response: Any) -> list[Any]:
     """Return the Agent API ``output`` items as a list."""
-    output = _field_value(response, "output")
+    output = object_field(response, "output")
     if output is None:
         return []
     if isinstance(output, dict):
@@ -120,16 +119,16 @@ def _extract_agent_text(response: Any) -> str:
     """
     texts: list[str] = []
     for item in _response_output_items(response):
-        if _field_value(item, "type") != "message":
+        if object_field(item, "type") != "message":
             continue
-        content = _field_value(item, "content") or []
+        content = object_field(item, "content") or []
         if isinstance(content, str):
             texts.append(content)
             continue
         for part in content:
-            if _field_value(part, "type") != "output_text":
+            if object_field(part, "type") != "output_text":
                 continue
-            text = _field_value(part, "text")
+            text = object_field(part, "text")
             if text:
                 texts.append(str(text))
 
@@ -163,13 +162,13 @@ def _extract_agent_search_results(response: Any) -> list[Any] | None:
     """
     results: list[Any] = []
     for item in _response_output_items(response):
-        item_type = _field_value(item, "type")
+        item_type = object_field(item, "type")
         if item_type == "search_results":
-            entries = _result_entries(_field_value(item, "results"))
+            entries = _result_entries(object_field(item, "results"))
         elif item_type == "fetch_url_results":
-            entries = _result_entries(_field_value(item, "contents"))
+            entries = _result_entries(object_field(item, "contents"))
             if not entries:
-                entries = _result_entries(_field_value(item, "results"))
+                entries = _result_entries(object_field(item, "results"))
         else:
             continue
         results.extend(entries)
@@ -201,11 +200,11 @@ def _agent_finish_reason(response: Any) -> str | None:
     with ``incomplete_details.reason == "max_output_tokens"``. Normalise that
     to ``"length"`` so both provider adapters expose one truncation signal.
     """
-    if _field_value(response, "status") != "incomplete":
+    if object_field(response, "status") != "incomplete":
         return None
 
-    details = _field_value(response, "incomplete_details")
-    reason = _field_value(details, "reason") if details is not None else None
+    details = object_field(response, "incomplete_details")
+    reason = object_field(details, "reason") if details is not None else None
     if reason in {"max_output_tokens", "max_tokens"}:
         return "length"
     return None
@@ -235,11 +234,11 @@ def _map_from_search_results(
     has_explicit_ids = False
 
     for result in results:
-        url = _field_value(result, "url")
+        url = object_field(result, "url")
         if not url:
             continue
         urls_in_order.append(str(url))
-        result_id = _field_value(result, "id")
+        result_id = object_field(result, "id")
         if result_id is not None:
             has_explicit_ids = True
             try:
@@ -497,11 +496,7 @@ class AgentResponsesProvider:
             )
 
         latency_ms = (time.monotonic() - started_at) * 1000
-        model_ids = [
-            model_id
-            for item in getattr(response, "data", [])
-            if (model_id := getattr(item, "id", None))
-        ]
+        model_ids = model_ids_from_response(response)
         if not model_ids:
             return ProbeResult(
                 ok=False,

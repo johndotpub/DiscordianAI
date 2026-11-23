@@ -21,6 +21,7 @@ import time
 from typing import Any
 
 from .config import DEFAULT_CACHE_TTL
+from .providers.base import object_field
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +111,7 @@ def _extract_conversation_summary(args: tuple[Any, ...], kwargs: dict[str, Any])
     return []
 
 
-def _conversation_digest(conversation_summary: Any) -> str:
+def conversation_digest(conversation_summary: Any) -> str:
     """Hash ordered conversation history without losing message order."""
     if not conversation_summary:
         payload = "[]"
@@ -149,7 +150,7 @@ def _extract_request_scope(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dic
     return {
         "user_id": user_id,
         "conversation_key": conversation_key,
-        "conversation_digest": _conversation_digest(conversation_summary),
+        "conversation_digest": conversation_digest(conversation_summary),
         "has_conversation": bool(conversation_summary),
         "image_digests": _image_digests(request),
     }
@@ -159,13 +160,13 @@ def _generate_scoped_key(message: str, context: dict[str, Any], *, salt: str) ->
     """Build a key scoped to the conversation, history, and routing decision."""
     user_id = context.get("user_id")
     conversation_key = context.get("conversation_key")
-    conversation_digest = context.get("conversation_digest")
+    digest = context.get("conversation_digest")
 
-    if conversation_digest is None:
+    if digest is None:
         conversation_summary = context.get("conversation_summary")
         if conversation_summary is None:
             conversation_summary = context.get("history", [])
-        conversation_digest = _conversation_digest(conversation_summary)
+        digest = conversation_digest(conversation_summary)
 
     scope_id = conversation_key if conversation_key is not None else user_id
     if scope_id is None:
@@ -179,7 +180,7 @@ def _generate_scoped_key(message: str, context: dict[str, Any], *, salt: str) ->
             str(context.get("system_message") or "").encode(),
         ).hexdigest()[:8],
         "conversation_scope": str(scope_id),
-        "conversation_digest": conversation_digest,
+        "conversation_digest": digest,
         "service": context.get("service", "unknown"),
         "router_id": context.get("router_id", "unknown"),
         "policy_version": context.get("policy_version", "unknown"),
@@ -200,11 +201,7 @@ def _extract_routing_context(request: Any, func_name: str) -> dict[str, Any]:
     routing = getattr(request, "routing", None) if request is not None else None
 
     def read(name: str, default: Any) -> Any:
-        if routing is None:
-            return default
-        if isinstance(routing, dict):
-            return routing.get(name, default)
-        return getattr(routing, name, default)
+        return default if routing is None else object_field(routing, name, default)
 
     salt = read("salt", None)
     if not isinstance(salt, str) or not salt:

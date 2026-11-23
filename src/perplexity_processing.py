@@ -12,14 +12,14 @@ import re
 from typing import Any
 
 from .api_context import api_call
-from .caching import cached_response
+from .caching import cached_response, conversation_digest
 from .citation_formatting import _format_unlinked_citations, format_citations
 from .config import DEFAULT_CACHE_TTL
 from .discord_embeds import citation_embed_formatter
 from .error_handling import ProviderCallError, classify_error
 from .message_splitter import CitationMap, sanitize_model_output, should_suppress_embeds
 from .models import AIRequest, PerplexityConfig
-from .providers.base import AssistantText, ProviderResult
+from .providers.base import AssistantText, ProviderResult, object_field
 from .providers.perplexity import (
     FETCH_URL_INSTRUCTIONS,
     WEB_TOOLS,
@@ -47,24 +47,6 @@ __all__ = [
 LINK_THRESHOLD = 2
 
 
-def _history_digest(conversation_summary: list[dict] | None) -> str:
-    """Hash ordered conversation history for the explicit cache key."""
-    if not conversation_summary:
-        payload = "[]"
-    else:
-        try:
-            payload = json.dumps(
-                conversation_summary,
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-                default=str,
-            )
-        except (TypeError, ValueError):
-            payload = repr(conversation_summary)
-    return hashlib.sha256(payload.encode()).hexdigest()
-
-
 def _scope_id(request: AIRequest) -> str | None:
     """Return the conversation key, or the requester id as a legacy fallback."""
     conversation_key = getattr(request, "conversation_key", None)
@@ -80,16 +62,10 @@ def _routing_fields(request: AIRequest) -> tuple[bool, str, bool]:
     routing = getattr(request, "routing", None)
     if routing is None:
         return True, "direct:perplexity", False
-    if isinstance(routing, dict):
-        return (
-            bool(routing.get("cacheable", True)),
-            str(routing.get("salt") or "direct:perplexity"),
-            bool(routing.get("degraded", False)),
-        )
     return (
-        bool(getattr(routing, "cacheable", True)),
-        str(getattr(routing, "salt", None) or "direct:perplexity"),
-        bool(getattr(routing, "degraded", False)),
+        bool(object_field(routing, "cacheable", True)),
+        str(object_field(routing, "salt", None) or "direct:perplexity"),
+        bool(object_field(routing, "degraded", False)),
     )
 
 
@@ -115,7 +91,7 @@ def _perplexity_cache_key(
         "model": config.model,
         "system_digest": hashlib.sha256(str(config.system_message).encode()).hexdigest(),
         "scope": scope,
-        "history_digest": _history_digest(conversation_summary),
+        "history_digest": conversation_digest(conversation_summary),
         "salt": salt,
         "degraded": degraded,
         "client_base_url": str(getattr(perplexity_client, "base_url", "")),

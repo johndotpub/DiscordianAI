@@ -33,7 +33,13 @@ from src.message_builder import (
 from src.models import OpenAIConfig
 from src.web_tools import WEB_TOOLS, should_offer_web_tools
 
-from .base import CompletionRequest, ProbeResult, ProviderResult
+from .base import (
+    CompletionRequest,
+    ProbeResult,
+    ProviderResult,
+    model_ids_from_response,
+    object_field,
+)
 
 openai_circuit_breaker = get_circuit_breaker("openai")
 
@@ -46,12 +52,7 @@ _DEFAULT_PROBE_TIMEOUT = 10.0
 
 ToolExecutor = Callable[..., Awaitable[str]]
 
-
-def _object_field(value: Any, name: str, default: Any = None) -> Any:
-    """Read a field from an SDK object or a plain mapping."""
-    if isinstance(value, dict):
-        return value.get(name, default)
-    return getattr(value, name, default)
+_object_field = object_field
 
 
 def _tool_call_payload(tool_call: Any) -> dict[str, Any]:
@@ -375,11 +376,7 @@ class ChatCompletionsProvider:
             )
 
         latency_ms = (time.monotonic() - started_at) * 1000
-        model_ids = [
-            model_id
-            for item in getattr(response, "data", [])
-            if (model_id := getattr(item, "id", None))
-        ]
+        model_ids = model_ids_from_response(response)
         if not model_ids:
             return ProbeResult(
                 ok=False,

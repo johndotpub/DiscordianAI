@@ -11,6 +11,22 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 
+def object_field(value: Any, name: str, default: Any = None) -> Any:
+    """Read a field from an SDK object or a plain mapping."""
+    if isinstance(value, dict):
+        return value.get(name, default)
+    return getattr(value, name, default)
+
+
+def model_ids_from_response(response: Any) -> list[str]:
+    """Return the non-empty model ids from a ``models.list`` response."""
+    return [
+        model_id
+        for item in object_field(response, "data", []) or []
+        if (model_id := object_field(item, "id"))
+    ]
+
+
 @dataclass(frozen=True)
 class CompletionRequest:
     """A normalised completion request shared by every provider adapter.

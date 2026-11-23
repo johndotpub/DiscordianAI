@@ -16,6 +16,7 @@ from typing import Any
 
 from .connection_pool import versioned_perplexity_client
 from .error_handling import ErrorTracker, classify_error
+from .providers.base import model_ids_from_response
 from .providers.registry import PROVIDERS
 
 # Health check thresholds
@@ -176,11 +177,7 @@ class APIHealthMonitor:
 
             response_time_ms = (time.time() - start_time) * 1000
 
-            model_ids = [
-                model_id
-                for item in getattr(response, "data", [])
-                if (model_id := getattr(item, "id", None))
-            ]
+            model_ids = model_ids_from_response(response)
             if not model_ids:
                 return HealthCheckResult(
                     service=spec.service,
