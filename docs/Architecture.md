@@ -118,7 +118,7 @@ sequenceDiagram
     MP->>MP: Rate limit & guardrail checks
     MP->>CM: Fetch conversation history
     MP->>O: Route message
-    O->>O: Build one RouterInput (message, channel kind, history)
+    O->>O: Build one RouterInput (message, history, previous route)
     O->>O: Apply the gate to bearing and framing cues
     O->>O: Select AI service from the route decision
     O->>C: Check cache

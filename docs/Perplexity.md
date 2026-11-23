@@ -210,7 +210,7 @@ One decision is built per message before any provider call:
   to this gate on failure. See [routing/DESIGN.md](routing/DESIGN.md) for the full model.
 
 ### Routing Decision Logic
-1. **Build one input**: message text, channel kind, recent turns, and the previous route.
+1. **Build one input**: message text, recent turns, and the previous route.
 2. **Apply the gate**: overrides, then bearing cues; otherwise inherit a live follow-up route or stay
    local.
 3. **Deliver and record**: the selected provider answers, and only the successful turn is written to
