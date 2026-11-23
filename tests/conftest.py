@@ -168,7 +168,6 @@ def deps_factory():
         from src.dependencies import BotDependencies
 
         conversation_manager = MagicMock()
-        conversation_manager.get_conversation_summary.return_value = []
         conversation_manager.get_conversation_summary_formatted.return_value = []
 
         dependencies = BotDependencies(

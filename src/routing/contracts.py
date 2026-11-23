@@ -8,7 +8,6 @@ Route = Literal["web", "local"]
 EvidenceClass = Literal["override", "bearing", "framing", "local"]
 Source = Literal["structural", "lexicon", "override", "inherited"]
 Role = Literal["user", "assistant"]
-ChannelKind = Literal["channel", "announcement", "dm"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +25,6 @@ class ConversationContext:
 
     turns: tuple[Turn, ...] = ()
     last_route: Route | None = None
-    channel_kind: ChannelKind = "channel"
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,7 +33,6 @@ class RouterInput:
 
     text: str
     context: ConversationContext = field(default_factory=ConversationContext)
-    request_id: str = ""
     now: datetime | date = field(default_factory=lambda: datetime.now(UTC))
 
 

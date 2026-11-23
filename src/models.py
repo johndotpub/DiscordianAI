@@ -42,7 +42,6 @@ class AIRequest:
     conversation_manager: Any
     logger: logging.Logger
     conversation_key: str | None = None
-    channel_kind: str = "channel"
     routing: RoutingMetadata | None = None
     images: tuple[ImagePayload, ...] = ()
 

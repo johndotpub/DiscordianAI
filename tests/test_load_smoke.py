@@ -118,10 +118,7 @@ class TestConcurrentUserSmoke:
             # Get conversation
             conversation = manager.get_conversation(user_id)
 
-            # Get summary
-            summary = manager.get_conversation_summary(user_id)
-
-            return len(conversation), len(summary)
+            return len(conversation)
 
         # Simulate 2000 users processing messages concurrently
         num_users = 2000
@@ -155,30 +152,6 @@ class TestConcurrentUserSmoke:
         for user_id in range(min(100, num_users)):  # Check sample
             conversation = manager.get_conversation(user_id)
             assert len(conversation) <= 50, "Conversation should be pruned"
-
-    @pytest.mark.asyncio
-    async def test_concurrent_get_conversation_summary(self):
-        """Test concurrent conversation summary generation."""
-        manager = ThreadSafeConversationManager()
-
-        # Pre-populate conversations
-        num_users = 1000
-        for user_id in range(num_users):
-            for i in range(30):
-                manager.add_message(user_id, "user", f"Message {i}")
-
-        async def get_summary(user_id: int):
-            """Get conversation summary for a user."""
-            return manager.get_conversation_summary(user_id)
-
-        # Get summaries concurrently
-        tasks = [get_summary(user_id) for user_id in range(num_users)]
-
-        summaries = await asyncio.gather(*tasks)
-
-        # All summaries should be generated
-        assert len(summaries) == num_users
-        assert all(len(s) <= 10 for s in summaries), "Summaries should be limited"
 
     @pytest.mark.asyncio
     async def test_thread_safety_with_concurrent_reads_and_writes(self):

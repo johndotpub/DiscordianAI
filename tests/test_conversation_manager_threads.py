@@ -128,111 +128,6 @@ class TestThreadSafeConversationManager:
         assert conversation[1]["content"] == "Message 3"
         assert conversation[2]["content"] == "Message 4"  # Latest
 
-    def test_update_conversation_valid(self):
-        """Test updating entire conversation with valid data."""
-        manager = ThreadSafeConversationManager()
-
-        new_conversation = [
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi there!"},
-            {"role": "user", "content": "How are you?"},
-        ]
-
-        manager.update_conversation(12345, new_conversation)
-
-        result = manager.get_conversation(12345)
-        self._assert_conversation_equal(result, new_conversation)
-
-    def test_update_conversation_invalid_format(self):
-        """Test updating conversation with invalid message format."""
-        manager = ThreadSafeConversationManager()
-
-        # Missing 'role' key
-        invalid_conversation = [{"content": "Hello"}]
-
-        with pytest.raises(ValueError) as exc_info:
-            manager.update_conversation(12345, invalid_conversation)
-
-        assert "missing 'role' or 'content'" in str(exc_info.value)
-
-    def test_update_conversation_invalid_role(self):
-        """Test updating conversation with invalid role."""
-        manager = ThreadSafeConversationManager()
-
-        invalid_conversation = [{"role": "invalid", "content": "Hello"}]
-
-        with pytest.raises(ValueError) as exc_info:
-            manager.update_conversation(12345, invalid_conversation)
-
-        assert "Invalid role" in str(exc_info.value)
-
-    def test_update_conversation_with_pruning(self):
-        """Test conversation update with automatic pruning."""
-        manager = ThreadSafeConversationManager(max_history_per_user=2)
-
-        # Update with 4 messages (should keep only latest 2)
-        long_conversation = [
-            {"role": "user", "content": "Msg 1"},
-            {"role": "assistant", "content": "Resp 1"},
-            {"role": "user", "content": "Msg 2"},
-            {"role": "assistant", "content": "Resp 2"},
-        ]
-
-        manager.update_conversation(12345, long_conversation)
-
-        result = manager.get_conversation(12345)
-        assert len(result) == 2
-        assert result[0]["content"] == "Msg 2"  # Latest 2 kept
-        assert result[1]["content"] == "Resp 2"
-
-    def test_clear_conversation(self):
-        """Test clearing user's conversation."""
-        manager = ThreadSafeConversationManager()
-
-        # Add some messages
-        manager.add_message(12345, "user", "Hello")
-        manager.add_message(12345, "assistant", "Hi")
-
-        # Clear conversation
-        cleared_count = manager.clear_conversation(12345)
-
-        assert cleared_count == 2
-        assert manager.get_conversation(12345) == []
-
-    def test_clear_conversation_empty(self):
-        """Test clearing empty conversation."""
-        manager = ThreadSafeConversationManager()
-
-        cleared_count = manager.clear_conversation(12345)
-
-        assert cleared_count == 0
-
-    def test_get_conversation_summary(self):
-        """Test getting conversation summary."""
-        manager = ThreadSafeConversationManager()
-
-        # Add test messages
-        manager.add_message(12345, "user", "Hello")
-        manager.add_message(12345, "assistant", "Hi there!")
-        manager.add_message(12345, "user", "How are you?")
-        manager.add_message(12345, "assistant", "I'm doing well!")
-
-        count, last_user, last_assistant = manager.get_conversation_summary(12345)
-
-        assert count == 4
-        assert last_user == "How are you?"
-        assert last_assistant == "I'm doing well!"
-
-    def test_get_conversation_summary_empty(self):
-        """Test getting summary for empty conversation."""
-        manager = ThreadSafeConversationManager()
-
-        count, last_user, last_assistant = manager.get_conversation_summary(12345)
-
-        assert count == 0
-        assert last_user is None
-        assert last_assistant is None
-
     def test_get_recent_ai_service(self):
         """Test getting recent AI service from metadata."""
         manager = ThreadSafeConversationManager()
@@ -310,20 +205,6 @@ class TestThreadSafeConversationManager:
         formatted = manager.get_conversation_summary_formatted(12345)
 
         assert formatted == []
-
-    def test_get_all_user_ids(self):
-        """Test getting all user IDs with conversations."""
-        manager = ThreadSafeConversationManager()
-
-        # Add conversations for different users
-        manager.add_message(12345, "user", "Hello")
-        manager.add_message(67890, "user", "Hi there")
-
-        user_ids = manager.get_all_user_ids()
-
-        assert len(user_ids) == 2
-        assert 12345 in user_ids
-        assert 67890 in user_ids
 
     def test_get_stats(self):
         """Test getting conversation manager statistics."""

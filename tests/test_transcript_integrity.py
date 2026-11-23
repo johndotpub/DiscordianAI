@@ -50,10 +50,12 @@ def _message(*, content, user_id=1, guild_id=10, channel_id=20, is_dm=False):
 
 def _orphan_manager():
     manager = ThreadSafeConversationManager()
-    manager.update_conversation(
-        conversation_key="dm:99",
-        conversation=list(ORPHAN_TRANSCRIPT),
-    )
+    for entry in ORPHAN_TRANSCRIPT:
+        manager.add_message(
+            conversation_key="dm:99",
+            role=entry["role"],
+            content=entry["content"],
+        )
     return manager
 
 
