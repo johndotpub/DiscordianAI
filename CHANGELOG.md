@@ -238,6 +238,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation 📝
 
+- **The scripts README matches the shipped tools.** The unimportable
+  `debug_perplexity_citations.py` helper is deleted; `scripts/README.md` now documents
+  only the scripts that exist, what each reads, and which ones write files by design.
 - **Routing docs describe the masking, credential, lifecycle, and reroute rules.** `docs/routing/DESIGN.md`,
   `docs/HybridMode.md`, and `docs/Configuration.md` now state that all cues are code-masked, how the Clef
   key is resolved, that the router is built once and closed at shutdown, and that only first-person

@@ -61,6 +61,17 @@ def _installed_version():
         return None
 
 
+def test_scripts_readme_lists_only_existing_scripts():
+    scripts_dir = REPO_ROOT / "scripts"
+    readme = (scripts_dir / "README.md").read_text(encoding="utf-8")
+
+    referenced = set(re.findall(r"scripts/([A-Za-z0-9_]+\.(?:py|sh))", readme))
+    missing = sorted(name for name in referenced if not (scripts_dir / name).is_file())
+
+    assert not missing, f"scripts/README.md references missing scripts: {missing}"
+    assert not (scripts_dir / "debug_perplexity_citations.py").exists()
+
+
 def test_ruff_errors_dump_is_absent_and_untracked():
     assert not (REPO_ROOT / "ruff_errors.txt").exists()
     assert "ruff_errors.txt" not in _tracked_paths()
