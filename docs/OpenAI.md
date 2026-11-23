@@ -138,22 +138,22 @@ INPUT_TOKENS=60000    # Adjust based on conversation length
 
 ## Monitoring & Debugging
 
-### Token Usage Logs
+### Response Logs
 ```
-INFO: Token usage - Prompt: 1250, Completion: 450, Total: 1700
-INFO: OpenAI response generated successfully: 245 characters
+INFO OpenAI response generated successfully: 245 characters, finish_reason: stop
+WARNING OpenAI returned empty response content (finish_reason=length)
 ```
 
 ### Service Selection Logs
 ```
-INFO: Message analysis suggests conversational AI is optimal - using OpenAI
-INFO: OpenAI response successful in hybrid mode (312 chars)
+INFO Routing decision: {'route': 'local', 'service': 'openai', ...}
+INFO Routing to OpenAI
 ```
 
 ### Error Logs
 ```
-ERROR: OpenAI API call failed for user 123456789: Rate limit exceeded
-WARNING: OpenAI returned no response, trying fallback
+ERROR OpenAI API call failed after retries
+WARNING OpenAI returned no response; attempting Perplexity fallback
 ```
 
 ## Cost Optimization Tips

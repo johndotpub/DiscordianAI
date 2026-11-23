@@ -6,7 +6,7 @@
 
 - **Automatic Python resolution**: Finds the right Python interpreter via pyenv → project venv → shell venv → system path (pyenv preferred for version pinning)
 - **Venv bootstrapping**: Creates and populates a project-local `.venv/` if one doesn't exist
-- **Correct working directory**: Always changes to the project root, so `python -m src.main` works regardless of where the script is invoked from (including cron's `$HOME`)
+- **Correct working directory**: Always changes to the project root, so `python -m src.main --conf <file>` works regardless of where the script is invoked from (including cron's `$HOME`)
 - **Process management**: Stops previous instances before starting, with graceful shutdown and forced kill fallback
 - **Daemon and foreground modes**: Background mode for cron, foreground mode for systemd
 - **Startup health check**: In daemon mode, waits 3 seconds and confirms the process survived
@@ -115,7 +115,7 @@ A template unit file is included in `contrib/systemd/discordian-bot@.service`. T
 |---------|------|---------|
 | Auto-restart on crash | ❌ | ✅ (`Restart=on-failure`) |
 | Restart delay | ✗ | ✅ (`RestartSec=15`) |
-| Proper logging | File only | `journalctl` + file |
+| Proper logging | File only | File (`StandardOutput=append:`); journald only if you change the unit |
 | Service management | `crontab -e` | `systemctl --user` |
 | Startup ordering | ✗ | ✅ (`After=network-online.target`) |
 
@@ -139,7 +139,7 @@ sudo cp contrib/logrotate/discordianai /etc/logrotate.d/discordianai
 
 Then edit `/etc/logrotate.d/discordianai`: replace `/path/to/DiscordianAI/bot.log` with the actual log path, and replace `USER` and `GROUP` in the `su` line with the account and group that own the log directory. The `su` directive is required when that directory is not root-owned or is group-writable by a non-root group; without it logrotate refuses with "parent directory has insecure permissions". The fragment rotates at 100 MB, keeps fifty compressed generations, stamps each rotated file with its date (`bot.log-2026-10-30.gz`), and enables `copytruncate`.
 
-**Retention:** fifty generations of up to 100 MB each is about 5 GB before compression, which at this bot's volume is years; the compressed rotations are smaller. Rotation archives; it does not expire. The only setting that deletes anything is `rotate`, so lower that number deliberately if you ever want a hard ceiling. Compressed rotations are written beside the live file.
+**Retention:** `rotate 50` keeps fifty rotated files of up to 100 MB each, plus the live file, so the pre-compression ceiling is about 5.1 GB (50 × 100 MB = 5 GB of archives, plus at most 100 MB live); compressed rotations are smaller. At this bot's volume that is years of history. Rotation archives; it does not expire. The only setting that deletes anything is `rotate`, so lower that number deliberately if you ever want a hard ceiling. Compressed rotations are written beside the live file.
 
 > **`copytruncate` caveat**: logrotate copies `bot.log` and then truncates the original so the running process can keep writing to the same file descriptor. Any log lines written between the copy and the truncate can be lost. This is the only option here because the supervisor owns the open file and the bot cannot be signalled to reopen it. Keep the log and its rotated copies on the same filesystem so the copy window is as short as possible.
 
@@ -230,6 +230,6 @@ rm -rf .venv
 
 **systemd service won't start**
 - Check status: `systemctl --user status discordian-bot@bot`
-- Check logs: `journalctl --user -u discordian-bot@bot -f`
+- Check the bot's own output in `bot.log` (`tail -f /path/to/DiscordianAI/bot.log`); `journalctl --user -u discordian-bot@bot` shows unit lifecycle messages because the shipped unit appends stdout/stderr to that file
 - Verify paths in the unit file match your installation
 - Re-generate with `./discordian.sh --install-systemd bot.ini` to auto-detect paths

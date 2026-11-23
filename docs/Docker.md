@@ -13,6 +13,8 @@ unconditionally, so the mount fails or misbehaves when the path does not exist.
 cp .env.example .env
 # Edit .env and set DISCORD_TOKEN plus the provider keys you use.
 cp config.ini.example config.ini
+# Replace every placeholder in config.ini (tokens, keys, channel names) with a
+# real value; config.ini.example ships placeholders, not working credentials.
 # If every value comes from .env, an empty config file is enough:
 # touch config.ini
 docker compose up -d
@@ -64,6 +66,9 @@ docker run --restart always \
   -v "$(pwd)/config.ini:/app/config.ini:ro" \
   discordianai:latest
 ```
+
+Replace the placeholder values in the copied `config.ini` with real tokens, keys, and
+channel names before starting the container; the example file is a template.
 
 The image defines the same `/health` `HEALTHCHECK` as the compose file, so `docker ps`
 reports the container as unhealthy when the bot or its providers stop responding.

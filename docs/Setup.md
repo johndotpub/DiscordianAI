@@ -113,7 +113,7 @@ pip install -r requirements.txt
 
 ### Basic Usage
 ```bash
-python -m src.main
+python -m src.main --conf config.ini
 ```
 
 ### Advanced Usage
@@ -155,7 +155,7 @@ The bot writes logs to stderr. Where they end up depends on how you started it:
 
 - `./discordian.sh -d ...` redirects both stdout and stderr to `bot.log` in the project directory (`>> bot.log 2>&1`).
 - The systemd unit redirects stdout and stderr to `bot.log` (see [Daemon.md](Daemon.md)).
-- Running `python -m src.main` directly prints to the terminal. To keep a file, redirect both streams; redirecting stdout alone produces an empty file:
+- Running `python -m src.main --conf config.ini` directly prints to the terminal. To keep a file, redirect both streams; redirecting stdout alone produces an empty file:
 
   ```bash
   python -m src.main --conf config.ini >> bot.log 2>&1
@@ -163,10 +163,10 @@ The bot writes logs to stderr. Where they end up depends on how you started it:
 
 When `bot.log` is being written by the supervisor or your redirect, monitor it for these messages:
 ```
-INFO: Bot logged in successfully as YourBotName
-INFO: Running in HYBRID mode (OpenAI + Perplexity) - Smart AI orchestration enabled
-INFO: Smart orchestrator processing message from user...
-INFO: Message analysis suggests web search would be beneficial - trying Perplexity first
+INFO Bot logged in as YourBotName (ID: 123456789012345678)
+INFO Running in hybrid mode (OpenAI + Perplexity); smart orchestration enabled
+INFO Processing message (ID: 123456789012345678, length: 42)
+INFO Routing decision: {'route': 'web', 'service': 'perplexity', ...}
 ```
 
 ## Production Deployment
@@ -188,7 +188,7 @@ INFO: Message analysis suggests web search would be beneficial - trying Perplexi
 - **Consider Docker deployment** for isolation and scalability
 
 ### Monitoring & Maintenance
-- **Log rotation**: Ensure supervisor-managed or redirected log files don't grow too large
+- **Log rotation**: The bot writes to stderr and never opens `bot.log`; the launcher or supervisor owns the file. Install the shipped `contrib/logrotate/discordianai` fragment and replace its log path plus the `USER GROUP` placeholders on the `su` line as described in [Daemon.md](Daemon.md). The fragment rotates at 100 MB with `copytruncate` and keeps fifty compressed generations. Container deployments use the compose file's bounded `json-file` driver (three files of 10 MB each) instead.
 - **API usage tracking**: Monitor token consumption and costs
 - **Error monitoring**: Set up alerts for critical errors
 - **Regular updates**: Keep dependencies updated for security
@@ -216,7 +216,7 @@ INFO: Message analysis suggests web search would be beneficial - trying Perplexi
 - Adjust `LOOKBACK_MESSAGES_FOR_CONSISTENCY` based on usage patterns
 
 ### Getting Help
-- Check the logs first. If output is redirected to `bot.log`, use `tail -f bot.log`; under systemd, use `journalctl --user -u discordian-bot@bot -f`
+- Check the logs first. The shipped systemd unit appends bot output to `bot.log`, so use `tail -f /path/to/DiscordianAI/bot.log`; `journalctl --user -u discordian-bot@bot` shows unit start/stop events, not the bot's log lines
 - Review configuration examples in `config.ini.example`
 - Consult the [Configuration Guide](Configuration.md) for detailed parameter explanations
 - See [HybridMode.md](HybridMode.md) for advanced AI orchestration features

@@ -49,8 +49,8 @@ provider's output cap (`max_tokens` or `max_completion_tokens`) covers reasoning
 as well as visible output, so a small
 chat-provider value can be consumed entirely by reasoning and produce an empty reply with
 `finish_reason: length`. Perplexity's `max_output_tokens` covers output only. Both settings
-share a fixed validation ceiling of 128,000 tokens (`MAX_OUTPUT_TOKENS_CEILING`), which is
-independent of `CONTEXT_WINDOW`; values above it stop startup, and a chat-provider value
+share a fixed validation ceiling of 128,000 tokens that is independent of
+`CONTEXT_WINDOW`; values above it stop startup, and a chat-provider value
 below 512 logs a warning about empty replies.
 
 `INPUT_TOKENS` is enforced as a prompt budget. The bot estimates prompt size from the
@@ -338,7 +338,7 @@ export VISION_MAX_BYTES="5242880"
 export VISION_TOKEN_ESTIMATE="1000"
 
 # Logging and health
-export LOG_FILE="bot.log"
+# LOG_FILE is parsed for backwards compatibility but ignored; logs always go to stderr.
 export LOG_LEVEL="INFO"
 export DISCORDIANAI_LOG_COLOR="1"
 export HEALTH_ENABLED="true"
@@ -356,8 +356,8 @@ Environment variables take precedence over `config.ini` values, allowing for fle
 
 ### Usage Examples
 ```bash
-# Use config.ini in current directory  
-python -m src.main
+# Use config.ini in current directory
+python -m src.main --conf config.ini
 
 # Use specific config file
 python -m src.main --conf production.ini
