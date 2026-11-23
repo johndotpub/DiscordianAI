@@ -26,7 +26,7 @@ Configure the OpenAI-compatible chat provider (Ollama Cloud by default) and the 
 - **`OPENAI_API_KEY`**: Key for the configured OpenAI-compatible provider *(leave empty to disable)*. OpenAI keys start with `sk-`; other compatible providers use their own formats, which are accepted with a warning.
 - **`OPENAI_API_URL`**: Chat provider base URL. Accepted: `https://api.openai.com/v1/`, `https://ollama.com/v1/`, and `http(s)://localhost:11434/v1/` or `http(s)://127.0.0.1:11434/v1/` *(default: "https://ollama.com/v1/")*
 - **`GPT_MODEL`**: Model identifier sent as configured. Any non-empty identifier is accepted; the provider decides which names are valid *(default: "deepseek-v4.1-flash:1017")*
-- **`REASONING_EFFORT`**: Reasoning effort sent with chat requests only when non-empty. It is a reasoning-model parameter; valid values are model-defined, `low`, `high`, and `max` are supported by the shipped model, and `none` disables thinking. Reasoning tokens are billed as output *(default: "high")*
+- **`REASONING_EFFORT`**: Reasoning effort sent with chat requests only when non-empty. It is a reasoning-model parameter; valid values are model-defined, `low`, `high`, and `max` are supported by the shipped model, and `none` disables thinking. Leave it blank to omit the parameter entirely. Reasoning tokens are billed as output *(default: "high")*
 
 OpenAI remains supported by setting all three of `OPENAI_API_URL`, `GPT_MODEL`, and `OPENAI_API_KEY` to OpenAI values.
 
@@ -381,6 +381,11 @@ a permission error, a duplicated key, or a malformed section stops startup with 
 error that names the file and quotes the parser's message. The bot never continues
 with built-in defaults after a config file fails to load; omit `--conf` to run from
 environment variables and defaults.
+
+An empty value means the setting is not set, so its documented default applies. Two
+settings keep an explicit empty meaning: a blank `OPENAI_API_KEY` or
+`PERPLEXITY_API_KEY` disables that provider, and a blank `REASONING_EFFORT` omits the
+parameter from chat requests.
 
 ### Startup Validation
 - **Required Fields**: Ensures DISCORD_TOKEN and the credentials for every configured provider are present

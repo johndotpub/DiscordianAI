@@ -6,7 +6,15 @@ from pathlib import Path
 
 import pytest
 
-from src.config import ConfigFileError, load_config
+from src.config import (
+    DEFAULT_OPENAI_API_URL,
+    DEFAULT_OPENAI_MODEL,
+    DEFAULT_PERPLEXITY_API_URL,
+    DEFAULT_PERPLEXITY_MODEL,
+    ConfigFileError,
+    load_config,
+)
+from src.openai_processing import _build_openai_api_params
 
 
 @pytest.fixture(autouse=True)
@@ -17,6 +25,10 @@ def isolate_config_environment(monkeypatch):
         "GPT_MODEL",
         "SYSTEM_MESSAGE",
         "OPENAI_API_KEY",
+        "OPENAI_API_URL",
+        "PERPLEXITY_API_KEY",
+        "PERPLEXITY_API_URL",
+        "PERPLEXITY_MODEL",
         "REASONING_EFFORT",
     ):
         monkeypatch.delenv(key, raising=False)
@@ -95,6 +107,75 @@ def test_missing_explicit_file_is_a_fatal_error(tmp_path):
         load_config(str(missing))
 
     assert str(missing) in str(exc_info.value)
+
+
+def test_blank_models_and_urls_use_the_documented_defaults(tmp_path):
+    """An empty non-secret string is unset, not an empty provider setting."""
+    config_path = _write_config(
+        tmp_path,
+        "[Default]\n"
+        "OPENAI_API_URL=\n"
+        "GPT_MODEL=\n"
+        "PERPLEXITY_API_URL=\n"
+        "PERPLEXITY_MODEL=\n",
+    )
+
+    config = load_config(str(config_path))
+
+    assert config["OPENAI_API_URL"] == DEFAULT_OPENAI_API_URL
+    assert config["GPT_MODEL"] == DEFAULT_OPENAI_MODEL
+    assert config["PERPLEXITY_API_URL"] == DEFAULT_PERPLEXITY_API_URL
+    assert config["PERPLEXITY_MODEL"] == DEFAULT_PERPLEXITY_MODEL
+
+
+def test_blank_environment_urls_and_models_use_defaults(monkeypatch):
+    """The same empty-means-unset rule applies to environment overrides."""
+    for key, value in (
+        ("OPENAI_API_URL", ""),
+        ("GPT_MODEL", "   "),
+        ("PERPLEXITY_API_URL", ""),
+        ("PERPLEXITY_MODEL", ""),
+    ):
+        monkeypatch.setenv(key, value)
+
+    config = load_config()
+
+    assert config["OPENAI_API_URL"] == DEFAULT_OPENAI_API_URL
+    assert config["GPT_MODEL"] == DEFAULT_OPENAI_MODEL
+    assert config["PERPLEXITY_API_URL"] == DEFAULT_PERPLEXITY_API_URL
+    assert config["PERPLEXITY_MODEL"] == DEFAULT_PERPLEXITY_MODEL
+
+
+def test_blank_reasoning_effort_in_file_omits_the_parameter(tmp_path):
+    """REASONING_EFFORT is the documented exception: blank means omit."""
+    config_path = _write_config(tmp_path, "[Default]\nREASONING_EFFORT=\n")
+
+    config = load_config(str(config_path))
+
+    assert config["REASONING_EFFORT"] == ""
+    params = _build_openai_api_params(
+        "model",
+        "system",
+        "hello",
+        1024,
+        reasoning_effort=config["REASONING_EFFORT"],
+    )
+    assert "reasoning_effort" not in params
+
+
+def test_blank_provider_key_still_disables_the_provider(tmp_path):
+    """A blank API key keeps its documented explicit-disable meaning."""
+    config_path = _write_config(
+        tmp_path,
+        "[Default]\nOPENAI_API_KEY=\nPERPLEXITY_API_KEY=\n",
+    )
+
+    config = load_config(str(config_path))
+
+    assert config["OPENAI_API_KEY"] == ""
+    assert config["PERPLEXITY_API_KEY"] == ""
+    assert config["_OPENAI_CONFIGURED"] is False
+    assert config["_PERPLEXITY_CONFIGURED"] is False
 
 
 def test_no_config_file_still_uses_defaults_and_environment(monkeypatch):

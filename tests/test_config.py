@@ -683,7 +683,7 @@ TEST_VALUE=test
             assert config["PERPLEXITY_API_URL"] == "also-not-valid"
 
     def test_load_config_environment_override_empty_strings(self):
-        """Test environment variable overrides with empty strings."""
+        """Empty values mean unset, except a blank key that disables a provider."""
         with patch.dict(
             os.environ,
             {
@@ -693,8 +693,7 @@ TEST_VALUE=test
             },
         ):
             config = load_config()
-            # Empty strings should be treated as None/empty
-            assert config["DISCORD_TOKEN"] == ""
+            assert config["DISCORD_TOKEN"] is None
             assert config["OPENAI_API_KEY"] == ""
             assert config["ALLOWED_CHANNELS"] == []
 

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Behaviour changes
 
+- **An empty setting means "not set".** Blank `GPT_MODEL`, `PERPLEXITY_MODEL`,
+  `OPENAI_API_URL`, `PERPLEXITY_API_URL`, and the other string settings now fall back to
+  their documented defaults instead of reaching the provider as empty strings. A blank
+  `REASONING_EFFORT` omits the parameter, and a blank API key still disables its provider.
 - **Config values are literal, and a bad config file stops startup.** A `%` in a prompt or
   secret (for example `SYSTEM_MESSAGE=I am 100% sure`) no longer breaks parsing, and `%%` is
   kept as two characters instead of being collapsed. A missing, unreadable, duplicated, or
