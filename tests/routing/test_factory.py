@@ -1,7 +1,10 @@
 """The package factory selects the heuristic and the optional Clef router."""
 
+import logging
+
 import pytest
 
+from src.main import validate_critical_config
 from src.routing import ClefRouter, HeuristicRouter, build_router
 
 
@@ -51,3 +54,34 @@ def test_clef_mode_with_a_key_builds_the_clef_router() -> None:
 
     assert isinstance(router, ClefRouter)
     assert router.router_id == "clef"
+
+
+def _startup_config(mode: str) -> dict:
+    return {
+        "DISCORD_TOKEN": "test-token",
+        "OPENAI_API_KEY": "sk-test",
+        "RATE_LIMIT": 10,
+        "RATE_LIMIT_PER": 60,
+        "OUTPUT_TOKENS": 16384,
+        "BOT_PRESENCE": "online",
+        "ACTIVITY_TYPE": "watching",
+        "ALLOWED_CHANNELS": ["general"],
+        "ALLOWED_CHANNEL_IDS": [],
+        "ROUTER_MODE": mode,
+    }
+
+
+def test_unknown_router_mode_fails_startup_validation() -> None:
+    """A mistyped mode is a startup error, not an error reply on every message."""
+    with pytest.raises(ValueError) as excinfo:
+        validate_critical_config(_startup_config("gate"), logging.getLogger("test.router-mode"))
+
+    assert "Unknown ROUTER_MODE 'gate'" in str(excinfo.value)
+
+
+def test_retired_model_mode_keeps_its_explicit_startup_error() -> None:
+    """The retired value keeps the message that points at Clef."""
+    with pytest.raises(ValueError) as excinfo:
+        validate_critical_config(_startup_config("model"), logging.getLogger("test.router-mode"))
+
+    assert "ROUTER_MODE=model is not implemented; use ROUTER_MODE=clef" in str(excinfo.value)

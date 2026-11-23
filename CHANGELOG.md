@@ -136,6 +136,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   qualified, unqualified, and aliased construction calls, and an end-to-end test checks that
   model-output mentions are neutralised in the text actually sent.
 
+### Fixed 🔧
+
+- **Code-fence masking covers all routing cues.** Bearing cues such as version, year, money, and commerce
+  terms are no longer read from fenced code, matching the masking order in `docs/routing/DESIGN.md`.
+- **Clef honours gate overrides as data.** The gate marks a deterministic override on the decision, and
+  Clef returns it without a network call instead of relying on a `reasons` prefix.
+- **Clef failures cannot strand a message.** Any unexpected router exception falls back to the
+  deterministic gate with a `fallback:router_error` reason and an ERROR log.
+
 ### Security 🛡️
 
 - **The Clef key is scoped to its endpoint.** `ROUTER_MODE=clef` no longer sends the chat provider's

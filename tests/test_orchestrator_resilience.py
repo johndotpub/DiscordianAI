@@ -197,7 +197,59 @@ async def test_lexicon_failure_falls_back_to_a_local_answer(caplog):
     assert len(errors) == 1
 
 
-def test_injected_router_is_reused_instead_of_rebuilt():
+class _RaisingRouter:
+    """A router that fails after startup, as an unexpected implementation bug would."""
+
+    router_id = "broken"
+    policy_version = "1"
+
+    async def decide(self, request):
+        _ = request
+        msg = "router backend unavailable"
+        raise RuntimeError(msg)
+
+    def decide_sync(self, request):
+        _ = request
+        msg = "router backend unavailable"
+        raise RuntimeError(msg)
+
+
+@pytest.mark.asyncio
+async def test_unexpected_router_failure_falls_back_to_the_gate(caplog):
+    """A router fault reaches the deterministic gate instead of an error reply."""
+    caplog.set_level(logging.ERROR, logger="src.smart_orchestrator")
+    manager = MagicMock(spec=ThreadSafeConversationManager)
+    manager.get_recent_ai_service.return_value = None
+    manager.get_conversation.return_value = []
+    request = _request("is github down", manager)
+    captured = {}
+
+    async def fake_perplexity(routed_request, _client, _config, _summary=None):
+        captured["routing"] = routed_request.routing
+        return "web answer", False, None
+
+    clients = AIClients(openai=object(), perplexity=object())
+    with (
+        patch("src.smart_orchestrator.process_openai_message", new=AsyncMock()),
+        patch("src.smart_orchestrator.process_perplexity_message", new=fake_perplexity),
+    ):
+        response, _suppress, _embed = await get_smart_response(
+            request,
+            [],
+            clients,
+            AIConfig(),
+            {"ROUTER_MODE": "heuristic"},
+            router=_RaisingRouter(),
+        )
+
+    assert response == "web answer"
+    assert captured["routing"].route == "web"
+    assert captured["routing"].decision_source == "fallback:router_error"
+    assert any("Router failed" in record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_injected_router_is_reused_instead_of_rebuilt():
     """The process-wide router is not reconstructed for each message."""
     manager = MagicMock(spec=ThreadSafeConversationManager)
     manager.get_recent_ai_service.return_value = None

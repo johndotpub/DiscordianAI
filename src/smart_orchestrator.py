@@ -82,7 +82,9 @@ _NARRATIVE_MARKERS_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Persona-agnostic phrases that admit an answer could not use live web data.
+# First-person admissions that the assistant could not use live web data. A
+# statement about someone else, a general explanation, or a quoted example is
+# not an admission and must not discard a good local answer.
 _OPENAI_WEB_INABILITY_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
@@ -338,7 +340,12 @@ async def _build_route_decision(
     orchestrator_config: dict | None,
     router: Any | None = None,
 ) -> RouteDecision:
-    """Build one router input and ask the configured router for one decision."""
+    """Build one router input and ask the configured router for one decision.
+
+    A router that fails at runtime falls back to the deterministic gate with a
+    logged reason. Configuration errors for a retired or unknown mode still
+    propagate so startup and direct callers fail loudly.
+    """
     try:
         active_router = router if router is not None else build_router(orchestrator_config)
         router_input = build_router_input(
@@ -350,15 +357,45 @@ async def _build_route_decision(
             router_input,
             text=_sanitize_for_routing(router_input.text),
         )
-        decision = await active_router.decide(router_input)
+    except (NotImplementedError, ValueError):
+        raise
     except LexiconError as exc:
+        return _lexicon_fallback_decision(request, exc)
+    except Exception as exc:
         request.logger.exception(
-            "Routing lexicon failed; falling back to a deterministic local decision (%s)",
+            "Routing setup failed (%s); falling back to a deterministic local decision",
             type(exc).__name__,
         )
-        decision = _local_fallback_decision(request)
-    request.logger.info("Routing decision: %s", decision_log_fields(decision))
-    return decision
+        return _local_fallback_decision(request)
+
+    try:
+        return await active_router.decide(router_input)
+    except LexiconError as exc:
+        return _lexicon_fallback_decision(request, exc)
+    except Exception as exc:
+        request.logger.exception(
+            "Router failed (%s); falling back to the deterministic gate",
+            type(exc).__name__,
+        )
+        try:
+            gate_decision = HeuristicRouter().decide_sync(router_input)
+        except Exception:
+            request.logger.exception("Deterministic gate failed; using a local decision")
+            return _local_fallback_decision(request)
+        return replace(
+            gate_decision,
+            reasons=("fallback:router_error", *gate_decision.reasons),
+        )
+
+
+def _lexicon_fallback_decision(request: AIRequest, exc: Exception) -> RouteDecision:
+    """Log a lexicon failure once and return a local fallback decision."""
+    request.logger.error(
+        "Routing lexicon failed; falling back to a deterministic local decision (%s)",
+        type(exc).__name__,
+        exc_info=exc,
+    )
+    return _local_fallback_decision(request)
 
 
 def _routing_metadata(
@@ -595,7 +632,7 @@ async def get_smart_response(  # noqa: PLR0911, PLR0913 - explicit failures and 
         return ERROR_MESSAGES["unexpected_error"], False, None
 
 
-async def _process_hybrid_mode(  # noqa: PLR0911, PLR0913 - one return per fallback outcome
+async def _process_hybrid_mode(  # noqa: PLR0911, PLR0912, PLR0913 - one branch per fallback outcome
     request: AIRequest,
     conversation_summary: list[dict],
     clients: AIClients,

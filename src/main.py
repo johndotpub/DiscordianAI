@@ -31,6 +31,7 @@ from .config import (
     DEFAULT_BOT_PRESENCE,
     DEFAULT_RATE_LIMIT,
     DEFAULT_RATE_LIMIT_PER,
+    DEFAULT_ROUTER_MODE,
     load_config,
     parse_arguments,
 )
@@ -241,6 +242,18 @@ def validate_critical_config(config: dict, logger: logging.Logger) -> None:
     if activity_type not in valid_activity_types:
         activity_values = ", ".join(valid_activity_types)
         errors.append(f"ACTIVITY_TYPE must be one of: {activity_values} (got {activity_type!r})")
+
+    # Reject a router mode that cannot select a real implementation. This is
+    # checked before the bot starts so a typo cannot turn every message into an
+    # error reply while startup and /health look healthy.
+    router_mode = str(config.get("ROUTER_MODE", DEFAULT_ROUTER_MODE)).strip().lower()
+    if router_mode == "model":
+        errors.append("ROUTER_MODE=model is not implemented; use ROUTER_MODE=clef")
+    elif router_mode not in {"heuristic", "clef"}:
+        errors.append(
+            f"Unknown ROUTER_MODE {router_mode!r}; expected 'heuristic' or 'clef' "
+            "(the retired value is 'model')"
+        )
 
     # Check allowed channels; ID-based targeting is just as valid as names.
     allowed_channels = config.get("ALLOWED_CHANNELS", [])

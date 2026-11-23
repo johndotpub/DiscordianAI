@@ -122,7 +122,11 @@ local-with-bearing-cue", expressed at the call site — there is no router-emitt
 
 - Lexicon missing/corrupt at load → `LexiconError`; orchestrator falls back to a deterministic local
   decision with `reasons=("fallback:lexicon_error",)` and logs at CRITICAL. Bot keeps answering local.
-- Router itself raising unexpectedly → caught at the decision site, local route, ERROR log.
+- Router itself raising unexpectedly → caught at the decision site, deterministic gate with a
+  `fallback:router_error` reason and an ERROR log. If the gate cannot run either, the answer uses the local
+  fallback.
+- Unknown `ROUTER_MODE` → rejected by startup configuration validation with a clear message. The retired
+  `model` value keeps its explicit error pointing at `ROUTER_MODE=clef`.
 - Empty/whitespace message → local, never an exception.
 
 ## Change log for this design
