@@ -30,9 +30,10 @@ against weakened coverage.
 .venv/bin/python scripts/mutation_check.py --only cache-key
 ```
 
-It requires a clean working tree for the mutation targets. Each mutation is
-written, the catcher test is run, and the original bytes are restored; the script
-refuses to continue if git reports changes afterwards.
+It requires a clean working tree for the mutation targets, then copies the checkout
+(without `.git`, virtual environments, caches, logs, local `.ini` files, or `.env`)
+into a scratch directory. Every mutation is written and tested there, so a killed or
+failed run cannot leave the real source corrupted.
 
 ### `regen_golden.py`
 Check golden-behaviour fixtures for drift, or rewrite them with `--write` and

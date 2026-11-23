@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -13,6 +14,52 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+
+_IGNORED_DIRECTORIES = frozenset(
+    {
+        ".git",
+        ".venv",
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".mypy_cache",
+        ".tox",
+        ".hermes",
+        "_build",
+        "build",
+        "dist",
+        "htmlcov",
+        "node_modules",
+    }
+)
+_IGNORED_FILES = frozenset({".coverage", "bot.log", ".bot.pid"})
+_KEPT_INI_FILES = frozenset({"config.ini.example", "tox.ini"})
+
+
+def _is_ignored_workspace_entry(directory: str, name: str) -> bool:
+    """Return True when one checkout entry must stay out of the scratch copy."""
+    path = Path(directory) / name
+    if path.is_dir() and name in _IGNORED_DIRECTORIES:
+        return True
+    if name in _IGNORED_FILES or name.endswith((".pyc", ".pyo")):
+        return True
+    if name == ".env" or (name.startswith(".env.") and name != ".env.example"):
+        return True
+    if name.endswith(".log") or ".log-" in name:
+        return True
+    if name.endswith((".ini.bak",)) or ".ini.bak-" in name:
+        return True
+    return name.endswith(".ini") and name not in _KEPT_INI_FILES
+
+
+def _ignore_workspace(directory: str, names: list[str]) -> set[str]:
+    """Return children of one directory that must not enter the scratch copy."""
+    return {name for name in names if _is_ignored_workspace_entry(directory, name)}
+
+
+def _copy_workspace(source: Path, destination: Path) -> None:
+    """Copy the checkout into a scratch tree without VCS state, caches, or secrets."""
+    shutil.copytree(source, destination, ignore=_ignore_workspace, symlinks=True)
 
 
 @dataclass(frozen=True)
@@ -140,11 +187,11 @@ MUTATIONS = [
         path="src/caching.py",
         test="tests/test_caching_scope.py",
         old=(
-            '        "conversation_scope": "" if scope_id is None else str(scope_id),\n'
-            '        "conversation_digest": conversation_digest,'
+            '        "conversation_scope": str(scope_id),\n'
+            '        "conversation_digest": digest,'
         ),
         new=(
-            '        "conversation_scope": "" if scope_id is None else str(scope_id),\n'
+            '        "conversation_scope": str(scope_id),\n'
             '        "conversation_digest": "",'
         ),
     ),
@@ -166,40 +213,35 @@ MUTATIONS = [
         path="src/error_handling.py",
         test="tests/test_retry_policy.py",
         old=(
-            "    return error_details.error_type not in {\n"
-            "        ErrorType.API_AUTH_ERROR,\n"
-            "        ErrorType.API_TIMEOUT,\n"
-            "        ErrorType.CONFIG_ERROR,\n"
-            "        ErrorType.VALIDATION_ERROR,\n"
-            "    }"
+            "    if isinstance(exception, (openai.APITimeoutError, *_HTTPX_TIMEOUT_ERRORS)):\n"
+            "        # The SDK wraps every transport timeout in APITimeoutError. Only a\n"
+            "        # connect timeout proves the request was never sent and safe to retry.\n"
+            "        return _chain_matches(exception, _HTTPX_CONNECT_ERRORS)"
         ),
         new=(
-            "    return error_details.error_type not in {\n"
-            "        ErrorType.API_AUTH_ERROR,\n"
-            "        ErrorType.CONFIG_ERROR,\n"
-            "        ErrorType.VALIDATION_ERROR,\n"
-            "    }"
+            "    if isinstance(exception, (openai.APITimeoutError, *_HTTPX_TIMEOUT_ERRORS)):\n"
+            "        return True"
         ),
     ),
     Mutation(
         name="breaker-inside-retry-counts-attempts",
-        path="src/openai_processing.py",
+        path="src/providers/openai_chat.py",
         test="tests/test_circuit_breaker_wiring.py",
         old=(
             "            response = await openai_circuit_breaker.call(\n"
             "                retry_with_backoff,\n"
-            "                lambda: openai_client.chat.completions.create(**api_params),\n"
+            "                lambda params=round_params: self._client.chat.completions.create(**params),\n"
             "                DEFAULT_API_RETRY_CONFIG,\n"
-            "                request.logger,\n"
+            "                self._logger,\n"
             "            )"
         ),
         new=(
             "            response = await retry_with_backoff(\n"
             "                lambda: openai_circuit_breaker.call(\n"
-            "                    lambda: openai_client.chat.completions.create(**api_params)\n"
+            "                    lambda params=round_params: self._client.chat.completions.create(**params)\n"
             "                ),\n"
             "                DEFAULT_API_RETRY_CONFIG,\n"
-            "                request.logger,\n"
+            "                self._logger,\n"
             "            )"
         ),
     ),
@@ -225,7 +267,8 @@ MUTATIONS = [
         test="tests/test_smart_orchestrator_coverage.py",
         old=(
             '    cleaned = DISCORD_MARKUP_PATTERN.sub("", message)\n'
-            '    return " ".join(cleaned.split()).strip()'
+            '    lines = [" ".join(line.split()) for line in cleaned.splitlines()]\n'
+            '    return "\\n".join(lines).strip()'
         ),
         new="    return message",
     ),
@@ -276,17 +319,13 @@ def _restore(root: Path, mutation: Mutation, backup: Path, original: bytes) -> N
     if target.read_bytes() != original:
         message = f"{mutation.path}: restored bytes differ from the backup"
         raise RuntimeError(message)
-    diff = subprocess.run(
-        ["git", "diff", "--quiet", "--", mutation.path],
-        cwd=root,
-        check=False,
-    )
-    if diff.returncode != 0:
-        message = f"{mutation.path}: git diff reports changes after restore"
-        raise RuntimeError(message)
 
 
 def _run_test(root: Path, test_path: str, timeout: float) -> tuple[bool, str]:
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        part for part in (str(root), environment.get("PYTHONPATH", "")) if part
+    )
     try:
         completed = subprocess.run(
             [
@@ -304,6 +343,7 @@ def _run_test(root: Path, test_path: str, timeout: float) -> tuple[bool, str]:
             text=True,
             timeout=timeout,
             check=False,
+            env=environment,
         )
     except subprocess.TimeoutExpired:
         return True, "test run timed out"
@@ -370,10 +410,13 @@ def main(argv: list[str] | None = None) -> int:
     started = time.perf_counter()
 
     with tempfile.TemporaryDirectory(prefix="mutation-check-") as temp_dir:
-        backup_dir = Path(temp_dir)
+        workspace = Path(temp_dir) / "workspace"
+        _copy_workspace(ROOT, workspace)
+        backup_dir = Path(temp_dir) / "backups"
+        backup_dir.mkdir()
         for index, mutation in enumerate(selected, start=1):
             print(f"[{index}/{len(selected)}] {mutation.name} ... ", end="", flush=True)
-            target = ROOT / mutation.path
+            target = workspace / mutation.path
             original = target.read_bytes()
             backup = backup_dir / f"{index:02d}-{target.name}.bak"
             backup.write_bytes(original)
@@ -392,10 +435,10 @@ def main(argv: list[str] | None = None) -> int:
             detail = ""
             try:
                 target.write_bytes(text.replace(old, new, 1).encode("utf-8"))
-                killed, detail = _run_test(ROOT, mutation.test, args.timeout)
+                killed, detail = _run_test(workspace, mutation.test, args.timeout)
                 status = "KILLED" if killed else "SURVIVED"
             finally:
-                _restore(ROOT, mutation, backup, original)
+                _restore(workspace, mutation, backup, original)
             duration = time.perf_counter() - mutation_started
             results.append(Result(mutation, status, duration, detail))
             print(f"{status} ({duration:.2f}s)")

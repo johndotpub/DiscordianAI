@@ -238,6 +238,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation 📝
 
+- **The mutation checker works on a scratch copy.** `scripts/mutation_check.py` copies
+  the checkout (minus VCS state, caches, logs, local `*.ini`, and `.env`) into a temporary
+  directory before applying mutations, so an interrupted run cannot corrupt the working
+  tree. Three stale mutation anchors were re-anchored to the current source, and
+  `tests/test_mutation_check.py` fails if any anchor stops matching.
 - **The scripts README matches the shipped tools.** The unimportable
   `debug_perplexity_citations.py` helper is deleted; `scripts/README.md` now documents
   only the scripts that exist, what each reads, and which ones write files by design.
