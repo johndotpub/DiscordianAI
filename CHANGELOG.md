@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pasted code and logs stay local.** A version string, current year, price, or other bearing cue inside
   a fenced code block no longer routes the message to web search; every cue is now extracted from the
   code-masked view, and text outside the fence still counts as before.
+- **Image requests decide before the router runs.** An image-bearing message uses the `images:local`
+  decision without consulting Clef, and the single routing log line reports that decision.
 
 - **Ollama Cloud is the default OpenAI-compatible chat provider.** `OPENAI_API_URL` defaults to
   `https://ollama.com/v1/` and `GPT_MODEL` defaults to `deepseek-v4.1-flash:1017`. OpenAI remains

@@ -249,7 +249,8 @@ Each hybrid decision logs one content-free line:
 INFO Routing decision route=web reasons=bearing:topic.volatile,bearing:time.deixis latency_ms=0.14 service=perplexity
 ```
 
-Message text and matched entity text are not logged.
+Message text and matched entity text are not logged. An image request is decided as `images:local` before
+the router runs, so that line is the decision actually used and no Clef call is made for it.
 
 ### Provider logs
 

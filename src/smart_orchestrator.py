@@ -300,6 +300,7 @@ def _vision_decision(decision: RouteDecision) -> RouteDecision:
         decision,
         route="local",
         reasons=("images:local",),
+        deterministic_override=True,
     )
 
 
@@ -594,16 +595,24 @@ async def _process_hybrid_mode(  # noqa: PLR0911 - one return per fallback outco
 ) -> tuple[str, bool, dict | None]:
     """Handle hybrid routing between OpenAI and Perplexity.
 
-    One decision is built before any provider call, including when a cached
-    answer is served. Each provider is attempted at most once per request.
+    An image request is decided before any router runs. Otherwise one decision
+    is built before any provider call, including when a cached answer is served.
+    Each provider is attempted at most once per request.
     """
-    decision = await _build_route_decision(request, orchestrator_config)
     ledger = AttemptLedger()
     degraded = False
 
     if getattr(request, "images", ()):
-        request.logger.info("Images present; forcing the local provider route")
-        decision = _vision_decision(decision)
+        decision = _vision_decision(
+            RouteDecision(
+                route="local",
+                reasons=("images:local",),
+                text=getattr(request, "message", "") or "",
+            )
+        )
+    else:
+        decision = await _build_route_decision(request, orchestrator_config)
+    request.logger.info("Routing decision: %s", decision_log_fields(decision))
 
     if decision.route == "web":
         request.logger.info("Routing to Perplexity")

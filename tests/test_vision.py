@@ -1,6 +1,7 @@
 """Vision plumbing: attachment policy through request, routing, cache, and history."""
 
 import base64
+from dataclasses import replace
 import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -269,6 +270,43 @@ async def test_hybrid_image_request_never_calls_perplexity():
     perplexity_create.assert_not_awaited()
     assert len(openai_client.calls) == 1
     assert openai_client.calls[0]["messages"][-1]["content"][1]["type"] == "image_url"
+
+
+@pytest.mark.asyncio
+async def test_image_request_bypasses_the_router_and_logs_the_used_decision(caplog):
+    """An image request never pays for a router decision it will discard."""
+    caplog.set_level(logging.INFO, logger="src.smart_orchestrator")
+    openai_client = FakeChatClient()
+    request = replace(
+        _request("What is in this?", images=[_payload()]),
+        logger=logging.getLogger("src.smart_orchestrator.image-test"),
+    )
+
+    router = SimpleNamespace(
+        decide=AsyncMock(return_value=RouteDecision(route="local", reasons=("local:default",)))
+    )
+    with patch(
+        "src.smart_orchestrator.build_router",
+        return_value=router,
+    ):
+        response = await get_smart_response(
+            request,
+            [],
+            AIClients(openai=openai_client, perplexity=object()),
+            _ai_config(),
+            {"ROUTER_MODE": "clef"},
+        )
+
+    assert response[0] == "I can see the image."
+    router.decide.assert_not_awaited()
+    decisions = [
+        record.getMessage()
+        for record in caplog.records
+        if "Routing decision" in record.getMessage()
+    ]
+    assert len(decisions) == 1
+    assert "'route': 'local'" in decisions[0]
+    assert "images:local" in decisions[0]
 
 
 @pytest.mark.asyncio
