@@ -9,6 +9,8 @@ from types import MappingProxyType
 from typing import Literal
 import unicodedata
 
+from .text import TOKEN_PATTERN
+
 TermClass = Literal["bearing", "framing"]
 
 _SUPPORTED_VERSION = "1"
@@ -28,7 +30,6 @@ _APOSTROPHES = str.maketrans(
     }
 )
 _WHITESPACE = re.compile(r"\s+")
-_TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 _NEVER_MATCH = re.compile(r"(?!)")
 _BUNDLED_PATH = Path(__file__).resolve().parent / "data" / "lexicon.en.json"
 _FUZZY_EXCLUSIONS: dict[str, frozenset[str]] = {
@@ -179,7 +180,7 @@ class Lexicon:
         """Return exact hits plus permitted typo hits in ``folded``."""
         hits: list[TermHit] = []
         exact_keys: set[tuple[str, int, int]] = set()
-        token_matches = tuple(_TOKEN_PATTERN.finditer(folded))
+        token_matches = tuple(TOKEN_PATTERN.finditer(folded))
         token_set = {match.group() for match in token_matches}
         for class_name in sorted(self.matchers):
             triggers = self.first_words.get(class_name)

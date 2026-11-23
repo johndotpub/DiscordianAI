@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 from .contracts import EvidenceClass, Source
 from .lexicon import Lexicon, TermHit
+from .text import TOKEN_PATTERN
 
 STRUCTURAL_WEIGHTS: dict[str, float] = {
     "pred.event": 2.2,
@@ -252,7 +253,6 @@ def _joined(*parts: str) -> str:
     return "".join(parts)
 
 
-_TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 _URL_CANDIDATE_PATTERN = re.compile(r"(?<!\S)\S*\.\S*")
 _FENCE_PATTERN = re.compile(r"```(?:.*?```|.*\Z)", re.DOTALL)
 _DOT_LETTER_PATTERN = re.compile(r"\.[A-Za-z]")
@@ -1082,7 +1082,7 @@ def _sorted_cues(cues: list[Cue]) -> tuple[Cue, ...]:
 
 def _tokens(folded: str) -> tuple[tuple[str, int, int], ...]:
     return tuple(
-        (match.group(), match.start(), match.end()) for match in _TOKEN_PATTERN.finditer(folded)
+        (match.group(), match.start(), match.end()) for match in TOKEN_PATTERN.finditer(folded)
     )
 
 

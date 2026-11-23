@@ -19,10 +19,11 @@ from .error_handling import get_circuit_breaker
 from .models import AIClients, AIConfig, AIRequest, RoutingMetadata
 from .openai_processing import process_openai_message
 from .perplexity_processing import process_perplexity_message
-from .routing import build_router, decision_log_fields
+from .routing import HeuristicRouter, build_router, decision_log_fields
 from .routing.context import build_router_input
 from .routing.contracts import RouteDecision
 from .routing.lexicon import LexiconError
+from .routing.services import ROUTE_BY_SERVICE
 
 # Get centralized error messages
 ERROR_MESSAGES = get_error_messages()
@@ -445,7 +446,7 @@ async def _process_only_mode(
             router_id="direct",
             policy_version="0",
             decision_source="direct",
-            route="web" if service == "perplexity" else "local",
+            route=ROUTE_BY_SERVICE[service],
             salt=f"direct:{service}",
         ),
     )
