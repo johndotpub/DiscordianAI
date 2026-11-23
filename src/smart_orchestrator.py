@@ -15,7 +15,7 @@ from .config import (
     DISCORD_MARKUP_PATTERN,
     get_error_messages,
 )
-from .error_handling import get_circuit_breaker
+from .error_handling import ProviderCallError, get_circuit_breaker
 from .models import AIClients, AIConfig, AIRequest, RoutingMetadata
 from .openai_processing import process_openai_message
 from .perplexity_processing import process_perplexity_message
@@ -30,11 +30,23 @@ ERROR_MESSAGES = get_error_messages()
 
 
 async def _invoke_openai(request, client, service_config, summary):
-    return await process_openai_message(request, summary, client, service_config)
+    return await process_openai_message(
+        request,
+        summary,
+        client,
+        service_config,
+        raise_on_failure=True,
+    )
 
 
 async def _invoke_perplexity(request, client, service_config, summary):
-    return await process_perplexity_message(request, client, service_config, summary)
+    return await process_perplexity_message(
+        request,
+        client,
+        service_config,
+        summary,
+        raise_on_failure=True,
+    )
 
 
 @dataclass(frozen=True)
@@ -498,6 +510,9 @@ async def _process_only_mode(
         request.logger.error("%s returned no response", spec.label)
         if spec.breaker_error is not None and get_circuit_breaker(spec.service).state == "OPEN":
             return spec.breaker_error, False, None
+    except ProviderCallError as failure:
+        request.logger.exception("%s processing failed", spec.label)
+        return failure.details.user_message, False, None
     except Exception:
         request.logger.exception("%s processing failed", spec.label)
         return spec.exception_error, False, None

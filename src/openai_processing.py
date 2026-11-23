@@ -12,7 +12,7 @@ from typing import Any
 from .api_context import api_call
 from .caching import cached_response, deduplicated_request
 from .config import DEFAULT_CACHE_TTL
-from .error_handling import retry_with_backoff
+from .error_handling import ProviderCallError, classify_error, retry_with_backoff
 from .models import AIRequest, OpenAIConfig
 from .providers.base import AssistantText
 from .providers.openai_chat import (
@@ -82,6 +82,8 @@ async def _fetch_openai_response(
     conversation_summary: list[dict],
     openai_client,
     config: OpenAIConfig,
+    *,
+    raise_on_failure: bool = False,
 ) -> str | None:
     """Fetch an OpenAI response (cached/deduped) without side effects."""
     try:
@@ -126,8 +128,10 @@ async def _fetch_openai_response(
                 )
 
             return AssistantText(result.text, truncated=truncated)
-    except Exception:
+    except Exception as exc:
         request.logger.exception("OpenAI API call failed after retries")
+        if raise_on_failure:
+            raise ProviderCallError(classify_error(exc), provider="openai") from exc
         return None
 
 
@@ -136,10 +140,28 @@ async def process_openai_message(
     conversation_summary: list[dict],
     openai_client,
     config: OpenAIConfig,
+    *,
+    raise_on_failure: bool = False,
 ) -> str | None:
-    """Process message using OpenAI API."""
+    """Process message using OpenAI API.
+
+    Args:
+        request: The normalised request.
+        conversation_summary: Prior turns for context.
+        openai_client: The chat-provider client.
+        config: Chat-provider configuration.
+        raise_on_failure: Raise a typed ``ProviderCallError`` instead of
+            returning ``None`` when the provider call fails.
+
+    Returns:
+        The answer text, or ``None`` when the provider produced no content.
+    """
     response_content = await _fetch_openai_response(
-        request, conversation_summary, openai_client, config
+        request,
+        conversation_summary,
+        openai_client,
+        config,
+        raise_on_failure=raise_on_failure,
     )
 
     if not response_content:

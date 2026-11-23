@@ -81,6 +81,21 @@ class ErrorDetails:
     context: dict[str, Any] | None = None
 
 
+class ProviderCallError(RuntimeError):
+    """A provider call that failed after classification.
+
+    The processing wrappers raise this only when a caller asks to see failures;
+    direct callers keep the legacy ``None`` result. ``details`` carries the one
+    fixed user notice for the classified error.
+    """
+
+    def __init__(self, details: ErrorDetails, *, provider: str | None = None):
+        """Build a typed provider failure around classified error details."""
+        self.details = details
+        self.provider = provider
+        super().__init__(details.message)
+
+
 class CircuitBreaker:
     """Circuit breaker pattern implementation to prevent cascade failures.
 

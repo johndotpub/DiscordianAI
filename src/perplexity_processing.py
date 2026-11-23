@@ -16,6 +16,7 @@ from .caching import cached_response
 from .citation_formatting import _format_unlinked_citations, format_citations
 from .config import DEFAULT_CACHE_TTL
 from .discord_embeds import citation_embed_formatter
+from .error_handling import ProviderCallError, classify_error
 from .message_splitter import CitationMap, sanitize_model_output, should_suppress_embeds
 from .models import AIRequest, PerplexityConfig
 from .providers.base import AssistantText, ProviderResult
@@ -97,6 +98,7 @@ def _perplexity_cache_key(
     perplexity_client: Any,
     config: PerplexityConfig,
     conversation_summary: list[dict] | None = None,
+    **_kwargs: Any,
 ) -> str | None:
     """Build a fully scoped cache key for one Perplexity request."""
     cacheable, salt, degraded = _routing_fields(request)
@@ -209,6 +211,8 @@ async def _fetch_perplexity_response(
     perplexity_client: Any,
     config: PerplexityConfig,
     conversation_summary: list[dict] | None = None,
+    *,
+    raise_on_failure: bool = False,
 ) -> tuple[str, bool, dict | None] | None:
     """Fetch and format a Perplexity answer behind the shared cache."""
     try:
@@ -227,8 +231,10 @@ async def _fetch_perplexity_response(
             result = await provider.complete(completion_request)
             ctx.set_result(result.raw)
             return _handle_provider_result(result, request)
-    except Exception:
+    except Exception as exc:
         request.logger.exception("Perplexity API call failed for user %s", request.user.id)
+        if raise_on_failure:
+            raise ProviderCallError(classify_error(exc), provider="perplexity") from exc
         return None
 
 
@@ -237,6 +243,8 @@ async def process_perplexity_message(
     perplexity_client: Any,
     config: PerplexityConfig,
     conversation_summary: list[dict] | None = None,
+    *,
+    raise_on_failure: bool = False,
 ) -> tuple[str, bool, dict | None] | None:
     """Get a web-enabled response from Perplexity and format it for Discord.
 
@@ -252,11 +260,17 @@ async def process_perplexity_message(
         config: `PerplexityConfig` containing model and system message.
         conversation_summary: Optional prior conversation turns to send between
             the system message and the current user message.
+        raise_on_failure: Raise a typed ``ProviderCallError`` instead of
+            returning ``None`` when the provider call fails.
 
     Returns:
         A tuple `(response_text, suppress_embeds, embed_metadata)` when a
         successful response is obtained, or `None` on failure/timeouts.
     """
     return await _fetch_perplexity_response(
-        request, perplexity_client, config, conversation_summary
+        request,
+        perplexity_client,
+        config,
+        conversation_summary,
+        raise_on_failure=raise_on_failure,
     )

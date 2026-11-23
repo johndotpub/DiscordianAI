@@ -173,7 +173,7 @@ async def test_lexicon_failure_falls_back_to_a_local_answer(caplog):
     clients = AIClients(openai=object(), perplexity=object())
     captured = {}
 
-    async def fake_openai(routed_request, _summary, _client, _config):
+    async def fake_openai(routed_request, _summary, _client, _config, **_kwargs):
         captured["routing"] = routed_request.routing
         return "A successful local answer"
 
@@ -286,3 +286,87 @@ async def test_injected_router_is_reused_instead_of_rebuilt():
     assert response == "A successful local answer"
     builder.assert_not_called()
     router.decide.assert_awaited_once()
+
+
+def _failing_chat_client(error):
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=error)
+    return client
+
+
+def _failing_responses_client(error):
+    client = MagicMock()
+    client.responses.create = AsyncMock(side_effect=error)
+    return client
+
+
+@pytest.mark.asyncio
+async def test_openai_only_mode_reports_the_classified_outage_not_a_rephrase_hint():
+    """A provider outage shows the outage notice, not 'try rephrasing'."""
+    import openai
+
+    from src.config import get_error_messages
+    from src.error_handling import classify_error
+    from src.models import OpenAIConfig
+
+    error = openai.InternalServerError(
+        "provider down",
+        response=MagicMock(status_code=500, headers={}),
+        body=None,
+    )
+    manager = MagicMock()
+    request = _request("Tell me something interesting", manager)
+    clients = AIClients(
+        openai=_failing_chat_client(error),
+        perplexity=None,
+    )
+
+    with patch("src.error_handling.asyncio.sleep", new=AsyncMock()):
+        response, suppress, embed = await get_smart_response(
+            request,
+            [],
+            clients,
+            AIConfig(openai=OpenAIConfig()),
+        )
+
+    assert response == classify_error(error).user_message
+    assert response != get_error_messages()["no_response_generated"]
+    assert suppress is False
+    assert embed is None
+    manager.add_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_perplexity_only_mode_reports_the_classified_outage_not_a_rephrase_hint():
+    """The Perplexity-only wrapper exposes its classified failure too."""
+    import openai
+
+    from src.config import get_error_messages
+    from src.error_handling import classify_error
+    from src.models import PerplexityConfig
+
+    error = openai.InternalServerError(
+        "provider down",
+        response=MagicMock(status_code=500, headers={}),
+        body=None,
+    )
+    manager = MagicMock()
+    request = _request("Tell me something interesting", manager)
+    clients = AIClients(
+        openai=None,
+        perplexity=_failing_responses_client(error),
+    )
+
+    with patch("src.error_handling.asyncio.sleep", new=AsyncMock()):
+        response, suppress, embed = await get_smart_response(
+            request,
+            [],
+            clients,
+            AIConfig(perplexity=PerplexityConfig()),
+        )
+
+    assert response == classify_error(error).user_message
+    assert response != get_error_messages()["no_response_generated"]
+    assert suppress is False
+    assert embed is None
+    manager.add_message.assert_not_called()
