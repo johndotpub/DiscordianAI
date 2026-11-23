@@ -197,7 +197,8 @@ def _sanitize_for_routing(message: str) -> str:
     history, cache keys, or log output.
     """
     cleaned = DISCORD_MARKUP_PATTERN.sub("", message)
-    return " ".join(cleaned.split()).strip()
+    lines = [" ".join(line.split()) for line in cleaned.splitlines()]
+    return "\n".join(lines).strip()
 
 
 def _is_quoted_text(response_text: str, position: int) -> bool:

@@ -70,7 +70,8 @@ the gate.
 
 ## Invariants tests enforce
 
-- URL or masked-vs-unmasked handling: instructions inside code fences do not fire overrides.
+- Masked-vs-unmasked handling: no cue inside a code fence fires, whether an override, a version shape, a
+  year, or a money/commerce term. Overrides and bearing cues both read the masked view.
 - Inheritance only from a real previous assistant turn, at most one turn back, suppressed on topic shift.
 - Corpus fixture: current behaviour matches the blessed confusion counts (any silent change fails CI).
 - Determinism: same input, same route, every run, no clock/network/model dependence.

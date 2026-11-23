@@ -98,6 +98,17 @@ class TestSanitizeForRouting:
         # 'now' is still present — sanitization doesn't touch plain text
         assert "now" in _sanitize_for_routing(msg)
 
+    def test_newlines_survive_so_fenced_code_reaches_the_router(self):
+        """Fence masking works on the text the router actually receives."""
+        msg = "why does this fail?\n```\npip install requests==2.32.0\n```"
+
+        sanitized = _sanitize_for_routing(msg)
+        decision = HeuristicRouter().decide_sync(RouterInput(text=sanitized))
+
+        assert "\n" in sanitized
+        assert sanitized.count("```") == 2
+        assert decision.route == "local"
+
 
 class TestRoutingBehaviour:
     """Routing decisions are exercised through the real heuristic router."""

@@ -740,17 +740,18 @@ def extract_overrides(text_views: TextViews, lexicon: Lexicon) -> tuple[Cue, ...
 
 
 def extract_cues(
-    views: TextViews,
+    text_views: TextViews,
     lexicon: Lexicon,
     *,
     clock: Callable[[], date] | None = None,
 ) -> tuple[Cue, ...]:
-    """Return the unweighted bearing and framing cues in ``views``."""
+    """Return the unweighted bearing and framing cues in ``text_views``."""
+    original = text_views
+    code_regions = _code_regions(original.surface)
+    cue_views = views(_mask_regions(original.surface, code_regions)) if code_regions else original
     cues: list[Cue] = []
-    folded = views.folded
-    surface = views.surface
-    code_regions = _code_regions(surface)
-    masked = _mask_regions(surface, code_regions) if code_regions else surface
+    folded = cue_views.folded
+    surface = cue_views.surface
     tokens = _tokens(folded)
 
     def add(
@@ -764,18 +765,18 @@ def extract_cues(
             Cue(
                 signal=signal,
                 klass=klass,
-                span=views.surface_span(span[0], span[1]),
+                span=text_views.surface_span(span[0], span[1]),
                 detail=detail,
                 source="lexicon" if weight is not None else "structural",
                 weight=STRUCTURAL_WEIGHTS.get(signal, 0.0) if weight is None else weight,
             )
         )
 
-    _add_pattern(cues, views, _EVENT_PATTERN, ("pred.event", "bearing"))
-    _add_pattern(cues, views, _VERSION_PATTERN, ("shape.version", "bearing"))
-    _add_pattern(cues, views, _MONEY_PATTERN, ("shape.money", "bearing"))
-    _add_pattern(cues, views, _DEIXIS_PATTERN, ("time.deixis", "bearing"))
-    cues.extend(_error_code_cues(views, tokens))
+    _add_pattern(cues, cue_views, _EVENT_PATTERN, ("pred.event", "bearing"))
+    _add_pattern(cues, cue_views, _VERSION_PATTERN, ("shape.version", "bearing"))
+    _add_pattern(cues, cue_views, _MONEY_PATTERN, ("shape.money", "bearing"))
+    _add_pattern(cues, cue_views, _DEIXIS_PATTERN, ("time.deixis", "bearing"))
+    cues.extend(_error_code_cues(cue_views, tokens))
 
     current_year = (clock or date.today)().year
     for match in _YEAR_PATTERN.finditer(folded):
@@ -801,12 +802,12 @@ def extract_cues(
             tokens[verb_index][0],
         )
 
-    _add_pattern(cues, views, _OPINION_PATTERN, ("frame.opinion", "framing"))
-    _add_pattern(cues, views, _CREATIVE_PATTERN, ("frame.creative", "framing"))
-    _add_pattern(cues, views, _NARRATIVE_PATTERN, ("neg.narrative", "framing"))
-    _add_pattern(cues, views, _LOOKUP_PATTERN, ("cue.lookup", "framing"))
+    _add_pattern(cues, cue_views, _OPINION_PATTERN, ("frame.opinion", "framing"))
+    _add_pattern(cues, cue_views, _CREATIVE_PATTERN, ("frame.creative", "framing"))
+    _add_pattern(cues, cue_views, _NARRATIVE_PATTERN, ("neg.narrative", "framing"))
+    _add_pattern(cues, cue_views, _LOOKUP_PATTERN, ("cue.lookup", "framing"))
 
-    for match in _ENTITY_PATTERN.finditer(masked):
+    for match in _ENTITY_PATTERN.finditer(surface):
         first_word = match.group().split()[0].lower()
         if first_word in _ENTITY_STOPWORDS or is_url(match.group()):
             continue
@@ -814,13 +815,13 @@ def extract_cues(
 
     for start, end, kind in code_regions:
         add("code.shape", "framing", (start, end), kind)
-    for match in _TRACEBACK_PATTERN.finditer(surface):
+    for match in _TRACEBACK_PATTERN.finditer(original.surface):
         add("code.shape", "framing", match.span(), "traceback")
 
     cues.extend(
         _lexicon_cues(
             lexicon,
-            views,
+            cue_views,
             tokens,
             structural_bearing=any(cue.klass == "bearing" for cue in cues),
         )

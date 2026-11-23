@@ -34,8 +34,8 @@ Two rules keep the model honest:
   capital of France?"* stays local because the answer does not change.
 - **Framing cannot decide alone.** Social text such as "thanks" or "best regards" neither triggers nor
   blocks a search.
-- **Overrides are evaluated on code-masked text**, so instructions inside a fenced block (e.g. "use the
-  web API") do not fire.
+- **Every cue is evaluated on code-masked text**, so a version, price, year, or instruction inside a
+  fenced block cannot route the message. Text outside the fence still counts.
 
 There is no threshold, no confidence score, and no per-channel tuning: either the message carries
 live-data evidence or it does not.
