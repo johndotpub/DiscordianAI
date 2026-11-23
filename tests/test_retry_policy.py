@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
+import httpx2
 import openai
 import pytest
 
@@ -141,3 +142,83 @@ async def test_deadline_stops_retries():
 
     assert attempts == 1
     assert not sleep.called
+
+
+async def _run_raising_from(
+    error: Exception,
+    cause: BaseException,
+    config: RetryConfig = DEFAULT_API_RETRY_CONFIG,
+) -> tuple[int, list[float]]:
+    attempts = 0
+
+    async def failing_call():
+        nonlocal attempts
+        attempts += 1
+        raise error from cause
+
+    sleep = AsyncMock()
+    with patch("src.error_handling.asyncio.sleep", sleep):
+        with pytest.raises(type(error)):
+            await retry_with_backoff(failing_call, config, Mock())
+
+    return attempts, [call.args[0] for call in sleep.call_args_list]
+
+
+@pytest.mark.asyncio
+async def test_wrapped_connect_timeout_is_retried():
+    """A connect timeout sent nothing, so it is safe to try again."""
+    cause = httpx2.ConnectTimeout("connect timed out")
+    error = openai.APITimeoutError(request=SimpleNamespace())
+
+    attempts, delays = await _run_raising_from(error, cause)
+
+    assert attempts == 2
+    assert len(delays) == 1
+
+
+@pytest.mark.asyncio
+async def test_wrapped_read_timeout_is_not_retried():
+    """A read timeout may have been served, so it is not retried."""
+    cause = httpx2.ReadTimeout("read timed out")
+    error = openai.APITimeoutError(request=SimpleNamespace())
+
+    attempts, delays = await _run_raising_from(error, cause)
+
+    assert attempts == 1
+    assert delays == []
+
+
+@pytest.mark.asyncio
+async def test_wrapped_connect_error_is_retried():
+    """A connect error never established the request."""
+    cause = httpx2.ConnectError("connection refused")
+    error = openai.APIConnectionError(message="connection failed", request=SimpleNamespace())
+
+    attempts, delays = await _run_raising_from(error, cause)
+
+    assert attempts == 2
+    assert len(delays) == 1
+
+
+@pytest.mark.asyncio
+async def test_wrapped_read_error_is_not_retried():
+    """A read error can arrive after the provider already served the request."""
+    cause = httpx2.ReadError("connection dropped")
+    error = openai.APIConnectionError(message="connection failed", request=SimpleNamespace())
+
+    attempts, delays = await _run_raising_from(error, cause)
+
+    assert attempts == 1
+    assert delays == []
+
+
+@pytest.mark.asyncio
+async def test_wrapped_remote_protocol_error_is_not_retried():
+    """A protocol error after send is not proof the request can be replayed."""
+    cause = httpx2.RemoteProtocolError("peer closed connection")
+    error = openai.APIConnectionError(message="connection failed", request=SimpleNamespace())
+
+    attempts, delays = await _run_raising_from(error, cause)
+
+    assert attempts == 1
+    assert delays == []

@@ -370,15 +370,31 @@ NETWORK_ERROR_USER_MESSAGE = "🌐 I couldn't reach the AI service. Please try a
 DISCORD_CONNECTION_USER_MESSAGE = (
     "🤖 I'm having trouble connecting to Discord. Please try again shortly."
 )
-
 _HTTPX_TIMEOUT_ERRORS: tuple[type[Exception], ...] = (httpx.TimeoutException,)
 _HTTPX_TRANSPORT_ERRORS: tuple[type[Exception], ...] = (httpx.TransportError,)
-_HTTPX_CONNECT_TIMEOUT_ERRORS: tuple[type[Exception], ...] = (httpx.ConnectTimeout,)
+_HTTPX_CONNECT_ERRORS: tuple[type[Exception], ...] = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+)
+_HTTPX_AFTER_REQUEST_ERRORS: tuple[type[Exception], ...] = (
+    httpx.ReadError,
+    httpx.ReadTimeout,
+    httpx.RemoteProtocolError,
+    httpx.ProtocolError,
+    httpx.WriteError,
+)
 
 if httpx2 is not None:
     _HTTPX_TIMEOUT_ERRORS += (httpx2.TimeoutException,)
     _HTTPX_TRANSPORT_ERRORS += (httpx2.TransportError,)
-    _HTTPX_CONNECT_TIMEOUT_ERRORS += (httpx2.ConnectTimeout,)
+    _HTTPX_CONNECT_ERRORS += (httpx2.ConnectError, httpx2.ConnectTimeout)
+    _HTTPX_AFTER_REQUEST_ERRORS += (
+        httpx2.ReadError,
+        httpx2.ReadTimeout,
+        httpx2.RemoteProtocolError,
+        httpx2.ProtocolError,
+        httpx2.WriteError,
+    )
 
 
 def _structured_status_code(exception: Exception) -> int | None:
@@ -400,6 +416,22 @@ def _status_code_from_exception(exception: Exception) -> int | None:
 
     match = _HTTP_4XX_IN_MESSAGE_PATTERN.search(str(exception))
     return int(match.group(1)) if match else None
+
+
+def _exception_chain(exception: Exception) -> list[BaseException]:
+    """Return the explicit ``raise ... from`` cause chain, nearest first."""
+    chain: list[BaseException] = []
+    seen: set[int] = set()
+    current: BaseException | None = exception
+    while current is not None and id(current) not in seen:
+        chain.append(current)
+        seen.add(id(current))
+        current = current.__cause__
+    return chain
+
+
+def _chain_matches(exception: Exception, types: tuple[type[Exception], ...]) -> bool:
+    return any(isinstance(item, types) for item in _exception_chain(exception))
 
 
 def _is_provider_failure(exception: Exception) -> bool:
@@ -436,19 +468,19 @@ def is_retryable_status(status: int | None) -> bool:
 def _is_retryable_error(error_details: ErrorDetails, exception: Exception) -> bool:
     if isinstance(exception, CircuitBreakerOpenError):
         return False
-
     status_code = _status_code_from_exception(exception)
-
-    if (
-        status_code is not None
-        and _HTTP_STATUS_BAD_REQUEST <= status_code < _HTTP_STATUS_SERVER_ERROR
-    ):
+    if status_code is not None:
         return is_retryable_status(status_code)
-    if is_retryable_status(status_code):
-        return True
 
-    if isinstance(exception, _HTTPX_CONNECT_TIMEOUT_ERRORS):
-        return True
+    if isinstance(exception, (openai.APITimeoutError, *_HTTPX_TIMEOUT_ERRORS)):
+        # The SDK wraps every transport timeout in APITimeoutError. Only a
+        # connect timeout proves the request was never sent and safe to retry.
+        return _chain_matches(exception, _HTTPX_CONNECT_ERRORS)
+
+    if isinstance(exception, (openai.APIConnectionError, *_HTTPX_TRANSPORT_ERRORS)):
+        # Read, write, and protocol errors can arrive after the provider
+        # already served the request; a connect error cannot.
+        return not _chain_matches(exception, _HTTPX_AFTER_REQUEST_ERRORS)
 
     return error_details.error_type not in {
         ErrorType.API_AUTH_ERROR,
