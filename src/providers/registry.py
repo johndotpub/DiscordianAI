@@ -1,9 +1,10 @@
 """Single source for provider identity, client construction, and health wiring.
 
-The registry intentionally describes providers without importing their
-adapters. Health checks, the breaker table, and the health server derive their
-provider names from :data:`PROVIDERS`, so adding a provider does not require
-editing three parallel literals.
+Adapter modules are imported lazily when an adapter is built, so loading the
+registry stays cheap and cannot create an import cycle through the adapters.
+Health checks, the breaker table, and the health server derive their provider
+names from :data:`PROVIDERS`, so adding a provider does not require editing
+three parallel literals.
 """
 
 from collections.abc import Callable, Mapping
@@ -36,6 +37,11 @@ class ProviderSpec:
 
     Attributes:
         name: Stable provider identifier used for deps, breakers, and health.
+        label: Display name used in logs and health output.
+        api_key_key: Config key holding this provider's API key.
+        base_url_key: Config key holding this provider's base URL.
+        model_key: Config key holding this provider's model identifier.
+        disabled_hint: Log suffix explaining what stops working without a key.
         config_type: Frozen configuration dataclass for this provider.
         client_factory: Callable taking a connection-pool manager plus the
             credentials and base URL, returning an SDK-compatible client.
@@ -45,11 +51,29 @@ class ProviderSpec:
     """
 
     name: str
+    label: str
+    api_key_key: str
+    base_url_key: str
+    model_key: str
+    disabled_hint: str
     config_type: type[Any]
     client_factory: ClientFactory
     health: bool = True
     breaker: bool = True
     health_metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def build_adapter(self, client: Any) -> Any:
+        """Build this provider's adapter around ``client`` with default config."""
+        if self.name == "openai":
+            from .openai_chat import ChatCompletionsProvider  # noqa: PLC0415 - lazy import
+
+            return ChatCompletionsProvider(client, self.config_type())
+        if self.name == "perplexity":
+            from .perplexity import AgentResponsesProvider  # noqa: PLC0415 - lazy import
+
+            return AgentResponsesProvider(client, self.config_type())
+        msg = f"No adapter is registered for provider {self.name!r}"
+        raise KeyError(msg)
 
 
 def _openai_client_factory(
@@ -76,12 +100,14 @@ PROVIDERS: Mapping[str, ProviderSpec] = MappingProxyType(
     {
         "openai": ProviderSpec(
             name="openai",
+            label="OpenAI",
+            api_key_key="OPENAI_API_KEY",
+            base_url_key="OPENAI_API_URL",
+            model_key="GPT_MODEL",
+            disabled_hint="GPT models disabled",
             config_type=OpenAIConfig,
             client_factory=_openai_client_factory,
             health_metadata={
-                "display_name": "OpenAI",
-                "client_key": "openai",
-                "model_key": "GPT_MODEL",
                 "default_model": DEFAULT_OPENAI_MODEL,
                 "allowed_models": tuple(OPENAI_VALID_MODELS),
                 "model_validator": is_supported_openai_model,
@@ -92,12 +118,14 @@ PROVIDERS: Mapping[str, ProviderSpec] = MappingProxyType(
         ),
         "perplexity": ProviderSpec(
             name="perplexity",
+            label="Perplexity",
+            api_key_key="PERPLEXITY_API_KEY",
+            base_url_key="PERPLEXITY_API_URL",
+            model_key="PERPLEXITY_MODEL",
+            disabled_hint="web search disabled",
             config_type=PerplexityConfig,
             client_factory=_perplexity_client_factory,
             health_metadata={
-                "display_name": "Perplexity",
-                "client_key": "perplexity",
-                "model_key": "PERPLEXITY_MODEL",
                 "default_model": DEFAULT_PERPLEXITY_MODEL,
                 "allowed_models": tuple(PERPLEXITY_MODELS),
                 "degraded_threshold_ms": PERPLEXITY_RESPONSE_DEGRADED_THRESHOLD_MS,
@@ -107,6 +135,44 @@ PROVIDERS: Mapping[str, ProviderSpec] = MappingProxyType(
         ),
     }
 )
+
+
+def build_configured_clients(pool: Any, config: Mapping[str, Any], logger: Any) -> dict[str, Any]:
+    """Build every provider client whose API key is configured.
+
+    Args:
+        pool: Connection-pool manager exposing each provider's client factory.
+        config: Loaded configuration mapping.
+        logger: Logger for one line per configured or skipped provider.
+
+    Returns:
+        A mapping from provider name to its SDK client. A provider whose key
+        is missing is absent from the mapping.
+
+    Raises:
+        RuntimeError: If a configured provider's client cannot be constructed.
+    """
+    clients: dict[str, Any] = {}
+    for name, spec in PROVIDERS.items():
+        if not config.get(spec.api_key_key):
+            logger.info("No %s API key provided; %s", spec.api_key_key, spec.disabled_hint)
+            continue
+        try:
+            clients[name] = spec.client_factory(
+                pool,
+                config[spec.api_key_key],
+                config[spec.base_url_key],
+            )
+        except Exception as exc:
+            logger.exception("Failed to initialize %s client", spec.label)
+            msg = f"{spec.label} client initialization failed"
+            raise RuntimeError(msg) from exc
+        logger.info(
+            "%s client initialized with model %s (connection pooling enabled)",
+            spec.label,
+            config[spec.model_key],
+        )
+    return clients
 
 
 def provider_names() -> tuple[str, ...]:

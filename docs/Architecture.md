@@ -72,7 +72,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 | **Error Handling** | `error_handling.py` | Circuit breaker, retry logic, error classification |
 | **Conversation Manager** | `conversation_manager.py` | Thread-safe conversation history |
 | **Rate Limiter** | `rate_limits.py` | Per-user rate limiting |
-| **Health Checks** | `health_checks.py` | API health monitoring, metrics |
+| **Health Checks** | `health_checks.py` | Startup provider reachability probes (bounded, no metrics store) |
 | **Health Server** | `health_server.py` | HTTP liveness/readiness probes (Kubernetes-compatible) |
 | **API Context** | `api_context.py` | Context managers for API call lifecycle, timing, and error tracking |
 | **Structured Logging** | `structured_logging.py` | structlog configuration and structured logger factory |
@@ -223,9 +223,10 @@ one registry.
   client-side web-tool loop, and response parsing.
 - `providers/perplexity.py` owns the Agent API request shape, the Responses call, and
   citation extraction from search and fetched-page output.
-- `providers/registry.py` is the single source for provider names, client construction,
-  health-check metadata, and breaker membership. Health checks, the health
-  server, and the breaker table derive their entries from it.
+- `providers/registry.py` is the single source for provider names, client
+  construction, health-check metadata, and breaker membership. The bot builds its
+  clients through it, and health checks call the adapter `probe()` selected by the
+  registry row. The health server and the breaker table derive their entries from it.
 
 `process_openai_message()` and `process_perplexity_message()` remain the public
 entry points. They keep caching, retry lifecycle, and Discord formatting in the
@@ -313,11 +314,11 @@ a 90-second overall deadline stops retries even when attempts remain.
 - Model availability validation
 - Connection pool health metrics
 
-### Metrics (via `APIHealthMetrics`)
-- Total/successful/failed checks
-- Average response times
-- Consecutive failure tracking
-- Uptime percentage
+### Health State
+- `/health` reports the bot's observed provider state from each circuit breaker; it
+  does not run a live provider probe on request.
+- Startup reachability checks call each provider adapter's bounded `probe()` and log
+  the result. They keep no in-process metrics history.
 
 ## 🚀 Performance Optimizations
 

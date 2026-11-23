@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Behaviour changes
 
+- **Startup provider checks use the same bounded probe as the adapters.** The
+  reachability check now times out instead of waiting indefinitely, and the
+  in-process check counters and recent-result list that nothing read are gone.
+  `/health` still reports observed breaker state rather than running a live probe.
 - **The launcher survives a restart wait and leaves other instances alone.** The restart
   loop no longer exits the script on its first second under `set -e`, the PID file is
   removed even when the old process is gone, and straggler cleanup matches only the

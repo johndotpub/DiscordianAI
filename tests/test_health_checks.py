@@ -2,10 +2,9 @@
 
 This test suite covers:
 - Individual API health checks (OpenAI, Perplexity, Discord)
-- Health metrics collection and aggregation
+- Provider probe wiring and status classification
 - Health monitoring loop functionality
 - Configuration validation integration
-- Alerting and status determination
 """
 
 from datetime import UTC, datetime
@@ -13,11 +12,9 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from src.health_checks import (
-    APIHealthMetrics,
-    APIHealthMonitor,
-    HealthCheckResult,
-)
+from src.health_checks import APIHealthMonitor, HealthCheckResult
+from src.providers.base import ProbeResult
+from src.providers.openai_chat import ChatCompletionsProvider
 
 
 class TestHealthCheckResult:
@@ -54,50 +51,6 @@ class TestHealthCheckResult:
         assert result.error == "Connection timeout"
 
 
-class TestAPIHealthMetrics:
-    """Test APIHealthMetrics dataclass and calculations."""
-
-    def test_metrics_initialization(self):
-        """Test APIHealthMetrics initialization."""
-        metrics = APIHealthMetrics(service="discord")
-
-        assert metrics.service == "discord"
-        assert metrics.total_checks == 0
-        assert metrics.uptime_percentage == 100.0
-        assert metrics.consecutive_failures == 0
-
-    def test_metrics_calculations(self):
-        """Test metrics calculations."""
-        monitor = APIHealthMonitor()
-        timestamp = datetime.now(UTC)
-
-        for _ in range(95):
-            monitor.record_health_check(
-                HealthCheckResult(
-                    service="test",
-                    status="healthy",
-                    response_time_ms=1,
-                    timestamp=timestamp,
-                )
-            )
-        for _ in range(5):
-            monitor.record_health_check(
-                HealthCheckResult(
-                    service="test",
-                    status="unhealthy",
-                    response_time_ms=0,
-                    timestamp=timestamp,
-                    error="failed",
-                )
-            )
-
-        metrics = monitor.metrics["test"]
-        assert metrics.total_checks == 100
-        assert metrics.successful_checks == 95
-        assert metrics.failed_checks == 5
-        assert metrics.uptime_percentage == 95.0
-
-
 class TestAPIHealthMonitor:
     """Test the main APIHealthMonitor class."""
 
@@ -125,8 +78,7 @@ class TestAPIHealthMonitor:
         assert result.status == "healthy"
         assert result.error is None
         assert result.details["model"] == "gpt-5-mini"
-        assert result.details["model_count"] == 2
-        assert result.details["available_models"] == ["gpt-5-mini", "gpt-5"]
+        assert result.details["probe"] == "2 models available"
 
     @pytest.mark.asyncio
     async def test_openai_health_check_failure(self):
@@ -192,8 +144,7 @@ class TestAPIHealthMonitor:
         assert result.status == "healthy"
         assert result.error is None
         assert result.details["model"] == "perplexity/sonar"
-        assert result.details["model_count"] == 2
-        assert result.details["available_models"] == ["perplexity/sonar", "other-model"]
+        assert result.details["probe"] == "2 models available"
 
         # Verify that the API call was made successfully
         perplexity_client.models.list.assert_called_once()
@@ -233,73 +184,6 @@ class TestAPIHealthMonitor:
         assert result.status == "unhealthy"
         assert "not ready" in result.error
 
-    def test_record_health_check_success(self):
-        """Test recording successful health check."""
-        result = HealthCheckResult(
-            service="openai",
-            status="healthy",
-            response_time_ms=200,
-            timestamp=datetime.now(UTC),
-        )
-
-        self.monitor.record_health_check(result)
-
-        assert "openai" in self.monitor.metrics
-        metrics = self.monitor.metrics["openai"]
-        assert metrics.total_checks == 1
-        assert metrics.successful_checks == 1
-        assert metrics.failed_checks == 0
-        assert metrics.consecutive_failures == 0
-        assert metrics.uptime_percentage == 100.0
-
-    def test_record_health_check_failure(self):
-        """Test recording failed health check."""
-        result = HealthCheckResult(
-            service="perplexity",
-            status="unhealthy",
-            response_time_ms=0,
-            timestamp=datetime.now(UTC),
-            error="Connection failed",
-        )
-
-        self.monitor.record_health_check(result)
-
-        metrics = self.monitor.metrics["perplexity"]
-        assert metrics.total_checks == 1
-        assert metrics.successful_checks == 0
-        assert metrics.failed_checks == 1
-        assert metrics.consecutive_failures == 1
-        assert metrics.uptime_percentage == 0.0
-
-    def test_record_multiple_health_checks(self):
-        """Test recording multiple health checks and metric updates."""
-        # Record 3 successful checks
-        for i in range(3):
-            result = HealthCheckResult(
-                service="discord",
-                status="healthy",
-                response_time_ms=100 + i * 10,  # Varying response times
-                timestamp=datetime.now(UTC),
-            )
-            self.monitor.record_health_check(result)
-
-        # Record 1 failed check
-        failed_result = HealthCheckResult(
-            service="discord",
-            status="unhealthy",
-            response_time_ms=0,
-            timestamp=datetime.now(UTC),
-            error="Timeout",
-        )
-        self.monitor.record_health_check(failed_result)
-
-        metrics = self.monitor.metrics["discord"]
-        assert metrics.total_checks == 4
-        assert metrics.successful_checks == 3
-        assert metrics.failed_checks == 1
-        assert metrics.consecutive_failures == 1
-        assert metrics.uptime_percentage == 75.0
-
     @pytest.mark.asyncio
     async def test_run_all_health_checks(self):
         """Every configured service is checked through the method it really calls."""
@@ -335,10 +219,27 @@ class TestAPIHealthMonitor:
         assert results["openai"].status == "healthy"
         assert results["perplexity"].status == "healthy"
         assert results["discord"].status == "healthy"
-        assert results["openai"].details["model_count"] == 1
+        assert results["openai"].details["model"] == "gpt-5-mini"
 
-        # Verify all checks were recorded
-        assert len(self.monitor.metrics) == 3
+
+@pytest.mark.asyncio
+async def test_health_check_uses_the_provider_probe(monkeypatch):
+    """Health checks call the adapter's bounded probe instead of models.list."""
+    probed = []
+
+    async def fake_probe(provider):
+        probed.append(provider._client)
+        return ProbeResult(ok=True, detail="1 models available", latency_ms=1.0)
+
+    monkeypatch.setattr(ChatCompletionsProvider, "probe", fake_probe)
+    monitor = APIHealthMonitor()
+    client = Mock()
+    client.models.list = AsyncMock(return_value=Mock(data=[Mock(id="gpt-5-mini")]))
+
+    result = await monitor.check_openai_health(client, {"GPT_MODEL": "gpt-5-mini"})
+
+    assert probed == [client]
+    assert result.status == "healthy"
 
 
 if __name__ == "__main__":

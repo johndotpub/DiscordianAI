@@ -1,12 +1,11 @@
 """API health check and monitoring system for DiscordianAI.
 
-This module provides:
-- Health checks for OpenAI, Perplexity, and Discord APIs
-- Parameter validation against current API specifications
-- Health status reporting and metrics collection
+This module provides startup reachability checks for the configured providers
+and Discord. API providers are checked through their adapter ``probe()``, which
+bounds the model listing call; /health itself reports observed breaker state.
 """
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from functools import partial, partialmethod
@@ -15,8 +14,8 @@ import time
 from typing import Any
 
 from .connection_pool import versioned_perplexity_client
-from .error_handling import ErrorTracker, classify_error
-from .providers.base import model_ids_from_response
+from .error_handling import classify_error
+from .providers.base import ProbeResult
 from .providers.registry import PROVIDERS
 
 # Health check thresholds
@@ -36,22 +35,6 @@ class HealthCheckResult:
     error: str | None = None
 
 
-@dataclass
-class APIHealthMetrics:
-    """Aggregated health metrics for an API service."""
-
-    service: str
-    total_checks: int = 0
-    successful_checks: int = 0
-    failed_checks: int = 0
-    average_response_time_ms: float = 0.0
-    last_check_time: datetime | None = None
-    last_success_time: datetime | None = None
-    last_failure_time: datetime | None = None
-    consecutive_failures: int = 0
-    uptime_percentage: float = 100.0
-
-
 @dataclass(frozen=True)
 class ProviderHealthSpec:
     """Describe one service's health-check inputs and thresholds."""
@@ -68,15 +51,23 @@ class ProviderHealthSpec:
     deprecated_model_limit: int | None = None
     versioned_client: bool = False
     kind: str = "api"
+    probe: Callable[[Any], Awaitable[ProbeResult]] | None = None
 
 
 def _provider_health_specs() -> dict[str, ProviderHealthSpec]:
     """Build AI provider specs from the registry and append Discord."""
-    specs = {
-        name: ProviderHealthSpec(service=name, **spec.health_metadata)
-        for name, spec in PROVIDERS.items()
-        if spec.health
-    }
+    specs: dict[str, ProviderHealthSpec] = {}
+    for name, spec in PROVIDERS.items():
+        if not spec.health:
+            continue
+        specs[name] = ProviderHealthSpec(
+            service=name,
+            display_name=spec.label,
+            client_key=name,
+            model_key=spec.model_key,
+            probe=lambda client, build=spec.build_adapter: build(client).probe(),
+            **spec.health_metadata,
+        )
     specs["discord"] = ProviderHealthSpec(
         service="discord",
         display_name="Discord",
@@ -92,20 +83,12 @@ PROVIDER_HEALTH_SPECS: dict[str, ProviderHealthSpec] = _provider_health_specs()
 
 
 class APIHealthMonitor:
-    """Comprehensive API health monitoring system.
-
-    Provides real-time health checks, metrics collection, and alerting
-    for all external API dependencies.
-    """
+    """Startup health checks for external API dependencies."""
 
     def __init__(self, check_interval: int = 300):  # 5 minutes default
-        """Initialize health monitor with interval and state."""
+        """Initialize the health monitor."""
         self.check_interval = check_interval
-        self.metrics: dict[str, APIHealthMetrics] = {}
-        self.recent_results: list[HealthCheckResult] = []
-        self.max_recent_results = 1000
         self.logger = logging.getLogger(__name__)
-        self.error_tracker = ErrorTracker()
 
     @staticmethod
     def _model_is_supported(spec: ProviderHealthSpec, model: str | None) -> bool:
@@ -172,33 +155,32 @@ class APIHealthMonitor:
                     details={"available_models": available_models},
                 )
 
-            model_client = versioned_perplexity_client(client) if spec.versioned_client else client
-            response = await model_client.models.list()
-
-            response_time_ms = (time.time() - start_time) * 1000
-
-            model_ids = model_ids_from_response(response)
-            if not model_ids:
+            if spec.probe is None:
                 return HealthCheckResult(
                     service=spec.service,
                     status="unhealthy",
-                    response_time_ms=response_time_ms,
+                    response_time_ms=(time.time() - start_time) * 1000,
                     timestamp=datetime.now(UTC),
-                    error=f"Invalid response structure from {spec.display_name} model listing API",
+                    error=f"No provider probe is configured for {spec.display_name}",
                 )
 
-            status = self._classify_status(response_time_ms, spec)
+            model_client = versioned_perplexity_client(client) if spec.versioned_client else client
+            probe = await spec.probe(model_client)
+            response_time_ms = (time.time() - start_time) * 1000
+
+            if not probe.ok:
+                return self._exception_result(
+                    spec.service,
+                    start_time,
+                    RuntimeError(probe.detail),
+                )
 
             return HealthCheckResult(
                 service=spec.service,
-                status=status,
+                status=self._classify_status(response_time_ms, spec),
                 response_time_ms=response_time_ms,
                 timestamp=datetime.now(UTC),
-                details={
-                    "model": model,
-                    "available_models": model_ids[:10],
-                    "model_count": len(model_ids),
-                },
+                details={"model": model, "probe": probe.detail},
             )
 
         except Exception as e:  # noqa: BLE001
@@ -284,44 +266,6 @@ class APIHealthMonitor:
         message = f"{type(self).__name__!r} object has no attribute {name!r}"
         raise AttributeError(message)
 
-    def record_health_check(self, result: HealthCheckResult):
-        """Record health check result and update metrics."""
-        # Add to recent results
-        self.recent_results.append(result)
-        if len(self.recent_results) > self.max_recent_results:
-            self.recent_results = self.recent_results[-self.max_recent_results :]
-
-        # Update metrics
-        if result.service not in self.metrics:
-            self.metrics[result.service] = APIHealthMetrics(service=result.service)
-
-        metrics = self.metrics[result.service]
-        metrics.total_checks += 1
-        metrics.last_check_time = result.timestamp
-
-        if result.status == "healthy":
-            metrics.successful_checks += 1
-            metrics.last_success_time = result.timestamp
-            metrics.consecutive_failures = 0
-        else:
-            metrics.failed_checks += 1
-            metrics.last_failure_time = result.timestamp
-            metrics.consecutive_failures += 1
-
-        # Update average response time
-        if metrics.total_checks == 1:
-            metrics.average_response_time_ms = result.response_time_ms
-        else:
-            # Weighted average favoring recent results
-            weight = 0.1  # 10% weight for new result
-            metrics.average_response_time_ms = (
-                1 - weight
-            ) * metrics.average_response_time_ms + weight * result.response_time_ms
-
-        # Calculate uptime percentage; total_checks is always positive here.
-        if metrics.total_checks > 0:  # pragma: no branch
-            metrics.uptime_percentage = (metrics.successful_checks / metrics.total_checks) * 100
-
     async def run_all_health_checks(
         self,
         clients: dict[str, Any],
@@ -357,6 +301,5 @@ class APIHealthMonitor:
                 )
                 self.logger.exception("Failed to check %s health", spec.display_name)
             results[service] = result
-            self.record_health_check(result)
 
         return results
