@@ -8,6 +8,7 @@ This test suite covers:
 """
 
 import asyncio
+import logging
 import time
 from unittest.mock import patch
 
@@ -197,6 +198,19 @@ class TestResponseCache:
             # Should not be cached
             cached = self.cache.get_cached_response("test message", context, salt="test-salt")
             assert cached is None
+
+    def test_cache_logs_do_not_include_the_message_text(self, caplog):
+        """A cache hit and write log the message length, never the prompt."""
+        canary = "CACHE-QUESTION-CANARY-987654"
+        context = {"model": "gpt-5-mini", "user_id": "test-user"}
+        answer = "A sufficiently detailed answer that is safe to cache."
+
+        with caplog.at_level(logging.DEBUG, logger="src.caching"):
+            self.cache.cache_response(canary, context, answer, salt="test-salt")
+            assert self.cache.get_cached_response(canary, context, salt="test-salt") == answer
+
+        assert canary not in caplog.text
+        assert f"length={len(canary)}" in caplog.text
 
     def test_should_not_cache_short_responses(self):
         """Test that very short responses are not cached."""

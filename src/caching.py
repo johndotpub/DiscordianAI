@@ -404,7 +404,7 @@ class ResponseCache:
             cached_response = self.cache.get(cache_key)
 
             if cached_response:
-                self.logger.debug("Cache hit for message: %s...", message[:50])
+                self.logger.debug("Cache hit for message (length=%d)", len(message))
                 return cached_response
 
         except Exception as e:  # noqa: BLE001
@@ -442,7 +442,7 @@ class ResponseCache:
                     ttl = SHORT_RESPONSE_TTL
 
             self.cache.put(cache_key, response, ttl)
-            self.logger.debug("Cached response for message: %s...", message[:50])
+            self.logger.debug("Cached response for message (length=%d)", len(message))
 
         except Exception as e:  # noqa: BLE001
             self.logger.warning("Cache storage failed: %s", e)

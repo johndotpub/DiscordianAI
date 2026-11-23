@@ -189,6 +189,43 @@ class TestMessageProcessing:
             mock_send.assert_called_once()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("is_dm", [True, False])
+    async def test_processing_logs_id_and_length_but_not_content(
+        self, deps_factory, caplog, is_dm
+    ):
+        """Message content stays out of the log; its id and length are enough."""
+        canary = "USER-MESSAGE-CANARY-987654"
+        message = MagicMock(spec=discord.Message)
+        message.id = 424242
+        message.author.name = "TestUser"
+        message.author.bot = False
+        message.author.id = 12345
+        message.author.mention = "<@12345>"
+        message.content = canary if is_dm else f"<@123> {canary}"
+        message.channel = MagicMock(spec=discord.DMChannel if is_dm else discord.TextChannel)
+        message.channel.id = 555
+        message.channel.send = AsyncMock()
+        message.attachments = []
+
+        deps = deps_factory(logger=logging.getLogger("test.message_hygiene"))
+
+        with (
+            caplog.at_level(logging.INFO, logger="test.message_hygiene"),
+            patch("src.message_processor.check_rate_limit", AsyncMock(return_value=True)),
+            patch(
+                "src.message_processor.get_smart_response",
+                AsyncMock(return_value=("Test response", False, None)),
+            ),
+            patch("src.message_processor.send_formatted_message", AsyncMock()),
+        ):
+            deps["conversation_manager"].get_conversation_summary_formatted.return_value = []
+            await _process_message_core(message, deps, is_dm=is_dm)
+
+        assert canary not in caplog.text
+        assert "ID: 424242" in caplog.text
+        assert f"length: {len(canary)}" in caplog.text
+
+    @pytest.mark.asyncio
     async def test_process_message_core_exception_handling(self, deps_factory):
         """Test exception handling in message processing."""
         message = MagicMock(spec=discord.Message)

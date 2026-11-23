@@ -210,6 +210,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security 🛡️
 
+- **Message text and provider response bodies stay out of the log.** The message processor
+  logs the Discord message id and its length instead of the first 100 characters of the
+  content, the cache logs the prompt length instead of the prompt, and the chat adapter logs
+  only the response type and id when a provider reply has no choices. A DM body, a channel
+  question, or a full SDK response can no longer reach the log through these paths.
 - **Tracebacks no longer print frame locals.** Console and JSON logs render exceptions without
   the local variables of each frame, so a config dictionary holding an API key, a message
   body, or request parameters cannot reach the log through an exception. Console output keeps

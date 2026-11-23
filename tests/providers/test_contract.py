@@ -192,6 +192,24 @@ async def test_chat_request_shape(base_url, cap_key, tools_expected):
 
 
 @pytest.mark.asyncio
+async def test_invalid_response_body_is_not_logged(caplog):
+    """An invalid chat response is logged by type and id, not by body."""
+    canary = "PROVIDER-BODY-CANARY-987654"
+    response = SimpleNamespace(choices=[], body=canary, id="resp-1")
+    client = FakeChatClient([response])
+    logger = logging.getLogger("provider-invalid-response")
+    provider = ChatCompletionsProvider(client, _openai_config(), logger=logger)
+    request = provider.build_request("System prompt", "Current question", [], 100)
+
+    with caplog.at_level(logging.ERROR, logger=logger.name):
+        with pytest.raises(ValueError, match="no choices"):
+            await provider.complete(request)
+
+    assert canary not in caplog.text
+    assert "id=resp-1" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_perplexity_request_shape_and_citations():
     client = FakeResponsesClient(
         [_agent_response("The report says [1].", [{"id": 1, "url": URL_ONE}])]

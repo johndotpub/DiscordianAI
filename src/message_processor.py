@@ -25,7 +25,7 @@ from .conversation_manager import (
 from .error_handling import classify_error, safe_discord_send
 from .image_attachments import ImagePayload, extract_images
 from .logging_adapter import get_logger_with_context
-from .message_splitter import clean_message_content, send_formatted_message
+from .message_splitter import send_formatted_message
 from .models import AIClients, AIConfig, AIRequest, OpenAIConfig, PerplexityConfig
 from .rate_limits import check_rate_limit
 from .smart_orchestrator import get_smart_response
@@ -259,11 +259,6 @@ async def _process_message_core(
     else:
         # Clean message content for logging (remove mentions)
         clean_content = re.sub(r"<@[!&]?\d+>", "", clean_content).strip()
-        logger.info(
-            "Captured message for processing (ID: %s, length: %d)",
-            message.id,
-            len(clean_content),
-        )
         rate_limit_msg = "⏱️ Rate limit exceeded! Please wait a moment before mentioning me again."
         error_msg = (
             f"{reply_mention}"
@@ -271,11 +266,13 @@ async def _process_message_core(
             "Please try again in a moment."
         )
 
-    display_content = clean_message_content(clean_content, 100)
+    logger.info(
+        "Processing message (ID: %s, length: %d)",
+        message.id,
+        len(clean_content),
+    )
 
     try:
-        logger.info("Processing message: %s", display_content)
-
         # Apply thread-safe rate limiting
         if not await check_rate_limit(
             message.author,

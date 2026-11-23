@@ -294,7 +294,11 @@ class ChatCompletionsProvider:
             )
 
             if not (response and hasattr(response, "choices") and response.choices):
-                self._logger.error("OpenAI API returned invalid response structure: %s", response)
+                self._logger.error(
+                    "OpenAI API returned invalid response structure: type=%s id=%s",
+                    type(response).__name__,
+                    getattr(response, "id", None),
+                )
                 msg = "OpenAI response contained no choices"
                 raise ValueError(msg)
 
@@ -336,7 +340,9 @@ class ChatCompletionsProvider:
 
         if not (final_response and hasattr(final_response, "choices") and final_response.choices):
             self._logger.error(
-                "OpenAI API returned invalid response structure: %s", final_response
+                "OpenAI API returned invalid response structure: type=%s id=%s",
+                type(final_response).__name__,
+                getattr(final_response, "id", None),
             )
             msg = "OpenAI response contained no choices"
             raise ValueError(msg)
