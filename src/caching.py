@@ -27,9 +27,6 @@ logger = logging.getLogger(__name__)
 
 # Constants for caching
 MIN_CACHABLE_RESPONSE_LENGTH = 10
-RESPONSE_LENGTH_TTL_THRESHOLD = 1000
-LONG_RESPONSE_TTL = 1800.0
-SHORT_RESPONSE_TTL = DEFAULT_CACHE_TTL
 POSITIONAL_CONFIG_INDEX = 3
 
 
@@ -366,10 +363,10 @@ class ResponseCache:
         response_lower = response.lower()
         time_indicators = [
             r"\bcurrent time\b",
-            r"(?:^|[.!?]\s+)(?:today(?:'s)?|yesterday|tomorrow|latest|recent|tonight)\b",
-            r"(?:^|[.!?]\s+)right now\b",
-            r"(?:^|[.!?]\s+)just now\b",
-            r"(?:^|[.!?]\s+)breaking news\b",
+            r"\b(?:today(?:'s)?|yesterday|tomorrow|latest|recent|tonight)\b",
+            r"\bright now\b",
+            r"\bjust now\b",
+            r"\bbreaking news\b",
             r"\bthis (?:morning|afternoon|evening)\b",
         ]
 
@@ -432,14 +429,6 @@ class ResponseCache:
             cache_key = self._generate_cache_key(message, context, salt=salt)
             if cache_key is None:
                 return
-
-            # Use shorter TTL for potentially time-sensitive content
-            if ttl is None:
-                # Default TTL based on response characteristics
-                if len(response) > RESPONSE_LENGTH_TTL_THRESHOLD:
-                    ttl = LONG_RESPONSE_TTL
-                else:
-                    ttl = SHORT_RESPONSE_TTL
 
             self.cache.put(cache_key, response, ttl)
             self.logger.debug("Cached response for message (length=%d)", len(message))

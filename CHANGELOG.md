@@ -77,6 +77,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   TTL instead of calling the provider again. The key includes the model, system message, history,
   conversation scope, routing salt, and degraded flag, so a cached answer is never replayed across
   conversations or routes.
+- **The response cache has one TTL, and time-sensitive wording is found anywhere.** Every
+  cached answer uses the configured 600-second TTL; the undocumented 1,800-second
+  long-response TTL never applied, so this removes a false promise rather than changing the
+  effective lifetime. An answer such as "Bitcoin is trading at $97,000 as of today" is no
+  longer cached just because the phrase is mid-sentence.
 - **Image attachments are understood by the chat provider.** A message may carry up to four
   PNG, JPEG, GIF, or WebP images, with or without text. The current turn is sent to the
   OpenAI-compatible chat provider as an `image_url` data part; history stays text-only, and
@@ -136,10 +141,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `OUTPUT_TOKENS` and `PERPLEXITY_OUTPUT_TOKENS` to 16,384, and `CONTEXT_WINDOW` to 1,000,000;
   the input-token warning threshold is now 1,000,000 and the output-cap ceiling follows the
   context window. Conversation history defaults to 100 entries with a 7,200-second idle TTL.
-- **Cache and connection-pool defaults are larger.** Response cache TTL is 600 seconds, long
-  responses 1,800 seconds, the response cache holds 2,000 entries, chat-provider pools default
-  to 100 connections/20 keepalive, Perplexity pools to 40/10, and Perplexity requests allow up
-  to four `max_steps`.
+- **Cache capacity and connection-pool defaults are larger.** The response cache holds 2,000
+  entries, chat-provider pools default to 100 connections/20 keepalive, Perplexity pools to
+  40/10, and Perplexity requests allow up to four `max_steps`.
 - **Local environment references were scrubbed from the documentation.** No hostnames or
   private configuration filenames are published.
 - **Provider calls share one narrow adapter protocol and registry.** The Chat Completions

@@ -212,6 +212,34 @@ class TestResponseCache:
         assert canary not in caplog.text
         assert f"length={len(canary)}" in caplog.text
 
+    @pytest.mark.parametrize(
+        "response",
+        [
+            "Bitcoin is trading at $97,000 as of today.",
+            "The price is still moving right now and changes every minute.",
+            "Markets are reacting to breaking news from the region.",
+            "This is the latest update from the trading desk.",
+        ],
+    )
+    def test_time_sensitive_phrases_are_found_anywhere_in_the_answer(self, response):
+        """A time-sensitive phrase mid-sentence also blocks caching."""
+        context = {"model": "gpt-5-mini", "user_id": "test-user"}
+
+        self.cache.cache_response("test message", context, response, salt="test-salt")
+
+        assert self.cache.get_cached_response("test message", context, salt="test-salt") is None
+
+    def test_long_response_uses_the_configured_cache_default_ttl(self):
+        """Response length no longer selects a separate cache TTL."""
+        long_response = "A sufficiently detailed answer. " * 100
+        context = {"model": "gpt-5-mini", "user_id": "test-user"}
+
+        with patch("src.caching.time.time", side_effect=[100.0, 401.0]):
+            self.cache.cache_response("test message", context, long_response, salt="test-salt")
+            assert (
+                self.cache.get_cached_response("test message", context, salt="test-salt") is None
+            )
+
     def test_should_not_cache_short_responses(self):
         """Test that very short responses are not cached."""
         context = {"model": "gpt-5-mini", "user_id": "test-user"}

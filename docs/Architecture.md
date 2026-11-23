@@ -331,7 +331,9 @@ perplexity_client = pool.create_perplexity_client(perplexity_api_key, perplexity
 ```
 
 ### Caching Strategy
-- Response cache: 10-minute TTL
+- Response cache: one 10-minute TTL (`DEFAULT_CACHE_TTL`) for every answer, regardless of length
+- Time-sensitive answers (for example a phrase such as "as of today" anywhere in the text) are
+  not cached
 - Conversation cache: 2-hour TTL
 - LRU eviction with 2000 entry limit
 
