@@ -49,8 +49,9 @@ provider's output cap (`max_tokens` or `max_completion_tokens`) covers reasoning
 as well as visible output, so a small
 chat-provider value can be consumed entirely by reasoning and produce an empty reply with
 `finish_reason: length`. Perplexity's `max_output_tokens` covers output only. Both settings
-share the documented maximum of 1,000,000; values above it stop startup, and a chat-provider
-value below 512 logs a warning about empty replies.
+share a fixed validation ceiling of 128,000 tokens (`MAX_OUTPUT_TOKENS_CEILING`), which is
+independent of `CONTEXT_WINDOW`; values above it stop startup, and a chat-provider value
+below 512 logs a warning about empty replies.
 
 `INPUT_TOKENS` is enforced as a prompt budget. The bot estimates prompt size from the
 system prompt, history, and current message using roughly four characters per token with
@@ -389,7 +390,7 @@ parameter from chat requests.
 
 ### Startup Validation
 - **Required Fields**: Ensures DISCORD_TOKEN and the credentials for every configured provider are present
-- **Errors Abort Startup**: Missing credentials, malformed base URLs, non-positive limits, and output caps above 1,000,000 stop the process
+- **Errors Abort Startup**: Missing credentials, malformed base URLs, non-positive limits, and output caps above 128,000 stop the process
 - **Warnings Continue**: Non-standard provider base URLs, small chat-provider output caps, non-`sk-` OpenAI-compatible keys, and other provider-tolerated settings are logged without blocking startup
 - **Value Validation**: Checks integer fields, validates rate limits, and ensures proper data types
 

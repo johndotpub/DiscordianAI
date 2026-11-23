@@ -25,6 +25,7 @@ ENV_EXAMPLE = ROOT / ".env.example"
 CONFIG_SOURCE = ROOT / "src" / "config.py"
 ALLOWLIST = DOCS / ".doc-truth-allowlist.toml"
 ARCHITECTURE = DOCS / "Architecture.md"
+CHANGELOG = ROOT / "CHANGELOG.md"
 
 CONFIG_KEY_PATTERN = re.compile(r"\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b")
 DEFAULT_MARKER_PATTERN = re.compile(r"\*\*`([A-Z][A-Z0-9_]+)`\*\*.*?\*\(default:\s*(.+?)\)\*")
@@ -50,6 +51,9 @@ LOCAL_WORKFLOW_REFERENCE_PATTERN = re.compile(r"\.github/workflows/([A-Za-z0-9_.
 FRONTIER_CLAIM_PATTERN = re.compile(
     r"\b(?:frontier|state[\s-]+of[\s-]+the[\s-]+art)\b",
     re.IGNORECASE,
+)
+OUTPUT_CAP_PROSE_PATTERN = re.compile(
+    r"\b(?:maximum of|range is|ceiling (?:of|is)|outside)\s+\*{0,2}(?:1\.\.)?([\d,]+)"
 )
 EXTERNAL_PYTHON_FILES = {"discord.py"}
 COMMAND_ROOTS = ("python", "pytest", "ruff", "black", "discordian.sh", "docker compose")
@@ -789,3 +793,31 @@ def test_b15_documentation_map_names_the_contracts() -> None:
         target for target in ("AGENTS.md", "docs/API-CONTRACT.md") if f"]({target})" not in section
     ]
     assert not missing, "README Documentation Map is missing links: " + ", ".join(missing)
+
+
+def test_b16_output_cap_prose_matches_the_ceiling() -> None:
+    """Prose that states the output-token maximum or range uses the fixed ceiling."""
+    ceiling = _config_module().MAX_OUTPUT_TOKENS_CEILING
+    documents = (
+        DOCS / "API_Validation.md",
+        DOCS / "Configuration.md",
+        DOCS / "Security.md",
+        CHANGELOG,
+    )
+    checked = 0
+    failures: list[str] = []
+    for path in documents:
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for match in OUTPUT_CAP_PROSE_PATTERN.finditer(line):
+                checked += 1
+                documented = int(match.group(1).replace(",", ""))
+                if documented != ceiling:
+                    failures.append(
+                        f"{path.relative_to(ROOT)}:{line_number}: output cap documented as "
+                        f"{documented}, ceiling constant is {ceiling}"
+                    )
+    assert checked >= 4, (
+        f"only {checked} output-cap claims were checked; the guard must cover the "
+        "configured maximum in the docs"
+    )
+    assert not failures, "\n".join(failures)

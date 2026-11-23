@@ -150,8 +150,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Default capacity is right-sized for a 1M-token model.** `INPUT_TOKENS` defaults to 250,000,
   `OUTPUT_TOKENS` and `PERPLEXITY_OUTPUT_TOKENS` to 16,384, and `CONTEXT_WINDOW` to 1,000,000;
-  the input-token warning threshold is now 1,000,000 and the output-cap ceiling follows the
-  context window. Conversation history defaults to 100 entries with a 7,200-second idle TTL.
+  the input-token warning threshold is now 1,000,000, and the output-cap ceiling is 128,000,
+  independent of the context window. Conversation history defaults to 100 entries with a
+  7,200-second idle TTL.
 - **Cache capacity and connection-pool defaults are larger.** The response cache holds 2,000
   entries, chat-provider pools default to 100 connections/20 keepalive, Perplexity pools to
   40/10, and Perplexity requests allow up to four `max_steps`.
