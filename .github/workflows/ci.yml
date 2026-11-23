@@ -6,13 +6,11 @@ on:
   push:
     branches: [ main, develop ]
     paths-ignore:
-      - '**.md'
       - '.github/codeql/**'
       - 'LICENSE'
   pull_request:
     branches: [ main, develop ]
     paths-ignore:
-      - '**.md'
       - '.github/codeql/**'
       - 'LICENSE'
   workflow_dispatch:  # Allow manual trigger

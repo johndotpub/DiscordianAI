@@ -195,6 +195,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Operations ⚙️
 
+- **Markdown-only changes run CI.** The workflow no longer ignores `**.md`, so a
+  documentation-only commit still runs the documentation-truth and changelog guards
+  instead of landing red on a later pull request.
 - **Log rotation works on non-root-owned directories, and container logs are bounded.**
   The logrotate fragment now has an `su USER GROUP` directive next to the path
   placeholder, so logrotate no longer refuses when the project directory is

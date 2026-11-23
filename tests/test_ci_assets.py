@@ -62,6 +62,17 @@ def _registry_markers(tags):
     return markers
 
 
+def test_markdown_only_changes_still_run_the_ci_jobs():
+    """Docs commits must run the docs-truth and changelog guards."""
+    workflow = _load_yaml(CI_PATH)
+    triggers = workflow.get("on", workflow.get(True))
+
+    for event in ("push", "pull_request"):
+        ignored = [str(pattern) for pattern in triggers[event].get("paths-ignore", [])]
+        assert "**.md" not in ignored, f"{event} still skips markdown-only changes"
+        assert "**/*.md" not in ignored, f"{event} still skips markdown-only changes"
+
+
 def test_ci_installs_a_built_wheel_and_runs_console_script():
     workflow = _load_yaml(CI_PATH)
     matching = []
