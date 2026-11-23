@@ -345,6 +345,7 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
     perplexity_explicit = False
     openai_key_disabled = False
     perplexity_key_disabled = False
+    log_file_explicit = False
 
     # If base_folder is provided, resolve config_file and log file paths
     if base_folder and config_file and not Path(config_file).is_absolute():
@@ -367,9 +368,15 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
         _parse_orchestrator_config(config, config_data, logger)
         _parse_logging_config(config, config_data, base_folder, logger)
         _parse_health_config(config, config_data, logger)
+        log_file_explicit = bool(
+            config.has_option("Logging", "LOG_FILE")
+            and config.get("Logging", "LOG_FILE", fallback="").strip()
+        )
 
     # 2. Override with environment variables
     _apply_env_overrides(config_data, logger)
+    if os.environ.get("LOG_FILE", "").strip():
+        log_file_explicit = True
 
     for provider, keys in _PROVIDER_SETTINGS.items():
         if any(key in os.environ for key in keys):
@@ -386,6 +393,7 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
 
     # Record which providers the operator explicitly selected before defaults
     # make every provider look configured.
+    config_data["_LOG_FILE_EXPLICIT"] = log_file_explicit
     config_data["_OPENAI_CONFIGURED"] = _provider_has_explicit_settings(
         config_data,
         "OPENAI",

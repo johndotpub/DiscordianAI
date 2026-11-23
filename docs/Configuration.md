@@ -114,7 +114,7 @@ Advanced configuration for intelligent AI service routing.
 
 Logs are emitted to stderr as structured lines. The process supervisor or a shell redirect decides where they are stored; redirecting stdout alone produces an empty file.
 
-- **`LOG_FILE`**: Deprecated and ignored. It is still parsed for backwards compatibility, and startup logs an INFO line naming the configured value. Redirect stderr (or both streams) or configure the supervisor's output capture instead.
+- **`LOG_FILE`**: Deprecated and ignored. It is still parsed for backwards compatibility; when an operator explicitly sets it, startup logs one INFO line naming the configured value and pointing to stderr. The built-in default does not produce that line. Redirect stderr (or both streams) or configure the supervisor's output capture instead.
 - **`LOG_LEVEL`**: Logging verbosity ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL") *(default: "INFO")*
 - **`DISCORDIANAI_LOG_COLOR`**: Color is enabled only when the output stream is a terminal, unless the setting is present and forces it on with `1`/`true`/`yes` or off with `0`/`false`/`no`; it can be set in the `[Logging]` section or as an environment variable, and the environment wins.
 

@@ -147,12 +147,13 @@ def setup_production_logging(config: dict, logger: logging.Logger) -> None:
         )
 
         # The process supervisor or launcher owns bot.log redirection.
-        # Keep a single structured stream here to avoid duplicate lines.
+        # Keep a single structured stream here to avoid duplicate lines, and
+        # only explain the deprecated key when the operator actually set it.
         configured_log_file = config.get("LOG_FILE")
-        if configured_log_file:
+        if configured_log_file and config.get("_LOG_FILE_EXPLICIT"):
             logger.info(
-                "LOG_FILE is ignored (configured as %r); logs go to stdout. "
-                "Redirect stdout or let the process supervisor capture the output.",
+                "LOG_FILE is ignored (configured as %r); logs go to stderr. "
+                "Redirect stderr, or let the process supervisor capture both streams.",
                 configured_log_file,
             )
 
