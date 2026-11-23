@@ -302,4 +302,8 @@ export PERPLEXITY_MODEL="perplexity/sonar"
   capped exponential backoff with full jitter.
 - A shared per-provider circuit breaker opens after 5 failed logical calls,
   counting the whole retry sequence for one call as one failure, and admits one
-  probe after 60 seconds.
+  probe after 60 seconds. Deterministic client errors (HTTP 4xx other than 408
+  and 429) do not count: the provider answered, so the failure count resets.
+- Perplexity prompts use `PERPLEXITY_INPUT_TOKENS` and
+  `PERPLEXITY_CONTEXT_WINDOW` because Sonar documents a 128K-token context
+  window; the chat path keeps the larger `INPUT_TOKENS` and `CONTEXT_WINDOW`.

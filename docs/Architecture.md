@@ -190,7 +190,8 @@ class CircuitBreaker:
 ```
 
 **State Transitions:**
-- **CLOSED**: Normal operation, requests pass through.
+- **CLOSED**: Normal operation, requests pass through. A success clears the
+  consecutive-failure count.
 - **OPEN**: After 5 failed logical calls, reject requests immediately. Retries
   inside one call do not add to the count: one call that exhausts its attempts
   is one failure. A stale count is reset when the next failure arrives more
@@ -198,6 +199,12 @@ class CircuitBreaker:
 - **HALF_OPEN**: After the 60-second timeout, admit one probe request. Other
   calls fail fast until it finishes; success closes the breaker and resets the
   count, failure reopens it.
+
+A deterministic client error (HTTP 4xx other than 408 and 429) means the
+provider received and rejected the request. It is not a failure for the
+breaker, so it does not move the count towards OPEN and it does not make the
+provider unhealthy. Timeouts, connection failures, 408, 429, and 5xx still
+count.
 
 The health server publishes each breaker's state through
 `get_circuit_breaker_states()`.

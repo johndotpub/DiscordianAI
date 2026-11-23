@@ -147,6 +147,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **Client errors no longer open the provider breaker.** A deterministic 4xx (anything
+  400–499 except 408 and 429) means the provider answered and rejected the request, so it
+  does not count as a failure or mark the provider unhealthy; a success while the breaker
+  is closed now clears the consecutive-failure count.
+- **Retries follow the wrapped transport cause.** A connect timeout is retried because no
+  request was sent, while read timeouts, read errors, and protocol errors after send are
+  not. A host:port number such as `:443` in a connect message is no longer read as an HTTP
+  status, and a structured `insufficient_quota` 429 is not retried and keeps its quota
+  notice.
+- **The web tool loop answers on its last round.** The fourth round is offered no tools,
+  at most three calls per round are executed, and total tool output is capped; capped or
+  over-budget calls still receive a short tool result so the model can continue.
+- **Single-provider outages show the outage notice.** The processing wrappers can report a
+  classified failure instead of swallowing it, so an outage in OpenAI-only or
+  Perplexity-only mode no longer tells the user to rephrase the question.
+- **Shutdown closes Discord before provider pools.** In-flight requests no longer fail
+  against already-closed clients while Discord is still connected, and any shutdown
+  exception is logged and ends the process cleanly.
+- **`/health` reports gateway disconnects.** A disconnect is recorded and reported as
+  disconnected even while discord.py's `is_ready()` remains set; `/health/ready` returns
+  503 during the outage.
 - **Code-fence masking covers all routing cues.** Bearing cues such as version, year, money, and commerce
   terms are no longer read from fenced code, matching the masking order in `docs/routing/DESIGN.md`.
 - **Clef honours gate overrides as data.** The gate marks a deterministic override on the decision, and

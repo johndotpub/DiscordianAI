@@ -132,6 +132,10 @@ failure happened after its last success, and `healthy` otherwise. A provider tha
 healthy: silence is not a failure. The payload still reports
 `last_success_age_seconds` and `last_success_stale` for diagnostics, but neither decides health.
 
+Readiness also requires a live Discord gateway connection. The bot records disconnect and resume events,
+so `/health` reports `discord: disconnected` and `/health/ready` returns 503 during an outage even though
+discord.py's `is_ready()` remains set.
+
 > **No cost cap.** Routing carries no budget knob: the gate decides from the message alone, so spend
 > follows the message mix rather than a configured ceiling. Measured precision also falls on trap-heavy
 > input (pleasantries that contain a date or a state word); the numbers are in `docs/routing/DESIGN.md`.
