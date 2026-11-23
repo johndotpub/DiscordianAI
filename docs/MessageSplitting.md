@@ -276,6 +276,22 @@ flowchart TD
 - **Runaway Guard**: A pathological response stops at a bounded number of messages.
 - **User Awareness**: The truncation notice is reserved for the chunk cap and reports the original answer length and the bot's delivery limit.
 
+## Provider Length-Limit Notice
+
+A provider answer can stop before it is finished when it reaches the configured output-token
+cap. DiscordianAI treats that as a partial answer, not a complete one:
+
+- The chat-completions adapter reports its `finish_reason: length`.
+- The Perplexity Agent adapter normalises `status: incomplete` with
+  `incomplete_details.reason: max_output_tokens` to the same `length` signal.
+- The orchestrator passes the partial text to delivery unchanged; the fixed notice is appended
+  only when the answer is sent.
+- The notice is one constant line, `TRUNCATION_NOTICE`, appended by
+  `append_truncation_notice()`. It is never part of the model output or the conversation
+  history, so follow-up turns do not replay it.
+- An embed answer carries the notice in its description; a plain answer carries it after the
+  final text chunk.
+
 ## Advanced Configuration
 
 ### Customizing Split Behavior

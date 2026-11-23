@@ -34,6 +34,7 @@ _FENCE_OPEN_PATTERN = re.compile(r"^( {0,3})(`{3,})([^\n`]*)$", re.MULTILINE)
 _FENCE_BLOCK_PATTERN = re.compile(r"(`{3,})[\s\S]*?\1")
 _URL_TRAILING_PUNCTUATION = ".,;:!?)]}'\""
 _CONTINUED_FOOTER = "🌐 Web search results (continued)"
+TRUNCATION_NOTICE = "✂️ The answer was cut off at the length limit."
 
 
 class CitationMap(dict[str, str]):
@@ -112,6 +113,15 @@ async def _deliver(
         await original_message.reply(content, **kwargs)
     else:
         await channel.send(content, **kwargs)
+
+
+def append_truncation_notice(text: str) -> str:
+    """Append the fixed length-limit notice to an answer exactly once."""
+    if text.endswith(TRUNCATION_NOTICE):
+        return text
+    if not text:
+        return TRUNCATION_NOTICE
+    return f"{text.rstrip()}\n\n{TRUNCATION_NOTICE}"
 
 
 def _truncate_to_limit(text: str, limit: int, original_length: int | None = None) -> str:
@@ -488,25 +498,34 @@ async def send_formatted_message(  # noqa: PLR0913, PLR0917
     original_message: discord.Message | None = None,
     mention_prefix: str | None = None,
     citations: dict[str, str] | None = None,
+    truncated: bool = False,
 ) -> None:
     """Send formatted message to Discord, using extracted splitter logic.
 
     The citation allowlist is taken from ``citations`` or, when omitted, from
     ``embed_data["citations"]`` so trusted source links survive delivery.
+    ``truncated`` appends the one fixed length-limit notice after the partial
+    answer; the notice is delivery-only and never enters conversation history.
     """
     logger = deps["logger"]
     citation_map = citations
     if citation_map is None and embed_data:
         citation_map = embed_data.get("citations") or {}
     message = sanitize_for_discord(message, citation_map)
+    if truncated:
+        message = append_truncation_notice(message)
 
     if embed_data and "embed" in embed_data:
         embed = embed_data["embed"]
         clean_text = embed_data.get("clean_text", message)
+        if truncated:
+            if not clean_text:
+                clean_text = getattr(embed, "description", "") or ""
+            clean_text = append_truncation_notice(clean_text)
         metadata = embed_data.get("embed_metadata") or embed_data.get("meta") or {}
         was_truncated = metadata.get("was_truncated", False)
 
-        if was_truncated:
+        if was_truncated or truncated:
             await send_split_message_with_embed(
                 channel,
                 clean_text,

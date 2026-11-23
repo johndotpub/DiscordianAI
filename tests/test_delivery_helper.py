@@ -110,6 +110,31 @@ async def test_send_split_message_with_embed_applies_reply_policy() -> None:
 
 
 @pytest.mark.asyncio
+async def test_truncated_embed_delivery_appends_one_notice() -> None:
+    channel = _channel()
+    embed = discord.Embed(description="Partial answer [1]")
+    embed_data = {
+        "embed": embed,
+        "clean_text": "Partial answer [1]",
+        "embed_metadata": {},
+    }
+    citations = {"1": "https://example.com/one"}
+
+    await send_formatted_message(
+        channel,
+        "Partial answer [1]",
+        _deps(),
+        embed_data=embed_data,
+        citations=citations,
+        truncated=True,
+    )
+
+    channel.send.assert_called_once()
+    sent_embed = channel.send.call_args.kwargs["embed"]
+    assert sent_embed.description.count("cut off at the length limit") == 1
+
+
+@pytest.mark.asyncio
 async def test_send_formatted_message_applies_reply_policy() -> None:
     channel = _channel()
     original_message = _original_message()

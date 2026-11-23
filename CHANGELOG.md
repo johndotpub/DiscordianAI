@@ -55,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hard-wrapped rather than dropped; only the 50-chunk cap still truncates content.
 - **The truncation notice reports the original answer length.** It says the bot's delivery
   limit was reached instead of blaming Discord for a cap the bot chose.
+- **A partial answer that hit the provider's output-token limit says so.** Both the chat and
+  Perplexity adapters report the normalised length signal, and delivery appends one fixed
+  notice line after the visible partial answer. The notice is bot text, is not written into
+  conversation history, and does not change the system prompt.
 - **Embed heads never split a citation marker or a code fence.** A split that would land
   inside `[n]` moves the marker whole into the next embed, and long fences are closed and
   reopened with the same language tag.

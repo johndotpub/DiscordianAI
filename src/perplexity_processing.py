@@ -18,7 +18,7 @@ from .config import DEFAULT_CACHE_TTL
 from .discord_embeds import citation_embed_formatter
 from .message_splitter import CitationMap, sanitize_model_output, should_suppress_embeds
 from .models import AIRequest, PerplexityConfig
-from .providers.base import ProviderResult
+from .providers.base import AssistantText, ProviderResult
 from .providers.perplexity import (
     FETCH_URL_INSTRUCTIONS,
     WEB_TOOLS,
@@ -178,6 +178,11 @@ def _handle_provider_result(
     final_text = format_citations_for_discord(result.text, citations, linkify=False)
     final_text = sanitize_model_output(final_text, citations)
     suppress_embeds = should_suppress_embeds(final_text, threshold=LINK_THRESHOLD)
+    truncated = result.finish_reason == "length"
+    if truncated:
+        request.logger.warning(
+            "Perplexity response hit the output-token limit; delivering a partial answer"
+        )
 
     embed_data = None
     if citations:
@@ -191,7 +196,7 @@ def _handle_provider_result(
             "meta": meta,
         }
 
-    return final_text, suppress_embeds, embed_data
+    return AssistantText(final_text, truncated=truncated), suppress_embeds, embed_data
 
 
 @cached_response(

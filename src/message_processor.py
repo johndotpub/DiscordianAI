@@ -329,6 +329,7 @@ async def _process_message_core(
             embed_data=embed_data,
             original_message=message,
             mention_prefix=reply_mention,
+            truncated=bool(getattr(response, "truncated", False)),
         )
         logger.info("Message processed and response sent")
 

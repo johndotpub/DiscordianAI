@@ -14,6 +14,7 @@ from .caching import cached_response, deduplicated_request
 from .config import DEFAULT_CACHE_TTL
 from .error_handling import retry_with_backoff
 from .models import AIRequest, OpenAIConfig
+from .providers.base import AssistantText
 from .providers.openai_chat import (
     MAX_WEB_TOOL_ROUNDS,
     ChatCompletionsProvider,
@@ -118,8 +119,13 @@ async def _fetch_openai_response(
                 len(result.text),
                 result.finish_reason if result.finish_reason is not None else "unknown",
             )
+            truncated = result.finish_reason == "length"
+            if truncated:
+                request.logger.warning(
+                    "OpenAI response hit the output-token limit; delivering a partial answer"
+                )
 
-            return result.text
+            return AssistantText(result.text, truncated=truncated)
     except Exception:
         request.logger.exception("OpenAI API call failed after retries")
         return None

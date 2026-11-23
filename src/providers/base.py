@@ -48,6 +48,26 @@ class ProbeResult:
     latency_ms: float
 
 
+class AssistantText(str):
+    """Answer text that keeps a normalised truncation signal for delivery.
+
+    The type is a plain ``str`` so cache lookups, history writes, and existing
+    comparisons keep working. Delivery reads ``truncated`` and appends the one
+    fixed length-limit notice; the notice is never part of this text or the
+    conversation history.
+    """
+
+    __slots__ = ("truncated",)
+
+    truncated: bool
+
+    def __new__(cls, text: str, *, truncated: bool = False) -> "AssistantText":
+        """Create answer text with its truncation state."""
+        instance = super().__new__(cls, text)
+        instance.truncated = truncated
+        return instance
+
+
 @dataclass(frozen=True)
 class ProviderResult:
     """A provider answer after adapter-side parsing.
@@ -57,7 +77,8 @@ class ProviderResult:
             no usable text; the caller decides whether that is a failure.
         citations: Citation number to URL mapping. Empty for providers that do
             not return citation metadata.
-        finish_reason: Provider finish reason when one is available.
+        finish_reason: Provider finish reason when one is available, normalised
+            to ``"length"`` when the provider stopped at its output-token cap.
         raw: The unmodified provider response for tracing and lifecycle hooks.
     """
 

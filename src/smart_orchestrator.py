@@ -158,7 +158,8 @@ def _record_conversation_turn(
 ) -> None:
     """Record the user prompt and assistant response in conversation history."""
     user_text = _history_user_text(request)
-    if not user_text or not (response_text or "").strip():
+    response_text = str(response_text or "")
+    if not user_text or not response_text.strip():
         request.logger.warning("Skipping incomplete conversation turn")
         return
 

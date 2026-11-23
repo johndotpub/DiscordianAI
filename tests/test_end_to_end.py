@@ -208,3 +208,50 @@ async def test_guild_mention_travels_the_real_pipeline(base_url: str, cap_param:
     assert message.replies[0][0].startswith(f"{message.author.mention} ")
     delivered_text = "".join(content for content, _kwargs in message.replies)
     assert delivered_text == f"{message.author.mention} {RESPONSE}"
+
+
+@pytest.mark.asyncio
+async def test_length_finish_reason_delivers_partial_answer_with_one_notice():
+    guild = FakeGuild(1)
+    channel = FakeChannel(555, "general", guild)
+    guild.text_channels.append(channel)
+    guild.channels = guild.text_channels
+    bot_user = FakeUser(1, bot=True)
+    author = FakeUser(42)
+    bot = SimpleNamespace(user=bot_user, guilds=[guild])
+    message = FakeMessage(
+        author=author,
+        channel=channel,
+        guild=guild,
+        mentions=[bot_user],
+        content=f"{bot_user.mention} {USER_TEXT}",
+    )
+    partial = "A partial answer that stops mid-sentence"
+
+    response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content=partial),
+                finish_reason="length",
+            )
+        ]
+    )
+    create = AsyncMock(return_value=response)
+    openai_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
+        base_url="https://ollama.com/v1/",
+    )
+    deps = _build_dependencies(bot, channel, openai_client)
+
+    await message_router.handle_incoming_message(message, deps, bot)
+
+    assert len(message.replies) == 1
+    content = message.replies[0][0]
+    assert content.startswith(f"{author.mention} {partial}")
+    assert content.count("cut off at the length limit") == 1
+    assert not content.endswith(partial)
+
+    conversation_key = conversation_key_for_message(message, is_dm=False)
+    conversation = deps.conversation_manager.get_conversation(conversation_key=conversation_key)
+    assert conversation[1]["content"] == partial
+    assert "cut off at the length limit" not in conversation[1]["content"]

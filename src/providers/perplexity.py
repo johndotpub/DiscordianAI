@@ -189,6 +189,23 @@ def _parse_agent_response(response: Any) -> tuple[str, dict[str, str]]:
     return extract_citations_from_response(answer_text, search_results=search_results)
 
 
+def _agent_finish_reason(response: Any) -> str | None:
+    """Return the chat-completions spelling of an Agent API finish reason.
+
+    The Responses spec reports a cut-off answer as ``status == "incomplete"``
+    with ``incomplete_details.reason == "max_output_tokens"``. Normalise that
+    to ``"length"`` so both provider adapters expose one truncation signal.
+    """
+    if _field_value(response, "status") != "incomplete":
+        return None
+
+    details = _field_value(response, "incomplete_details")
+    reason = _field_value(details, "reason") if details is not None else None
+    if reason in {"max_output_tokens", "max_tokens"}:
+        return "length"
+    return None
+
+
 def _map_from_metadata(unique: list[str], metadata: list[Any], target: dict[str, str]) -> None:
     """Map indices from metadata list."""
     for num in unique:
@@ -437,15 +454,21 @@ class AgentResponsesProvider:
             self._logger,
         )
 
+        finish_reason = _agent_finish_reason(response)
         try:
             text, citations = _parse_agent_response(response)
         except ValueError:
-            return ProviderResult(text="", citations={}, finish_reason=None, raw=response)
+            return ProviderResult(
+                text="",
+                citations={},
+                finish_reason=finish_reason,
+                raw=response,
+            )
 
         return ProviderResult(
             text=text,
             citations=citations,
-            finish_reason=None,
+            finish_reason=finish_reason,
             raw=response,
         )
 

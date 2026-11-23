@@ -53,6 +53,23 @@ class TestProcessOpenAIMessageBasic:
         assert result == "Response"
 
     @pytest.mark.asyncio
+    async def test_length_finish_reason_marks_partial_answer(self, make_request, openai_response):
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
+        openai_client = _client_returning(
+            openai_response("A partial answer", finish_reason="length")
+        )
+
+        result = await process_openai_message(
+            request=make_request("Test", conversation_manager=conversation_manager),
+            conversation_summary=[],
+            openai_client=openai_client,
+            config=_config(),
+        )
+
+        assert result == "A partial answer"
+        assert getattr(result, "truncated", False) is True
+
+    @pytest.mark.asyncio
     async def test_empty_response(self, make_request, openai_response):
         conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
         response = openai_response()

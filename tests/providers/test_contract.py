@@ -224,6 +224,50 @@ async def test_perplexity_request_shape_and_citations():
 
 
 @pytest.mark.asyncio
+async def test_chat_length_finish_reason_is_reported():
+    """A chat answer stopped by the output cap reports the length reason."""
+    client = FakeChatClient([_chat_response("A partial answer", finish_reason="length")])
+    provider = ChatCompletionsProvider(client, _openai_config())
+
+    request = provider.build_request("System prompt", "Current question", [], 100)
+    result = await provider.complete(request)
+
+    assert result.text == "A partial answer"
+    assert result.finish_reason == "length"
+
+
+@pytest.mark.asyncio
+async def test_agent_incomplete_max_output_tokens_is_normalised_to_length():
+    """The Agent API's incomplete output-cap status becomes a length reason."""
+    response = _agent_response("A partial answer [1]", [{"id": 1, "url": URL_ONE}])
+    response["status"] = "incomplete"
+    response["incomplete_details"] = {"reason": "max_output_tokens"}
+    client = FakeResponsesClient([response])
+    provider = AgentResponsesProvider(client, _perplexity_config())
+
+    request = provider.build_request("System prompt", "Current question", [], 100)
+    result = await provider.complete(request)
+
+    assert result.text == "A partial answer [1]"
+    assert result.finish_reason == "length"
+
+
+@pytest.mark.asyncio
+async def test_agent_other_incomplete_reason_is_not_reported_as_length():
+    """An incomplete response for another reason must not claim a length cap."""
+    response = _agent_response("A filtered answer")
+    response["status"] = "incomplete"
+    response["incomplete_details"] = {"reason": "content_filter"}
+    client = FakeResponsesClient([response])
+    provider = AgentResponsesProvider(client, _perplexity_config())
+
+    request = provider.build_request("System prompt", "Current question", [], 100)
+    result = await provider.complete(request)
+
+    assert result.finish_reason is None
+
+
+@pytest.mark.asyncio
 async def test_chat_tool_loop_round_trip():
     executor = AsyncMock(return_value='{"results":[]}')
     client = FakeChatClient(
