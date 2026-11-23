@@ -100,6 +100,15 @@ def test_compose_has_no_version_key():
     assert "version" not in _load_compose()
 
 
+def test_compose_bounds_the_container_log():
+    logging = _bot_service().get("logging", {})
+    options = logging.get("options", {})
+
+    assert logging.get("driver") == "json-file"
+    assert options.get("max-size") == "10m"
+    assert options.get("max-file") == "3"
+
+
 def test_compose_injects_the_documented_env_file():
     env_files = [Path(path).name for path in _env_file_paths(_bot_service())]
     assert ".env" in env_files

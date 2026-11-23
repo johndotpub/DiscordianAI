@@ -30,7 +30,11 @@ The shipped `docker-compose.yml`:
   inside the container so the published port is reachable from the host;
 - defines a `healthcheck` that calls `http://127.0.0.1:8080/health` with Python's
   standard-library `urllib.request`; it fails when the endpoint reports unhealthy or
-  cannot be reached.
+  cannot be reached;
+- bounds Docker's default `json-file` log driver at three files of 10 MB each, so a
+  long-running container cannot fill the host disk with container logs. Adjust
+  `logging.options.max-size` and `max-file`, or configure a remote logging driver, when
+  a different retention window is required.
 
 Check the running service:
 

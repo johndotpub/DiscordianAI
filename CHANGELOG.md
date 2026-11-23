@@ -195,6 +195,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Operations ⚙️
 
+- **Log rotation works on non-root-owned directories, and container logs are bounded.**
+  The logrotate fragment now has an `su USER GROUP` directive next to the path
+  placeholder, so logrotate no longer refuses when the project directory is
+  group-writable by a non-root group. The shipped compose file caps Docker's
+  `json-file` log at three 10 MB files instead of letting it grow unbounded.
 - **Repository ignores cover the artefacts the project produces.** Rotated
   `bot.log-YYYY-MM-DD.gz` files, `*.ini.bak-<date>` configuration backups, and the
   local `.hermes/` state directory are excluded from git and the Docker build context,

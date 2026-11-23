@@ -27,6 +27,7 @@ ARTIFACT_PATTERNS = (
 )
 
 LOGROTATE_REQUIRED_DIRECTIVES = (
+    "su",
     "size",
     "rotate",
     "compress",
@@ -115,6 +116,7 @@ def test_logrotate_fragment_is_shipped_and_complete():
         ), f"Missing '{directive}' directive"
     assert re.search(r"^\s*size\s+\S+", text, re.MULTILINE)
     assert re.search(r"^\s*rotate\s+\d+", text, re.MULTILINE)
+    assert re.search(r"^\s*su\s+USER\s+GROUP\s*$", text, re.MULTILINE)
 
 
 def test_daemon_docs_document_installation_and_copytruncate_caveat():
