@@ -41,7 +41,10 @@ broke it, and each break is a user-visible bug.
   built in `bot.py` and used to decide in `smart_orchestrator.py`; the remaining matches
   are the `routing` package. The router is built once at startup, not per message.
   *Mode:* `ROUTER_MODE=heuristic|clef` selects the deterministic gate (default) or the optional
-  Clef decision model; `model` is retired and raises.
+  Clef decision model; `model` is retired and raises. The Clef key is scoped to its endpoint:
+  `ROUTER_CLEF_API_KEY`, then `OLLAMA_API_KEY` from the environment, then `OPENAI_API_KEY`
+  only when `OPENAI_API_URL` is an Ollama Cloud URL. A key issued by another provider is
+  never sent to Clef.
 
 - **History is keyed per conversation, never per user.** The only valid keys are
   `g:<guild>:c:<channel>` and `dm:<user>`, built by

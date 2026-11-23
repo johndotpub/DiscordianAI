@@ -129,7 +129,7 @@ Both methods can coexist, but that would start two instances. Pick one.
 
 ## Log rotation
 
-The bot never writes its own log file; `discordian.sh -d` and the systemd unit redirect stdout and stderr to `bot.log`. Because that file stays open for the lifetime of the process, logrotate must use `copytruncate` instead of asking the bot to reopen it. The shipped fragment in `contrib/logrotate/discordianai` does this.
+The bot never writes its own log file; `discordian.sh -d` and the systemd unit redirect stdout and stderr to `bot.log`. Because that file stays open for the lifetime of the process, logrotate must use `copytruncate` instead of asking the bot to reopen it. The shipped fragment in `contrib/logrotate/discordianai` does this. Container deployments do not use logrotate for container output: the compose file bounds Docker's `json-file` driver at three 10 MB files instead, as described in [Docker.md](Docker.md).
 
 Install it system-wide:
 

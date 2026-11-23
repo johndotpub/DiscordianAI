@@ -38,6 +38,10 @@ The shipped `docker-compose.yml`:
   `logging.options.max-size` and `max-file`, or configure a remote logging driver, when
   a different retention window is required.
 
+For a non-container deployment, the shipped `contrib/logrotate/discordianai` fragment
+rotates a supervisor-owned `bot.log` with `copytruncate`. Replace its log path and the
+`USER GROUP` placeholders on the `su` line as described in [Daemon.md](Daemon.md).
+
 Check the running service:
 
 ```bash
