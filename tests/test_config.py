@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.config import get_error_messages, load_config, parse_arguments
+from src.config import ConfigFileError, get_error_messages, load_config, parse_arguments
 
 
 @pytest.fixture(autouse=True)
@@ -213,12 +213,13 @@ LOG_LEVEL=DEBUG
             os.unlink(temp_config_path)
 
     def test_load_config_nonexistent_file(self):
-        """Test config loading with nonexistent file."""
-        config = load_config("nonexistent_file.ini")
+        """An explicitly requested missing file is a fatal startup error."""
+        with pytest.raises(ConfigFileError) as exc_info:
+            load_config("nonexistent_file.ini")
 
-        # Should return defaults when file doesn't exist
-        assert config["DISCORD_TOKEN"] is None
-        assert config["GPT_MODEL"] == "deepseek-v4.1-flash:1017"
+        message = str(exc_info.value)
+        assert "nonexistent_file.ini" in message
+        assert "No such file" in message or "cannot find" in message.lower()
 
     def test_load_config_with_base_folder(self):
         """Test config loading with base folder."""
@@ -478,11 +479,12 @@ OPENAI_API_KEY=test_key
             temp_config_path = f.name
 
         try:
-            # Should not crash, but may not load all values correctly
-            config = load_config(temp_config_path)
-            # At minimum, defaults should be present
-            assert "GPT_MODEL" in config
-            assert config["GPT_MODEL"] == "deepseek-v4.1-flash:1017"
+            with pytest.raises(ConfigFileError) as exc_info:
+                load_config(temp_config_path)
+
+            message = str(exc_info.value)
+            assert temp_config_path in message
+            assert "section" in message.lower() or "header" in message.lower()
         finally:
             os.unlink(temp_config_path)
 

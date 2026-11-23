@@ -367,7 +367,20 @@ python -m src.main --folder /opt/discordianai --conf bot.ini
 
 ## Configuration Validation & Error Handling
 
-DiscordianAI includes comprehensive configuration validation:
+DiscordianAI includes comprehensive configuration validation.
+
+### Literal Values and File Errors
+
+Configuration values are read literally. A `%` in a prompt or key is data, not an
+interpolation marker, so write `SYSTEM_MESSAGE=I am 100% sure` without escaping it;
+`%%` is kept as two characters rather than collapsed to one. Duplicate keys are not
+merged.
+
+A file passed with `--conf` must be readable and syntactically valid. A missing file,
+a permission error, a duplicated key, or a malformed section stops startup with an
+error that names the file and quotes the parser's message. The bot never continues
+with built-in defaults after a config file fails to load; omit `--conf` to run from
+environment variables and defaults.
 
 ### Startup Validation
 - **Required Fields**: Ensures DISCORD_TOKEN and the credentials for every configured provider are present

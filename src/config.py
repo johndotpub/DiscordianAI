@@ -296,6 +296,14 @@ _CONFIG_DEFAULTS: dict[str, Any] = {
 # ============================================================================
 
 
+class ConfigFileError(RuntimeError):
+    """Raised when an explicitly requested configuration file cannot be used."""
+
+    def __init__(self, path: Path | str, detail: object) -> None:
+        """Build the fatal startup message with the file and parser detail."""
+        super().__init__(f"Could not read configuration file {path}: {detail}")
+
+
 def parse_arguments() -> argparse.Namespace:
     """Parse command-line arguments.
 
@@ -319,8 +327,13 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
 
     Returns:
         dict: Configuration dictionary with all settings.
+
+    Raises:
+        ConfigFileError: If an explicitly requested file cannot be read or parsed.
     """
-    config = configparser.ConfigParser()
+    # Values are literal: prompts and secrets may contain '%' without needing
+    # to escape it, and the parser must not treat it as an interpolation marker.
+    config = configparser.ConfigParser(interpolation=None)
     config_data = {}
 
     # Get logger for error handling
@@ -337,23 +350,23 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
     if base_folder and config_file and not Path(config_file).is_absolute():
         config_file = str(Path(base_folder) / config_file)
 
-    if config_file and Path(config_file).exists():
+    if config_file:
+        config_path = Path(config_file)
         try:
-            config.read(config_file)
-            openai_explicit, openai_key_disabled = _provider_option_flags(config, "OPENAI")
-            perplexity_explicit, perplexity_key_disabled = _provider_option_flags(
-                config, "PERPLEXITY"
-            )
-            _parse_discord_config(config, config_data, logger)
-            _parse_default_config(config, config_data, logger)
-            _parse_limits_config(config, config_data, logger)
-            _parse_connection_pool_config(config, config_data, logger)
-            _parse_orchestrator_config(config, config_data, logger)
-            _parse_logging_config(config, config_data, base_folder, logger)
-            _parse_health_config(config, config_data, logger)
-        except (configparser.Error, OSError, ValueError):
-            config_data.clear()
-            logger.warning("Failed to parse config file %s, using defaults", config_file)
+            with config_path.open(encoding="utf-8") as config_stream:
+                config.read_file(config_stream)
+        except (configparser.Error, OSError, UnicodeError) as exc:
+            raise ConfigFileError(config_path, exc) from exc
+
+        openai_explicit, openai_key_disabled = _provider_option_flags(config, "OPENAI")
+        perplexity_explicit, perplexity_key_disabled = _provider_option_flags(config, "PERPLEXITY")
+        _parse_discord_config(config, config_data, logger)
+        _parse_default_config(config, config_data, logger)
+        _parse_limits_config(config, config_data, logger)
+        _parse_connection_pool_config(config, config_data, logger)
+        _parse_orchestrator_config(config, config_data, logger)
+        _parse_logging_config(config, config_data, base_folder, logger)
+        _parse_health_config(config, config_data, logger)
 
     # 2. Override with environment variables
     _apply_env_overrides(config_data, logger)

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Behaviour changes
 
+- **Config values are literal, and a bad config file stops startup.** A `%` in a prompt or
+  secret (for example `SYSTEM_MESSAGE=I am 100% sure`) no longer breaks parsing, and `%%` is
+  kept as two characters instead of being collapsed. A missing, unreadable, duplicated, or
+  malformed config file now fails startup with the file path and the parser's message instead
+  of silently discarding the file and reporting a misleading missing-token error.
 - **Perplexity prompts fit the Sonar context window.** The web path now budgets prompts with
   `PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW` (111,000 and 128,000 by default)
   instead of the chat provider's 250,000 and 1,000,000. The fixed `fetch_url` instruction
