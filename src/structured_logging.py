@@ -135,13 +135,22 @@ def configure_structlog(
     ]
 
     color_reason: str | None = None
+    exception_processors: list[Any] = []
     if json_logs:
         renderer = structlog.processors.JSONRenderer()
+        exception_processors = [structlog.processors.format_exc_info]
     else:
         if stream is None:
             stream = sys.stderr
         colors_enabled, color_reason = _resolve_colours(force_colors, stream)
-        renderer = structlog.dev.ConsoleRenderer(colors=colors_enabled, pad_event_to=0)
+        renderer = structlog.dev.ConsoleRenderer(
+            colors=colors_enabled,
+            pad_event_to=0,
+            exception_formatter=structlog.dev.RichTracebackFormatter(
+                show_locals=False,
+                color_system="truecolor" if colors_enabled else None,
+            ),
+        )
 
     structlog.configure(
         processors=[
@@ -160,6 +169,7 @@ def configure_structlog(
         processors=[
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             *shared_processors,
+            *exception_processors,
             renderer,
         ],
     )

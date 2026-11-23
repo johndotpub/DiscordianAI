@@ -3,11 +3,24 @@
 from io import StringIO
 import logging
 import os
+import re
 from unittest.mock import patch
 
+import pytest
 import structlog
 
 from src.structured_logging import configure_structlog, get_structured_logger
+
+_CANARY_VALUE = "SENTINEL-VALUE-IN-FRAME-LOCALS"
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _raise_with_secret_local() -> None:
+    """Raise from a frame that holds a value the renderer must not print."""
+    frame_local_secret = _CANARY_VALUE
+    if frame_local_secret:
+        msg = "boom"
+        raise RuntimeError(msg)
 
 
 def test_configure_structlog_defaults():
@@ -27,7 +40,10 @@ def test_configure_structlog_explicit_log_colors_pass_through_to_renderer():
     with patch("structlog.dev.ConsoleRenderer") as mock_renderer:
         configure_structlog(log_colors=True)
 
-    mock_renderer.assert_called_with(colors=True, pad_event_to=0)
+    kwargs = mock_renderer.call_args.kwargs
+    assert kwargs["colors"] is True
+    assert kwargs["pad_event_to"] == 0
+    assert kwargs["exception_formatter"].show_locals is False
 
 
 def test_configure_structlog_json_mode():
@@ -127,3 +143,26 @@ def test_structured_logger_binds_context():
     assert "abc123" in output
     assert '"request_id": "abc123"' in output
     assert '"event": "hello world"' in output
+
+
+@pytest.mark.parametrize(
+    ("json_logs", "log_colors"),
+    [(True, None), (False, True), (False, False)],
+)
+def test_rendered_tracebacks_never_include_frame_locals(json_logs, log_colors):
+    """Coloured, plain, and JSON tracebacks keep locals out of the output."""
+    stream = StringIO()
+
+    configure_structlog(json_logs=json_logs, log_colors=log_colors, stream=stream)
+    log = logging.getLogger("test.exceptions")
+    try:
+        _raise_with_secret_local()
+    except RuntimeError:
+        log.exception("rendered failure")
+
+    output = stream.getvalue()
+    plain_output = _ANSI_ESCAPE.sub("", output)
+    assert _CANARY_VALUE not in output
+    assert _CANARY_VALUE not in plain_output
+    assert "Traceback (most recent call last)" in plain_output
+    assert "RuntimeError: boom" in plain_output

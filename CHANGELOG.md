@@ -210,6 +210,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security 🛡️
 
+- **Tracebacks no longer print frame locals.** Console and JSON logs render exceptions without
+  the local variables of each frame, so a config dictionary holding an API key, a message
+  body, or request parameters cannot reach the log through an exception. Console output keeps
+  a readable traceback, and JSON records now carry the formatted traceback text instead of a
+  bare `exc_info` object list.
 - **The Clef key is scoped to its endpoint.** `ROUTER_MODE=clef` no longer sends the chat provider's
   `OPENAI_API_KEY` to Ollama Cloud when `OPENAI_API_URL` points at another host. Existing Ollama Cloud
   deployments keep working with no config change.
