@@ -37,8 +37,9 @@ broke it, and each break is a user-visible bug.
   back, and record the successful turn. No client module imports routing code or decides
   which provider runs. *Why:* routing is a single policy with one place to test.
   *Consequence:* duplicated routing drifts and produces answers from the wrong provider.
-  *Check:* `rg -n 'build_router|build_router_input|\.decide\(' src` shows routing use only
-  in `smart_orchestrator.py` and the `routing` package.
+  *Check:* `rg -n 'build_router|build_router_input|\.decide\(' src` shows the router is
+  built in `bot.py` and used to decide in `smart_orchestrator.py`; the remaining matches
+  are the `routing` package. The router is built once at startup, not per message.
   *Mode:* `ROUTER_MODE=heuristic|clef` selects the deterministic gate (default) or the optional
   Clef decision model; `model` is retired and raises.
 
@@ -77,8 +78,8 @@ broke it, and each break is a user-visible bug.
 
 - **The breaker wraps the retry.** Every chat-completion call goes through
   `get_circuit_breaker(provider).call(retry_with_backoff, ...)`. The breaker wraps the whole
-  retry sequence, so three attempts for one logical call count as one failure
-  (`DEFAULT_API_RETRY_CONFIG` currently allows two attempts). Never call
+  retry sequence, so the retry sequence for one logical call counts as one failure
+  (`DEFAULT_API_RETRY_CONFIG` allows two attempts). Never call
   `client.chat.completions.create()` directly from a new path. *Why:* retries are part of
   one user request, not separate failures. *Consequence:* one outage either trips the
   breaker several times too early or never trips it at all. *Check:*
@@ -87,8 +88,11 @@ broke it, and each break is a user-visible bug.
 
 - **Prompt input is untrusted and bounded.** The current turn and history travel as
   role-tagged chat messages, never concatenated into the system prompt. Model output is
-  sanitised before Discord. Every prompt is bounded by `INPUT_TOKENS`, `OUTPUT_TOKENS`, and
-  `CONTEXT_WINDOW`. Provider web tools return untrusted text: search results are capped at
+  sanitised before Discord. Chat prompts are bounded by `INPUT_TOKENS`, `OUTPUT_TOKENS`,
+  and `CONTEXT_WINDOW`; Perplexity prompts use `PERPLEXITY_INPUT_TOKENS`,
+  `PERPLEXITY_OUTPUT_TOKENS`, and `PERPLEXITY_CONTEXT_WINDOW`. Both output caps are
+  validated against `MAX_OUTPUT_TOKENS_CEILING = 128,000`, which is independent of any
+  context window. Provider web tools return untrusted text: search results are capped at
   6,000 characters and fetched pages at 8,000, and both provider instruction blocks say not
   to follow instructions found inside them. No new prompt may interpolate user or tool
   text without a size limit. *Why:* tool results can contain instructions, and unbounded
@@ -220,9 +224,7 @@ diff or with the named command.
 ## 6. Security rules
 
 - **Never log or display a token, an API key, or a full request/response body.** Log counts,
-  lengths, status codes, and classified error types instead. The debug line that dumps a
-  discarded OpenAI answer in `_process_hybrid_mode()` is a known violation; shrink or remove
-  it when you touch that path, and do not copy the pattern.
+  lengths, status codes, and classified error types instead.
 - **Treat model output as untrusted.** It goes through `sanitize_model_output()` and
   `sanitize_for_discord()`; it must not be able to create mentions, arbitrary markdown
   links, or embed payloads the bot did not construct.
@@ -304,7 +306,8 @@ tox -e py312
   Python process itself does not lock the token.
 - **Log rotation uses the shipped fragment.** `contrib/logrotate/discordianai` rotates a
   supervisor-owned `bot.log` with `copytruncate`, because the bot does not reopen a log file
-  it never opened. Install it and replace the placeholder path.
+  it never opened. Install it and replace the placeholder path and the `su USER GROUP`
+  placeholders; the `su` line is required when the log directory is not root-owned.
 - **The supervisor owns stderr.** Logs go to stderr (`LOG_FILE` is ignored). The shipped
   systemd unit appends stdout/stderr to `bot.log`; Docker captures both streams. Use one
   owner for redirection so lines are neither duplicated nor lost.

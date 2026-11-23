@@ -255,7 +255,7 @@ CONVERSATION_TTL_SECONDS=7200
 # How often to clean up inactive user locks (seconds) - default 1 hour
 USER_LOCK_CLEANUP_INTERVAL=3600
 
-# Minimum words required before entity detection runs
+# Parsed but not wired into routing; changing it has no runtime effect
 ENTITY_DETECTION_MIN_WORDS=10
 
 # Router implementation: heuristic (default) or clef (optional decision model)

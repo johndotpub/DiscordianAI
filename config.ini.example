@@ -174,4 +174,6 @@ HEALTH_PROVIDER_STALE_SECONDS=300
 # PERPLEXITY_MODEL=perplexity/sonar
 #
 # === INVITE URL TEMPLATE ===
-# https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_CLIENT_ID&permissions=274945084416&scope=bot
+# Permissions: View Channel, Send Messages, Send Messages in Threads,
+# Read Message History, Embed Links, Attach Files.
+# https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_CLIENT_ID&permissions=274878024704&scope=bot

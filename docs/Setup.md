@@ -29,11 +29,12 @@ Create and configure your Discord bot:
    - Go to the "OAuth2" > "URL Generator" section
    - Select `bot` scope
    - Select required permissions:
+     - View Channel
      - Send Messages
+     - Send Messages in Threads
      - Read Message History
-     - Use Slash Commands (optional)
-     - Embed Links
-     - Attach Files (for file responses)
+     - Embed Links (for citation embeds)
+     - Attach Files
 
 4. **Invite Bot to Server**
    - Copy the generated OAuth2 URL

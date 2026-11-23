@@ -90,7 +90,7 @@ def _output_cap_key(base_url: str) -> str:
     return "max_tokens" if _provider_family(base_url) == "ollama" else "max_completion_tokens"
 
 
-def _completion_request(  # noqa: PLR0913
+def _completion_request(  # noqa: PLR0913 - one builder carries every request option
     model: str,
     system: str,
     user_msg: str,
@@ -149,7 +149,7 @@ def _api_params_for(
     return params
 
 
-def _build_openai_api_params(  # noqa: PLR0913
+def _build_openai_api_params(  # noqa: PLR0913 - mirrors _completion_request's options
     model: str,
     system: str,
     user_msg: str,

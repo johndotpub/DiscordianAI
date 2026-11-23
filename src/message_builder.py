@@ -277,7 +277,7 @@ def _multimodal_content(user_message: str, images: Sequence[ImagePayload]) -> li
     return content
 
 
-def build_messages(  # noqa: PLR0913
+def build_messages(  # noqa: PLR0913 - the builder mirrors the provider request shape
     system_message: str,
     user_message: str,
     history: list[dict[str, Any]] | None = None,

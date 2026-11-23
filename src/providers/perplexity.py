@@ -311,7 +311,7 @@ def _normalize_citation_text(text: str, citations: dict[str, str]) -> str:
     return "\n".join(cleaned_lines).strip()
 
 
-def _completion_request(  # noqa: PLR0913
+def _completion_request(  # noqa: PLR0913 - one builder carries every request option
     model: str,
     system: str,
     user_msg: str,
@@ -381,7 +381,7 @@ def _api_params(req: CompletionRequest, *, default_system: str = "") -> dict[str
     }
 
 
-def _build_api_params(  # noqa: PLR0913
+def _build_api_params(  # noqa: PLR0913 - mirrors _completion_request's options
     model: str,
     system: str,
     user_msg: str,
