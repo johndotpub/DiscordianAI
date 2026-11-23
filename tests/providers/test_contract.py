@@ -330,7 +330,8 @@ async def test_chat_tool_loop_stops_at_the_round_cap():
     assert result.text == ""
     assert result.finish_reason == "tool_calls"
     assert len(client.calls) == 4
-    assert executor.await_count == 4
+    assert "tools" not in client.calls[-1]
+    assert executor.await_count == 3
 
 
 def _status_response(status_code):

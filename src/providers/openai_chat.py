@@ -25,7 +25,11 @@ from src.error_handling import (
     retry_with_backoff,
 )
 from src.image_attachments import ImagePayload
-from src.message_builder import build_messages, resolve_completion_budget
+from src.message_builder import (
+    build_messages,
+    estimate_text_tokens,
+    resolve_completion_budget,
+)
 from src.models import OpenAIConfig
 from src.web_tools import WEB_TOOLS, should_offer_web_tools
 
@@ -34,6 +38,10 @@ from .base import CompletionRequest, ProbeResult, ProviderResult
 openai_circuit_breaker = get_circuit_breaker("openai")
 
 MAX_WEB_TOOL_ROUNDS = 4
+MAX_TOOL_CALLS_PER_ROUND = 3
+MAX_TOOL_OUTPUT_TOKENS = 12000
+_TOOL_CALL_LIMIT_RESULT = '{"error":"tool-call limit reached"}'
+_TOOL_BUDGET_REACHED_RESULT = '{"error":"tool-output budget reached"}'
 _DEFAULT_PROBE_TIMEOUT = 10.0
 
 ToolExecutor = Callable[..., Awaitable[str]]
@@ -237,6 +245,24 @@ class ChatCompletionsProvider:
             logger=self._logger,
         )
 
+    async def _tool_result(
+        self,
+        call: dict[str, Any],
+        index: int,
+        tool_output_tokens: int,
+    ) -> tuple[str, int]:
+        """Execute one tool call within the per-round and total output caps."""
+        if index >= MAX_TOOL_CALLS_PER_ROUND:
+            return _TOOL_CALL_LIMIT_RESULT, tool_output_tokens
+        if tool_output_tokens >= MAX_TOOL_OUTPUT_TOKENS:
+            return _TOOL_BUDGET_REACHED_RESULT, tool_output_tokens
+
+        result = await self._execute_tool(call)
+        result_tokens = estimate_text_tokens(result)
+        if tool_output_tokens + result_tokens > MAX_TOOL_OUTPUT_TOKENS:
+            return _TOOL_BUDGET_REACHED_RESULT, tool_output_tokens
+        return result, tool_output_tokens + result_tokens
+
     async def complete(self, req: CompletionRequest) -> ProviderResult:
         """Return one parsed chat answer, resolving the bounded tool loop.
 
@@ -246,15 +272,22 @@ class ChatCompletionsProvider:
         api_params = self._api_params(req)
         messages = api_params["messages"]
         tools_enabled = bool(req.tools) and self.supports_web_tools
+        final_round = MAX_WEB_TOOL_ROUNDS - 1
+        tool_output_tokens = 0
 
         self._logger.debug("Making OpenAI API call with %d messages", len(messages))
 
         final_response = None
         response = None
-        for _round in range(MAX_WEB_TOOL_ROUNDS):
+        for round_index in range(MAX_WEB_TOOL_ROUNDS):
+            round_params = api_params
+            if round_index == final_round and "tools" in api_params:
+                # The last round must answer; offering tools again would let
+                # the model ask for results this loop can no longer use.
+                round_params = {key: value for key, value in api_params.items() if key != "tools"}
             response = await openai_circuit_breaker.call(
                 retry_with_backoff,
-                lambda: self._client.chat.completions.create(**api_params),
+                lambda params=round_params: self._client.chat.completions.create(**params),
                 DEFAULT_API_RETRY_CONFIG,
                 self._logger,
             )
@@ -268,6 +301,7 @@ class ChatCompletionsProvider:
             tool_calls = getattr(choice.message, "tool_calls", None)
             wants_tools = (
                 tools_enabled
+                and round_index < final_round
                 and getattr(choice, "finish_reason", None) == "tool_calls"
                 and bool(tool_calls)
             )
@@ -283,8 +317,12 @@ class ChatCompletionsProvider:
                     "tool_calls": calls,
                 }
             )
-            for call in calls:
-                result = await self._execute_tool(call)
+            for index, call in enumerate(calls):
+                result, tool_output_tokens = await self._tool_result(
+                    call,
+                    index,
+                    tool_output_tokens,
+                )
                 messages.append(
                     {
                         "role": "tool",
