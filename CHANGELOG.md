@@ -193,6 +193,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Clef failures cannot strand a message.** Any unexpected router exception falls back to the
   deterministic gate with a `fallback:router_error` reason and an ERROR log.
 
+### Operations ⚙️
+
+- **Repository ignores cover the artefacts the project produces.** Rotated
+  `bot.log-YYYY-MM-DD.gz` files, `*.ini.bak-<date>` configuration backups, and the
+  local `.hermes/` state directory are excluded from git and the Docker build context,
+  while `config.ini.example` and `tox.ini` stay tracked.
+
 ### Security 🛡️
 
 - **The Clef key is scoped to its endpoint.** `ROUTER_MODE=clef` no longer sends the chat provider's

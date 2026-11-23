@@ -21,6 +21,9 @@ ARTIFACT_PATTERNS = (
     re.compile(r"(^|/)\.coverage[^/]*$"),
     re.compile(r"(^|/)[^/]+\.egg-info/"),
     re.compile(r"\.log$"),
+    re.compile(r"\.log-[^/]*$"),
+    re.compile(r"\.ini\.bak(?:-|$)"),
+    re.compile(r"(^|/)\.hermes/"),
 )
 
 LOGROTATE_REQUIRED_DIRECTIVES = (
@@ -78,6 +81,28 @@ def test_no_tracked_build_or_cache_artifacts():
         if any(pattern.search(path) for pattern in ARTIFACT_PATTERNS)
     ]
     assert not offenders, f"Tracked build or cache artifacts: {offenders}"
+
+
+def _is_git_ignored(path: str) -> bool:
+    git = which("git")
+    assert git is not None
+    result = subprocess.run(  # noqa: S603 — fixed git command, no shell
+        [git, "-C", str(REPO_ROOT), "check-ignore", "-q", "--no-index", path],
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def test_rotated_logs_backups_and_agent_state_are_git_ignored():
+    for path in (
+        "bot.log-2026-10-30.gz",
+        "production.ini.bak-2026-10-30",
+        ".hermes/state",
+    ):
+        assert _is_git_ignored(path), f"{path} must not be committed"
+
+    for path in ("config.ini.example", "tox.ini"):
+        assert not _is_git_ignored(path), f"{path} must stay tracked"
 
 
 def test_logrotate_fragment_is_shipped_and_complete():

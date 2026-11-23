@@ -65,6 +65,7 @@ pytest.*
 
 # Django stuff:
 *.log
+*.log-*
 
 # Sphinx documentation
 docs/_build/
@@ -97,6 +98,8 @@ venv/
 !config.ini.example
 !tox.ini
 config.ini
+*.ini.bak
+*.ini.bak-*
 
 # Local runtime and tool caches
 .bot.pid
