@@ -136,6 +136,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unset, `OLLAMA_API_KEY` from the environment is eligible, and `OPENAI_API_KEY` is eligible only when
   `OPENAI_API_URL` is an Ollama Cloud URL. A key issued for another provider is never sent to Clef.
   Prefer the environment variable because the value is a secret.
+- **`ROUTER_CLEF_MODEL`, `ROUTER_CLEF_THRESHOLD`, and `ROUTER_CLEF_TIMEOUT_MS`**: select the
+  Clef decision model, the probability at or above which it routes web, and the hard total
+  deadline for one decision. They are ignored unless `ROUTER_MODE=clef`.
+- **`WEB_TOOLS`**: offer native `web_search` and `web_fetch` tools to Ollama-compatible chat
+  providers; defaults to true. OpenAI endpoints never receive these tools.
 - **`REASONING_EFFORT`**: sent as `reasoning_effort` with chat requests; defaults to `high`. Valid
   values are model-defined, and reasoning tokens are billed as output.
 - **Optional Clef decision-model router.** `ROUTER_MODE=clef` asks Ollama Cloud's Clef model
@@ -190,6 +195,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not. A host:port number such as `:443` in a connect message is no longer read as an HTTP
   status, and a structured `insufficient_quota` 429 is not retried and keeps its quota
   notice.
+- **Perplexity carries its four-step bound.** The Agent API request sends `max_steps: 4` in
+  `extra_body` because the SDK has no `max_steps` kwarg, so the tool loop is bounded as
+  documented instead of dropping the value.
+- **An idle provider no longer reads unhealthy.** A configured provider that has never been
+  called and has no recorded failure is healthy; only an open breaker or a failure after the
+  last success degrades it. `last_success_age_seconds` and `last_success_stale` remain
+  diagnostic and do not decide `/health`.
 - **The web tool loop answers on its last round.** The fourth round is offered no tools,
   at most three calls per round are executed, and total tool output is capped; capped or
   over-budget calls still receive a short tool result so the model can continue.
@@ -287,6 +299,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`docs/Vision.md`** documents how to send images, the provider used, limits, fallback
   behavior, and the privacy note that images leave the bot for the configured chat provider.
   The README documentation map and `docs/Configuration.md` link to it.
+
+### Notes ⚠️
+
+- **Local scraping is gone, and three scrape-budget keys are removed.**
+  `MAX_URLS_PER_MESSAGE`, `MAX_TOTAL_SCRAPED_CHARS`, and `SCRAPE_DEADLINE_SECONDS` are no
+  longer read because URL fetching now happens in the provider tools. An existing
+  `config.ini` that still sets them loads and ignores them; delete those lines during the
+  upgrade. `PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW` replace the local
+  scrape budget for the web path.
 
 ## [0.4.0] - 2026-10-28
 
@@ -415,7 +436,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Implementation scope**: critical bug fixes, config cleanup, async HTTP modernization, docs refresh, and test hardening.
 - **Release quality**: all changes are aligned to current code paths and no stale descriptions remain.
 
-### Fixed 🔧 — Dependency & Configuration (internal QA)
+### Fixed 🔧 — Dependency & Configuration
 - **`websockets` dependency**: Added `websockets>=16.0` to `requirements.txt` to match `pyproject.toml` declaration and ensure Docker builds include the runtime dependency.
 - **`ConnectionPool` config parsing**: Wired `[ConnectionPool]` section parser (`_parse_connection_pool_config()`) into `load_config()` — this section was documented in `config.ini.example` and had defaults defined, but was silently ignored at runtime.
 - **`ENTITY_DETECTION_MIN_WORDS`**: Now reads from config file and environment variables (was documented but unimplemented in the parser).
