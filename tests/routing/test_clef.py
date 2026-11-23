@@ -11,6 +11,36 @@ from src.routing.contracts import ConversationContext, RouterInput, Turn
 _ENDPOINT = "https://ollama.com/v1/systemone"
 
 
+@pytest.fixture(autouse=True)
+def reset_missing_clef_key_warning():
+    """Keep the once-per-process missing-key warning isolated between tests."""
+    from src.routing import _warn_missing_clef_key_once
+
+    _warn_missing_clef_key_once.cache_clear()
+    yield
+    _warn_missing_clef_key_once.cache_clear()
+
+
+class _FakeAsyncClient:
+    def __init__(self):
+        self.calls = []
+        self.closed = 0
+
+    async def post(self, url, *, json=None, headers=None):
+        self.calls.append({"url": url, "json": json, "headers": headers})
+        return _response(0.9)
+
+    async def aclose(self):
+        self.closed += 1
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        _ = (exc_type, exc, tb)
+        return False
+
+
 def _response(probability: float) -> httpx.Response:
     return httpx.Response(
         200,
@@ -341,34 +371,18 @@ def test_unknown_mode_raises() -> None:
     assert "expected 'heuristic', 'clef', or 'model'" in str(excinfo.value)
 
 
-@pytest.fixture(autouse=True)
-def reset_missing_clef_key_warning():
-    """Keep the once-per-process missing-key warning isolated between tests."""
-    from src.routing import _warn_missing_clef_key_once
+def test_supplied_artifact_override_skips_clef(monkeypatch) -> None:
+    """A gate artifact decision is data, so Clef must not flip it to web."""
+    calls = _install_sync(monkeypatch, _response(0.99))
+    request = RouterInput(text="summarize: the api is down and the version is 2.0")
+    expected = HeuristicRouter().decide_sync(request)
 
-    _warn_missing_clef_key_once.cache_clear()
-    yield
-    _warn_missing_clef_key_once.cache_clear()
+    decision = ClefRouter(api_key="test-key").decide_sync(request)
 
-
-class _FakeAsyncClient:
-    def __init__(self):
-        self.calls = []
-        self.closed = 0
-
-    async def post(self, url, *, json=None, headers=None):
-        self.calls.append({"url": url, "json": json, "headers": headers})
-        return _response(0.9)
-
-    async def aclose(self):
-        self.closed += 1
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        _ = (exc_type, exc, tb)
-        return False
+    assert calls == []
+    assert decision.route == expected.route == "local"
+    assert decision.reasons == expected.reasons
+    assert decision.deterministic_override is True
 
 
 def test_dedicated_clef_key_wins_over_the_chat_key(monkeypatch) -> None:

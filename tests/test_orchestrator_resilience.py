@@ -7,6 +7,7 @@ import pytest
 
 from src.conversation_manager import ThreadSafeConversationManager
 from src.models import AIClients, AIConfig, AIRequest
+from src.routing.contracts import RouteDecision
 from src.routing.lexicon import LexiconError
 from src.smart_orchestrator import _process_hybrid_mode, get_smart_response
 
@@ -194,3 +195,42 @@ async def test_lexicon_failure_falls_back_to_a_local_answer(caplog):
         if record.levelno == logging.ERROR and "lexicon" in record.getMessage()
     ]
     assert len(errors) == 1
+
+
+def test_injected_router_is_reused_instead_of_rebuilt():
+    """The process-wide router is not reconstructed for each message."""
+    manager = MagicMock(spec=ThreadSafeConversationManager)
+    manager.get_recent_ai_service.return_value = None
+    manager.get_conversation.return_value = []
+    request = _request("Tell me something interesting", manager)
+    router = MagicMock()
+    router.router_id = "gate"
+    router.policy_version = "1"
+    router.decide = AsyncMock(
+        return_value=RouteDecision(
+            route="local",
+            reasons=("local:default",),
+            text="Tell me something interesting",
+        )
+    )
+
+    with (
+        patch("src.smart_orchestrator.build_router", return_value=router) as builder,
+        patch(
+            "src.smart_orchestrator.process_openai_message",
+            new=AsyncMock(return_value="A successful local answer"),
+        ),
+        patch("src.smart_orchestrator.process_perplexity_message", new=AsyncMock()),
+    ):
+        response, _suppress, _embed = await get_smart_response(
+            request,
+            [],
+            AIClients(openai=object(), perplexity=object()),
+            AIConfig(),
+            {"ROUTER_MODE": "heuristic"},
+            router=router,
+        )
+
+    assert response == "A successful local answer"
+    builder.assert_not_called()
+    router.decide.assert_awaited_once()

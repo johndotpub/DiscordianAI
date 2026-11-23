@@ -182,6 +182,14 @@ class DiscordBotManager:
                 await pool_manager.close_all()
                 self.logger.info("Connection pools closed")
 
+        router = self.deps.get("router")
+        if router is not None and hasattr(router, "aclose"):
+            try:
+                await router.aclose()
+                self.logger.info("Router HTTP client closed")
+            except Exception:
+                self.logger.exception("Router HTTP client close failed")
+
         if "_health_task" in self.deps:
             health_task = self.deps["_health_task"]
             if not health_task.done():

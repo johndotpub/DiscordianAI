@@ -35,12 +35,16 @@ def decide(
     web_overrides = [cue for cue in ordered if cue.signal in _WEB_OVERRIDE_SIGNALS]
     if web_overrides:
         bearing = [cue for cue in ordered if cue.klass == "bearing"]
-        return _decision("web", [*web_overrides, *bearing], text, latency_ms)
+        return _decision(
+            "web", [*web_overrides, *bearing], text, latency_ms, deterministic_override=True
+        )
 
     local_overrides = [cue for cue in ordered if cue.signal in _LOCAL_OVERRIDE_SIGNALS]
     if local_overrides:
         bearing = [cue for cue in ordered if cue.klass == "bearing"]
-        return _decision("local", [*local_overrides, *bearing], text, latency_ms)
+        return _decision(
+            "local", [*local_overrides, *bearing], text, latency_ms, deterministic_override=True
+        )
 
     bearing = [cue for cue in ordered if cue.klass == "bearing"]
     if bearing:
@@ -66,6 +70,8 @@ def _decision(
     cues: Sequence[Cue],
     text: str,
     latency_ms: float,
+    *,
+    deterministic_override: bool = False,
 ) -> RouteDecision:
     reasons: list[str] = []
     for cue in cues:
@@ -81,6 +87,7 @@ def _decision(
         text=text,
         router_id="gate",
         policy_version="1",
+        deterministic_override=deterministic_override,
     )
 
 

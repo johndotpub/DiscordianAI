@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   code-masked view, and text outside the fence still counts as before.
 - **Image requests decide before the router runs.** An image-bearing message uses the `images:local`
   decision without consulting Clef, and the single routing log line reports that decision.
+- **Clef is consulted only when it can act, under one deadline.** A deterministic gate override such as a
+  supplied artifact is returned without a Clef call, the router is built once and reuses a pooled client,
+  and `ROUTER_CLEF_TIMEOUT_MS` is a hard total deadline for one decision.
+- **Router faults fall back to the deterministic gate.** An unexpected router failure or a Clef error logs
+  a reason and continues through the gate instead of turning every hybrid message into an error reply.
+  An unknown `ROUTER_MODE` now fails startup validation; `model` keeps its explicit retirement error.
+- **The web-inability reroute requires a first-person admission.** General statements, quoted text, and
+  creative output such as a haiku mentioning browsing no longer discard a good local answer.
 
 - **Ollama Cloud is the default OpenAI-compatible chat provider.** `OPENAI_API_URL` defaults to
   `https://ollama.com/v1/` and `GPT_MODEL` defaults to `deepseek-v4.1-flash:1017`. OpenAI remains

@@ -136,6 +136,17 @@ async def test_graceful_shutdown_closes_resources(base_deps):
 
 
 @pytest.mark.asyncio
+async def test_graceful_shutdown_closes_the_router_client(base_deps):
+    router = SimpleNamespace(aclose=AsyncMock())
+    base_deps["router"] = router
+    manager = DiscordBotManager(base_deps)
+
+    await manager.graceful_shutdown()
+
+    router.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_disconnect_and_resume_handlers(base_deps, caplog):
     manager = DiscordBotManager(base_deps)
     manager.register_events()

@@ -336,10 +336,11 @@ def _lookback(orchestrator_config: dict | None) -> int:
 async def _build_route_decision(
     request: AIRequest,
     orchestrator_config: dict | None,
+    router: Any | None = None,
 ) -> RouteDecision:
     """Build one router input and ask the configured router for one decision."""
     try:
-        router = build_router(orchestrator_config)
+        active_router = router if router is not None else build_router(orchestrator_config)
         router_input = build_router_input(
             request,
             getattr(request, "conversation_manager", None),
@@ -349,7 +350,7 @@ async def _build_route_decision(
             router_input,
             text=_sanitize_for_routing(router_input.text),
         )
-        decision = await router.decide(router_input)
+        decision = await active_router.decide(router_input)
     except LexiconError as exc:
         request.logger.exception(
             "Routing lexicon failed; falling back to a deterministic local decision (%s)",
@@ -501,12 +502,14 @@ async def _process_openai_only_mode(
     )
 
 
-async def get_smart_response(  # noqa: PLR0911 - explicit failure and fallback branches
+async def get_smart_response(  # noqa: PLR0911, PLR0913 - explicit failures and the injected router
     request: AIRequest,
     conversation_summary: list[dict],
     clients: AIClients,
     config: AIConfig,
     orchestrator_config: dict | None = None,
+    *,
+    router: Any | None = None,
 ) -> tuple[str, bool, dict | None]:
     """Choose the best AI service and generate a response.
 
@@ -523,6 +526,7 @@ async def get_smart_response(  # noqa: PLR0911 - explicit failure and fallback b
         clients: `AIClients` containing available OpenAI/Perplexity clients.
         config: `AIConfig` with service-specific configuration.
         orchestrator_config: Optional routing and orchestrator tuning values.
+        router: Optional process-wide router built once at startup.
 
     Returns:
         A tuple of `(response_text, suppress_embeds, embed_metadata)` where
@@ -559,7 +563,12 @@ async def get_smart_response(  # noqa: PLR0911 - explicit failure and fallback b
         # Mode 3: Hybrid mode
         if clients.openai and clients.perplexity:
             return await _process_hybrid_mode(
-                request, conversation_summary, clients, config, orchestrator_config
+                request,
+                conversation_summary,
+                clients,
+                config,
+                orchestrator_config,
+                router=router,
             )
 
         request.logger.critical("No AI clients available")
@@ -586,12 +595,14 @@ async def get_smart_response(  # noqa: PLR0911 - explicit failure and fallback b
         return ERROR_MESSAGES["unexpected_error"], False, None
 
 
-async def _process_hybrid_mode(  # noqa: PLR0911 - one return per fallback outcome
+async def _process_hybrid_mode(  # noqa: PLR0911, PLR0913 - one return per fallback outcome
     request: AIRequest,
     conversation_summary: list[dict],
     clients: AIClients,
     config: AIConfig,
     orchestrator_config: dict | None = None,
+    *,
+    router: Any | None = None,
 ) -> tuple[str, bool, dict | None]:
     """Handle hybrid routing between OpenAI and Perplexity.
 
@@ -611,7 +622,7 @@ async def _process_hybrid_mode(  # noqa: PLR0911 - one return per fallback outco
             )
         )
     else:
-        decision = await _build_route_decision(request, orchestrator_config)
+        decision = await _build_route_decision(request, orchestrator_config, router)
     request.logger.info("Routing decision: %s", decision_log_fields(decision))
 
     if decision.route == "web":

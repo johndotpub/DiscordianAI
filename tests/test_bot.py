@@ -41,6 +41,7 @@ class TestBotInitialization:
             assert deps["perplexity_client"] is None
             assert "rate_limiter" in deps
             assert "conversation_manager" in deps
+            assert deps["router"].router_id == "gate"
             mock_pool.create_openai_client.assert_called_once()
 
     def test_initialize_with_perplexity_only(self, config_dict):

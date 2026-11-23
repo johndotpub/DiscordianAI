@@ -49,6 +49,7 @@ class RouteDecision:
     text: str = ""
     router_id: str = "gate"
     policy_version: str = "1"
+    deterministic_override: bool = False
 
 
 class Router(Protocol):

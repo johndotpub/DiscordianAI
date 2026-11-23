@@ -161,6 +161,34 @@ async def _send_empty_fallback(
         logger.error("Failed to send empty-message fallback")
 
 
+async def _smart_response(  # noqa: PLR0913, PLR0917 - mirrors the orchestrator entrypoint
+    deps: dict[str, Any] | Any,
+    request: AIRequest,
+    conversation_summary: list[dict],
+    clients: AIClients,
+    config: AIConfig,
+    orchestrator_config: dict[str, Any],
+) -> tuple[str, bool, dict | None]:
+    """Call the orchestrator with the process-wide router when one is wired."""
+    router = deps.get("router")
+    if router is None:
+        return await get_smart_response(
+            request,
+            conversation_summary,
+            clients,
+            config,
+            orchestrator_config,
+        )
+    return await get_smart_response(
+        request,
+        conversation_summary,
+        clients,
+        config,
+        orchestrator_config,
+        router=router,
+    )
+
+
 async def _process_message_core(
     message: discord.Message,
     deps: dict[str, Any] | Any,
@@ -286,7 +314,9 @@ async def _process_message_core(
                 "ROUTER_CLEF_MODEL",
                 "ROUTER_CLEF_THRESHOLD",
                 "ROUTER_CLEF_TIMEOUT_MS",
+                "ROUTER_CLEF_API_KEY",
                 "OPENAI_API_KEY",
+                "OPENAI_API_URL",
             )
             if key in config
         }
@@ -306,7 +336,8 @@ async def _process_message_core(
         clients = AIClients(openai=deps.get("client"), perplexity=deps.get("perplexity_client"))
 
         # Generate AI response using smart orchestrator
-        response, suppress_embeds, embed_data = await get_smart_response(
+        response, suppress_embeds, embed_data = await _smart_response(
+            deps,
             ai_request,
             conversation_summary,
             clients,

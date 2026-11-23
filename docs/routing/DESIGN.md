@@ -89,12 +89,25 @@ harmlessly (warned once at startup).
 request to Ollama Cloud at `/v1/systemone` with the last two prior turns (each capped at 600 characters)
 and the current message as `state`. The single `needs_live_web` question is a `noul` probability;
 `>= ROUTER_CLEF_THRESHOLD` routes web, otherwise local. A live probe measured roughly 0.35–0.43 s per
-decision, billed per token; the request timeout defaults to 2 s.
+decision, billed per token; `ROUTER_CLEF_TIMEOUT_MS` defaults to 2 s and is enforced as a hard total
+deadline for the asynchronous decision, not as a per-phase timeout.
+
+A deterministic gate override is carried as data on the decision, and Clef returns that decision without a
+network call. That includes a supplied artifact (`local:supplied_artifact`), so asking to summarize pasted
+text cannot be flipped to web by Clef.
+
+The Clef key is scoped to the Clef endpoint. Resolution order is `ROUTER_CLEF_API_KEY`, then
+`OLLAMA_API_KEY` from the environment, then `OPENAI_API_KEY` only when `OPENAI_API_URL`'s host is
+`ollama.com`. A key issued for any other chat provider is never sent to Ollama Cloud. When no eligible key
+exists, startup warns once and selects the deterministic gate.
+
+The router is built once at startup and reuses one pooled HTTP client for the process; the client is closed
+with the other connection pools during shutdown. An image request is decided as `images:local` before any
+router runs, so Clef is not consulted and the one routing log line is the decision actually used.
 
 Any network error, timeout, HTTP status of 400 or above, or missing/malformed response logs a warning and
-returns the deterministic gate's decision with a `clef:fallback:<kind>` reason. A missing API key selects
-the gate at startup instead of raising. The gate therefore remains both the default and the fallback;
-Clef never widens the routing surface or changes the prompt.
+returns the deterministic gate's decision with a `clef:fallback:<kind>` reason. The gate therefore remains
+both the default and the fallback; Clef never widens the routing surface or changes the prompt.
 
 ## Cache and identity
 

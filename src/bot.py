@@ -32,6 +32,7 @@ from .dependencies import BotDependencies
 from .error_handling import get_circuit_breaker
 from .health_server import HealthServer
 from .rate_limits import RateLimiter
+from .routing import build_router
 
 
 def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
@@ -60,6 +61,8 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
 
     # Initialize connection pool manager for optimized API clients
     pool_manager = get_connection_pool_manager(config)
+    router = build_router(config)
+    logger.info("Routing configured with %s", router.router_id)
 
     # Initialize OpenAI client if API key is provided
     client = None
@@ -136,6 +139,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
         client=client,
         perplexity_client=perplexity_client,
         connection_pool_manager=pool_manager,
+        router=router,
         circuit_breakers=circuit_breakers,
         allowed_channels=config["ALLOWED_CHANNELS"],
         allowed_channel_ids=config.get("ALLOWED_CHANNEL_IDS", []),

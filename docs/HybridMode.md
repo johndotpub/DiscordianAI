@@ -160,6 +160,11 @@ LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 | `MAX_HISTORY_PER_USER` | 100 | Maximum conversation entries stored per user. |
 | `USER_LOCK_CLEANUP_INTERVAL` | 3600 | How often to clean up inactive user locks, in seconds. |
 
+The Clef key is scoped to the Clef endpoint. A key issued by another chat provider is never sent to
+`https://ollama.com/v1/systemone`; if no eligible key exists, startup warns once and uses the deterministic
+gate. A Clef router opens one pooled HTTP client for its lifetime and enforces `ROUTER_CLEF_TIMEOUT_MS` as a
+hard total deadline for one decision. The router is built once at startup and closed on shutdown.
+
 `ENTITY_DETECTION_MIN_WORDS=10` is parsed into config but is not consulted by the current router; changing
 it has no runtime effect.
 
