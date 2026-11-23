@@ -49,16 +49,19 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 |-----------|------|---------|
 | **Main** | `main.py` | Application entry point, startup sequence, logging setup |
 | **Bot** | `bot.py` | Discord client initialization, event handlers, graceful shutdown |
+| **Bot Manager** | `bot_manager.py` | Client lifecycle, signal handling, health-monitor scheduling, and shutdown |
 
 ### Core Processing
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| **Router** | `routing/` | Decides whether a message needs live web data. Evidence model: *bearing* cues (a mutable referent) may decide, *framing* cues (the shape of the request) can never decide alone. Owns the lexicon, the gate and the cache policy. |
+| **Routing Package** | `routing/` | Decides whether a message needs live web data. Evidence model: *bearing* cues (a mutable referent) may decide, *framing* cues (the shape of the request) can never decide alone. Owns the lexicon, the gate, and the cache policy. |
 | **Smart Orchestrator** | `smart_orchestrator.py` | Executes the router's decision against the providers, applies fallbacks, and records conversation turns |
 | **OpenAI-Compatible Processing** | `openai_processing.py` | Cache/dedup wrapper around the chat adapter |
-| **Perplexity Processing** | `perplexity_processing.py` | Cache wrapper, Discord citation formatting, and embed construction |
-| **Provider Adapters** | `providers/` | Narrow protocol plus chat-completions and Agent Responses adapters, and the provider registry |
+| **Perplexity Processing** | `perplexity_processing.py` | Cache wrapper and embed construction around the Perplexity adapter |
+| **Provider Package** | `providers/` | Narrow protocol plus chat-completions and Agent Responses adapters, and the provider registry |
+| **Message Builder** | `message_builder.py` | Builds role-tagged chat messages, applies prompt budgets, and adds image parts to the current turn |
+| **Models** | `models.py` | Shared frozen request, result, and configuration dataclasses |
 | **Image Attachments** | `image_attachments.py` | Validates and decodes Discord image attachments for the chat provider |
 | **Web Tools** | `web_tools.py` | Native search and page-fetch tools for the Ollama chat path |
 
@@ -76,14 +79,18 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 | **Health Server** | `health_server.py` | HTTP liveness/readiness probes (Kubernetes-compatible) |
 | **API Context** | `api_context.py` | Context managers for API call lifecycle, timing, and error tracking |
 | **Structured Logging** | `structured_logging.py` | structlog configuration and structured logger factory |
+| **Logging Adapter** | `logging_adapter.py` | Adds Discord ids to log records without copying free text |
 | **Dependencies** | `dependencies.py` | `BotDependencies` dataclass for formal dependency injection |
+| **Dependency Check** | `dependency_check.py` | Verifies the runtime imports the bot needs at startup |
 
 ### Discord Integration
 
 | Component | File | Purpose |
 |-----------|------|---------|
 | **Discord Bot** | `discord_bot.py` | Activity status, presence management |
-| **Discord Embeds** | `discord_embeds.py` | Citation formatting, embed creation |
+| **Discord Embeds** | `discord_embeds.py` | Embed creation for citations |
+| **Citation Formatting** | `citation_formatting.py` | Normalises citation labels and citation URLs |
+| **Truncation** | `truncation.py` | Truncates text at Discord's embed boundaries |
 | **Message Processor** | `message_processor.py` | Normalizes Discord events, delegates to orchestrator, records metadata |
 | **Message Splitter** | `message_splitter.py` | Message splitting, formatting, sanitization |
 | **API Validation** | `api_validation.py` | Configuration validation, API key format checks |

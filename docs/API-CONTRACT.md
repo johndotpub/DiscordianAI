@@ -1,10 +1,12 @@
 # API contract
 
 What this bot actually sends to the OpenAI-compatible chat provider and Perplexity, what
-those services actually return, and what that means for the code. Every row is either cited
-to a vendor page or **probed live** with `scripts/probe_providers.py` on 2026-10-28.
-The shipped chat provider is Ollama Cloud (`https://ollama.com/v1/`); OpenAI is a supported
-alternative reached through the same client.
+those services actually return, and what that means for the code. Every row is cited to a
+vendor page, measured with `scripts/probe_providers.py`, or marked **UNVERIFIED**.
+The 2026-10-28 probe used an OpenAI key and the GPT-5 family; rows measured that way are
+labelled **OpenAI-measured**. The shipped chat provider is now Ollama Cloud
+(`https://ollama.com/v1/`), so those measurements are not a measurement of the default
+model. OpenAI remains a supported alternative through the same client.
 
 Rule for contributors: if you change a request parameter, a model name, or an error
 branch, update this file and run the probe. A claim without a citation or a probe result
@@ -20,16 +22,32 @@ is not a contract.
 | Base URL sent | whatever `OPENAI_API_URL` says; the shipped default is `https://ollama.com/v1/` | `config.ini.example` |
 | Model sent | whatever `GPT_MODEL` says; the shipped default is `deepseek-v4.1-flash:1017` | `config.ini.example` |
 | Output cap parameter | `max_tokens` on Ollama-compatible hosts (`ollama.com`, `localhost`, `127.0.0.1`); `max_completion_tokens` on `api.openai.com` | `src/providers/openai_chat.py` |
-| What the output cap covers | **visible output plus reasoning tokens.** A cap consumed by reasoning returns HTTP 200 with `finish_reason: length` and `content: ""` | probe |
-| `reasoning_effort` | sent from `REASONING_EFFORT` only when non-empty (default `high`). It is a reasoning-model parameter; whether a model accepts it is provider-defined. `low`, `high`, and `max` are accepted by the shipped model, and `none` disables thinking | provider reference |
-| Cloud-model features | structured outputs, log probabilities, and `tool_choice` are not supported by cloud models and the bot does not send them | provider reference |
+| What the output cap covers | **visible output plus reasoning tokens.** A cap consumed by reasoning returns HTTP 200 with `finish_reason: length` and `content: ""` | OpenAI-measured (2026-10-28) |
+| `reasoning_effort` | sent from `REASONING_EFFORT` only when non-empty (default `high`). It is a reasoning-model parameter; whether a model accepts it is provider-defined. `low`, `high`, and `max` are accepted by the shipped model, and `none` disables thinking | provider reference; the exact Ollama Cloud tag is UNVERIFIED |
+| Cloud-model features | structured outputs, log probabilities, and `tool_choice` are not supported by cloud models and the bot does not send them | provider reference; not re-probed on Ollama Cloud |
 | Web tools | `tools` carries `web_search` and `web_fetch` function schemas only when the base URL is Ollama-compatible and `WEB_TOOLS` is true; the loop allows four rounds, offers no tools on the fourth so the model must answer, executes at most three calls per round, and caps total tool output | `src/providers/openai_chat.py`, `src/web_tools.py` |
 | Image content | When a message carries images, the current user message becomes a content list of one `text` part followed by one `image_url` part per image, with the part's `url` field set to `data:<mime>;base64,<payload>`. History turns remain text-only | `src/message_builder.py`, `src/image_attachments.py` |
 | OpenAI alternative | change `OPENAI_API_URL` to `https://api.openai.com/v1/`, set an `sk-` key, and choose a model; chat requests then send `max_completion_tokens` and `reasoning_effort`, not `max_tokens` | OpenAI Chat reference |
-| Maximum completion tokens | 128,000 provider-reported; the bot enforces a fixed 128,000 validation ceiling, independent of `CONTEXT_WINDOW` | probe (error text) |
-| Oversized output cap | HTTP 400, `error.type: invalid_request_error`, `error.code: invalid_value`, message `max_tokens is too large: … This model supports at most 128000 completion tokens` | probe |
+| Maximum completion tokens | 128,000 provider-reported for the probed OpenAI model; the bot enforces the same fixed 128,000 validation ceiling for both providers, independent of `CONTEXT_WINDOW` | OpenAI-measured (error text); Ollama Cloud value UNVERIFIED |
+| Oversized output cap | HTTP 400, `error.type: invalid_request_error`, `error.code: invalid_value`, message `max_tokens is too large: … This model supports at most 128000 completion tokens` | OpenAI-measured (2026-10-28) |
 | Prompt-too-long | code `context_length_exceeded` is the documented family, **not verified here** — probing it means paying to send a 128k-token prompt. Treat as `UNVERIFIED` until someone does | unverified |
-| Idempotency key | no documented header for chat completions. Retries must therefore be limited to requests that provably never reached the server | unverified |
+| Idempotency key | no documented header for chat completions. Retries must therefore be limited to requests that provably never reached the server | UNVERIFIED |
+
+### Default chat model (Ollama Cloud)
+
+The shipped default is `deepseek-v4.1-flash:1017` on `https://ollama.com/v1/`. Only these
+facts are verified for it:
+
+- The Ollama library page (`https://ollama.com/library/deepseek-v4.1-flash`, accessed
+  2026-11-23) lists a 1M-token context window and the capabilities vision, tools, and
+  thinking for `deepseek-v4.1-flash`. The page lists the tags
+  `deepseek-v4.1-flash:cloud` and `deepseek-v4.1-flash:1017-cloud`; the configured tag
+  `deepseek-v4.1-flash:1017` is not shown, so the exact tag is **UNVERIFIED**.
+- The library page does not publish a maximum output-token count. The 128,000 ceiling above
+  is OpenAI-measured and is enforced by this bot for both providers; the default model's
+  own limit is **UNVERIFIED**.
+- The request shape below is code-verified. Whether the configured tag accepts every field
+  in it is **UNVERIFIED** until the probe is run against Ollama Cloud.
 
 ### Consequences for this codebase
 
@@ -59,6 +77,7 @@ The bot uses the current Agent API, not Sonar Chat Completions. The OpenAI SDK's
 | SDK path used | `POST https://api.perplexity.ai/v1/responses` — **verified 200**, same response shape | probe |
 | Unversioned SDK path | `POST https://api.perplexity.ai/responses` returned **404**; the client must include `/v1` | probe |
 | Model sent | `perplexity/sonar` | probe + `GET /v1/models` |
+| Context window | 128K tokens; `PERPLEXITY_CONTEXT_WINDOW` defaults to 128,000 | Sonar model page (`https://docs.perplexity.ai/docs/sonar/models/sonar`); vendor citation, not re-probed (the URL currently redirects to the Agent API migration guide) |
 | Catalogue | `GET /v1/models` lists 54 models and exactly one Sonar model, `perplexity/sonar` | probe |
 | Legacy interface | Sonar Chat Completions still answers 200 with `citations` and `search_results`; it is not the current catalogue or the interface this bot uses | probe |
 | Request fields | `model`, `instructions` (system prompt plus the URL-fetch policy), `input` (history and current user message, no system role), `max_output_tokens`, `tools: [{"type": "web_search"}, {"type": "fetch_url"}]`, `extra_body: {"max_steps": 4}` (the SDK has no `max_steps` kwarg) | probe + `src/providers/perplexity.py` |

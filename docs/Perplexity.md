@@ -10,7 +10,8 @@ bot's default:
 
 - **Real-time information access** from current web sources
 - **Automatic citation extraction** with numbered `[n]` source links
-- **Web search on every call** through the `web_search` tool
+- **Web search and URL fetching on every call** through the `web_search` and
+  `fetch_url` tools
 
 The legacy Sonar names (`sonar`, `sonar-pro`, `sonar-deep-research`,
 `sonar-reasoning-pro`) still answer on Chat Completions, but that interface is
@@ -24,7 +25,7 @@ The bot calls the Agent API through the OpenAI SDK's `responses.create()`:
   `POST /v1/responses` as the OpenAI-compatible alias used by the SDK.
 - **Request fields**: `model`, `instructions` (the system prompt), `input` (the
   prior turns and current user message), `max_output_tokens`, and
-  `tools: [{"type": "web_search"}]`. No `temperature` is sent.
+  `tools: [{"type": "web_search"}, {"type": "fetch_url"}]`. No `temperature` is sent.
 - **Response**: an `output` array. A `search_results` item carries
   `results[]` entries with `id`, `url`, `title`, `snippet`, `date`,
   `last_updated`, and `source`; the 1-based `id` matches the `[1]`, `[2]`
@@ -287,12 +288,14 @@ export PERPLEXITY_MODEL="perplexity/sonar"
 - The bot maintains conversation context across queries
 - A genuine follow-up (anaphora such as "tell me more" or "and the second one?"),
   with a recent assistant turn in the same conversation, reuses that service
-- Conversation summary helps provide relevant context to searches
+- The stored conversation history (the last `MAX_HISTORY_PER_USER` entries after
+  pruning) is sent as prior turns, not a generated summary
 
 ### Metadata Tracking
 - All Perplexity responses include service metadata
 - Citation counts are tracked for analytics
-- API usage is logged for monitoring and optimization
+- The response's `usage` block, including `usage.cost`, is available to the provider
+  adapter, but the bot does not log it; use the provider's dashboard for spend
 
 ### Error Handling
 - In hybrid mode, falls back to OpenAI when Perplexity returns no response

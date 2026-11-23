@@ -80,8 +80,8 @@ the gate.
 
 `ROUTER_MODE=heuristic` (default) is the deterministic gate. `ROUTER_MODE=clef` selects the optional
 Clef decision-model router described below; `ROUTER_MODE=model` is retired and raises. All
-`ROUTER_WEB_THRESHOLD_*` keys are gone; any lingering reference in an old config file is ignored
-harmlessly (warned once at startup).
+`ROUTER_WEB_THRESHOLD_*` keys are gone; any lingering reference in an old config file is
+ignored without a warning because the loader no longer reads those keys.
 
 ## The Clef decision-model router (optional)
 

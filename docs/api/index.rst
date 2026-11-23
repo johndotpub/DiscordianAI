@@ -37,6 +37,8 @@ DiscordianAI API Reference
    openai_processing
    perplexity_processing
    smart_orchestrator
+   providers
+   routing
 
 .. toctree::
    :maxdepth: 2

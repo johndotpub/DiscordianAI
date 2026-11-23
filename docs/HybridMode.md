@@ -79,38 +79,40 @@ User: "Tell me more"
 
 ```mermaid
 flowchart TD
-    A[Discord Message Received] --> B{Bot Mentioned?}
-    B -->|No| Z[Ignore Message]
-    B -->|Yes| C[Rate Limit + Guardrails]
-    C -->|Failed| D[Send Rate Limit Message]
-    C -->|Passed| E[Build AIRequest]
+    A["Discord Message Received"] --> B{"Bot addressed<br/>and channel/guild allowed?"}
+    B -->|"No"| Z["Ignore Message"]
+    B -->|"Yes"| C["Rate Limit + Guardrails"]
+    C -->|"Failed"| D["Send Rate Limit Message"]
+    C -->|"Passed"| E["Build AIRequest"]
 
-    E --> F{Mode Selector}
-    F -->|OpenAI-Compatible Only| G[OpenAI-Compatible Processing\n(Ollama Cloud default)]
-    F -->|Perplexity Only| H[Perplexity Processing\n(Agent API)]
-    F -->|Hybrid| R[Build RouterInput\n+ one route decision]
+    E --> IMG{"Image attached?"}
+    IMG -->|"Yes, local override"| G["OpenAI-Compatible Processing<br/>(Ollama Cloud default)"]
+    IMG -->|"No"| F{"Mode Selector"}
+    F -->|"OpenAI-Compatible Only"| G
+    F -->|"Perplexity Only"| H["Perplexity Processing<br/>(Agent API)"]
+    F -->|"Hybrid"| R["Build RouterInput<br/>+ one route decision"]
 
-    R -->|web| H
-    R -->|local| G
+    R -->|"web"| H
+    R -->|"local"| G
 
-    G --> OW[Chat Provider Response]
-    OW --> WI{Indicates web-inability?}
-    WI -->|Yes, Perplexity not tried| H
-    WI -->|Yes, Perplexity already failed| U[Return local answer]
-    WI -->|No| U
-    H --> PR[Agent API Response + Citations]
+    G --> OW["Chat Provider Response"]
+    OW --> WI{"Indicates web-inability?"}
+    WI -->|"Yes, Perplexity not tried"| H
+    WI -->|"Yes, Perplexity already failed"| U["Return local answer"]
+    WI -->|"No"| U
+    H --> PR["Agent API Response + Citations"]
 
-    U --> W[send_formatted_message]
-    PR --> V[Citation Embed Formatter]
+    U --> W["send_formatted_message"]
+    PR --> V["Citation Embed Formatter"]
     V --> W
 
-    W --> X{Contains Embeds?}
-    X -->|Yes| Y{Embed > Limits?}
-    X -->|No| Z1{Message > 2000 chars?}
+    W --> X{"Contains Embeds?"}
+    X -->|"Yes"| Y{"Embed > Limits?"}
+    X -->|"No"| Z1{"Message > 2000 chars?"}
 
-    Y --> CC[Split Embed + Citations]
-    Z1 --> DD[Split Plain Message]
-    CC --> BB[✅ Response Complete]
+    Y --> CC["Split Embed + Citations"]
+    Z1 --> DD["Split Plain Message"]
+    CC --> BB["✅ Response Complete"]
     DD --> BB
 ```
 
