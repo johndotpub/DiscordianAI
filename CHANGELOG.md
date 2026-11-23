@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Behaviour changes
 
+- **The launcher survives a restart wait and leaves other instances alone.** The restart
+  loop no longer exits the script on its first second under `set -e`, the PID file is
+  removed even when the old process is gone, and straggler cleanup matches only the
+  config file this invocation manages. `--install-systemd` now starts the unit after
+  enabling it.
 - **`LOG_FILE` is mentioned only when it is actually set.** The deprecated key has a
   built-in default, so every startup used to log an "ignored" notice while directing
   operators to stdout even though logs go to stderr. The notice now appears only when the

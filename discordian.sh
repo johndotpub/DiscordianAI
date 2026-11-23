@@ -25,6 +25,8 @@ set -euo pipefail
 
 # ── Defaults ──────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
+# shellcheck source=scripts/launcher_lib.sh
+source "${SCRIPT_DIR}/scripts/launcher_lib.sh"
 CONFIG_FILE="bot.ini"
 DAEMON_MODE=false
 PROJECT_DIR="${SCRIPT_DIR}"
@@ -135,9 +137,9 @@ EOF
     echo "Generated: ${UNIT_FILE}"
     systemctl --user daemon-reload
     systemctl --user enable "${UNIT_NAME}"
+    systemctl --user start "${UNIT_NAME}"
     echo ""
-    echo "Service installed and enabled. Manage with:"
-    echo "  systemctl --user start ${UNIT_NAME}"
+    echo "Service installed, enabled, and started. Manage with:"
     echo "  systemctl --user status ${UNIT_NAME}"
     echo "  journalctl --user -u ${UNIT_NAME} -f"
     echo ""
@@ -242,28 +244,14 @@ log "✓ All core dependencies available"
 log "Stopping any existing instances..."
 my_pid="$$"
 
-# By PID file
-if [[ -f "${PID_FILE}" ]]; then
-    old_pid="$(cat "${PID_FILE}")"
-    if [[ -n "${old_pid}" ]] && kill -0 "${old_pid}" 2>/dev/null; then
-        log "Stopping previous instance (PID ${old_pid})"
-        kill "${old_pid}" 2>/dev/null || true
-        local_wait=0
-        while kill -0 "${old_pid}" 2>/dev/null && [[ ${local_wait} -lt 10 ]]; do
-            sleep 1; ((local_wait++))
-        done
-        if kill -0 "${old_pid}" 2>/dev/null; then
-            log "Force-killing unresponsive process ${old_pid}"
-            kill -9 "${old_pid}" 2>/dev/null || true
-        fi
-    fi
-    rm -f "${PID_FILE}"
-fi
+# By PID file. The helper removes the file even when the process already died.
+stop_pid_file_instance "${PID_FILE}"
 
-# Stragglers matching the bot pattern (but not ourselves)
-for pid in $(pgrep -f "src.main.*--conf" 2>/dev/null || true); do
+# Stragglers for this config only (but not ourselves). A different config's
+# instance is a different managed service and must keep running.
+for pid in $(straggler_pids "${CONFIG_FILE}"); do
     if [[ "${pid}" != "${my_pid}" ]]; then
-        log "Killing stray process ${pid}"
+        log "Killing stray process ${pid} for ${CONFIG_FILE}"
         kill "${pid}" 2>/dev/null || true
     fi
 done

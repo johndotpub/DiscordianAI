@@ -86,7 +86,7 @@ This command:
 2. Auto-detects paths from the script's location
 3. Builds a `PATH` that includes pyenv and Homebrew (detects `brew --prefix` automatically)
 4. Writes the unit file to `~/.config/systemd/user/`
-5. Runs `daemon-reload` and enables the service
+5. Runs `daemon-reload`, enables the service, and starts it
 6. Prints management commands
 
 The config file name (without `.ini`) becomes the systemd instance name. `--install-systemd bot.ini` creates `discordian-bot@bot.service`, `--install-systemd production.ini` creates `discordian-bot@production.service`.
@@ -163,9 +163,13 @@ The launcher tracks the bot's PID in `.bot.pid` (in the project directory) and u
 
 1. If a `.bot.pid` file exists, it sends `SIGTERM` and waits up to 10 seconds
 2. If the process doesn't stop, it sends `SIGKILL`
-3. It also scans for stray processes matching `src.main --conf`
+3. It removes the PID file, including when the recorded process had already exited
+4. It scans for stray processes started with the same `--conf` file
 
-This ensures clean restarts whether triggered by cron, systemd, or manual invocation.
+The straggler scan is scoped to this invocation's config file. Another launcher
+running a different config is a separate managed instance and is left alone, which
+is what makes the multi-instance pattern safe. This ensures clean restarts whether
+triggered by cron, systemd, or manual invocation.
 
 ## Venv Details
 
