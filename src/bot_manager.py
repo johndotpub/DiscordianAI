@@ -95,9 +95,9 @@ class DiscordBotManager:
                 self.graceful_shutdown(),
                 timeout=self.SHUTDOWN_TIMEOUT,
             )
-        except TimeoutError:
+        except Exception:
             self.logger.exception(
-                "Graceful shutdown timed out after %s seconds; forcing process exit",
+                "Graceful shutdown timed out or failed within %s seconds; forcing process exit",
                 self.SHUTDOWN_TIMEOUT,
             )
             sys.stdout.flush()
@@ -114,6 +114,7 @@ class DiscordBotManager:
         @self.bot.event
         async def on_ready():
             self._capture_loop()
+            self._record_gateway_state(True)
             self.logger.info(
                 "Bot logged in as %s (ID: %s)",
                 self.bot.user.name,
@@ -157,11 +158,17 @@ class DiscordBotManager:
 
         @self.bot.event
         async def on_disconnect():
+            self._record_gateway_state(False)
             self.logger.warning("Bot disconnected from Discord")
 
         @self.bot.event
         async def on_resumed():
+            self._record_gateway_state(True)
             self.logger.info("Bot connection resumed")
+
+    def _record_gateway_state(self, connected: bool) -> None:
+        """Publish the gateway connection state for the health endpoint."""
+        self.bot.discordian_gateway_connected = connected
 
     async def graceful_shutdown(self):
         """Perform graceful shutdown of the bot and cleanup resources."""
@@ -171,24 +178,16 @@ class DiscordBotManager:
             self._rate_limit_maintenance_handle.cancel()
             self._rate_limit_maintenance_handle = None
 
-        # Stop health server first
+        # Stop health probes before the components they observe go away.
         health_server = self.deps.get("health_server")
         if health_server:
             await health_server.stop()
 
-        if "connection_pool_manager" in self.deps:
-            pool_manager = self.deps["connection_pool_manager"]
-            if hasattr(pool_manager, "close_all"):
-                await pool_manager.close_all()
-                self.logger.info("Connection pools closed")
-
-        router = self.deps.get("router")
-        if router is not None and hasattr(router, "aclose"):
-            try:
-                await router.aclose()
-                self.logger.info("Router HTTP client closed")
-            except Exception:
-                self.logger.exception("Router HTTP client close failed")
+        # Close Discord first so in-flight requests are not retried against
+        # provider clients that are already closed.
+        if not self.bot.is_closed():
+            await self.bot.close()
+            self.logger.info("Discord connection closed")
 
         if "_health_task" in self.deps:
             health_task = self.deps["_health_task"]
@@ -204,9 +203,19 @@ class DiscordBotManager:
             else:
                 self.logger.info("Health monitoring task completed")
 
-        if not self.bot.is_closed():
-            await self.bot.close()
-            self.logger.info("Discord connection closed")
+        if "connection_pool_manager" in self.deps:
+            pool_manager = self.deps["connection_pool_manager"]
+            if hasattr(pool_manager, "close_all"):
+                await pool_manager.close_all()
+                self.logger.info("Connection pools closed")
+
+        router = self.deps.get("router")
+        if router is not None and hasattr(router, "aclose"):
+            try:
+                await router.aclose()
+                self.logger.info("Router HTTP client closed")
+            except Exception:
+                self.logger.exception("Router HTTP client close failed")
 
     def setup_signal_handlers(self):
         """Set up signal handlers for graceful shutdown."""

@@ -254,3 +254,59 @@ def test_run_disables_discord_default_logging(base_deps):
     manager.run()
 
     assert base_deps["bot"].run_calls == [("token", {"log_handler": None})]
+
+
+@pytest.mark.asyncio
+async def test_graceful_shutdown_closes_discord_before_provider_pools(base_deps):
+    """Discord stays available while provider pools drain."""
+    order = []
+
+    class OrderedBot(DummyBot):
+        async def close(self):
+            order.append("discord")
+            await super().close()
+
+    base_deps["bot"] = OrderedBot()
+    pool_manager = SimpleNamespace(close_all=AsyncMock(side_effect=lambda: order.append("pools")))
+    base_deps["connection_pool_manager"] = pool_manager
+
+    manager = DiscordBotManager(base_deps)
+    await manager.graceful_shutdown()
+
+    assert order == ["discord", "pools"]
+
+
+@pytest.mark.asyncio
+async def test_shutdown_guard_logs_unexpected_error_and_exits_zero(monkeypatch, base_deps):
+    """Any shutdown exception is contained and the process exits cleanly."""
+    manager = DiscordBotManager(base_deps)
+
+    async def failing_shutdown():
+        msg = "shutdown backend failed"
+        raise RuntimeError(msg)
+
+    manager.graceful_shutdown = failing_shutdown
+    exits = []
+    monkeypatch.setattr("src.bot_manager.os._exit", exits.append)
+
+    caught = None
+    try:
+        await manager._shutdown_with_timeout()
+    except Exception as exc:  # noqa: BLE001 - the guard must contain everything
+        caught = exc
+
+    assert caught is None, f"shutdown guard let {caught!r} escape"
+    assert exits == [0]
+
+
+@pytest.mark.asyncio
+async def test_disconnect_and_resume_publish_the_gateway_state(base_deps):
+    """Health reads a real disconnect instead of discord.py's sticky readiness."""
+    manager = DiscordBotManager(base_deps)
+    manager.register_events()
+
+    await manager.bot.event_handlers["on_disconnect"]()
+    assert getattr(manager.bot, "discordian_gateway_connected", None) is False
+
+    await manager.bot.event_handlers["on_resumed"]()
+    assert getattr(manager.bot, "discordian_gateway_connected", None) is True

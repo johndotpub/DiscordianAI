@@ -371,3 +371,23 @@ def test_client_errors_keep_provider_health_healthy():
     assert body["status"] == "healthy", body
     assert body["providers"]["openai"]["status"] == "healthy", body
     assert body["providers"]["openai"]["consecutive_failures"] == 0, body
+
+
+def test_gateway_disconnect_is_not_ready_even_when_is_ready_stays_true():
+    """A gateway outage must be reported even though discord.py is_ready sticks."""
+    deps = _deps(connected=True)
+    deps["bot"].discordian_gateway_connected = False
+    app = create_health_app(deps)
+
+    with TestClient(app) as client:
+        health = client.get("/health")
+        ready = client.get("/health/ready")
+
+    health_body = health.json()
+    assert health.status_code == 503, health_body
+    assert health_body["status"] == "unhealthy", health_body
+    assert health_body["services"]["discord"] == "disconnected", health_body
+
+    ready_body = ready.json()
+    assert ready.status_code == 503, ready_body
+    assert ready_body["status"] == "not_ready", ready_body

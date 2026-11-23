@@ -58,12 +58,7 @@ async def _readiness_handler(request: Any) -> JSONResponse:
     has_api_client = any(
         app.state.deps.get(client_deps_key(name)) is not None for name in PROVIDER_NAMES
     )
-    ready = (
-        bot is not None
-        and bot.is_ready()
-        and has_api_client
-        and health_data.get("status") == "healthy"
-    )
+    ready = _bot_connected(bot) and has_api_client and health_data.get("status") == "healthy"
 
     if ready:
         return JSONResponse({"status": "ready"})
@@ -183,6 +178,22 @@ def _provider_health(
     return providers
 
 
+def _bot_connected(bot: Any) -> bool:
+    """Return the live gateway state, not just discord.py's sticky ``is_ready``.
+
+    ``Client.is_ready()`` stays true across a gateway disconnect. The bot
+    manager records each disconnect and resume on the client itself, so the
+    health endpoint can report an outage that discord.py has not cleared.
+    """
+    if bot is None:
+        return False
+    ready = bool(bot.is_ready())
+    gateway_state = getattr(bot, "discordian_gateway_connected", None)
+    if isinstance(gateway_state, bool):
+        return gateway_state and ready
+    return ready
+
+
 def _safe_latency_ms(bot: Any) -> float | None:
     """Return a finite, positive Discord latency in milliseconds."""
     latency = _finite_number(getattr(bot, "latency", 0.0))
@@ -218,7 +229,7 @@ async def _collect_health_data(app: Starlette) -> dict[str, Any]:
     services["openai_configured"] = openai_client is not None
     services["perplexity_configured"] = perplexity_client is not None
 
-    if bot and bot.is_ready():
+    if _bot_connected(bot):
         services["discord"] = "connected"
         services["guilds"] = len(bot.guilds)
         services["latency_ms"] = _safe_latency_ms(bot)
