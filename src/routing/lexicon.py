@@ -15,8 +15,6 @@ TermClass = Literal["bearing", "framing"]
 
 _SUPPORTED_VERSION = "1"
 _SUPPORTED_LANGUAGE = "en"
-_MIN_WEIGHT = -10.0
-_MAX_WEIGHT = 10.0
 _FUZZY_MIN_LENGTH = 4
 _FUZZY_CACHE_MAX = 2048
 _EVIDENCE_CLASSES = frozenset({"bearing", "framing"})
@@ -139,11 +137,9 @@ class Lexicon:
     version: str
     language: str
     classes: Mapping[str, TermClass]
-    class_weights: Mapping[str, float]
     terms: Mapping[str, tuple[Term, ...]]
     matchers: Mapping[str, re.Pattern[str]]
     overrides: Mapping[str, tuple[re.Pattern[str], ...]]
-    fuzzy_index: Mapping[str, Mapping[str, tuple[str, ...]]] = field(repr=False, compare=False)
     fuzzy_terms: Mapping[str, tuple[Term, ...]] = field(
         default_factory=dict,
         repr=False,
@@ -214,13 +210,6 @@ class Lexicon:
                 key = (term.class_name, token_match.start(), token_match.end())
                 if key in exact_keys:
                     continue
-                if any(
-                    hit.term == term
-                    and hit.span[0] <= token_match.start()
-                    and hit.span[1] >= token_match.end()
-                    for hit in hits
-                ):
-                    continue
                 hits.append(TermHit(term=term, span=token_match.span(), fuzzy=True))
 
         return tuple(
@@ -275,7 +264,7 @@ class Lexicon:
             msg = "Lexicon key 'classes' must be an object"
             raise LexiconError(msg)
 
-        classes, weights, terms, matchers, fuzzy_index, fuzzy_terms = _build_classes(classes_raw)
+        classes, terms, matchers, fuzzy_terms = _build_classes(classes_raw)
         overrides = _compile_overrides(data.get("overrides", {}))
         term_lookups = MappingProxyType(
             {
@@ -299,11 +288,9 @@ class Lexicon:
             version=version,
             language=language,
             classes=classes,
-            class_weights=weights,
             terms=terms,
             matchers=matchers,
             overrides=overrides,
-            fuzzy_index=fuzzy_index,
             fuzzy_terms=fuzzy_terms,
             term_lookups=term_lookups,
             exact_words=exact_words,
@@ -353,17 +340,13 @@ def _build_classes(
     classes_raw: Mapping[object, object],
 ) -> tuple[
     Mapping[str, TermClass],
-    Mapping[str, float],
     Mapping[str, tuple[Term, ...]],
     Mapping[str, re.Pattern[str]],
-    Mapping[str, Mapping[str, tuple[str, ...]]],
     Mapping[str, tuple[Term, ...]],
 ]:
     classes: dict[str, TermClass] = {}
-    weights: dict[str, float] = {}
     terms_by_class: dict[str, tuple[Term, ...]] = {}
     matchers: dict[str, re.Pattern[str]] = {}
-    fuzzy_indexes: dict[str, Mapping[str, tuple[str, ...]]] = {}
     seen_terms: dict[str, str] = {}
 
     for name in sorted(classes_raw, key=str):
@@ -378,34 +361,18 @@ def _build_classes(
             raise LexiconError(msg)
         klass: TermClass = "bearing" if klass_raw == "bearing" else "framing"
 
-        weight = _class_weight(name, spec.get("weight"))
         class_terms = _class_terms(name, klass, spec.get("terms"), seen_terms)
 
         classes[name] = klass
-        weights[name] = weight
         terms_by_class[name] = class_terms
         matchers[name] = _compile_class_matcher(class_terms)
-        fuzzy_indexes[name] = _build_fuzzy_index(class_terms)
 
     return (
         MappingProxyType(dict(sorted(classes.items()))),
-        MappingProxyType(dict(sorted(weights.items()))),
         MappingProxyType(dict(sorted(terms_by_class.items()))),
         MappingProxyType(dict(sorted(matchers.items()))),
-        MappingProxyType(dict(sorted(fuzzy_indexes.items()))),
-        _combine_fuzzy_indexes(fuzzy_indexes, terms_by_class),
+        _build_fuzzy_terms(terms_by_class),
     )
-
-
-def _class_weight(name: str, raw: object) -> float:
-    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
-        msg = f"Class {name!r} weight {raw!r} must be a number"
-        raise LexiconError(msg)
-    weight = float(raw)
-    if not _MIN_WEIGHT <= weight <= _MAX_WEIGHT:
-        msg = f"Class {name!r} weight {weight} is outside [-10, 10]"
-        raise LexiconError(msg)
-    return weight
 
 
 def _class_terms(
@@ -452,15 +419,17 @@ def _term_pattern(text: str) -> str:
     return r"\s+".join(re.escape(word) for word in text.split(" "))
 
 
-def _combine_fuzzy_indexes(
-    indexes: Mapping[str, Mapping[str, tuple[str, ...]]],
+def _build_fuzzy_terms(
     terms_by_class: Mapping[str, tuple[Term, ...]],
 ) -> Mapping[str, tuple[Term, ...]]:
     lookup = {term.text: term for class_terms in terms_by_class.values() for term in class_terms}
     combined: dict[str, set[str]] = {}
-    for index in indexes.values():
-        for variant, texts in index.items():
-            combined.setdefault(variant, set()).update(texts)
+    for class_terms in terms_by_class.values():
+        for term in class_terms:
+            if " " in term.text:
+                continue
+            for variant in {term.text, *_deletions(term.text)}:
+                combined.setdefault(variant, set()).add(term.text)
     return MappingProxyType(
         {
             variant: tuple(
@@ -471,21 +440,6 @@ def _combine_fuzzy_indexes(
             )
             for variant, texts in sorted(combined.items())
         }
-    )
-
-
-def _build_fuzzy_index(
-    class_terms: Sequence[Term],
-) -> Mapping[str, tuple[str, ...]]:
-    index: dict[str, set[str]] = {}
-    for term in class_terms:
-        if " " in term.text:
-            continue
-        variants = {term.text, *_deletions(term.text)}
-        for variant in variants:
-            index.setdefault(variant, set()).add(term.text)
-    return MappingProxyType(
-        {variant: tuple(sorted(terms)) for variant, terms in sorted(index.items())}
     )
 
 

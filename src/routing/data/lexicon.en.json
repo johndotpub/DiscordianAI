@@ -4,7 +4,6 @@
   "classes": {
     "state_adjective": {
       "klass": "bearing",
-      "weight": 2.4,
       "terms": [
         "down",
         "up",
@@ -20,7 +19,6 @@
     },
     "change_verb": {
       "klass": "bearing",
-      "weight": 2.2,
       "terms": [
         "released",
         "shipped",
@@ -34,7 +32,6 @@
     },
     "outcome_verb": {
       "klass": "bearing",
-      "weight": 2.2,
       "terms": [
         "won",
         "lost",
@@ -54,7 +51,6 @@
     },
     "volatile_topic": {
       "klass": "bearing",
-      "weight": 1.8,
       "terms": [
         "weather",
         "forecast",
@@ -81,7 +77,6 @@
     },
     "release_state": {
       "klass": "bearing",
-      "weight": 2.2,
       "terms": [
         "out yet",
         "is it out",
@@ -109,7 +104,6 @@
     },
     "commerce": {
       "klass": "bearing",
-      "weight": 2.0,
       "terms": [
         "how much",
         "pricing",
@@ -138,7 +132,6 @@
     },
     "incumbency": {
       "klass": "bearing",
-      "weight": 1.6,
       "terms": [
         "president",
         "prime minister",
@@ -160,7 +153,6 @@
     },
     "version_currency": {
       "klass": "bearing",
-      "weight": 1.8,
       "terms": [
         "version",
         "lts",
@@ -176,7 +168,6 @@
     },
     "encyclopedic_relation": {
       "klass": "framing",
-      "weight": 0.4,
       "terms": [
         "capital",
         "population",
@@ -188,7 +179,6 @@
     },
     "social_only": {
       "klass": "framing",
-      "weight": -4.0,
       "terms": [
         "thanks",
         "thank you",
@@ -205,12 +195,10 @@
     },
     "greeting": {
       "klass": "framing",
-      "weight": 0.0,
       "terms": ["hi", "hello", "hey", "morning", "evening"]
     },
     "local_context": {
       "klass": "framing",
-      "weight": -2.0,
       "terms": [
         "my server",
         "my repo",

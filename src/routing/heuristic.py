@@ -31,7 +31,6 @@ if TYPE_CHECKING:
     )
 
 _FOLLOW_UP_MAX_TOKENS = 6
-_INHERIT_WEIGHT = 2.0
 _TITLE_CASE_PATTERN = re.compile(r"\b[A-Z][a-z]+")
 _ANAPHORS = frozenset(
     {
@@ -158,14 +157,12 @@ def _inheritance_cue(
         return None
 
     klass: EvidenceClass = "override" if last_route == "web" else "local"
-    weight = _INHERIT_WEIGHT if last_route == "web" else -_INHERIT_WEIGHT
     return Cue(
         signal=f"inherit.{last_route}",
         klass=klass,
         span=None,
         detail=last_route,
         source="inherited",
-        weight=weight,
     )
 
 

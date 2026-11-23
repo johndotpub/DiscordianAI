@@ -13,27 +13,6 @@ from .contracts import EvidenceClass, Source
 from .lexicon import Lexicon, TermHit
 from .text import TOKEN_PATTERN
 
-STRUCTURAL_WEIGHTS: dict[str, float] = {
-    "pred.event": 2.2,
-    "pred.error_code": 2.0,
-    "shape.version": 2.0,
-    "shape.money": 1.8,
-    "time.year": 2.0,
-    "time.deixis": 1.4,
-    "time.deixis.framing": 1.0,
-    "frame.question": 1.0,
-    "frame.imperative": 0.8,
-    "frame.opinion": 0.4,
-    "frame.creative": 0.4,
-    "frame.procedural": 0.5,
-    "cue.lookup": 0.6,
-    "ref.entity": 0.8,
-    "neg.narrative": -2.0,
-    "neg.supplied_artifact": -4.0,
-    "code.shape": -3.0,
-}
-"""Base weight for every structural signal emitted by ``features``."""
-
 SOURCE_EXTENSIONS = frozenset(
     {
         "astro",
@@ -605,14 +584,13 @@ class TextViews:
 
 @dataclass(frozen=True, slots=True)
 class Cue:
-    """A routing cue carrying its family base weight before saturation."""
+    """A routing cue identified by its signal, class, and source."""
 
     signal: str
     klass: EvidenceClass
     span: tuple[int, int] | None
     detail: str
     source: Source = "structural"
-    weight: float = 0.0
 
 
 def views(text: str) -> TextViews:
@@ -759,7 +737,6 @@ def extract_cues(
         klass: EvidenceClass,
         span: tuple[int, int],
         detail: str,
-        weight: float | None = None,
     ) -> None:
         cues.append(
             Cue(
@@ -767,8 +744,6 @@ def extract_cues(
                 klass=klass,
                 span=text_views.surface_span(span[0], span[1]),
                 detail=detail,
-                source="lexicon" if weight is not None else "structural",
-                weight=STRUCTURAL_WEIGHTS.get(signal, 0.0) if weight is None else weight,
             )
         )
 
@@ -833,16 +808,7 @@ def extract_cues(
     question_present = any(cue.signal == "frame.question" for cue in cues)
     if not has_other_bearing and not question_present:
         cues = [
-            (
-                replace(
-                    cue,
-                    klass="framing",
-                    weight=STRUCTURAL_WEIGHTS["time.deixis.framing"],
-                )
-                if cue.signal == "time.deixis"
-                else cue
-            )
-            for cue in cues
+            (replace(cue, klass="framing") if cue.signal == "time.deixis" else cue) for cue in cues
         ]
 
     return _sorted_cues(cues)
@@ -886,7 +852,6 @@ def _lexicon_cues(
                 span=views.surface_span(hit.span[0], hit.span[1]),
                 detail=hit.term.text,
                 source="lexicon",
-                weight=lexicon.class_weights[hit.term.class_name],
             )
         )
     cues.extend(
@@ -896,7 +861,6 @@ def _lexicon_cues(
             span=views.surface_span(span[0], span[1]),
             detail="artifact",
             source="structural",
-            weight=STRUCTURAL_WEIGHTS["neg.supplied_artifact"],
         )
         for span in supplied_spans
     )
@@ -923,7 +887,6 @@ def _error_code_cues(
                 span=views.surface_span(start, end),
                 detail=token,
                 source="structural",
-                weight=STRUCTURAL_WEIGHTS["pred.error_code"],
             )
         )
     return cues
@@ -1061,7 +1024,6 @@ def _add_pattern(
             span=text_views.surface_span(match.start(), match.end()),
             detail=match.group(),
             source=source,
-            weight=STRUCTURAL_WEIGHTS[signal],
         )
         for match in pattern.finditer(text_views.folded)
     )

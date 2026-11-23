@@ -39,15 +39,14 @@ def _document() -> dict[str, object]:
     }
 
 
-def test_bundled_lexicon_loads_with_class_weights() -> None:
-    """The bundled lexicon exposes every class and a class-level weight."""
+def test_bundled_lexicon_loads_every_class_and_term() -> None:
+    """The bundled lexicon exposes every class and its terms."""
     lexicon = Lexicon.load()
 
     assert lexicon.version == "1"
     assert lexicon.language == "en"
     assert len(lexicon.classes) == STARTER_CLASS_COUNT
     assert sum(len(terms) for terms in lexicon.terms.values()) == STARTER_TERM_COUNT
-    assert lexicon.class_weights["volatile_topic"] == 1.8
     assert lexicon.classes["social_only"] == "framing"
     assert lexicon.find("weather")
 
@@ -90,8 +89,8 @@ def test_unknown_evidence_class_names_the_bad_class(tmp_path: Path) -> None:
     assert "mystery" in message
 
 
-def test_weight_outside_range_names_the_class(tmp_path: Path) -> None:
-    """A weight outside [-10, 10] raises and names the offending class."""
+def test_weight_field_is_ignored_for_backward_compatibility(tmp_path: Path) -> None:
+    """A legacy weight field loads and does not affect matching."""
     document = _document()
     classes = document["classes"]
     assert isinstance(classes, dict)
@@ -100,12 +99,10 @@ def test_weight_outside_range_names_the_class(tmp_path: Path) -> None:
     topic["weight"] = 10.5
     path = _write(tmp_path, document)
 
-    with pytest.raises(LexiconError) as excinfo:
-        Lexicon.load(path)
+    lexicon = Lexicon.load(path)
 
-    message = str(excinfo.value)
-    assert "volatile_topic" in message
-    assert "weight" in message
+    assert lexicon.classes["volatile_topic"] == "bearing"
+    assert any(hit.term.text == "weather" for hit in lexicon.find("weather"))
 
 
 def test_term_in_two_classes_names_the_term_and_both_classes(tmp_path: Path) -> None:

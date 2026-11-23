@@ -70,12 +70,6 @@ NEW_CLASS_CORE_TERMS = {
         "deprecation",
     },
 }
-NEW_CLASS_WEIGHTS = {
-    "release_state": 2.2,
-    "commerce": 2.0,
-    "incumbency": 1.6,
-    "version_currency": 1.8,
-}
 SEMANTIC_CASES = [
     ("is the new season of severance out yet?", "web", "pred.release"),
     ("did rust 1.85 ship yet?", "web", "pred.release"),
@@ -121,11 +115,10 @@ def _decide(text: str):
 
 
 def test_each_new_bearing_class_is_in_the_lexicon_with_its_core_terms() -> None:
-    """The JSON owns the class, its weight, and its vocabulary."""
+    """The JSON owns the class and its vocabulary."""
     for name, expected_terms in NEW_CLASS_CORE_TERMS.items():
         assert name in LEXICON.classes
         assert LEXICON.classes[name] == "bearing"
-        assert LEXICON.class_weights[name] == pytest.approx(NEW_CLASS_WEIGHTS[name])
         actual_terms = {term.text for term in LEXICON.terms[name]}
         assert expected_terms <= actual_terms
         assert len(actual_terms) <= 25
