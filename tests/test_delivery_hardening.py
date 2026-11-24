@@ -199,11 +199,11 @@ async def test_truncated_head_does_not_render_hostile_citation_markdown() -> Non
 async def test_delivery_allowed_mentions_denies_everyone_and_roles() -> None:
     """Reply delivery explicitly disables everyone and role mentions."""
     channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock()
     author = MagicMock()
     author.bot = False
     original_message = MagicMock(spec=discord.Message)
     original_message.author = author
-    original_message.reply = AsyncMock()
 
     await send_formatted_message(
         channel,
@@ -212,6 +212,6 @@ async def test_delivery_allowed_mentions_denies_everyone_and_roles() -> None:
         original_message=original_message,
     )
 
-    allowed = original_message.reply.call_args.kwargs["allowed_mentions"]
+    allowed = channel.send.call_args.kwargs["allowed_mentions"]
     assert allowed.everyone is False
     assert allowed.roles == []

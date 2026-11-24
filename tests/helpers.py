@@ -10,6 +10,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import discord
+
 
 class FakeTyping:
     """Minimal async typing context manager for Discord doubles."""
@@ -119,6 +121,15 @@ class FakeMessage:
         self.mentions = list(mentions or [])
         self.content = content
         self.replies: list[tuple[str, dict]] = []
+
+    def to_reference(self, *, fail_if_not_exists: bool = True, **_kwargs):
+        """Build the reply reference Discord uses to target this message."""
+        channel_id = getattr(self.channel, "id", None)
+        return discord.MessageReference(
+            message_id=self.id,
+            channel_id=int(channel_id) if channel_id is not None else 0,
+            fail_if_not_exists=fail_if_not_exists,
+        )
 
     async def reply(self, content: str, **kwargs):
         """Record one reply."""

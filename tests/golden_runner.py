@@ -45,6 +45,7 @@ USER_ID = 987654321
 USER_NAME = "test_user"
 USER_MENTION = "<@987654321>"
 CHANNEL_ID = 123456789
+MESSAGE_ID = 111222333
 
 
 @dataclass
@@ -84,9 +85,20 @@ def _make_original_message(recorder: _Recorder) -> MagicMock:
     author.mention = USER_MENTION
 
     original_message = MagicMock(spec=discord.Message)
+    original_message.id = MESSAGE_ID
+    original_message.channel = MagicMock(id=CHANNEL_ID)
     original_message.author = author
     original_message.reply = recorder.reply
     original_message.content = "Hello, bot!"
+
+    def to_reference(*, fail_if_not_exists: bool = True, **_kwargs) -> discord.MessageReference:
+        return discord.MessageReference(
+            message_id=MESSAGE_ID,
+            channel_id=CHANNEL_ID,
+            fail_if_not_exists=fail_if_not_exists,
+        )
+
+    original_message.to_reference = to_reference
     return original_message
 
 
@@ -111,6 +123,12 @@ def _serialize_allowed_mentions(value: discord.AllowedMentions) -> dict[str, Any
 def _serialize_value(value: Any) -> Any:
     if isinstance(value, discord.AllowedMentions):
         return _serialize_allowed_mentions(value)
+    if isinstance(value, discord.MessageReference):
+        return {
+            "message_id": value.message_id,
+            "channel_id": value.channel_id,
+            "fail_if_not_exists": bool(value.fail_if_not_exists),
+        }
     if isinstance(value, discord.Embed):
         return value.to_dict()
     return value

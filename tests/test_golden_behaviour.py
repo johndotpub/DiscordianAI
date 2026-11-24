@@ -31,7 +31,13 @@ def _assert_discord_call_invariants(replay) -> None:
         kwargs = call["kwargs"]
         assert kwargs.get("mention_author", False) is False
 
-        if call["method"] == "reply":
+        if "reference" in kwargs:
+            assert replay.original_message is not None
+            assert kwargs["reference"].fail_if_not_exists is False
+            allowed_mentions = kwargs["allowed_mentions"]
+            assert allowed_mentions.users == [replay.original_message.author]
+            assert allowed_mentions.replied_user is False
+        elif call["method"] == "reply":
             assert replay.original_message is not None
             allowed_mentions = kwargs["allowed_mentions"]
             assert allowed_mentions.users == [replay.original_message.author]

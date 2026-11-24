@@ -143,9 +143,8 @@ async def test_guild_mention_travels_the_real_pipeline(base_url: str, cap_param:
     assert conversation[1]["content"] == RESPONSE
 
     assert len(RESPONSE) > MESSAGE_LIMIT
-    assert len(message.replies) >= 2
-    assert channel.sent_messages == []
-    for content, kwargs in message.replies:
+    assert len(channel.sent_messages) >= 2
+    for content, kwargs in channel.sent_messages:
         assert len(content) <= MESSAGE_LIMIT
         assert kwargs["mention_author"] is False
         allowed_mentions = kwargs["allowed_mentions"]
@@ -153,8 +152,8 @@ async def test_guild_mention_travels_the_real_pipeline(base_url: str, cap_param:
         assert allowed_mentions.users == [message.author]
         assert allowed_mentions.replied_user is False
 
-    assert message.replies[0][0].startswith(f"{message.author.mention} ")
-    delivered_text = "".join(content for content, _kwargs in message.replies)
+    assert channel.sent_messages[0][0].startswith(f"{message.author.mention} ")
+    delivered_text = "".join(content for content, _kwargs in channel.sent_messages)
     assert delivered_text == f"{message.author.mention} {RESPONSE}"
 
 
@@ -193,8 +192,8 @@ async def test_length_finish_reason_delivers_partial_answer_with_one_notice():
 
     await message_router.handle_incoming_message(message, deps, bot)
 
-    assert len(message.replies) == 1
-    content = message.replies[0][0]
+    assert len(channel.sent_messages) == 1
+    content = channel.sent_messages[0][0]
     assert content.startswith(f"{author.mention} {partial}")
     assert content.count("cut off at the length limit") == 1
     assert not content.endswith(partial)
@@ -240,8 +239,8 @@ async def test_model_output_mentions_are_neutralised_in_delivery():
 
     await message_router.handle_incoming_message(message, deps, bot)
 
-    assert len(message.replies) == 1
-    content, kwargs = message.replies[0]
+    assert len(channel.sent_messages) == 1
+    content, kwargs = channel.sent_messages[0]
     for raw in ("@everyone", "@here", "<@123>", "<@&456>", "<#789>"):
         assert raw not in content
     assert "@\u200beveryone" in content

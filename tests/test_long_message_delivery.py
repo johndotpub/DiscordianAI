@@ -2,7 +2,7 @@
 
 import re
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import discord
 import pytest
@@ -40,12 +40,20 @@ class RecordingChannel:
 def _original_message() -> SimpleNamespace:
     author = SimpleNamespace(id=42, mention="<@42>", bot=False)
     original = SimpleNamespace(author=author)
-    original.reply = AsyncMock()
+
+    def to_reference(*, fail_if_not_exists: bool = True, **_kwargs) -> SimpleNamespace:
+        return SimpleNamespace(fail_if_not_exists=fail_if_not_exists)
+
+    original.to_reference = to_reference
     return original
 
 
-def _reply_texts(original: SimpleNamespace) -> list[str]:
-    return [call.args[0] for call in original.reply.call_args_list]
+def _reply_calls(channel: RecordingChannel) -> list[tuple[str, dict]]:
+    return [call for call in channel.calls if "reference" in call[1]]
+
+
+def _reply_texts(channel: RecordingChannel) -> list[str]:
+    return [content for content, _kwargs in _reply_calls(channel)]
 
 
 def _unlink_embed_citations(text: str) -> str:
@@ -54,9 +62,9 @@ def _unlink_embed_citations(text: str) -> str:
 
 def _rendered_embed_texts(calls) -> list[str]:
     rendered: list[str] = []
-    for call in calls:
-        rendered.append(call.args[0])
-        embed = call.kwargs.get("embed")
+    for content, kwargs in calls:
+        rendered.append(content)
+        embed = kwargs.get("embed")
         if embed is not None:
             rendered.append(_unlink_embed_citations(embed.description))
     return rendered
@@ -76,7 +84,7 @@ async def test_21111_char_body_with_mention_prefix_is_delivered_in_full():
         mention_prefix=MENTION_PREFIX,
     )
 
-    chunks = _reply_texts(original)
+    chunks = _reply_texts(channel)
     assert len(chunks) == 12
     assert "".join(chunks) == f"{MENTION_PREFIX}{body}"
     assert all(len(chunk) <= 2000 for chunk in chunks)
@@ -118,8 +126,8 @@ async def test_long_cited_answer_with_embed_arrives_complete():
         mention_prefix=MENTION_PREFIX,
     )
 
-    calls = original.reply.call_args_list
-    assert calls[0].kwargs["embed"] is embed
+    calls = _reply_calls(channel)
+    assert calls[0][1]["embed"] is embed
     rendered = _rendered_embed_texts(calls)
     assert "".join(rendered) == f"{MENTION_PREFIX}{body}"
     assert not any("truncated" in text.lower() for text in rendered)
@@ -136,11 +144,11 @@ def _cited_body(sentence_count: int, filler_words: int) -> tuple[str, dict[str, 
     return body, citations
 
 
-def _all_delivered_texts(original: SimpleNamespace) -> list[str]:
+def _all_delivered_texts(channel: RecordingChannel) -> list[str]:
     texts: list[str] = []
-    for call in original.reply.call_args_list:
-        texts.append(call.args[0])
-        embed = call.kwargs.get("embed")
+    for content, kwargs in _reply_calls(channel):
+        texts.append(content)
+        embed = kwargs.get("embed")
         if embed is not None and embed.description:
             texts.append(_unlink_embed_citations(embed.description))
     return texts
@@ -164,10 +172,10 @@ async def test_cited_body_that_overflows_rendered_embed_is_delivered_once():
         original_message=original,
     )
 
-    texts = _all_delivered_texts(original)
+    texts = _all_delivered_texts(channel)
     delivered = "".join(texts)
     assert delivered == body
-    assert len(original.reply.call_args_list) == 2
+    assert len(_reply_calls(channel)) == 2
     for index in range(39):
         assert delivered.count(f"Sentence {index:02d}") == 1
     assert "Sentence 38" in delivered
@@ -189,9 +197,9 @@ async def test_uncited_body_that_fits_the_embed_is_delivered_as_one_embed():
         original_message=original,
     )
 
-    original.reply.assert_called_once()
-    assert original.reply.call_args.args[0] == ""
-    assert original.reply.call_args.kwargs["embed"] is embed
+    assert len(_reply_calls(channel)) == 1
+    assert _reply_calls(channel)[0][0] == ""
+    assert _reply_calls(channel)[0][1]["embed"] is embed
     assert embed.description == body
 
 
@@ -217,7 +225,7 @@ async def test_delivery_count_does_not_grow_with_the_number_of_citations():
             citations,
             original_message=original,
         )
-        counts.append(len(original.reply.call_args_list))
+        counts.append(len(_reply_calls(channel)))
 
     assert counts == [2, 2]
 
@@ -275,7 +283,7 @@ async def test_long_fence_respects_the_first_chunk_mention_limit():
         mention_prefix=MENTION_PREFIX,
     )
 
-    chunks = _reply_texts(original)
+    chunks = _reply_texts(channel)
     delivered = "".join(chunks)
 
     assert chunks[0].startswith(MENTION_PREFIX)

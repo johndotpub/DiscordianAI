@@ -28,6 +28,20 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 pytestmark = pytest.mark.usefixtures("fake_discord_types")
 
 
+def _delivered(channel: FakeChannel, message: FakeMessage) -> list[tuple[str, dict]]:
+    """Return the sends that target ``message`` through its reply reference."""
+    return [
+        call
+        for call in channel.sent_messages
+        if getattr(call[1].get("reference"), "message_id", None) == message.id
+    ]
+
+
+def _notices(channel: FakeChannel) -> list[tuple[str, dict]]:
+    """Return sends that are fixed notices rather than reply-referenced answers."""
+    return [call for call in channel.sent_messages if "reference" not in call[1]]
+
+
 class Harness:
     """Run real routing, processing, orchestration, and delivery for one channel."""
 
@@ -112,14 +126,14 @@ async def test_bot_mention_is_answered_without_mentioning_the_bot(openai_respons
     message = await harness.send(harness.other_bot, "are you there?")
 
     harness.create.assert_awaited_once()
-    content, kwargs = message.replies[0]
+    content, kwargs = _delivered(harness.channel, message)[0]
     assert content == RESPONSE
     assert harness.other_bot.mention not in content
     allowed_mentions = kwargs["allowed_mentions"]
     assert allowed_mentions.users == []
     assert allowed_mentions.replied_user is False
     assert kwargs["mention_author"] is False
-    assert harness.channel.sent_messages == []
+    assert kwargs["reference"].fail_if_not_exists is False
 
 
 @pytest.mark.asyncio
@@ -129,7 +143,7 @@ async def test_human_mention_still_carries_the_reply_prefix(openai_response):
     message = await harness.send(harness.human, "hello")
 
     harness.create.assert_awaited_once()
-    content, kwargs = message.replies[0]
+    content, kwargs = _delivered(harness.channel, message)[0]
     assert content == f"{harness.human.mention} {RESPONSE}"
     allowed_mentions = kwargs["allowed_mentions"]
     assert allowed_mentions.users == [harness.human]
@@ -145,7 +159,7 @@ async def test_third_consecutive_bot_turn_is_dropped_with_one_info_line(openai_r
     caplog.set_level(logging.INFO, logger=harness.logger.name)
     dropped = await harness.send(harness.other_bot, "bot turn three")
 
-    assert dropped.replies == []
+    assert _delivered(harness.channel, dropped) == []
     assert harness.create.await_count == 2
     guard_lines = [
         record for record in caplog.records if "consecutive_bot_streak=" in record.getMessage()
@@ -168,9 +182,9 @@ async def test_human_message_resets_the_bot_streak(openai_response):
     human = await harness.send(harness.human, "a human joins")
     after_human = await harness.send(harness.other_bot, "bot turn after human")
 
-    assert human.replies
-    assert after_human.replies
-    assert after_human.replies[0][0] == RESPONSE
+    assert _delivered(harness.channel, human)
+    assert _delivered(harness.channel, after_human)
+    assert _delivered(harness.channel, after_human)[0][0] == RESPONSE
     assert harness.create.await_count == 4
 
 
@@ -184,9 +198,9 @@ async def test_any_human_message_resets_the_streak_even_without_a_mention(
     human = await harness.send_unmentioned(harness.human, "a human joins")
     after_human = await harness.send(harness.other_bot, "bot turn after human")
 
-    assert human.replies == []
-    assert after_human.replies
-    assert after_human.replies[0][0] == RESPONSE
+    assert _delivered(harness.channel, human) == []
+    assert _delivered(harness.channel, after_human)
+    assert _delivered(harness.channel, after_human)[0][0] == RESPONSE
     assert harness.create.await_count == 3
 
 
@@ -202,7 +216,7 @@ async def test_dropped_bot_turn_writes_no_history_and_calls_no_provider(openai_r
     dropped = await harness.send(harness.other_bot, "bot turn three")
 
     history_after = harness.manager.get_conversation(conversation_key=conversation_key)
-    assert dropped.replies == []
+    assert _delivered(harness.channel, dropped) == []
     assert history_after == history_before
     assert harness.create.await_count == calls_before
 
@@ -240,9 +254,10 @@ async def test_bot_rate_limit_notice_carries_no_mention_permission(openai_respon
 
     limited = await harness.send(harness.other_bot, "second turn")
 
-    assert limited.replies == []
-    assert len(harness.channel.sent_messages) == 1
-    content, kwargs = harness.channel.sent_messages[0]
+    assert _delivered(harness.channel, limited) == []
+    notices = _notices(harness.channel)
+    assert len(notices) == 1
+    content, kwargs = notices[0]
     assert "rate limit" in content.lower()
     assert "<@" not in content
     assert "<@!" not in content
@@ -264,9 +279,10 @@ async def test_bot_error_notice_carries_no_mention_permission(openai_response, m
 
     failed = await harness.send(harness.other_bot, "trigger the error path")
 
-    assert failed.replies == []
-    assert len(harness.channel.sent_messages) == 1
-    content, kwargs = harness.channel.sent_messages[0]
+    assert _delivered(harness.channel, failed) == []
+    notices = _notices(harness.channel)
+    assert len(notices) == 1
+    content, kwargs = notices[0]
     assert "error" in content.lower()
     assert "<@" not in content
     assert "<@!" not in content
@@ -286,9 +302,10 @@ async def test_human_rate_limit_notice_keeps_the_mention(openai_response):
 
     limited = await harness.send(harness.human, "second message")
 
-    assert limited.replies == []
-    assert len(harness.channel.sent_messages) == 1
-    content, kwargs = harness.channel.sent_messages[0]
+    assert _delivered(harness.channel, limited) == []
+    notices = _notices(harness.channel)
+    assert len(notices) == 1
+    content, kwargs = notices[0]
     assert content.startswith(f"{harness.human.mention} ")
     allowed_mentions = kwargs["allowed_mentions"]
     assert allowed_mentions.users == [harness.human]
@@ -308,9 +325,10 @@ async def test_human_error_notice_keeps_the_mention(openai_response, monkeypatch
 
     failed = await harness.send(harness.human, "trigger the error path")
 
-    assert failed.replies == []
-    assert len(harness.channel.sent_messages) == 1
-    content, kwargs = harness.channel.sent_messages[0]
+    assert _delivered(harness.channel, failed) == []
+    notices = _notices(harness.channel)
+    assert len(notices) == 1
+    content, kwargs = notices[0]
     assert content.startswith(f"{harness.human.mention} ")
     allowed_mentions = kwargs["allowed_mentions"]
     assert allowed_mentions.users == [harness.human]
