@@ -59,7 +59,8 @@ PERPLEXITY_MODEL=perplexity/sonar
 # PERPLEXITY_OUTPUT_TOKENS caps Perplexity completions (max_output_tokens),
 # which are output only. Omit it to use the same value as OUTPUT_TOKENS.
 # PERPLEXITY_INPUT_TOKENS and PERPLEXITY_CONTEXT_WINDOW apply only to the
-# Sonar web path, whose model has a 128K window. The chat path keeps
+# Sonar web path. The 128K window comes from the former Sonar model page; the
+# Agent API models page publishes no context figure. The chat path keeps
 # INPUT_TOKENS and CONTEXT_WINDOW. If you lower INPUT_TOKENS or
 # CONTEXT_WINDOW below the Perplexity value, the smaller shared limit also
 # constrains the Perplexity prompt.

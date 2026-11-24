@@ -161,7 +161,7 @@ WARNING OpenAI returned no response; attempting Perplexity fallback
 ### Smart Usage
 1. **Use the default model** for simple queries to reduce costs
 2. **Set appropriate OUTPUT_TOKENS** limit based on your needs
-3. **Monitor token usage** in the provider's dashboard to track spending; the bot does not log a per-request usage line
+3. **Monitor token usage** in the provider's own console if needed; the bot does not log usage
 4. **Account for reasoning tokens** in the output cap; they are billed as output
 
 ### Rate Limiting
@@ -201,4 +201,4 @@ MAX_HISTORY_PER_USER=30  # Reduce to save tokens on context
 ### Getting Help
 - Check the configured provider's API documentation
 - Monitor the bot logs for specific error messages
-- Review the provider's usage dashboard for billing information
+- Review the provider's usage records for billing information

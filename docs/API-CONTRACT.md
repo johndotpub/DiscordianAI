@@ -77,7 +77,7 @@ The bot uses the current Agent API, not Sonar Chat Completions. The OpenAI SDK's
 | SDK path used | `POST https://api.perplexity.ai/v1/responses` — **verified 200**, same response shape | probe |
 | Unversioned SDK path | `POST https://api.perplexity.ai/responses` returned **404**; the client must include `/v1` | probe |
 | Model sent | `perplexity/sonar` | probe + `GET /v1/models` |
-| Context window | 128K tokens; `PERPLEXITY_CONTEXT_WINDOW` defaults to 128,000 | Sonar model page (`https://docs.perplexity.ai/docs/sonar/models/sonar`); vendor citation, not re-probed (the URL currently redirects to the Agent API migration guide) |
+| Context window | 128K tokens; `PERPLEXITY_CONTEXT_WINDOW` defaults to 128,000. The figure comes from the former Sonar model page (`https://docs.perplexity.ai/docs/sonar/models/sonar`, now redirecting to the Agent API migration guide); the Agent API models page publishes no context figure, so 128K is **UNVERIFIED** there | vendor citation, not re-probed |
 | Catalogue | `GET /v1/models` lists 54 models and exactly one Sonar model, `perplexity/sonar` | probe |
 | Legacy interface | Sonar Chat Completions still answers 200 with `citations` and `search_results`; it is not the current catalogue or the interface this bot uses | probe |
 | Request fields | `model`, `instructions` (system prompt plus the URL-fetch policy), `input` (history and current user message, no system role), `max_output_tokens`, `tools: [{"type": "web_search"}, {"type": "fetch_url"}]`, `extra_body: {"max_steps": 4}` (the SDK has no `max_steps` kwarg) | probe + `src/providers/perplexity.py` |

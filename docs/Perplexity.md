@@ -10,8 +10,8 @@ bot's default:
 
 - **Real-time information access** from current web sources
 - **Automatic citation extraction** with numbered `[n]` source links
-- **Web search and URL fetching on every call** through the `web_search` and
-  `fetch_url` tools
+- **`web_search` and `fetch_url` offered on every call**; the model chooses
+  when to search, and fetches a URL only when the user supplied one
 
 The legacy Sonar names (`sonar`, `sonar-pro`, `sonar-deep-research`,
 `sonar-reasoning-pro`) still answer on Chat Completions, but that interface is
@@ -80,7 +80,8 @@ PERPLEXITY_API_KEY=your_perplexity_key_here
 ### 🌐 Real-Time Web Search & URL Fetching
 - Access to current information and breaking news
 - Real-time data from various web sources
-- **Native `fetch_url`** for GitHub PRs, articles, and web pages supplied by users
+- **Native `fetch_url`** for GitHub PRs, articles, and web pages supplied by users,
+  when the model chooses to open them
 - **Native `web_search`** when no page is supplied or a page cannot be fetched
 - Up-to-date facts and statistics
 
@@ -107,8 +108,8 @@ Stable facts, creative requests, code help, and social messages stay local even 
 questions or contain proper names.
 
 ### 🔗 URL Processing
-When URLs are detected in messages, the Agent API request already carries both
-`web_search` and `fetch_url`; no local scraping code runs. The model:
+The Agent API request always carries both `web_search` and `fetch_url`; no local
+scraping code runs. When the user supplies a URL, the model:
 1. **Opens each URL** with `fetch_url` (up to 10 per message)
 2. **Answers from the page contents** and cites the sources it used
 3. **Falls back to `web_search`** and labels the answer as search-based when a page cannot be fetched
@@ -231,7 +232,8 @@ One decision is built per message before any provider call:
 
 ### Integration Tips
 - **Hybrid mode recommended**: Combines web search with conversational AI
-- **Monitor usage**: Track API costs and optimize token limits
+- **Monitor usage**: The bot does not log usage; tune token limits from your own
+  measurements
 
 ## Troubleshooting
 
@@ -263,7 +265,7 @@ One decision is built per message before any provider call:
 ### Performance Optimization
 
 - **Adjust OUTPUT_TOKENS**: Higher values allow for more complete responses with citations
-- **Monitor API costs**: Track usage patterns and optimize for your use case
+- **Monitor API costs**: The bot does not log usage; tune limits for your use case
 
 ## Environment Variables
 
@@ -290,12 +292,13 @@ export PERPLEXITY_MODEL="perplexity/sonar"
   with a recent assistant turn in the same conversation, reuses that service
 - The stored conversation history (the last `MAX_HISTORY_PER_USER` entries after
   pruning) is sent as prior turns, not a generated summary
+- That history is trimmed further to fit `PERPLEXITY_INPUT_TOKENS` and
+  `PERPLEXITY_CONTEXT_WINDOW`; the oldest question/answer pairs are dropped first
 
 ### Metadata Tracking
 - All Perplexity responses include service metadata
-- Citation counts are tracked for analytics
 - The response's `usage` block, including `usage.cost`, is available to the provider
-  adapter, but the bot does not log it; use the provider's dashboard for spend
+  adapter, but the bot does not log it
 
 ### Error Handling
 - In hybrid mode, falls back to OpenAI when Perplexity returns no response
@@ -308,5 +311,7 @@ export PERPLEXITY_MODEL="perplexity/sonar"
   probe after 60 seconds. Deterministic client errors (HTTP 4xx other than 408
   and 429) do not count: the provider answered, so the failure count resets.
 - Perplexity prompts use `PERPLEXITY_INPUT_TOKENS` and
-  `PERPLEXITY_CONTEXT_WINDOW` because Sonar documents a 128K-token context
-  window; the chat path keeps the larger `INPUT_TOKENS` and `CONTEXT_WINDOW`.
+  `PERPLEXITY_CONTEXT_WINDOW` because the former Sonar model page documented a
+  128K-token context window. The Agent API models page publishes no context
+  figure, so 128K is unverified there. The chat path keeps the larger
+  `INPUT_TOKENS` and `CONTEXT_WINDOW`.

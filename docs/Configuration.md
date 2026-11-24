@@ -41,7 +41,7 @@ OpenAI remains supported by setting all three of `OPENAI_API_URL`, `GPT_MODEL`, 
 - **`PERPLEXITY_OUTPUT_TOKENS`**: Maximum Perplexity output tokens per response, sent as `max_output_tokens` to the Agent API *(default: the value of `OUTPUT_TOKENS`)*
 - **`PERPLEXITY_INPUT_TOKENS`**: Prompt budget for the Perplexity Sonar path only *(default: 111000)*. It leaves room for `PERPLEXITY_OUTPUT_TOKENS` and the fixed `fetch_url` instruction suffix inside the Sonar context window.
 - **`CONTEXT_WINDOW`**: Total chat-provider context window size *(default: 1000000)*. The default chat model's window is 1,000,000 tokens, so this value may be set that high; it feeds the prompt budget and truncation, not billing.
-- **`PERPLEXITY_CONTEXT_WINDOW`**: Total Perplexity Sonar context window *(default: 128000)*. Sonar documents a 128K-token window, so the Perplexity path uses this value instead of the larger chat-provider window.
+- **`PERPLEXITY_CONTEXT_WINDOW`**: Total Perplexity Sonar context window *(default: 128000)*. The figure comes from the former Sonar model page, which documented a 128K-token window; the Agent API models page publishes no context figure, so 128K is unverified there. The Perplexity path uses this value instead of the larger chat-provider window.
 - **`SYSTEM_MESSAGE`**: System prompt for AI personality *(default: "You are a helpful assistant.")*
 
 `OUTPUT_TOKENS` and `PERPLEXITY_OUTPUT_TOKENS` mean different things. The chat
@@ -65,8 +65,9 @@ conflicting settings is logged. On the Perplexity path the warning names
 
 The chat and Perplexity paths have different windows. Chat requests use `INPUT_TOKENS` and
 `CONTEXT_WINDOW`; Perplexity requests use `PERPLEXITY_INPUT_TOKENS` and
-`PERPLEXITY_CONTEXT_WINDOW` because the Sonar model documents a 128K-token context length,
-not the chat model's 1,000,000. When the operator lowers the shared `INPUT_TOKENS` or
+`PERPLEXITY_CONTEXT_WINDOW` because the former Sonar model page documented a 128K-token
+context length (the Agent API models page publishes no figure) rather than the chat model's
+1,000,000. When the operator lowers the shared `INPUT_TOKENS` or
 `CONTEXT_WINDOW` below the Perplexity value, the smaller shared limit also applies to
 Perplexity prompts, so an existing budget keeps constraining the web path. The Perplexity
 prompt budget also reserves the fixed `fetch_url` instruction suffix before history is
