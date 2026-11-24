@@ -306,6 +306,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests ✅
 
+- **The launcher stop test waits for the child before asserting.** The test used to
+  check `kill -0` immediately after the stop helper returned, which raced the child's
+  exit and intermittently exited 5. Waiting on the child first makes the test report a
+  real stop failure instead of a scheduling artifact; 50 consecutive runs passed.
 - **A web route calls Perplexity at most once.** When the initial web call fails and the
   chat fallback also returns nothing, the test asserts the request tail returns the
   both-services notice without calling Perplexity a second time. Removing the attempt

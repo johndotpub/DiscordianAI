@@ -62,11 +62,11 @@ echo "$target" > "$pid_file"
 sleep() { :; }
 stop_pid_file_instance "$pid_file"
 [[ ! -e "$pid_file" ]] || exit 4
+wait "$target" 2>/dev/null || true
 if kill -0 "$target" 2>/dev/null; then
     kill -9 "$target" 2>/dev/null || true
     exit 5
 fi
-wait "$target" 2>/dev/null || true
 echo cleaned
 """
 
