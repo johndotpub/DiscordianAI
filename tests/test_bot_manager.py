@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import signal
+import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -257,8 +258,8 @@ def test_run_disables_discord_default_logging(base_deps):
 
 
 @pytest.mark.asyncio
-async def test_graceful_shutdown_closes_discord_before_provider_pools(base_deps):
-    """Discord stays available while provider pools drain."""
+async def test_graceful_shutdown_closes_discord_last(base_deps):
+    """Provider pools and the router close before the gateway does."""
     order = []
 
     class OrderedBot(DummyBot):
@@ -266,14 +267,83 @@ async def test_graceful_shutdown_closes_discord_before_provider_pools(base_deps)
             order.append("discord")
             await super().close()
 
+    async def close_pools():
+        order.append("pools")
+
+    async def close_router():
+        order.append("router")
+
     base_deps["bot"] = OrderedBot()
-    pool_manager = SimpleNamespace(close_all=AsyncMock(side_effect=lambda: order.append("pools")))
-    base_deps["connection_pool_manager"] = pool_manager
+    base_deps["connection_pool_manager"] = SimpleNamespace(close_all=close_pools)
+    base_deps["router"] = SimpleNamespace(aclose=close_router)
 
     manager = DiscordBotManager(base_deps)
     await manager.graceful_shutdown()
 
-    assert order == ["discord", "pools"]
+    assert order == ["pools", "router", "discord"]
+
+
+@pytest.mark.asyncio
+async def test_shutdown_stops_accepting_new_messages(monkeypatch, base_deps):
+    """Once shutdown begins, new gateway events must not start provider work."""
+    router_mock = AsyncMock()
+    monkeypatch.setattr("src.bot_manager.handle_incoming_message", router_mock)
+    manager = DiscordBotManager(base_deps)
+    manager.register_events()
+
+    await manager.graceful_shutdown()
+    await manager.bot.event_handlers["on_message"](SimpleNamespace())
+
+    router_mock.assert_not_awaited()
+
+
+def test_real_client_run_teardown_closes_provider_resources(base_deps):
+    """The real Client.run teardown must not cancel the rest of shutdown."""
+    order = []
+
+    class TeardownClient(discord.Client):
+        def __init__(self):
+            super().__init__(intents=discord.Intents.default())
+            self.started = threading.Event()
+            self.stop_event = None
+
+        async def start(self, token, *, reconnect=True):
+            _ = token, reconnect
+            self.stop_event = asyncio.Event()
+            self.started.set()
+            await self.stop_event.wait()
+
+        async def close(self):
+            order.append("discord")
+            await super().close()
+            if self.stop_event is not None:
+                self.stop_event.set()
+
+    async def close_pools():
+        await asyncio.sleep(0)
+        order.append("pools")
+
+    async def close_router():
+        await asyncio.sleep(0)
+        order.append("router")
+
+    client = TeardownClient()
+    base_deps["bot"] = client
+    base_deps["connection_pool_manager"] = SimpleNamespace(close_all=close_pools)
+    base_deps["router"] = SimpleNamespace(aclose=close_router)
+
+    manager = DiscordBotManager(base_deps)
+    manager.setup_signal_handlers = lambda: None
+    thread = threading.Thread(target=manager.run, daemon=True)
+    thread.start()
+
+    assert client.started.wait(timeout=5.0)
+    assert client.loop is not None
+    client.loop.call_soon_threadsafe(manager._schedule_shutdown)
+    thread.join(timeout=5.0)
+
+    assert not thread.is_alive()
+    assert order == ["pools", "router", "discord"]
 
 
 @pytest.mark.asyncio

@@ -29,6 +29,7 @@ class DiscordBotManager:
         self._shutdown_task: asyncio.Task | None = None
         self._rate_limit_maintenance_handle: asyncio.TimerHandle | None = None
         self._running = False
+        self._accepting_messages = True
         self._bot_loop: asyncio.AbstractEventLoop | None = None
 
     def _rate_limit_window_seconds(self) -> int:
@@ -153,6 +154,8 @@ class DiscordBotManager:
 
         @self.bot.event
         async def on_message(message: discord.Message):
+            if not self._accepting_messages:
+                return
             # Handled by message router
             await handle_incoming_message(message, self.deps, self.bot)
 
@@ -171,8 +174,14 @@ class DiscordBotManager:
         self.bot.discordian_gateway_connected = connected
 
     async def graceful_shutdown(self):
-        """Perform graceful shutdown of the bot and cleanup resources."""
+        """Perform graceful shutdown of the bot and cleanup resources.
+
+        Discord is closed last. Closing it first lets ``Client.run`` finish and
+        cancel this task before the provider pools and the router client close,
+        which leaks their HTTP connections on a normal shutdown.
+        """
         self.logger.info("Initiating graceful shutdown")
+        self._accepting_messages = False
 
         if self._rate_limit_maintenance_handle is not None:
             self._rate_limit_maintenance_handle.cancel()
@@ -182,12 +191,6 @@ class DiscordBotManager:
         health_server = self.deps.get("health_server")
         if health_server:
             await health_server.stop()
-
-        # Close Discord first so in-flight requests are not retried against
-        # provider clients that are already closed.
-        if not self.bot.is_closed():
-            await self.bot.close()
-            self.logger.info("Discord connection closed")
 
         if "_health_task" in self.deps:
             health_task = self.deps["_health_task"]
@@ -216,6 +219,10 @@ class DiscordBotManager:
                 self.logger.info("Router HTTP client closed")
             except Exception:
                 self.logger.exception("Router HTTP client close failed")
+
+        if not self.bot.is_closed():
+            await self.bot.close()
+            self.logger.info("Discord connection closed")
 
     def setup_signal_handlers(self):
         """Set up signal handlers for graceful shutdown."""
