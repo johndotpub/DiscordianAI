@@ -313,9 +313,9 @@ class TestMessageSplittingIntegration:
                 mention_prefix=None,
             )
 
-            # First send uses a head that stays inside the safe limit; the rest follows
-            expected_head = message[:EMBED_SAFE_LIMIT]
-            expected_tail = message[EMBED_SAFE_LIMIT:]
+            # First send uses a head that stays inside the 3840-character safe limit
+            expected_head = message[:3840]
+            expected_tail = message[3840:]
 
             first_call = channel.send.call_args_list[0]
             head_embed = first_call.kwargs.get("embed")

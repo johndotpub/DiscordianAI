@@ -309,6 +309,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests ✅
 
+- **The safe embed limit is an absolute number in the split assertion.** The expected head
+  and tail now use `3840` instead of importing the constant under test, so a change to the
+  production safe limit fails this delivery contract instead of silently moving with it.
 - **The Discord send failure test patches its retry sleep.** The failure case waited a
   real second before retrying; it now patches `src.error_handling.asyncio.sleep` and
   asserts the one backoff, so the suite has no wall-clock wait on this path.
