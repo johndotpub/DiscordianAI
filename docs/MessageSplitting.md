@@ -120,9 +120,10 @@ flowchart TD
 
 ## Link and Code Protection
 
-Sanitisation and splitting use the same `protected_code_regions()` function in
-`src/message_splitter.py`, built on `tree-sitter-markdown`. Protection is deliberately
-smaller than the parser's view:
+Sanitisation and splitting both call the conservative `_filtered_code_regions()` filter in
+`src/message_splitter.py`, built on `tree-sitter-markdown`; the public
+`protected_code_regions()` wraps it. Protection is deliberately smaller than the parser's
+view:
 
 - A fenced block is protected only when its opener and closer are exactly three backticks,
   Discord's sequential pairing of triple-backtick runs pairs those two markers, and no other
@@ -131,9 +132,9 @@ smaller than the parser's view:
   four-or-more-backtick fences, indented code blocks, unclosed fences, and a text with any
   stray triple run protect nothing.
 - An inline code span is protected only when it is closed, its opener and closer are the next
-  sequential backtick pair Discord would use, its opener is not backslash-escaped, and the
-  text uses a single backtick run length. Mixing run lengths is ambiguous, so inline
-  protection is dropped for that text.
+  sequential backtick pair Discord would use, neither its opener nor its closer is
+  backslash-escaped, and the text uses a single backtick run length. Mixing run lengths is
+  ambiguous, so inline protection is dropped for that text.
 - Anything uncertain is ordinary text.
 
 Outside protected regions the sanitiser has two layers. The parser-driven layer rewrites

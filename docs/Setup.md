@@ -107,7 +107,7 @@ Choose **either** the OpenAI-compatible chat provider only **or** Perplexity onl
 pip install -r requirements.txt
 ```
 
-**Note**: This includes `httpx[http2]` for HTTP/2 connection pooling support. If HTTP/2 dependencies fail to install, the bot will gracefully fall back to HTTP/1.1. It also installs `tree-sitter` and `tree-sitter-markdown` for the shared output-sanitisation parser; both provide prebuilt CPython 3.12 wheels for the supported Linux architectures, so no compiler is needed.
+**Note**: This includes `httpx[http2]` for HTTP/2 connection pooling support. If HTTP/2 dependencies fail to install, the bot will gracefully fall back to HTTP/1.1. It also installs `tree-sitter` and `tree-sitter-markdown` for the shared output-sanitisation parser. `tree-sitter` 0.27.0 ships CPython 3.12 wheels for manylinux x86_64 and aarch64 and for musllinux x86_64, but not musllinux aarch64; `tree-sitter-markdown` 0.5.4 ships wheels for all four. The manylinux-based `python:3.12-slim-bookworm` image needs no compiler; a musllinux aarch64 image would need one for `tree-sitter`.
 
 ## Step 5: Running the Bot
 

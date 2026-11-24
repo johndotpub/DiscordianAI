@@ -138,18 +138,22 @@ RetryConfig(
 - **Inbound text is not sanitized.** The message body is sent to the configured provider unchanged; the bot does not strip instructions, links, or markdown before the request.
 - **Outbound text is neutralised.** Messages longer than Discord's 2000-character limit are
   split, and every final chunk is sanitised for mentions and links after splitting. The
-  sanitiser and splitter share one `tree-sitter-markdown` region function. It protects only
-  a closed fence opened and closed by exactly three backticks when Discord would also end
-  that fence at the same place, or a closed inline code span whose opener is not
-  backslash-escaped when the text uses one backtick run length. A stray triple-backtick run
-  between a fence's opener and closer, or any pairing mismatch, makes the whole text ordinary.
-  Tilde fences, four-or-more-backtick fences, indented blocks, unclosed fences, and mixed
-  backtick runs protect nothing. Outside those regions parser-reported links, images, and
-  autolinks become label text or a neutralised URL, then catch-all passes break every `](`,
-  insert a zero-width space after every `://`, and separate `<` from a following scheme.
-  Definition-shaped lines are kept as ordinary text with an invisible separator, never
-  deleted; a trusted citation URL is left clickable. Mentions are neutralised everywhere,
-  including inside code. These controls apply to outbound text only.
+  sanitiser and splitter both call the `tree-sitter-markdown` filter
+  `_filtered_code_regions()`; the public `protected_code_regions()` is its wrapper. It
+  protects only a closed fence opened and closed by exactly three backticks when Discord
+  would also end that fence at the same place, or a closed inline code span whose opener
+  and closer are not backslash-escaped when the text uses one backtick run length. A stray
+  triple-backtick run between a fence's opener and closer, or any pairing mismatch, makes
+  the whole text ordinary. Tilde fences, four-or-more-backtick fences, indented blocks,
+  unclosed fences, and mixed backtick runs protect nothing. Outside those regions
+  parser-reported links, images, and autolinks become label text or a neutralised URL, then
+  catch-all passes break every `](`, insert a zero-width space after every `://`, and
+  separate `<` from a following scheme. Definition-shaped lines are kept as ordinary text
+  with an invisible separator, never deleted; a trusted citation URL is left clickable.
+  Mentions are neutralised everywhere, including inside code. The splitter additionally
+  keeps a split-only Discord pairing for chunk boundaries when the filter protects no
+  fence; those spans never suppress sanitisation. These controls apply to outbound text
+  only.
 - **Discord does not moderate bot messages.** Server AutoMod or channel permissions can restrict what users send, but the bot's own replies are not passed through Discord's moderation.
 - **URLs are opened by provider tools.** User-supplied URLs are passed to the provider's native search and fetch tools. The bot does not fetch page content itself.
 

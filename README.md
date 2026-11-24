@@ -49,8 +49,12 @@ DiscordianAI is a Discord bot that routes each message to an OpenAI-compatible c
 
 Runtime dependencies are `discord.py`, `openai`, `httpx[http2]`, `h2`, `starlette`,
 `uvicorn`, `structlog`, `tree-sitter`, and `tree-sitter-markdown`; `pip install -r
-requirements.txt` or `pip install -e ".[dev]"` installs them. The two tree-sitter packages
-ship prebuilt CPython 3.12 wheels, so the slim container needs no compiler.
+requirements.txt` or `pip install -e ".[dev]"` installs them. `tree-sitter` 0.27.0 and
+`tree-sitter-markdown` 0.5.4 ship prebuilt CPython 3.12-compatible wheels for manylinux
+x86_64 and aarch64; `tree-sitter-markdown` also ships musllinux x86_64 and aarch64, while
+`tree-sitter` has only a musllinux x86_64 wheel. The manylinux-based
+`python:3.12-slim-bookworm` image therefore needs no compiler; a musllinux aarch64 image
+would need one for `tree-sitter`.
 
 Logs go to stderr. The bot does not open `bot.log`; the deprecated `LOG_FILE` setting is ignored. `bot.log` exists only when `discordian.sh` in daemon mode or a process supervisor captures stderr. Redirect stderr, or both streams with `>> bot.log 2>&1`; redirecting stdout alone produces an empty file.
 

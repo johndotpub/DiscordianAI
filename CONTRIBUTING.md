@@ -91,6 +91,9 @@ pytest
 python -m sphinx -b html docs/api docs/api/_build -W
 ```
 
+For an offline documentation build, use the switch described in `AGENTS.md`
+section 8.
+
 To auto-fix formatting and linting:
 
 ```bash

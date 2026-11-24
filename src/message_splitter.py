@@ -353,8 +353,9 @@ def _filtered_code_regions(parse: _MarkdownParse) -> list[_CodeRegion]:
     accepted blocks, makes the pairing uncertain, so the whole text protects
     nothing. Indented blocks are never protected because Discord has no
     indented code. Inline spans are skipped when the text mixes backtick run
-    lengths; otherwise a span is protected only when its opener and closer are
-    the next sequential pair, because Discord would end the code elsewhere.
+    lengths; otherwise a span is protected only when neither the opener nor
+    the closer is backslash-escaped and its markers are the next sequential
+    pair, because Discord would end the code elsewhere.
     """
     runs = _backtick_runs(parse.text)
     accepted = [fence for fence in parse.fences if fence.marker == "```" and fence.closed]
@@ -416,9 +417,9 @@ def protected_code_regions(text: str) -> list[_CodeRegion]:
     The tree-sitter-markdown grammars supply the spans, but only a conservative
     subset is protected: an exactly-three-backtick closed fence with no other
     triple-backtick run outside it, or a closed inline code span whose opener
-    is not backslash-escaped when the text uses one backtick run length. A
-    block that fails any condition protects nothing, so protection can only
-    ever be smaller than the parser reports.
+    and closer are not backslash-escaped when the text uses one backtick run
+    length. A block that fails any condition protects nothing, so protection
+    can only ever be smaller than the parser reports.
 
     Args:
         text: Text that will be delivered to Discord.
@@ -1817,7 +1818,8 @@ def sanitize_model_output(text: str, citations: dict[str, str] | None = None) ->
     tree-sitter-markdown supplies the code regions and the links it can
     recognise. Code protection is conservative: only an exactly-three-backtick
     closed fence with no other triple-backtick run outside it, or a closed
-    inline code span whose opener is not backslash-escaped, keeps its content.
+    inline code span whose opener and closer are not backslash-escaped, keeps
+    its content.
     Inside those regions nothing is rewritten. Everywhere else the parser's
     inline links, images, and autolinks are replaced with their label text,
     and three catch-all passes then break ``](``, add a zero-width space after

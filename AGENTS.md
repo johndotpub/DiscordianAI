@@ -84,14 +84,17 @@ broke it, and each break is a user-visible bug.
   `tests/test_delivery_helper.py`, and `tests/test_golden_behaviour.py`.
 
 - **One parser decides what is code, and each chunk is sanitised after splitting.**
-  `message_splitter.protected_code_regions()` is the only code-region source for the
-  sanitiser and the splitter; it is built on `tree-sitter`/`tree-sitter-markdown` and keeps
-  only the conservative subset (closed exact three-backtick fence whose opener and closer
-  Discord's sequential triple-run pairing matches, with no stray triple run inside or
-  outside it, or a closed inline span with an unescaped opener, one backtick run length,
-  and the next sequential Discord pair). Outside
-  those regions the parser rewrite is followed by parse-independent passes that break
-  every `](`, neutralise every `://`, and separate `<` from a scheme. Every final chunk is
+  The sanitiser and the splitter both call `message_splitter._filtered_code_regions()`;
+  the public `protected_code_regions()` wraps it for callers that need the spans. It is
+  built on `tree-sitter`/`tree-sitter-markdown` and keeps only the conservative subset
+  (closed exact three-backtick fence whose opener and closer Discord's sequential
+  triple-run pairing matches, with no stray triple run inside or outside it, or a closed
+  inline span whose opener and closer are not backslash-escaped, with one backtick run
+  length and the next sequential Discord pair). The splitter also keeps a split-only
+  Discord pairing (`_discord_fence_spans()`) to place chunk boundaries when the filter
+  protects no fence; those extra spans never suppress sanitisation. Outside the protected
+  regions the parser rewrite is followed by parse-independent passes that break every
+  `](`, neutralise every `://`, and separate `<` from a scheme. Every final chunk is
   sanitised again, so a split cannot turn protected text into a live link, and no line is
   ever deleted. *Why:* two hand-written code detectors disagreed and leaked links or
   froze on long backtick runs. *Consequence:* a live link, content loss, or an event-loop
@@ -300,6 +303,10 @@ pip wheel . -w /tmp/wheels --no-deps
 # If the PyPA build frontend is installed and the local build/ directory is
 # not shadowing it: python -m build --wheel
 ```
+
+Set `DISCORDIANAI_DOCS_OFFLINE=1` to build without fetching the Python and
+discord.py intersphinx inventories; `docs/api/conf.py` then clears the mapping.
+`CONTRIBUTING.md` and `docs/Development.md` point here for that switch.
 
 Coverage is a separate gate because plain `pytest` does not collect it:
 

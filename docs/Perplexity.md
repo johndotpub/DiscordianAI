@@ -305,13 +305,13 @@ export PERPLEXITY_MODEL="perplexity/sonar"
 
 ### Error Handling
 - In hybrid mode, falls back to OpenAI when Perplexity returns no response
-- `retry_with_backoff` allows 2 attempts total and retries only failures where
-  no request was established: connection-refused errors, DNS failures, connect
-  timeouts, 429 responses (honouring `Retry-After` up to 30 seconds), and 5xx.
-  Read timeouts, connection resets, broken pipes, aborted connections,
-  authentication errors, validation errors, and exhausted quotas fail
-  immediately. Delays use capped exponential backoff with full jitter and a
-  90-second overall deadline.
+- `retry_with_backoff` allows 2 attempts total. It retries failures a repeat can
+  help: connection errors where no request was established, 429 responses with
+  `Retry-After` honoured (capped at 30 seconds), and 5xx. It does not retry read
+  timeouts, authentication errors, validation errors, or other 4xx, and it does
+  not retry a path whose outcome is unknown. Every retry is bounded by
+  `RetryConfig.max_elapsed` (90 seconds by default); delays use capped
+  exponential backoff with full jitter.
 - A shared per-provider circuit breaker opens after 5 failed logical calls,
   counting the whole retry sequence for one call as one failure, and admits one
   probe after 60 seconds. A user-caused request error (400, 409, 413, 422, and
