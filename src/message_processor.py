@@ -45,11 +45,46 @@ def _token_limits(
     return config, input_tokens, context_window
 
 
+def _shared_limit(
+    deps: dict[str, Any] | Any,
+    config: dict[str, Any],
+    key: str,
+    default: int,
+) -> tuple[Any, bool]:
+    """Return a shared limit and whether the operator changed it.
+
+    Loaded configs always carry a value, so a value different from the
+    documented default is the only signal that the operator set it. An
+    explicit value equal to the default cannot lower the Perplexity budget,
+    so it needs no separate provenance flag.
+    """
+    if key in config:
+        value = config.get(key)
+        return value, value is not None and value != default
+    value = deps.get(key)
+    if value is None:
+        return default, False
+    return value, value != default
+
+
+def _cap_to_shared(own_value: Any, shared_value: Any, was_set: bool) -> Any:
+    """Return the smaller of a provider budget and an explicit shared budget."""
+    if not was_set:
+        return own_value
+    return min(int(own_value), int(shared_value))
+
+
 def _perplexity_token_limits(
     deps: dict[str, Any] | Any,
     config: dict[str, Any],
 ) -> tuple[int, int]:
-    """Return the Sonar prompt budget and context window."""
+    """Return the Sonar prompt budget and context window.
+
+    The provider-specific keys stay authoritative unless the operator
+    explicitly lowered the shared chat budget, in which case the smaller of
+    the two values applies. This keeps an existing `INPUT_TOKENS` or
+    `CONTEXT_WINDOW` limit effective for Perplexity prompts.
+    """
     input_tokens = config.get(
         "PERPLEXITY_INPUT_TOKENS",
         deps.get("PERPLEXITY_INPUT_TOKENS", DEFAULT_PERPLEXITY_INPUT_TOKENS),
@@ -58,7 +93,22 @@ def _perplexity_token_limits(
         "PERPLEXITY_CONTEXT_WINDOW",
         deps.get("PERPLEXITY_CONTEXT_WINDOW", DEFAULT_PERPLEXITY_CONTEXT_WINDOW),
     )
-    return input_tokens, context_window
+    shared_input, input_was_set = _shared_limit(
+        deps,
+        config,
+        "INPUT_TOKENS",
+        DEFAULT_INPUT_TOKENS,
+    )
+    shared_context, context_was_set = _shared_limit(
+        deps,
+        config,
+        "CONTEXT_WINDOW",
+        DEFAULT_CONTEXT_WINDOW,
+    )
+    return (
+        _cap_to_shared(input_tokens, shared_input, input_was_set),
+        _cap_to_shared(context_window, shared_context, context_was_set),
+    )
 
 
 def _perplexity_output_tokens(deps: dict[str, Any] | Any, config: dict[str, Any]) -> int:

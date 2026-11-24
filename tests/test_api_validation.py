@@ -1,5 +1,7 @@
 # Tests for api_validation.py functionality
 
+import pytest
+
 from src.api_validation import (
     VALID_OPENAI_URL_PATTERN,
     VALID_PERPLEXITY_URL_PATTERN,
@@ -207,6 +209,14 @@ class TestPerplexityConfigValidation:
         # Should not error on missing optional fields
         errors = [issue for issue in issues if issue.startswith("ERROR:")]
         assert len(errors) == 0
+
+    @pytest.mark.parametrize("key", ["PERPLEXITY_INPUT_TOKENS", "PERPLEXITY_CONTEXT_WINDOW"])
+    @pytest.mark.parametrize("value", [0, -1, "not-a-number"])
+    def test_validate_perplexity_prompt_limits(self, key, value):
+        """A non-positive or malformed Sonar budget is a startup error."""
+        issues = validate_perplexity_config({key: value})
+
+        assert any(issue.startswith("ERROR:") and key in issue for issue in issues)
 
 
 class TestFullConfigValidation:

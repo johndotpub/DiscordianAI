@@ -223,6 +223,50 @@ async def test_context_window_conflict_warns_and_still_sends_fitting_request():
     assert estimate_messages_tokens(messages) + config.output_tokens <= config.context_window
 
 
+def test_explicit_shared_limits_cap_the_perplexity_budget():
+    """A lowered INPUT_TOKENS or CONTEXT_WINDOW still limits Sonar prompts."""
+    from src.message_processor import _perplexity_service_config
+
+    deps = {
+        "SYSTEM_MESSAGE": "System prompt",
+        "OUTPUT_TOKENS": 16384,
+    }
+    config = {
+        "INPUT_TOKENS": 500,
+        "CONTEXT_WINDOW": 4000,
+        "PERPLEXITY_INPUT_TOKENS": 111000,
+        "PERPLEXITY_CONTEXT_WINDOW": 128000,
+        "PERPLEXITY_OUTPUT_TOKENS": 100,
+    }
+
+    resolved = _perplexity_service_config(deps, config, "perplexity/sonar")
+
+    assert resolved.input_tokens == 500
+    assert resolved.context_window == 4000
+
+
+def test_default_shared_limits_do_not_replace_the_perplexity_budget():
+    """The Sonar defaults stay in force when the operator changed nothing."""
+    from src.message_processor import _perplexity_service_config
+
+    deps = {
+        "SYSTEM_MESSAGE": "System prompt",
+        "OUTPUT_TOKENS": 16384,
+    }
+    config = {
+        "INPUT_TOKENS": 250000,
+        "CONTEXT_WINDOW": 1000000,
+        "PERPLEXITY_INPUT_TOKENS": 111000,
+        "PERPLEXITY_CONTEXT_WINDOW": 128000,
+        "PERPLEXITY_OUTPUT_TOKENS": 100,
+    }
+
+    resolved = _perplexity_service_config(deps, config, "perplexity/sonar")
+
+    assert resolved.input_tokens == 111000
+    assert resolved.context_window == 128000
+
+
 def test_perplexity_defaults_fit_the_sonar_context_window():
     """The Perplexity path budgets for Sonar's documented 128K window."""
     from src.models import PerplexityConfig

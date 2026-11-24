@@ -253,48 +253,55 @@ def _provider_configured(config: dict, provider: str) -> bool:
     return any(field in config for field in fields)
 
 
+def _positive_limit_issues(
+    config: dict,
+    key: str,
+    *,
+    warning_above: int | None = None,
+) -> list[str]:
+    """Validate one prompt-budget or context-window key."""
+    value = config.get(key)
+    if value is None:
+        return []
+
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return [f"ERROR: {key} must be an integer greater than 0 (got {value!r})."]
+
+    if parsed <= 0:
+        return [
+            f"ERROR: {key} must be positive; accepted range: 1 or greater (got {parsed}).",
+        ]
+    if warning_above is not None and parsed > warning_above:
+        return [
+            f"WARNING: {key} very high ({parsed}). May exceed model limits.",
+        ]
+    return []
+
+
 def _input_and_context_issues(config: dict) -> list[str]:
-    """Validate prompt-budget and context-window limits."""
-    issues = []
+    """Validate the chat-provider prompt budget and context window."""
+    return [
+        *_positive_limit_issues(
+            config,
+            "INPUT_TOKENS",
+            warning_above=MAX_INPUT_TOKENS_THRESHOLD,
+        ),
+        *_positive_limit_issues(config, "CONTEXT_WINDOW"),
+    ]
 
-    input_tokens = config.get("INPUT_TOKENS")
-    if input_tokens is not None:
-        try:
-            parsed_input_tokens = int(input_tokens)
-        except (TypeError, ValueError):
-            issues.append(
-                "ERROR: INPUT_TOKENS must be an integer in the accepted range "
-                f"1..{MAX_INPUT_TOKENS_THRESHOLD} (got {input_tokens!r})."
-            )
-        else:
-            if parsed_input_tokens <= 0:
-                issues.append(
-                    "ERROR: INPUT_TOKENS must be positive; accepted range: "
-                    f"1..{MAX_INPUT_TOKENS_THRESHOLD} (got {parsed_input_tokens})."
-                )
-            elif parsed_input_tokens > MAX_INPUT_TOKENS_THRESHOLD:
-                issues.append(
-                    f"WARNING: INPUT_TOKENS very high ({parsed_input_tokens}). "
-                    "May exceed model limits."
-                )
 
-    context_window = config.get("CONTEXT_WINDOW")
-    if context_window is not None:
-        try:
-            parsed_context_window = int(context_window)
-        except (TypeError, ValueError):
-            issues.append(
-                "ERROR: CONTEXT_WINDOW must be an integer greater than 0 "
-                f"(got {context_window!r})."
-            )
-        else:
-            if parsed_context_window <= 0:
-                issues.append(
-                    "ERROR: CONTEXT_WINDOW must be positive; accepted range: "
-                    f"1 or greater (got {parsed_context_window})."
-                )
-
-    return issues
+def _perplexity_prompt_limit_issues(config: dict) -> list[str]:
+    """Validate the Perplexity prompt budget and context window."""
+    return [
+        *_positive_limit_issues(
+            config,
+            "PERPLEXITY_INPUT_TOKENS",
+            warning_above=MAX_INPUT_TOKENS_THRESHOLD,
+        ),
+        *_positive_limit_issues(config, "PERPLEXITY_CONTEXT_WINDOW"),
+    ]
 
 
 def validate_openai_config(config: dict) -> list[str]:
@@ -401,6 +408,8 @@ def validate_perplexity_config(config: dict) -> list[str]:
         )
 
     issues.extend(_output_token_issues(config, "PERPLEXITY_OUTPUT_TOKENS", reasoning_model=False))
+
+    issues.extend(_perplexity_prompt_limit_issues(config))
 
     return issues
 

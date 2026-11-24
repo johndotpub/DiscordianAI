@@ -60,7 +60,9 @@ PERPLEXITY_MODEL=perplexity/sonar
 # which are output only. Omit it to use the same value as OUTPUT_TOKENS.
 # PERPLEXITY_INPUT_TOKENS and PERPLEXITY_CONTEXT_WINDOW apply only to the
 # Sonar web path, whose model has a 128K window. The chat path keeps
-# INPUT_TOKENS and CONTEXT_WINDOW.
+# INPUT_TOKENS and CONTEXT_WINDOW. If you lower INPUT_TOKENS or
+# CONTEXT_WINDOW below the Perplexity value, the smaller shared limit also
+# constrains the Perplexity prompt.
 INPUT_TOKENS=250000
 OUTPUT_TOKENS=16384
 PERPLEXITY_OUTPUT_TOKENS=16384

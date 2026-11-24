@@ -42,7 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW` (111,000 and 128,000 by default)
   instead of the chat provider's 250,000 and 1,000,000. The fixed `fetch_url` instruction
   suffix is charged against the prompt budget before history is trimmed, so a full prompt
-  plus `PERPLEXITY_OUTPUT_TOKENS` stays inside the documented 128K window.
+  plus `PERPLEXITY_OUTPUT_TOKENS` stays inside the documented 128K window. Both Perplexity
+  limits must be positive integers like the shared limits, and an operator who lowers
+  `INPUT_TOKENS` or `CONTEXT_WINDOW` still caps the Perplexity prompt with the smaller
+  value.
 - **Pasted code and logs stay local.** A version string, current year, price, or other bearing cue inside
   a fenced code block no longer routes the message to web search; every cue is now extracted from the
   code-masked view, and text outside the fence still counts as before.

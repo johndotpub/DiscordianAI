@@ -64,9 +64,13 @@ conflicting settings is logged.
 The chat and Perplexity paths have different windows. Chat requests use `INPUT_TOKENS` and
 `CONTEXT_WINDOW`; Perplexity requests use `PERPLEXITY_INPUT_TOKENS` and
 `PERPLEXITY_CONTEXT_WINDOW` because the Sonar model documents a 128K-token context length,
-not the chat model's 1,000,000. The Perplexity prompt budget also reserves the fixed
-`fetch_url` instruction suffix before history is trimmed, so a full prompt plus
-`PERPLEXITY_OUTPUT_TOKENS` fits the Sonar window.
+not the chat model's 1,000,000. When the operator lowers the shared `INPUT_TOKENS` or
+`CONTEXT_WINDOW` below the Perplexity value, the smaller shared limit also applies to
+Perplexity prompts, so an existing budget keeps constraining the web path. The Perplexity
+prompt budget also reserves the fixed `fetch_url` instruction suffix before history is
+trimmed, so a full prompt plus `PERPLEXITY_OUTPUT_TOKENS` fits the Sonar window. All four
+prompt-budget and context-window keys must be positive integers; zero or a malformed value
+stops startup.
 
 #### Web Tools
 - **`WEB_TOOLS`**: Offer native web search and page fetch to Ollama-compatible chat providers; OpenAI endpoints never receive these tools *(default: true)*
