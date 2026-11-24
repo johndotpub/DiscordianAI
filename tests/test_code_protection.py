@@ -16,6 +16,7 @@ from discord_markdown_ast_parser.parser import NodeType
 from markdown_it import MarkdownIt
 import pytest
 
+from src import message_splitter
 from src.message_splitter import (
     protected_code_regions,
     sanitize_for_discord,
@@ -308,34 +309,103 @@ def test_nul_characters_are_not_used_as_placeholder_tokens() -> None:
     assert "https://evil.example/g" not in sanitized
 
 
+def _repeat(unit: str, size: int) -> str:
+    """Repeat ``unit`` to exactly ``size`` characters for a scaling shape."""
+    return (unit * (size // len(unit) + 1))[:size]
+
+
+def _oversized_shape(size: int) -> str:
+    """Build a cheap oversized answer with a fence pair and a distant URL."""
+    prefix = "```a```b " * 4
+    suffix = " https://e"
+    return prefix + "X" * (size - len(prefix) - len(suffix)) + suffix
+
+
 COMPLEXITY_SHAPES = [
-    "`" * 64_000,
-    "\\" * 32_000 + "`" * 32_000,
-    "x" * 2_100 + "`" * 12_800,
-    "[`" * 32_000,
-    "<https://" * 8_000,
-    "[a[b" * 16_000,
-    "[a](https://e" * 5_000,
-    "](" * 32_000,
+    lambda size: "`" * size,
+    lambda size: "\\" * (size // 2) + "`" * (size // 2),
+    lambda size: "x" * 2_100 + "`" * (size - 2_100),
+    lambda size: _repeat("[`", size),
+    lambda size: _repeat("<https://", size),
+    lambda size: _repeat("[a[b", size),
+    lambda size: _repeat("[a](https://e", size),
+    lambda size: _repeat("](", size),
+    lambda size: _repeat("``` ", size),
+    lambda size: _repeat("```\n", size),
+    lambda size: _repeat("```a```b", size),
+    lambda size: _repeat("text ```x``` more\n", size),
+    lambda size: "```\n" + "`" * (size - 4),
 ]
+
+
+async def _best_delivery_time(shape: str, attempts: int = 3) -> float:
+    """Return the fastest of a few sanitise-and-deliver runs for one shape."""
+    best = float("inf")
+    for _attempt in range(attempts):
+        started = time.perf_counter()
+        sanitize_for_discord(shape)
+        channel = _RecordingChannel()
+        await send_formatted_message(channel, shape, _deps())
+        best = min(best, time.perf_counter() - started)
+    return best
 
 
 @pytest.mark.asyncio
 async def test_sanitise_and_deliver_are_not_superlinear() -> None:
     """The bound is the behaviour under test, so this is a wall-clock guard.
 
-    64,000 characters of each adversarial shape must stay well under two
-    seconds. The limit is deliberately generous; the parser and the catch-all
-    passes are linear, so this is not a tight performance assertion.
+    Every adversarial shape is built at 32,000 and 64,000 characters. The
+    64,000-character run must stay under two seconds, and doubling the input
+    must not more than triple the best delivery time. The ratio is the real
+    guard; the absolute ceiling is deliberately generous. Both are wall-clock
+    assertions made on purpose because the complexity bound itself is the
+    behaviour under test.
     """
     for shape in COMPLEXITY_SHAPES:
-        for _attempt in range(5):
-            started = time.perf_counter()
-            sanitize_for_discord(shape)
-            channel = _RecordingChannel()
-            await send_formatted_message(channel, shape, _deps())
-            elapsed = time.perf_counter() - started
-            assert elapsed < 2.0, f"{elapsed:.2f}s for {len(shape)} characters"
+        smaller = shape(32_000)
+        larger = shape(64_000)
+        smaller_time = await _best_delivery_time(smaller)
+        larger_time = await _best_delivery_time(larger)
+        assert larger_time < 2.0, f"{larger_time:.2f}s for {len(larger)} characters"
+        assert larger_time / smaller_time < 3.0, (
+            f"{larger_time / smaller_time:.2f}x when doubling {len(smaller)} characters "
+            f"({smaller_time:.3f}s to {larger_time:.3f}s)"
+        )
+
+
+@pytest.mark.asyncio
+async def test_oversized_delivery_is_capped_before_parsing(monkeypatch) -> None:
+    """A 128k or 256k answer is truncated by the work cap and stays fast."""
+    original_parse = message_splitter._parse_markdown
+    parsed_lengths: list[int] = []
+
+    def recording_parse(text: str, **kwargs):
+        parsed_lengths.append(len(text))
+        return original_parse(text, **kwargs)
+
+    monkeypatch.setattr(message_splitter, "_parse_markdown", recording_parse)
+
+    for size in (128_000, 256_000):
+        parsed_lengths.clear()
+        shape = _oversized_shape(size)
+        logger = MagicMock()
+        channel = _RecordingChannel()
+        started = time.perf_counter()
+        await send_formatted_message(channel, shape, {"logger": logger})
+        elapsed = time.perf_counter() - started
+
+        assert elapsed < 1.0, f"{elapsed:.2f}s for {size} characters"
+        assert parsed_lengths
+        assert max(parsed_lengths) <= 100_000
+        assert len(channel.calls) == 50
+        assert all(len(content) <= 2000 for content, _kwargs in channel.calls)
+        assert "truncated" in channel.calls[-1][0].lower()
+        assert str(size) in channel.calls[-1][0]
+        logger.error.assert_called_once_with(
+            "Message split reached chunk cap (%d) for message length %d",
+            50,
+            size,
+        )
 
 
 def test_trusted_citation_link_stays_clickable() -> None:

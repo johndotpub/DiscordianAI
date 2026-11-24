@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Behaviour changes
 
+- **Oversized answers are bounded before delivery scans them.** An answer longer than
+  `MAX_SPLIT_CHUNKS` times `MESSAGE_LIMIT` (100,000 characters with the defaults) is
+  truncated with the existing chunk-cap notice and ERROR log line before sanitisation or
+  splitting. Long code-heavy answers no longer stall the Discord event loop while every
+  chunk reparses the remaining text.
 - **Startup provider checks use the same bounded probe as the adapters.** The
   reachability check now times out instead of waiting indefinitely, and the
   in-process check counters and recent-result list that nothing read are gone.
@@ -244,6 +249,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **Delivery splitting is linear and the fence pairing runs once.** The split-only
+  Discord backtick pairing built each span with a copy of the remaining text, so doubling
+  an answer of triple-backtick runs multiplied delivery time by four to six. The pairing
+  is now a single forward pass with equal-length runs kept outermost first, which preserves
+  the `a-fence-nested-looking` golden boundary. Fence spans are planned once, and every
+  later chunk walks an offset into the original text instead of slicing and reparsing the
+  remainder, so the whole delivery is linear in the input size.
 - **User-caused client errors no longer open the provider breaker.** A deterministic 4xx
   caused by the request itself (400, 409, 413, 422, and other client errors except 401, 403,
   404, 408, and 429) means the provider answered and rejected the request, so it does not
@@ -338,6 +350,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests ✅
 
+- **Delivery complexity is guarded by scaling, not a single timing.** The guard now builds
+  every adversarial shape, including triple-backtick runs and mixed mid-line fences, at
+  32,000 and 64,000 characters, asserts the 64,000-character run stays under two seconds,
+  and fails when doubling the input more than triples the best of three runs. A separate
+  check delivers 128,000- and 256,000-character answers, confirms the work cap truncates
+  them, and asserts each arrives in under a second.
 - **The code-region contract is checked with two independent parsers.** A fixed-seed corpus
   of one thousand adversarial cases, the reported bypasses, and each delivered chunk are
   rendered with markdown-it-py and parsed with discord-markdown-ast-parser; the complexity

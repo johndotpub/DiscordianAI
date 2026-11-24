@@ -7,7 +7,7 @@ This module provides comprehensive message utilities, including:
 - User context and mention extraction
 """
 
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from collections.abc import Sequence
 from dataclasses import dataclass
 import logging
@@ -40,8 +40,9 @@ _FULL_BYTE_RANGE = Range((0, 0), (0xFFFFFFFF, 0xFFFFFFFF), 0, 0xFFFFFFFF)
 _UTF8_ONE_BYTE_LIMIT = 0x80
 _UTF8_TWO_BYTE_LIMIT = 0x800
 _UTF8_THREE_BYTE_LIMIT = 0x10000
-_FENCE_MARKER_LENGTH = 3
 _CLOSING_DELIMITER_COUNT = 2
+_TRUNCATION_PREFIX = "\n\n[Message truncated: the original answer was "
+_TRUNCATION_SUFFIX = " characters; the bot's delivery limit was reached]"
 
 logger = logging.getLogger(__name__)
 
@@ -694,6 +695,46 @@ def _truncate_to_limit(text: str, limit: int, original_length: int | None = None
     return f"{_close_open_fence(text, available)}{notice}"
 
 
+def _trailing_truncation_notice(text: str) -> str | None:
+    """Return the chunk-cap notice at the end of ``text``, if there is one."""
+    start = text.rfind(_TRUNCATION_PREFIX)
+    if start < 0:
+        return None
+    suffix = text[start:]
+    if not suffix.endswith(_TRUNCATION_SUFFIX):
+        return None
+    number = suffix[len(_TRUNCATION_PREFIX) : -len(_TRUNCATION_SUFFIX)]
+    if not number.isdigit():
+        return None
+    return suffix
+
+
+def _cap_delivery_work(message: str, logger: Any) -> str:
+    """Bound one delivery to the maximum deliverable size before any parsing.
+
+    The cap is the same 50-chunk ceiling the splitter already enforces, so an
+    oversized answer is truncated with the existing notice and log line
+    instead of being scanned in full.
+    """
+    maximum_length = MAX_SPLIT_CHUNKS * MESSAGE_LIMIT
+    if len(message) <= maximum_length:
+        return message
+    notice = _trailing_truncation_notice(message)
+    if notice is not None:
+        available = maximum_length - len(notice)
+        if available <= 0:
+            return message[:maximum_length]
+        if len(message) <= available:
+            return message
+        return f"{_close_open_fence(message, available)}{notice}"
+    logger.error(
+        "Message split reached chunk cap (%d) for message length %d",
+        MAX_SPLIT_CHUNKS,
+        len(message),
+    )
+    return _truncate_to_limit(message, maximum_length, len(message))
+
+
 def _split_message_chunks(
     message: str,
     first_limit: int,
@@ -705,59 +746,72 @@ def _split_message_chunks(
     Each piece except the first is bounded by ``MESSAGE_LIMIT``; the first is
     bounded by ``first_limit`` so a mention prefix still fits.  The existing
     natural-boundary and code-block-aware adjustments decide every split point.
+    Fence spans are computed once for the whole message and every later split
+    walks an offset into it, so delivery is linear in the input size.
     """
     chunks: list[str] = []
-    remaining = message
+    plan = _build_fence_plan(message)
+    cursor = _SplitCursor()
+    total_length = len(message)
     limit = first_limit
-    fence_free = not _has_fence_pair_candidate(message)
 
     while True:
-        if len(remaining) <= limit:
-            chunks.append(remaining)
+        virtual_length = len(cursor.prefix) + total_length - cursor.start
+        if virtual_length <= limit:
+            chunks.append(cursor.prefix + message[cursor.start :])
             return chunks
 
         if len(chunks) >= max_chunks - 1:
-            logger.error(
-                "Message split reached chunk cap (%d) for message length %d",
-                max_chunks,
-                len(message),
-            )
-            chunks.append(_truncate_to_limit(remaining, limit, len(message)))
+            remaining = cursor.prefix + message[cursor.start :]
+            notice = _trailing_truncation_notice(message)
+            if notice is None:
+                logger.error(
+                    "Message split reached chunk cap (%d) for message length %d",
+                    max_chunks,
+                    len(message),
+                )
+                chunks.append(_truncate_to_limit(remaining, limit, len(message)))
+            else:
+                available = limit - len(notice)
+                if available <= 0:
+                    chunks.append(remaining[:limit])
+                elif len(remaining) <= available:
+                    chunks.append(remaining)
+                else:
+                    chunks.append(f"{_close_open_fence(remaining, available)}{notice}")
             return chunks
 
         safe_target = max(1, limit - MESSAGE_BUFFER)
-        safe_split_point = min(safe_target, len(remaining) - 1)
-        split_index = find_optimal_split_point(remaining, safe_split_point)
+        safe_split_point = min(safe_target, virtual_length - 1)
+        split_index = _find_split_point_near(message, cursor, safe_split_point, virtual_length)
 
         if split_index >= limit:
             split_index = max(1, limit - 1)
 
-        before_split, after_split = split_fence_aware(
-            remaining,
-            limit,
-            split_index,
-            fence_free=fence_free,
-        )
+        before_split, next_cursor = _split_window(message, plan, cursor, limit, split_index)
+        next_length = len(next_cursor.prefix) + total_length - next_cursor.start
 
-        if not before_split or len(after_split) >= len(remaining):
+        if not before_split or next_length >= virtual_length:
             if not chunks and limit < MESSAGE_LIMIT:
                 # The mention prefix consumed the whole head.  Send that prefix-only
                 # chunk, then retry the same text with a full-size chunk, matching
                 # the old recursion's next step without recursing.
                 chunks.append("")
-                remaining = after_split or remaining
+                if next_length > 0:
+                    cursor = next_cursor
                 limit = MESSAGE_LIMIT
                 continue
             logger.warning(
                 "Cannot split indivisible content of length %d within %d characters",
-                len(remaining),
+                len(cursor.prefix) + total_length - cursor.start,
                 limit,
             )
+            remaining = cursor.prefix + message[cursor.start :]
             chunks.append(_truncate_to_limit(remaining, limit, len(message)))
             return chunks
 
         chunks.append(before_split)
-        remaining = after_split
+        cursor = next_cursor
         limit = MESSAGE_LIMIT
 
 
@@ -781,6 +835,7 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
     is the allowlist of trusted citation URLs for link sanitisation.
     """
     logger = deps["logger"]
+    message = _cap_delivery_work(message, logger)
     message = sanitize_for_discord(message, citations)
     prefix_text = mention_prefix or ""
     prefix_length = len(prefix_text)
@@ -1006,6 +1061,7 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
     the adjusted text.  ``_recursion_depth`` is accepted for backwards
     compatibility and ignored; continuations are sent iteratively.
     """
+    message = _cap_delivery_work(message, deps["logger"])
     message = sanitize_for_discord(message, citations)
 
     head_text, after_split = _split_embed_head(message, citations)
@@ -1079,6 +1135,7 @@ async def send_formatted_message(  # noqa: PLR0913, PLR0917
     citation_map = citations
     if citation_map is None and embed_data:
         citation_map = embed_data.get("citations") or {}
+    message = _cap_delivery_work(message, logger)
     message = sanitize_for_discord(message, citation_map)
     if truncated:
         message = append_truncation_notice(message)
@@ -1189,15 +1246,25 @@ class _FenceSpan:
 
 def _make_fence_span(text: str, start: int, marker: str, end: int) -> _FenceSpan:
     """Build a split-time fence span and extend its end through a newline."""
-    trailing = re.match(r"[ \t]*(?:\r\n|\n|\r)", text[end:])
-    if trailing:
-        end += trailing.end()
+    cursor = end
+    while cursor < len(text) and text[cursor] in " \t":
+        cursor += 1
+    if text.startswith("\r\n", cursor):
+        end = cursor + 2
+    elif cursor < len(text) and text[cursor] in "\r\n":
+        end = cursor + 1
     content_start = text.find("\n", start + len(marker))
     if content_start == -1 or content_start >= end:
         content_start = min(start + len(marker), end)
     else:
         content_start += 1
-    language = text[start + len(marker) :].split("\n", 1)[0].strip()
+    marker_end = start + len(marker)
+    newline = text.find("\n", marker_end)
+    if newline == -1 or newline > end:
+        language_end = max(marker_end, end - len(marker))
+    else:
+        language_end = newline
+    language = text[marker_end:language_end].strip()
     return _FenceSpan(
         start=start,
         content_start=content_start,
@@ -1215,31 +1282,36 @@ def _discord_fence_spans(text: str) -> list[_FenceSpan]:
     CommonMark requires a line start. A split that follows the CommonMark
     span would cut a block Discord still renders, so the historical pairing
     (equal-length runs, outermost first) decides only where a chunk ends.
-    This scan is linear and replaces the old cubic backreference regex.
+    This fallback keeps the frozen boundaries in the golden
+    ``a-fence-nested-looking`` case; the runs, the pairing, and each span are
+    built in one forward pass.
     """
     runs: list[tuple[int, int]] = []
-    position = 0
-    while position < len(text):
-        if text[position] != "`":
-            position += 1
-            continue
+    position = text.find("```")
+    while position >= 0:
         start = position
+        position = start
         while position < len(text) and text[position] == "`":
             position += 1
-        if position - start >= _FENCE_MARKER_LENGTH and not _is_escaped(text, start):
+        if not _is_escaped(text, start):
             runs.append((start, position))
+        position = text.find("```", position)
 
     pending: dict[int, int] = {}
+    pending_order: list[int] = []
     pairs: list[tuple[int, int]] = []
     for start, end in runs:
         length = end - start
-        if length in pending:
-            opening = pending.pop(length)
-            pairs.append((opening, end))
-            for inner_length in [key for key, value in pending.items() if value > opening]:
-                del pending[inner_length]
-        else:
-            pending.setdefault(length, start)
+        if length not in pending:
+            pending[length] = start
+            pending_order.append(length)
+            continue
+        opening = pending.pop(length)
+        pairs.append((opening, end))
+        while pending_order and pending.get(pending_order[-1], -1) > opening:
+            pending.pop(pending_order.pop(), None)
+        if pending_order and pending_order[-1] == length:
+            pending_order.pop()
 
     pairs.sort(key=lambda pair: (pair[0], -pair[1]))
     spans: list[_FenceSpan] = []
@@ -1247,11 +1319,10 @@ def _discord_fence_spans(text: str) -> list[_FenceSpan]:
     for start, end in pairs:
         if start < last_end:
             continue
-        marker = text[start : start + (end - start)]
-        marker_length = 0
-        while marker_length < len(marker) and marker[marker_length] == "`":
-            marker_length += 1
-        spans.append(_make_fence_span(text, start, text[start : start + marker_length], end))
+        opening_end = start
+        while opening_end < len(text) and text[opening_end] == "`":
+            opening_end += 1
+        spans.append(_make_fence_span(text, start, text[start:opening_end], end))
         last_end = end
     return spans
 
@@ -1259,18 +1330,14 @@ def _discord_fence_spans(text: str) -> list[_FenceSpan]:
 def _has_fence_pair_candidate(text: str) -> bool:
     """Return True when at least two backtick runs of length three exist."""
     runs = 0
-    position = 0
-    while position < len(text):
-        if text[position] != "`":
-            position += 1
-            continue
-        start = position
+    position = text.find("```")
+    while position >= 0:
+        runs += 1
+        if runs >= _CLOSING_DELIMITER_COUNT:
+            return True
         while position < len(text) and text[position] == "`":
             position += 1
-        if position - start >= _FENCE_MARKER_LENGTH:
-            runs += 1
-            if runs >= _CLOSING_DELIMITER_COUNT:
-                return True
+        position = text.find("```", position)
     return False
 
 
@@ -1323,6 +1390,184 @@ def _snap_citation_marker(message: str, split_index: int) -> int:
     return split_index
 
 
+@dataclass(frozen=True)
+class _FencePlan:
+    """Fence spans and their starts, computed once for one delivery."""
+
+    spans: tuple[_FenceSpan, ...] = ()
+    starts: tuple[int, ...] = ()
+    fence_free: bool = True
+
+
+@dataclass(frozen=True)
+class _SplitCursor:
+    """Offset into the original text plus any fence marker already injected."""
+
+    start: int = 0
+    prefix: str = ""
+
+
+def _build_fence_plan(text: str) -> _FencePlan:
+    """Return the split fence spans for one text without reparsing a tail."""
+    if not _has_fence_pair_candidate(text):
+        return _FencePlan()
+    spans = tuple(_fence_spans(text))
+    return _FencePlan(
+        spans=spans,
+        starts=tuple(span.start for span in spans),
+        fence_free=False,
+    )
+
+
+def _virtual_slice(
+    message: str,
+    cursor: _SplitCursor,
+    start: int,
+    end: int,
+) -> str:
+    """Slice a logical chunk without materialising the whole remainder."""
+    if end <= start:
+        return ""
+    prefix = cursor.prefix
+    prefix_length = len(prefix)
+    if end <= prefix_length:
+        return prefix[start:end]
+    if start >= prefix_length:
+        return message[cursor.start + start - prefix_length : cursor.start + end - prefix_length]
+    return prefix[start:] + message[cursor.start : cursor.start + end - prefix_length]
+
+
+def _advance_cursor(
+    cursor: _SplitCursor,
+    consumed: int,
+    inserted: str = "",
+) -> _SplitCursor:
+    """Return the cursor after ``consumed`` logical characters are delivered."""
+    prefix_length = len(cursor.prefix)
+    if consumed <= prefix_length:
+        return _SplitCursor(cursor.start, inserted + cursor.prefix[consumed:])
+    return _SplitCursor(cursor.start + consumed - prefix_length, inserted)
+
+
+def _find_split_point_near(
+    message: str,
+    cursor: _SplitCursor,
+    target: int,
+    virtual_length: int,
+) -> int:
+    """Find a natural split point using only the same 200-character window."""
+    window_start = max(0, target - 100)
+    window_end = min(virtual_length, target + 100)
+    window = _virtual_slice(message, cursor, window_start, window_end)
+    return window_start + find_optimal_split_point(window, target - window_start)
+
+
+def _virtual_rfind_newline(
+    message: str,
+    cursor: _SplitCursor,
+    start: int,
+    end: int,
+) -> int:
+    """Return the last newline position in a short logical window."""
+    window = _virtual_slice(message, cursor, start, end)
+    position = window.rfind("\n")
+    if position < 0:
+        return start - 1
+    return start + position
+
+
+def _virtual_fence_at(
+    plan: _FencePlan,
+    cursor: _SplitCursor,
+    preferred: int,
+) -> tuple[int, int, int, str, str] | None:
+    """Return the planned fence containing ``preferred`` in chunk coordinates."""
+    if not plan.spans:
+        return None
+    start = cursor.start
+    prefix_length = len(cursor.prefix)
+    index = bisect_right(plan.starts, start) - 1
+    if index >= 0:
+        span = plan.spans[index]
+        if span.start <= start < span.end:
+            active = span.start < start
+            fence_start = 0 if active else prefix_length
+            content_start = prefix_length if active else span.content_start - start + prefix_length
+            fence_end = span.end - start + prefix_length
+            if fence_start < preferred < fence_end:
+                return fence_start, content_start, fence_end, span.marker, span.language
+    if preferred < prefix_length:
+        return None
+    target = start + preferred - prefix_length
+    index = bisect_right(plan.starts, target) - 1
+    if index < 0:
+        return None
+    span = plan.spans[index]
+    if not span.start < target < span.end:
+        return None
+    return (
+        span.start - start + prefix_length,
+        span.content_start - start + prefix_length,
+        span.end - start + prefix_length,
+        span.marker,
+        span.language,
+    )
+
+
+def _split_at(
+    message: str,
+    cursor: _SplitCursor,
+    split_index: int,
+) -> tuple[str, _SplitCursor]:
+    """Split a logical chunk at one virtual index."""
+    head = _virtual_slice(message, cursor, 0, split_index)
+    return head, _advance_cursor(cursor, split_index)
+
+
+def _split_window(
+    message: str,
+    plan: _FencePlan,
+    cursor: _SplitCursor,
+    limit: int,
+    preferred: int | None,
+) -> tuple[str, _SplitCursor]:
+    """Split the logical chunk at ``cursor`` using the planned fence spans."""
+    total_length = len(message)
+    virtual_length = len(cursor.prefix) + total_length - cursor.start
+    if virtual_length <= limit:
+        return cursor.prefix + message[cursor.start :], _SplitCursor(total_length, "")
+
+    if preferred is None:
+        preferred = max(1, limit - MESSAGE_BUFFER)
+    preferred = min(max(1, preferred), limit, virtual_length - 1)
+
+    fence = None if plan.fence_free else _virtual_fence_at(plan, cursor, preferred)
+    if fence is None:
+        return _split_at(message, cursor, preferred)
+
+    fence_start, fence_content_start, fence_end, marker, language = fence
+    if fence_end <= limit:
+        return _split_at(message, cursor, fence_end)
+
+    if fence_start > 0:
+        return _split_at(message, cursor, fence_start)
+
+    reopen = f"{marker}{language}\n"
+    max_content = limit - len(marker) - 1
+    line_end = _virtual_rfind_newline(message, cursor, fence_content_start, max_content + 1)
+
+    if line_end >= fence_content_start:
+        cut = line_end + 1
+        head = f"{_virtual_slice(message, cursor, 0, cut)}{marker}"
+    else:
+        cut = max(1, min(max_content, virtual_length - 1))
+        head_text = _virtual_slice(message, cursor, 0, cut)
+        separator = "" if head_text.endswith("\n") else "\n"
+        head = f"{head_text}{separator}{marker}"
+
+    return head, _advance_cursor(cursor, cut, reopen)
+
+
 def split_fence_aware(
     message: str,
     limit: int,
@@ -1354,40 +1599,9 @@ def split_fence_aware(
     if len(message) <= limit:
         return message, ""
 
-    if preferred is None:
-        preferred = max(1, limit - MESSAGE_BUFFER)
-    preferred = min(max(1, preferred), limit, len(message) - 1)
-
-    if fence_free:
-        return message[:preferred], message[preferred:]
-
-    fence = next(
-        (span for span in _fence_spans(message) if span.start < preferred < span.end),
-        None,
-    )
-    if fence is None:
-        return message[:preferred], message[preferred:]
-
-    if fence.end <= limit:
-        return message[: fence.end], message[fence.end :]
-
-    if fence.start > 0:
-        return message[: fence.start], message[fence.start :]
-
-    reopen = f"{fence.marker}{fence.language}\n"
-    max_content = limit - len(fence.marker) - 1
-    line_end = message.rfind("\n", fence.content_start, max_content + 1)
-
-    if line_end >= fence.content_start:
-        cut = line_end + 1
-        head = f"{message[:cut]}{fence.marker}"
-    else:
-        cut = max(1, min(max_content, len(message) - 1))
-        head_text = message[:cut]
-        separator = "" if head_text.endswith("\n") else "\n"
-        head = f"{head_text}{separator}{fence.marker}"
-
-    return head, f"{reopen}{message[cut:]}"
+    plan = _FencePlan() if fence_free else _build_fence_plan(message)
+    head, next_cursor = _split_window(message, plan, _SplitCursor(), limit, preferred)
+    return head, next_cursor.prefix + message[next_cursor.start :]
 
 
 # ============================================================================
@@ -1635,7 +1849,4 @@ def error_message(user_mention: str, error_text: str) -> str:
 
 def truncation_notice(original_length: int) -> str:
     """Format message truncation notice."""
-    return (
-        f"\n\n[Message truncated: the original answer was {original_length} characters; "
-        "the bot's delivery limit was reached]"
-    )
+    return f"{_TRUNCATION_PREFIX}{original_length}{_TRUNCATION_SUFFIX}"

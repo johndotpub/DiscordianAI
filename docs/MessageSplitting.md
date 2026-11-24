@@ -146,6 +146,8 @@ inline code span at the whole-message level is therefore neutralised when a spli
 span before its closer. Fences are closed at the end of a chunk and reopened with the same
 language tag in the next. A split-only Discord pairing places boundaries for backtick runs
 that CommonMark does not treat as a fence; those extra spans never suppress sanitisation.
+The pairing is computed once per delivery, in one forward pass, and every later split walks
+an offset into that plan instead of reparsing the remaining text.
 
 ## Citation-Aware Splitting
 
@@ -278,8 +280,9 @@ def find_optimal_split_point(message: str, target_index: int) -> int:
 
 ### Performance Considerations
 
-- **Split point calculation**: O(n) where n is search window size
-- **Code block detection**: O(n) where n is message length  
+- **Split point calculation**: O(1) around the boundary; only the 200-character search window is examined
+- **Code block detection**: O(n) once per delivery, where n is message length; the fence spans are reused for every chunk
+- **Chunk splitting**: O(n) overall; each split walks an offset into the original text instead of rescanning or reparsing the remainder
 - **Citation mapping**: O(c) where c is number of citations
 - **Memory usage**: Minimal additional overhead
 
@@ -289,32 +292,37 @@ def find_optimal_split_point(message: str, target_index: int) -> int:
 
 Splitting is iterative: the chunk list is computed up front and then sent in a loop. The chunk count is capped to stop a runaway response from producing hundreds of messages:
 
-1. **Normal Splitting**: Messages are split using intelligent boundary detection until the remaining text fits.
-2. **Chunk Cap Hit**: At 50 chunks the splitter logs an ERROR and stops, because no legitimate provider response needs that many messages.
-3. **Indivisible Unit**: A code fence is split at a line boundary with balanced fences, and a single line wider than the limit is hard-wrapped. Only the chunk cap truncates content.
-4. **Cap Notice**: The final chunk carries a visible notice with the original answer length and the bot's delivery limit.
+1. **Work Cap**: Before sanitisation or parsing, an answer longer than `MAX_SPLIT_CHUNKS` times `MESSAGE_LIMIT` (50 × 2000 = 100,000 characters with the defaults) is truncated with the same notice and ERROR log line the chunk cap already used. No scan sees more than the maximum deliverable size.
+2. **Normal Splitting**: Messages are split using intelligent boundary detection until the remaining text fits.
+3. **Chunk Cap Hit**: At 50 chunks the splitter logs an ERROR and stops, because no legitimate provider response needs that many messages.
+4. **Indivisible Unit**: A code fence is split at a line boundary with balanced fences, and a single line wider than the limit is hard-wrapped. Only the work cap and the chunk cap truncate content.
+5. **Cap Notice**: The final chunk carries a visible notice with the original answer length and the bot's delivery limit.
 
 ### Chunk Cap Flow
 
 ```mermaid
 flowchart TD
-    A[Message Needs Splitting] --> B[Split Using Intelligent Boundaries]
-    B --> C{Remaining Text Fits?}
-    C -->|Yes| D[Send Final Chunk]
-    C -->|No| E{Chunk Cap Reached?}
-    E -->|No| B
-    E -->|Yes| F[Log ERROR]
-    F --> G[Truncate Remaining Text]
-    G --> H[Send Truncated Final Chunk With Notice]
-    D --> I[Complete]
-    H --> I
+    A[Message Needs Splitting] --> B{Longer Than Work Cap?}
+    B -->|Yes| C[Log ERROR and Truncate With Notice]
+    B -->|No| D[Split Using Intelligent Boundaries]
+    C --> D
+    D --> E{Remaining Text Fits?}
+    E -->|Yes| F[Send Final Chunk]
+    E -->|No| G{Chunk Cap Reached?}
+    G -->|No| D
+    G -->|Yes| H[Log ERROR]
+    H --> I[Truncate Remaining Text]
+    I --> J[Send Truncated Final Chunk With Notice]
+    F --> K[Complete]
+    J --> K
 ```
 
 ### Benefits
 
 - **Content Preservation**: Full-length provider answers are delivered in full, with no recursion-depth cutoff; long code fences keep every line and each chunk has balanced fences.
 - **Runaway Guard**: A pathological response stops at a bounded number of messages.
-- **User Awareness**: The truncation notice is reserved for the chunk cap and reports the original answer length and the bot's delivery limit.
+- **Bounded Work**: An oversized or crafted answer is capped before parsing, so delivery stays linear in the input size instead of stalling the Discord event loop.
+- **User Awareness**: The truncation notice is reserved for the work cap and the chunk cap, and reports the original answer length and the bot's delivery limit.
 
 ## Provider Length-Limit Notice
 
