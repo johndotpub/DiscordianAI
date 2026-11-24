@@ -219,6 +219,34 @@ class TestPerplexityConfigValidation:
         assert any(issue.startswith("ERROR:") and key in issue for issue in issues)
 
 
+@pytest.mark.parametrize("key", ["INPUT_TOKENS", "PERPLEXITY_INPUT_TOKENS"])
+def test_prompt_budget_below_the_shared_minimum_is_a_startup_error(key):
+    """A 50-token budget would cut a real question down to a fragment."""
+    validate = validate_openai_config if key == "INPUT_TOKENS" else validate_perplexity_config
+
+    issues = validate({key: 50})
+
+    assert any(
+        issue.startswith("ERROR:") and key in issue and "below the minimum of 1000" in issue
+        for issue in issues
+    )
+    accepted = validate({key: 1000})
+    assert not any(issue.startswith("ERROR:") and key in issue for issue in accepted)
+
+
+@pytest.mark.parametrize("key", ["INPUT_TOKENS", "PERPLEXITY_INPUT_TOKENS"])
+def test_prompt_budget_of_zero_still_reports_the_positive_rule(key):
+    """The minimum does not hide the clearer message for a zero budget."""
+    validate = validate_openai_config if key == "INPUT_TOKENS" else validate_perplexity_config
+
+    issues = validate({key: 0})
+
+    assert any(
+        issue.startswith("ERROR:") and key in issue and "must be positive" in issue
+        for issue in issues
+    )
+
+
 class TestFullConfigValidation:
     """Test full configuration validation."""
 

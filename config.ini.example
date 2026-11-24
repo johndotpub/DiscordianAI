@@ -54,6 +54,7 @@ PERPLEXITY_MODEL=perplexity/sonar
 
 # === TOKEN LIMITS ===
 # INPUT_TOKENS is the enforced prompt budget (oldest history is trimmed first).
+# INPUT_TOKENS and PERPLEXITY_INPUT_TOKENS must be at least 1000.
 # OUTPUT_TOKENS caps chat completions (max_tokens) and includes reasoning
 # tokens as well as visible output.
 # PERPLEXITY_OUTPUT_TOKENS caps Perplexity completions (max_output_tokens),

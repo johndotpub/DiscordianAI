@@ -20,6 +20,7 @@ from .config import (
     MAX_OUTPUT_TOKENS_COST_WARNING,
     MAX_RATE_LIMIT_THRESHOLD,
     MAX_RECOMMENDED_REQ_PER_MIN,
+    MIN_INPUT_TOKENS,
     MIN_OPENAI_OUTPUT_TOKENS_WARNING,
     OPENAI_VALID_MODELS,
     PERPLEXITY_MODELS,
@@ -257,6 +258,7 @@ def _positive_limit_issues(
     config: dict,
     key: str,
     *,
+    minimum: int = 1,
     warning_above: int | None = None,
 ) -> list[str]:
     """Validate one prompt-budget or context-window key."""
@@ -273,6 +275,13 @@ def _positive_limit_issues(
         return [
             f"ERROR: {key} must be positive; accepted range: 1 or greater (got {parsed}).",
         ]
+    if parsed < minimum:
+        return [
+            (
+                f"ERROR: {key} is {parsed}, below the minimum of {minimum}; "
+                f"accepted range: {minimum} or greater."
+            ),
+        ]
     if warning_above is not None and parsed > warning_above:
         return [
             f"WARNING: {key} very high ({parsed}). May exceed model limits.",
@@ -286,6 +295,7 @@ def _input_and_context_issues(config: dict) -> list[str]:
         *_positive_limit_issues(
             config,
             "INPUT_TOKENS",
+            minimum=MIN_INPUT_TOKENS,
             warning_above=MAX_INPUT_TOKENS_THRESHOLD,
         ),
         *_positive_limit_issues(config, "CONTEXT_WINDOW"),
@@ -298,6 +308,7 @@ def _perplexity_prompt_limit_issues(config: dict) -> list[str]:
         *_positive_limit_issues(
             config,
             "PERPLEXITY_INPUT_TOKENS",
+            minimum=MIN_INPUT_TOKENS,
             warning_above=MAX_INPUT_TOKENS_THRESHOLD,
         ),
         *_positive_limit_issues(config, "PERPLEXITY_CONTEXT_WINDOW"),

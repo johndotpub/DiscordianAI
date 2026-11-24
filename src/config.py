@@ -153,6 +153,8 @@ DEFAULT_VISION_TOKEN_ESTIMATE = 1000
 MAX_OUTPUT_TOKENS_CEILING = 128_000
 MAX_OUTPUT_TOKENS_COST_WARNING = 50000
 MIN_OPENAI_OUTPUT_TOKENS_WARNING = 512
+# A prompt budget below this cannot hold a useful question plus instructions.
+MIN_INPUT_TOKENS = 1000
 # Warning threshold tracks the default chat model's real context window.
 MAX_INPUT_TOKENS_THRESHOLD = 1000000
 MAX_RATE_LIMIT_THRESHOLD = 100

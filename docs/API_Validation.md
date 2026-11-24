@@ -6,7 +6,8 @@
 findings as either **errors** or **warnings**:
 
 - **Errors stop startup.** They cover missing credentials, malformed base URLs,
-  non-positive limits, and output caps above the documented maximum.
+  non-positive limits, prompt budgets below 1,000, and output caps above the
+  documented maximum.
 - **Warnings are logged and startup continues.** They cover values a provider
   may still accept, such as a non-`sk-` OpenAI-compatible key or a non-standard
   gateway URL.
@@ -24,10 +25,13 @@ The live provider behaviour behind these checks is recorded in
 - An API key that is empty or whitespace-only for a configured provider, or a
   Perplexity key that does not match the `pplx-` shape.
 - A base URL that is not an absolute `http(s)` URL with a host.
-- `OUTPUT_TOKENS` or `PERPLEXITY_OUTPUT_TOKENS` that is not an integer, is
-  non-positive, or exceeds the fixed ceiling of **128,000**.
+- `OUTPUT_TOKENS` or `PERPLEXITY_OUTPUT_TOKENS` that is non-positive or exceeds
+  the fixed ceiling of **128,000**.
 - Non-positive `INPUT_TOKENS`, `CONTEXT_WINDOW`, `RATE_LIMIT`, or
   `RATE_LIMIT_PER` values.
+- `INPUT_TOKENS` or `PERPLEXITY_INPUT_TOKENS` below **1,000**. A malformed
+  integer in `config.ini` or the environment is reported with a warning and its
+  default applies instead; it does not abort startup.
 
 ## Warnings That Do Not Abort Startup
 
