@@ -10,11 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Behaviour changes
 
 - **Prompt estimates follow the script.** ASCII prose and code keep the historical
-  four-characters-per-token estimate. Characters from U+0080-U+07FF cost half a token,
-  U+0800-U+FFFF cost 0.8, and astral-plane characters (most emoji) cost 1.7, before the
-  existing 10% margin and per-message overhead. A Chinese, Japanese, Korean, Hindi, or
-  emoji history is no longer under-counted by 2-6x, so the Perplexity prompt stays inside
-  its 128K window instead of silently exceeding it.
+  one-quarter token per character. Characters from U+0080-U+07FF cost one-half token,
+  U+0800-U+FFFF cost 0.8, and astral-plane characters (most emoji) cost 1.7, all before
+  the existing 1.1 margin and per-message overhead. A Chinese, Japanese, Korean, Hindi, or
+  emoji history is therefore no longer estimated at the ASCII rate, so the Perplexity
+  prompt stays inside its 128K window instead of silently exceeding it.
 - **A context window smaller than its budgets stops startup.** `INPUT_TOKENS` plus
   `OUTPUT_TOKENS` must fit `CONTEXT_WINDOW`, and the Perplexity trio must fit
   `PERPLEXITY_CONTEXT_WINDOW` using the same effective values the request builder uses.
@@ -184,8 +184,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **One parser decides what is code, and every chunk is sanitised after splitting.**
   `tree-sitter-markdown` supplies the spans to both the sanitiser and the splitter. Only a
   closed fence opened and closed by exactly three backticks, with no other triple-backtick
-  run outside it, is protected; a closed inline code span is protected only when its opener
-  is not backslash-escaped and the text does not mix backtick run lengths. Tilde fences,
+  run outside it, is protected; a closed inline code span is protected only when neither
+  its opener nor its closer is backslash-escaped and the text does not mix backtick run
+  lengths. Tilde fences,
   four-or-more-backtick fences, indented blocks, unclosed fences, and every uncertain shape
   protect nothing. Outside those regions parser-reported links, images, and autolinks become
   their label text or a neutralised URL, then catch-all passes break every `](`, add a
@@ -228,9 +229,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   control image attachment handling, per-image size and count caps, and the flat prompt-token
   estimate charged per image during budget trimming.
 - **`tree-sitter` and `tree-sitter-markdown` are runtime dependencies.** Both are MIT
-  licensed, actively released, and ship prebuilt CPython 3.12 wheels for manylinux and
-  musllinux on x86_64 and aarch64, so the slim container needs no compiler. They provide the
-  shared code-region parser used by output sanitisation and message splitting.
+  licensed and actively released. `tree-sitter` 0.27.0 ships CPython 3.12 wheels for
+  manylinux x86_64 and aarch64 and for musllinux x86_64, but not musllinux aarch64;
+  `tree-sitter-markdown` 0.5.4 ships wheels for all four. `python:3.12-slim-bookworm` is a
+  manylinux image, so it needs no compiler; a musllinux aarch64 image would need one for
+  `tree-sitter`. They provide the shared code-region parser used by output sanitisation and
+  message splitting.
 
 ### Changed 🔁
 
@@ -267,6 +271,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **The generated systemd unit quotes only word-list directives.**
+  `--install-systemd` no longer wraps `WorkingDirectory`, `StandardOutput`, or
+  `StandardError` in quotes, which systemd treated as part of the path and rejected with
+  `path is not absolute`. `ExecStart` words and each `ReadWritePaths` path stay quoted,
+  percent signs are doubled, and `Environment=` quotes the whole assignment when its value
+  contains spaces. A unit generated for a path with a space now passes
+  `systemd-analyze verify`.
 - **One masked link no longer suppresses embeds by itself.** `count_links()` counts a
   `[title](url)` once instead of also counting its destination, and it ignores filenames
   such as `main.py` and `utils.py`. A single masked link therefore stays below the
@@ -292,6 +303,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Unclassified exceptions are not retried.** The retry policy now refuses an exception
   it cannot classify instead of treating the unknown type as transient. Built-in
   `ConnectionError` still classifies as a network error and remains retryable.
+- **Reset, broken-pipe, and aborted connections are not retried.** `ConnectionResetError`,
+  `BrokenPipeError`, and `ConnectionAbortedError` can arrive after the request was sent, so
+  repeating the call is not provably safe; the bot now reports them instead of sending the
+  same request twice. A bare `ConnectionError` still classifies as a connect failure and is
+  retried.
+- **A malformed `Retry-After` falls back to normal backoff.** A value that is `nan`, `inf`,
+  negative, empty, not numeric, or so large that it overflows to infinity is ignored
+  instead of becoming a sleep; the retry then uses normal backoff. A valid value is still
+  capped at 30 seconds. A `Retry-After: nan` header can no longer hang the retry loop.
 - **The budget-conflict warning names the key that supplied each value.** A Perplexity
   request that exceeds its window reports the effective prompt and context keys, so a
   lowered shared `INPUT_TOKENS` or `CONTEXT_WINDOW` is named as the shared key rather than
@@ -375,6 +395,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   text, so a link after that run is neutralised instead of being delivered live. Inline code
   spans follow the same sequential pairing, and blank lines or backslash-escaped backticks
   can no longer shift the protected span away from Discord's boundary.
+- **A code span with an escaped closer protects nothing.** When a parsed inline span ends
+  at a backslash-escaped backtick, Discord does not close the span there, so the parsed end
+  is not trustworthy. The span is treated as ordinary text and any link inside it is
+  neutralised instead of being delivered live.
 
 ### Tests ✅
 
@@ -448,11 +472,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by the straggler scan.
 - **A truncated chunk closes its open fence.** A one-chunk cut inside a fenced code block
   ends with the closing marker before the length notice.
-
-- **Delivery splitting coverage** checks a long fence spanning three or more messages with
-  every line delivered and balanced fences, prose after the fence, the first-chunk mention
-  limit, the chunk-cap notice's original length, citation-marker and fence safety in embed
-  heads, and code-preserving sanitisation while mentions stay neutralised.
+- **Delivery splitting coverage.** A long fence spanning three or more messages delivers
+  every line with balanced fences, and the test also checks prose after the fence, the
+  first-chunk mention limit, the chunk-cap notice's original length, citation-marker and
+  fence safety in embed heads, and code-preserving sanitisation while mentions stay
+  neutralised.
 
 ### Documentation 📝
 
@@ -475,6 +499,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Notes ⚠️
 
+- **Existing virtual environments must reinstall the runtime requirements.**
+  `tree-sitter` and `tree-sitter-markdown` are now runtime dependencies. The startup
+  dependency check stops with a clear `Missing required packages` message naming them;
+  run `pip install -r requirements.txt` (or `pip install -e ".[dev]"`) in the existing
+  environment before upgrading.
+- **Non-Latin and emoji history trims earlier.** Prompt estimates now charge U+0080-U+07FF
+  at one-half token per character, U+0800-U+FFFF at 0.8, and astral-plane characters such
+  as most emoji at 1.7, before the existing 1.1 margin. A history that was previously
+  under-counted at the ASCII rate is trimmed sooner; ASCII prose and code keep the
+  one-quarter token per character estimate.
 - **Local scraping is gone, and three scrape-budget keys are removed.**
   `MAX_URLS_PER_MESSAGE`, `MAX_TOTAL_SCRAPED_CHARS`, and `SCRAPE_DEADLINE_SECONDS` are no
   longer read because URL fetching now happens in the provider tools. An existing
