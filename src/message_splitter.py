@@ -37,8 +37,6 @@ _FENCE_BLOCK_PATTERN = re.compile(r"(`{3,})[\s\S]*?\1")
 _URL_TRAILING_PUNCTUATION = ".,;:!?)]}'\""
 _CONTINUED_FOOTER = "🌐 Web search results (continued)"
 TRUNCATION_NOTICE = "✂️ The answer was cut off at the length limit."
-_MISSING_REPLY_REFERENCE_CODES = frozenset({10008})
-_HTTP_STATUS_NOT_FOUND = 404
 
 logger = logging.getLogger(__name__)
 
@@ -89,13 +87,6 @@ def _sanitize_embed_description(
 # ============================================================================
 
 
-def _reply_reference_is_gone(exc: discord.HTTPException) -> bool:
-    """Return True when a reply failed because its target message no longer exists."""
-    if getattr(exc, "code", None) in _MISSING_REPLY_REFERENCE_CODES:
-        return True
-    return getattr(exc, "status", None) == _HTTP_STATUS_NOT_FOUND
-
-
 async def _deliver(  # noqa: PLR0913 - one helper carries every delivery option
     channel: discord.TextChannel | discord.DMChannel,
     content: str,
@@ -110,6 +101,10 @@ async def _deliver(  # noqa: PLR0913 - one helper carries every delivery option
     A reply to ``original_message`` allows only that human author to be
     mentioned. A plain channel send with ``mention_users`` allows exactly the
     supplied users. Everyone, roles, and replied-user pings are always denied.
+
+    The reply reference is built with ``fail_if_not_exists=False`` so Discord
+    delivers the answer as a normal message when the question was deleted,
+    instead of rejecting the request with an unknown-message error.
     """
     kwargs: dict[str, Any] = {}
     if embed is not None:
@@ -122,6 +117,7 @@ async def _deliver(  # noqa: PLR0913 - one helper carries every delivery option
         if getattr(author, "bot", False) is not True:
             mentioned_users = [author]
         kwargs["mention_author"] = False
+        kwargs["reference"] = original_message.to_reference(fail_if_not_exists=False)
     elif mention_users is not None:
         mentioned_users = list(mention_users)
     kwargs["allowed_mentions"] = discord.AllowedMentions(
@@ -130,23 +126,7 @@ async def _deliver(  # noqa: PLR0913 - one helper carries every delivery option
         roles=[],
         replied_user=False,
     )
-    if original_message is None:
-        await channel.send(content, **kwargs)
-        return
-
-    try:
-        await original_message.reply(content, **kwargs)
-    except discord.HTTPException as exc:
-        if not _reply_reference_is_gone(exc):
-            raise
-        logger.warning(
-            "Reply target is gone (status=%s code=%s); sending the answer to the channel",
-            getattr(exc, "status", None),
-            getattr(exc, "code", None),
-        )
-        fallback_kwargs = dict(kwargs)
-        fallback_kwargs.pop("mention_author", None)
-        await channel.send(content, **fallback_kwargs)
+    await channel.send(content, **kwargs)
 
 
 def append_truncation_notice(text: str) -> str:

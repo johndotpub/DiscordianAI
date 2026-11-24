@@ -1,7 +1,6 @@
 """Tests for the single outbound delivery helper."""
 
 import ast
-import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -32,8 +31,18 @@ def _original_message() -> MagicMock:
     author = MagicMock()
     author.mention = "<@123>"
     original_message = MagicMock(spec=discord.Message)
+    original_message.id = 456
+    original_message.channel = MagicMock(id=99)
     original_message.author = author
-    original_message.reply = AsyncMock()
+
+    def to_reference(*, fail_if_not_exists: bool = True, **_kwargs) -> discord.MessageReference:
+        return discord.MessageReference(
+            message_id=original_message.id,
+            channel_id=original_message.channel.id,
+            fail_if_not_exists=fail_if_not_exists,
+        )
+
+    original_message.to_reference = MagicMock(side_effect=to_reference)
     return original_message
 
 
@@ -47,10 +56,19 @@ def _http_exception(status: int, code: int = 0) -> discord.HTTPException:
     )
 
 
-def _assert_reply_policy(original_message: MagicMock) -> None:
-    for call in original_message.reply.call_args_list:
+def _reply_calls(channel: MagicMock) -> list:
+    return [call for call in channel.send.call_args_list if "reference" in call.kwargs]
+
+
+def _assert_reply_policy(channel: MagicMock, original_message: MagicMock) -> None:
+    calls = _reply_calls(channel)
+    assert calls
+    for call in calls:
         kwargs = call.kwargs
         assert kwargs["mention_author"] is False
+        reference = kwargs["reference"]
+        assert isinstance(reference, discord.MessageReference)
+        assert reference.fail_if_not_exists is False
         allowed_mentions = kwargs["allowed_mentions"]
         assert isinstance(allowed_mentions, discord.AllowedMentions)
         assert allowed_mentions.users == [original_message.author]
@@ -149,37 +167,31 @@ def test_only_one_allowed_mentions_construction() -> None:
 
 
 @pytest.mark.asyncio
-async def test_deleted_question_falls_back_to_one_channel_send(caplog) -> None:
+async def test_deleted_question_reference_does_not_fail() -> None:
+    """A reply reference lets Discord fall back to a normal send when it is gone."""
     channel = _channel()
     original_message = _original_message()
-    original_message.reply = AsyncMock(side_effect=_http_exception(400, 10008))
 
-    with caplog.at_level(logging.WARNING, logger="src.message_splitter"):
-        await send_formatted_message(
-            channel,
-            "The answer",
-            _deps(),
-            original_message=original_message,
-            mention_prefix=f"{original_message.author.mention} ",
-        )
+    await send_formatted_message(
+        channel,
+        "The answer",
+        _deps(),
+        original_message=original_message,
+        mention_prefix=f"{original_message.author.mention} ",
+    )
 
-    original_message.reply.assert_awaited_once()
     channel.send.assert_awaited_once()
-    attempted = original_message.reply.call_args.args[0]
-    sent = channel.send.call_args.args[0]
-    assert sent == attempted == f"{original_message.author.mention} The answer"
-    fallback_allowed = channel.send.call_args.kwargs["allowed_mentions"]
-    assert fallback_allowed.users == [original_message.author]
-    assert fallback_allowed.roles == []
-    assert fallback_allowed.everyone is False
-    assert "sending the answer to the channel" in caplog.text
+    reference = channel.send.call_args.kwargs["reference"]
+    assert reference.fail_if_not_exists is False
+    assert channel.send.call_args.args[0] == f"{original_message.author.mention} The answer"
+    _assert_reply_policy(channel, original_message)
 
 
 @pytest.mark.asyncio
 async def test_reply_failure_for_another_reason_is_not_replaced() -> None:
     channel = _channel()
+    channel.send = AsyncMock(side_effect=_http_exception(403, 50013))
     original_message = _original_message()
-    original_message.reply = AsyncMock(side_effect=_http_exception(403, 50013))
 
     with pytest.raises(discord.HTTPException):
         await send_formatted_message(
@@ -189,8 +201,7 @@ async def test_reply_failure_for_another_reason_is_not_replaced() -> None:
             original_message=original_message,
         )
 
-    original_message.reply.assert_awaited_once()
-    channel.send.assert_not_awaited()
+    channel.send.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -206,9 +217,9 @@ async def test_send_split_message_applies_reply_policy() -> None:
         suppress_embeds=True,
     )
 
-    assert original_message.reply.call_count >= 2
-    _assert_reply_policy(original_message)
-    for call in original_message.reply.call_args_list:
+    assert len(_reply_calls(channel)) >= 2
+    _assert_reply_policy(channel, original_message)
+    for call in _reply_calls(channel):
         assert call.kwargs["suppress_embeds"] is True
 
 
@@ -230,12 +241,12 @@ async def test_send_split_message_with_embed_applies_reply_policy() -> None:
         mention_prefix=f"{original_message.author.mention} ",
     )
 
-    assert original_message.reply.call_count >= 2
-    _assert_reply_policy(original_message)
-    first_call = original_message.reply.call_args_list[0]
+    assert len(_reply_calls(channel)) >= 2
+    _assert_reply_policy(channel, original_message)
+    first_call = _reply_calls(channel)[0]
     assert first_call.args[0].startswith(f"{original_message.author.mention} ")
     assert first_call.kwargs["embed"] is embed
-    continuation = original_message.reply.call_args_list[-1].kwargs["embed"]
+    continuation = _reply_calls(channel)[-1].kwargs["embed"]
     assert continuation.footer.text == "🌐 Web search results (continued)"
 
 
@@ -284,9 +295,9 @@ async def test_send_formatted_message_applies_reply_policy() -> None:
         mention_prefix=f"{original_message.author.mention} ",
     )
 
-    original_message.reply.assert_called_once()
-    _assert_reply_policy(original_message)
-    assert original_message.reply.call_args.kwargs["embed"] is embed
+    channel.send.assert_called_once()
+    _assert_reply_policy(channel, original_message)
+    assert channel.send.call_args.kwargs["embed"] is embed
 
 
 @pytest.mark.asyncio
