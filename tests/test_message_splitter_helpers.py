@@ -49,7 +49,7 @@ class TestCountLinks:
 
         count = count_links(text)
 
-        assert count == 4  # Counts both Discord links and embedded URLs
+        assert count == 2  # One count per masked link, not its destination too
 
     def test_count_bare_urls(self):
         """Test counting bare URLs."""
@@ -65,7 +65,7 @@ class TestCountLinks:
 
         count = count_links(text)
 
-        assert count == 3  # Discord link + embedded URL + bare URL
+        assert count == 2  # One masked link plus one bare URL
 
     def test_count_no_links(self):
         """Test text without links."""
@@ -84,7 +84,7 @@ class TestCountLinks:
 
         count = count_links(text)
 
-        assert count == 3  # Discord link + embedded URL + bare URL
+        assert count == 2  # One masked link plus one bare URL
 
     def test_count_partial_links(self):
         """Test with partial/invalid link formats."""
@@ -193,3 +193,14 @@ class TestMessageFormatter:
         assert "5000" in result
         assert "truncated" in result.lower()
         assert "characters" in result.lower()
+
+
+def test_count_links_counts_one_masked_link_once():
+    """A masked link and its destination are one link, not two."""
+    assert count_links("One [masked](https://example.com) link") == 1
+    assert should_suppress_embeds("One [masked](https://example.com) link", threshold=2) is False
+
+
+def test_count_links_ignores_filenames():
+    """Python filenames are not clickable links."""
+    assert count_links("Edit main.py and utils.py before running") == 0

@@ -1610,14 +1610,26 @@ def split_fence_aware(
 
 
 def count_links(text: str) -> int:
-    """Count the number of links in text for embed suppression decisions."""
-    # Count Discord hyperlinks [title](url)
-    discord_links = len(LINK_PATTERN.findall(text))
+    """Count distinct clickable links for embed suppression decisions.
 
-    # Count bare URLs
-    bare_urls = len(BARE_URL_PATTERN.findall(text))
-
-    return discord_links + bare_urls
+    A masked link (``[title](url)``) counts once, not again through its
+    destination. A bare match only counts when it is scheme-qualified or starts
+    with ``www.``, so a filename such as ``main.py`` is not a link.
+    """
+    link_spans = [match.span() for match in LINK_PATTERN.finditer(text)]
+    count = len(link_spans)
+    for match in BARE_URL_PATTERN.finditer(text):
+        start = match.start()
+        if any(link_start <= start < link_end for link_start, link_end in link_spans):
+            continue
+        token = match.group(0)
+        separator_length = len("://")
+        preceded_by_scheme = (
+            start >= separator_length and text[start - separator_length : start] == "://"
+        )
+        if "://" in token or token.lower().startswith("www.") or preceded_by_scheme:
+            count += 1
+    return count
 
 
 def should_suppress_embeds(text: str, threshold: int = 2) -> bool:

@@ -267,6 +267,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **One masked link no longer suppresses embeds by itself.** `count_links()` counts a
+  `[title](url)` once instead of also counting its destination, and it ignores filenames
+  such as `main.py` and `utils.py`. A single masked link therefore stays below the
+  two-link embed-suppression threshold.
 - **Delivery splitting is linear and the fence pairing runs once.** The split-only
   Discord backtick pairing built each span with a copy of the remaining text, so doubling
   an answer of triple-backtick runs multiplied delivery time by four to six. The pairing
