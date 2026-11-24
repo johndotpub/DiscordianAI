@@ -306,6 +306,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests ✅
 
+- **A web route calls Perplexity at most once.** When the initial web call fails and the
+  chat fallback also returns nothing, the test asserts the request tail returns the
+  both-services notice without calling Perplexity a second time. Removing the attempt
+  ledger now fails the suite.
 - **Clef host eligibility is pinned against lookalike names.** A suffix such as
   `ollama.com.evil.example`, userinfo such as `ollama.com@evil.example`, a path containing
   `ollama.com`, and a prefix such as `notollama.com` are all refused. The test fails if the

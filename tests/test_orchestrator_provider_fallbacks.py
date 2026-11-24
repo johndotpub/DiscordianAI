@@ -164,3 +164,26 @@ async def test_both_providers_failing_records_no_history_turn():
     assert response == ERROR_MESSAGES["both_services_unavailable"]
     assert calls == ["openai", "perplexity"]
     assert _history(request) == []
+
+
+@pytest.mark.asyncio
+async def test_web_route_does_not_retry_perplexity_after_both_providers_fail():
+    """A web route that already called Perplexity must not call it again."""
+    calls: list[str] = []
+    request = _request("Check http://example.com/status")
+    clients = AIClients(
+        openai=_openai_client(calls, ""),
+        perplexity=_perplexity_client(calls, None),
+    )
+
+    response, _suppress, _embed = await get_smart_response(
+        request,
+        [],
+        clients,
+        AIConfig(),
+        {"ROUTER_MODE": "heuristic"},
+    )
+
+    assert response == ERROR_MESSAGES["both_services_unavailable"]
+    assert calls == ["perplexity", "openai"]
+    assert _history(request) == []
