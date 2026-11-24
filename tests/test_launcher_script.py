@@ -73,7 +73,13 @@ def _process_args(pid: int) -> str:
 
 
 def _assert_stopped(process: subprocess.Popen[bytes]) -> None:
-    assert process.wait(timeout=5) is not None
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+        msg = "process was not stopped"
+        raise AssertionError(msg) from None
 
 
 def _instance_pid_file(project: Path, config_file: str) -> Path:
