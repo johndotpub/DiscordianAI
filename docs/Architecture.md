@@ -89,8 +89,8 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 |-----------|------|---------|
 | **Discord Bot** | `discord_bot.py` | Activity status, presence management |
 | **Discord Embeds** | `discord_embeds.py` | Embed creation for citations |
-| **Citation Formatting** | `citation_formatting.py` | Normalises citation labels and citation URLs |
-| **Truncation** | `truncation.py` | Truncates text at Discord's embed boundaries |
+| **Citation Formatting** | `citation_formatting.py` | Renders numbered citations as markdown links for messages and embeds, and vets each URL before it can become clickable |
+| **Truncation** | `truncation.py` | Generic character-limit helper that appends the caller's own notice |
 | **Message Processor** | `message_processor.py` | Normalizes Discord events, delegates to orchestrator, records metadata |
 | **Message Splitter** | `message_splitter.py` | Message splitting, formatting, sanitization |
 | **API Validation** | `api_validation.py` | Configuration validation, API key format checks |
@@ -321,15 +321,18 @@ a 90-second overall deadline stops retries even when attempts remain.
 - Request/response metadata logging
 
 ### Health Checks
-- API connectivity monitoring
-- Model availability validation
-- Connection pool health metrics
+- Startup reachability probes for each configured provider, through the
+  adapter's bounded `probe()`
+- One log line per provider: service, status, latency, and error type; no
+  response body, request body, or key is logged
+- `/health` includes connection-pool metrics when a pool manager is configured
 
 ### Health State
 - `/health` reports the bot's observed provider state from each circuit breaker; it
   does not run a live provider probe on request.
 - Startup reachability checks call each provider adapter's bounded `probe()` and log
-  the result. They keep no in-process metrics history.
+  one line per provider. They keep no in-process metrics history, and no periodic
+  model-availability validation runs.
 
 ## 🚀 Performance Optimizations
 

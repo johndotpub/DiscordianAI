@@ -8,6 +8,7 @@ This test suite covers:
 """
 
 from datetime import UTC, datetime
+import logging
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -220,6 +221,34 @@ class TestAPIHealthMonitor:
         assert results["perplexity"].status == "healthy"
         assert results["discord"].status == "healthy"
         assert results["openai"].details["model"] == "gpt-5-mini"
+
+    @pytest.mark.asyncio
+    async def test_run_all_health_checks_logs_one_safe_line_per_service(self, caplog):
+        """Operators get service, status, latency and error type, never provider text."""
+        caplog.set_level(logging.INFO, logger="src.health_checks")
+        failing_client = Mock()
+        failing_client.models.list = AsyncMock(
+            side_effect=RuntimeError("provider body with private text")
+        )
+
+        results = await self.monitor.run_all_health_checks(
+            {"openai": failing_client},
+            {"GPT_MODEL": "gpt-5-mini"},
+        )
+
+        assert results["openai"].status == "unhealthy"
+        lines = [
+            record.getMessage()
+            for record in caplog.records
+            if record.name == "src.health_checks"
+            and record.getMessage().startswith("Startup health check:")
+        ]
+        assert len(lines) == 1
+        assert "service=openai" in lines[0]
+        assert "status=unhealthy" in lines[0]
+        assert "latency_ms=" in lines[0]
+        assert "error_type=" in lines[0]
+        assert "private text" not in lines[0]
 
 
 @pytest.mark.asyncio

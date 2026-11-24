@@ -301,5 +301,12 @@ class APIHealthMonitor:
                 )
                 self.logger.exception("Failed to check %s health", spec.display_name)
             results[service] = result
+            self.logger.info(
+                "Startup health check: service=%s status=%s latency_ms=%.1f error_type=%s",
+                result.service,
+                result.status,
+                result.response_time_ms,
+                result.details.get("error_type", "none"),
+            )
 
         return results
