@@ -114,13 +114,13 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=${SCRIPT_DIR}/discordian.sh -c ${CONFIG_FILE} -f ${PROJECT_DIR}
-WorkingDirectory=${PROJECT_DIR}
+ExecStart="${SCRIPT_DIR}/discordian.sh" -c "${CONFIG_FILE}" -f "${PROJECT_DIR}"
+WorkingDirectory="${PROJECT_DIR}"
 Restart=on-failure
 RestartSec=15
 
-StandardOutput=append:${PROJECT_DIR}/bot.log
-StandardError=append:${PROJECT_DIR}/bot.log
+StandardOutput=append:"${PROJECT_DIR}/bot.log"
+StandardError=append:"${PROJECT_DIR}/bot.log"
 
 Environment=PATH=${UNIT_PATH}
 Environment=HOME=${HOME}
@@ -129,7 +129,7 @@ Environment=LANG=en_US.UTF-8
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=${PROJECT_DIR}
+ReadWritePaths="${PROJECT_DIR}"
 
 [Install]
 WantedBy=default.target
@@ -197,11 +197,11 @@ PYTHON="$(resolve_python)" || {
     log "ERROR: No python3 found. Install Python 3.12+ or create a venv."
     exit 1
 }
-log "Using python3: ${PYTHON} ($(${PYTHON} --version 2>&1))"
+log "Using python3: ${PYTHON} ($("${PYTHON}" --version 2>&1))"
 
 # ── 3. Verify Python version (3.12+) ──────────────────────────────────
-py_major="$(${PYTHON} -c 'import sys; print(sys.version_info[0])')"
-py_minor="$(${PYTHON} -c 'import sys; print(sys.version_info[1])')"
+py_major="$("${PYTHON}" -c 'import sys; print(sys.version_info[0])')"
+py_minor="$("${PYTHON}" -c 'import sys; print(sys.version_info[1])')"
 if [[ "${py_major}" -lt 3 ]] || [[ "${py_major}" -eq 3 && "${py_minor}" -lt 12 ]]; then
     log "ERROR: Python 3.12+ required, found ${py_major}.${py_minor}"
     exit 1
@@ -252,7 +252,7 @@ stop_legacy_pid_file_instance "${LEGACY_PID_FILE}" "${CONFIG_PATH}"
 
 # By this config's PID file. The helper removes the file even when the process
 # already died.
-stop_pid_file_instance "${PID_FILE}"
+stop_pid_file_instance "${PID_FILE}" "${CONFIG_PATH}"
 
 # Stragglers for this config only (but not ourselves). A different config's
 # instance is a different managed service and must keep running.

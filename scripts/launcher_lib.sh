@@ -115,22 +115,40 @@ launcher_stop_timeout() {
     fi
 }
 
+# True while the process is alive. A zombie has exited for our purposes even
+# though kill -0 still succeeds until its parent reaps it.
+process_is_running() {
+    local pid="$1"
+    local state=""
+
+    kill -0 "${pid}" 2>/dev/null || return 1
+    if [[ -r "/proc/${pid}/stat" ]]; then
+        state="$(sed -n 's/^[^)]*) \([A-Za-z]\).*/\1/p' "/proc/${pid}/stat" 2>/dev/null || true)"
+        [[ "${state}" != "Z" ]] || return 1
+    fi
+    return 0
+}
+
 # Wait up to timeout seconds for the process to exit. The caller checks
 # liveness afterwards; this returns successfully even when the timeout expires.
 wait_for_exit() {
     local pid="$1"
     local timeout="${2:-10}"
+    local checks=$((timeout * 10))
     local waited=0
 
-    while kill -0 "${pid}" 2>/dev/null && [[ "${waited}" -lt "${timeout}" ]]; do
-        sleep 1
+    while process_is_running "${pid}" && [[ "${waited}" -lt "${checks}" ]]; do
+        sleep 0.1
         waited=$((waited + 1))
     done
 }
 
-# Stop the instance recorded in a PID file, then always remove the file.
+# Stop the instance recorded in a PID file, then always remove the file. The
+# PID is signalled only when its command line runs this same config; a stale
+# file left after a reboot may name an unrelated process.
 stop_pid_file_instance() {
     local pid_file="$1"
+    local expected_config="${2:-}"
 
     if [[ ! -f "${pid_file}" ]]; then
         return 0
@@ -138,13 +156,17 @@ stop_pid_file_instance() {
 
     local old_pid
     old_pid="$(cat "${pid_file}" 2>/dev/null || true)"
-    if [[ -n "${old_pid}" ]] && kill -0 "${old_pid}" 2>/dev/null; then
-        log "Stopping previous instance (PID ${old_pid})"
-        kill "${old_pid}" 2>/dev/null || true
-        wait_for_exit "${old_pid}" "$(launcher_stop_timeout)"
-        if kill -0 "${old_pid}" 2>/dev/null; then
-            log "Force-killing unresponsive process ${old_pid}"
-            kill -9 "${old_pid}" 2>/dev/null || true
+    if [[ -n "${old_pid}" ]] && process_is_running "${old_pid}"; then
+        if [[ -n "${expected_config}" ]] && ! process_uses_config "${old_pid}" "${expected_config}"; then
+            log "PID file records another process (PID ${old_pid}); not signalling it"
+        else
+            log "Stopping previous instance (PID ${old_pid})"
+            kill "${old_pid}" 2>/dev/null || true
+            wait_for_exit "${old_pid}" "$(launcher_stop_timeout)"
+            if process_is_running "${old_pid}"; then
+                log "Force-killing unresponsive process ${old_pid}"
+                kill -9 "${old_pid}" 2>/dev/null || true
+            fi
         fi
     fi
     rm -f "${pid_file}"
@@ -162,7 +184,7 @@ stop_legacy_pid_file_instance() {
     fi
 
     old_pid="$(cat "${pid_file}" 2>/dev/null || true)"
-    if [[ -z "${old_pid}" ]] || ! kill -0 "${old_pid}" 2>/dev/null; then
+    if [[ -z "${old_pid}" ]] || ! process_is_running "${old_pid}"; then
         rm -f "${pid_file}"
         return 0
     fi
@@ -171,7 +193,7 @@ stop_legacy_pid_file_instance() {
         log "Stopping legacy PID file instance (PID ${old_pid})"
         kill "${old_pid}" 2>/dev/null || true
         wait_for_exit "${old_pid}" "$(launcher_stop_timeout)"
-        if kill -0 "${old_pid}" 2>/dev/null; then
+        if process_is_running "${old_pid}"; then
             log "Force-killing unresponsive process ${old_pid}"
             kill -9 "${old_pid}" 2>/dev/null || true
         fi

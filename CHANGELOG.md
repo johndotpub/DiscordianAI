@@ -46,6 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other. A legacy `.bot.pid` is honoured only when its process runs the same config. The
   force-kill wait is overridable with `DISCORDIANAI_STOP_TIMEOUT` for tests and unusual
   supervisors. `--install-systemd` now starts the unit after enabling it.
+- **A stale launcher PID file cannot signal an unrelated process.** The per-config PID
+  file is trusted only when its process still runs the same config. A number left by a
+  reboot is removed without a signal, so the next restart cannot kill an unrelated process.
 - **`LOG_FILE` is mentioned only when it is actually set.** The deprecated key has a
   built-in default, so every startup used to log an "ignored" notice while directing
   operators to stdout even though logs go to stderr. The notice now appears only when the

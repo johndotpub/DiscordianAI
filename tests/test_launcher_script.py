@@ -105,9 +105,85 @@ def _stop_instance(project: Path, config_file: str) -> subprocess.CompletedProce
 set -euo pipefail
 source "$LAUNCHER_LIB"
 log() { :; }
-stop_pid_file_instance "$(instance_pid_file "$1" "$2")"
+stop_pid_file_instance "$(instance_pid_file "$1" "$2")" "$(resolve_config_path "$1" "$2")"
 """
     return _run_bash(script, str(project), config_file)
+
+
+def _start_graceful_bot(config_arg: str, cwd: Path) -> subprocess.Popen[bytes]:
+    """Start a sleeping process that exits cleanly when it receives SIGTERM."""
+    code = (
+        "import signal, sys, time\n"
+        "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))\n"
+        "time.sleep(30)\n"
+    )
+    process = subprocess.Popen(  # noqa: S603 - fixed bash and Python executables
+        [
+            BASH_PATH,
+            "-c",
+            'exec -a "$1" "$2" -c "$3" "$4" "$5" "$6"',
+            "fake-bot",
+            f"python -m src.main --conf {config_arg}",
+            sys.executable,
+            code,
+            "python -m src.main",
+            "--conf",
+            config_arg,
+        ],
+        cwd=cwd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    for _ in range(500):
+        if "src.main" in _process_args(process.pid):
+            return process
+        os.sched_yield()
+    process.kill()
+    process.wait(timeout=5)
+    msg = "graceful fake bot process did not exec"
+    raise AssertionError(msg)
+
+
+def _write_stub_project(project: Path) -> Path:
+    """Create a project directory whose venv Python records its launch."""
+    project.mkdir(parents=True)
+    (project / "bot.ini").write_text("", encoding="utf-8")
+    bin_dir = project / ".venv" / "bin"
+    bin_dir.mkdir(parents=True)
+    stub = bin_dir / "python3"
+    stub.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "--version" ]]; then
+    echo "Python 3.12.0"
+    exit 0
+fi
+if [[ "${1:-}" == "-c" ]]; then
+    if [[ "${2:-}" == *"[0]"* ]]; then
+        echo 3
+    else
+        echo 12
+    fi
+    exit 0
+fi
+printf '%s\n' "$@" > "${STUB_MARKER:?}"
+exit 0
+""",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    return stub
+
+
+def _launcher_env(project: Path, marker: Path, **overrides: str) -> dict[str, str]:
+    """Return an environment that uses the project stub, not host Python."""
+    return {
+        "PATH": "/usr/bin:/bin",
+        "HOME": str(project / "home"),
+        "STUB_MARKER": str(marker),
+        "DISCORDIANAI_STOP_TIMEOUT": "5",
+        **overrides,
+    }
 
 
 def test_wait_for_exit_does_not_abort_under_set_e():
@@ -362,11 +438,155 @@ printf '%s\n' "$PID_FILE"
     assert first.stdout.strip() != second.stdout.strip()
 
 
-def test_install_systemd_enables_then_starts_the_unit():
-    text = SCRIPT_PATH.read_text(encoding="utf-8")
-    enable = text.index('systemctl --user enable "${UNIT_NAME}"')
-    start = text.index('systemctl --user start "${UNIT_NAME}"')
+def test_launcher_quotes_a_python_path_with_spaces_and_stops_the_legacy_instance(tmp_path):
+    """A space in the checkout path must not turn the venv path into a command."""
+    project = tmp_path / "space project"
+    marker = tmp_path / "launch-args.txt"
+    _write_stub_project(project)
+    bot = _start_fake_bot("bot.ini", project)
+    legacy = project / ".bot.pid"
+    legacy.write_text(f"{bot.pid}\n", encoding="utf-8")
+    try:
+        script = f"""
+set -euo pipefail
+"{SCRIPT_PATH}" -c bot.ini -f "$1"
+"""
+        completed = _run_bash(
+            script,
+            str(project),
+            env=_launcher_env(project, marker),
+            cwd=tmp_path,
+        )
 
-    assert enable < start
-    assert "scripts/launcher_lib.sh" in text
-    assert LIBRARY_PATH.is_file()
+        assert completed.returncode == 0, completed.stderr
+        _assert_stopped(bot)
+        assert not legacy.exists(), "the legacy PID file was not consumed"
+        assert marker.is_file(), completed.stderr
+        launched = marker.read_text(encoding="utf-8").splitlines()
+        assert launched[:3] == ["-m", "src.main", "--conf"]
+        assert launched[3] == str(project / "bot.ini")
+    finally:
+        if bot.poll() is None:
+            bot.kill()
+            bot.wait(timeout=5)
+
+
+def test_launcher_sigterm_stops_a_straggler_for_the_same_config(tmp_path):
+    """Removing the straggler kill must leave the old process running."""
+    project = tmp_path / "space project"
+    marker = tmp_path / "launch-args.txt"
+    _write_stub_project(project)
+    bot = _start_fake_bot("bot.ini", project)
+    try:
+        script = f"""
+set -euo pipefail
+"{SCRIPT_PATH}" -c bot.ini -f "$1"
+"""
+        completed = _run_bash(
+            script,
+            str(project),
+            env=_launcher_env(project, marker),
+            cwd=tmp_path,
+        )
+
+        assert completed.returncode == 0, completed.stderr
+        _assert_stopped(bot)
+        assert marker.is_file(), completed.stderr
+    finally:
+        if bot.poll() is None:
+            bot.kill()
+            bot.wait(timeout=5)
+
+
+def test_stop_pid_file_instance_takes_the_graceful_branch(tmp_path):
+    """A child that exits on SIGTERM is not force-killed."""
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "bot.ini").write_text("", encoding="utf-8")
+    bot = _start_graceful_bot("bot.ini", project)
+    pid_file = _instance_pid_file(project, "bot.ini")
+    pid_file.write_text(f"{bot.pid}\n", encoding="utf-8")
+    try:
+        script = """
+set -euo pipefail
+source "$LAUNCHER_LIB"
+log() { printf '%s\n' "$1" >&2; }
+stop_pid_file_instance "$(instance_pid_file "$1" "$2")" "$(resolve_config_path "$1" "$2")"
+"""
+        completed = _run_bash(script, str(project), "bot.ini")
+
+        assert completed.returncode == 0, completed.stderr
+        assert "Stopping previous instance" in completed.stderr
+        assert "Force-killing" not in completed.stderr
+        _assert_stopped(bot)
+        assert not pid_file.exists()
+    finally:
+        if bot.poll() is None:
+            bot.kill()
+            bot.wait(timeout=5)
+
+
+def test_stale_pid_file_for_an_unrelated_process_is_removed_without_a_signal(tmp_path):
+    """A reboot can leave an unrelated PID in the file; it must keep running."""
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "bot.ini").write_text("", encoding="utf-8")
+    unrelated = subprocess.Popen(["/bin/sleep", "30"])
+    pid_file = _instance_pid_file(project, "bot.ini")
+    pid_file.write_text(f"{unrelated.pid}\n", encoding="utf-8")
+    try:
+        completed = _stop_instance(project, "bot.ini")
+
+        assert completed.returncode == 0, completed.stderr
+        assert unrelated.poll() is None, "an unrelated process was signalled"
+        assert not pid_file.exists()
+    finally:
+        if unrelated.poll() is None:
+            unrelated.kill()
+        unrelated.wait(timeout=5)
+
+
+def test_install_systemd_writes_quoted_paths_and_starts_the_unit(tmp_path):
+    """A project path with a space is quoted in the unit and the unit is started."""
+    project = tmp_path / "space project"
+    _write_stub_project(project)
+    home = tmp_path / "home"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "systemctl-calls.txt"
+    systemctl = bin_dir / "systemctl"
+    systemctl.write_text(
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${SYSTEMCTL_CALLS:?}"
+exit 0
+""",
+        encoding="utf-8",
+    )
+    systemctl.chmod(0o755)
+    script = f"""
+set -euo pipefail
+"{SCRIPT_PATH}" --install-systemd bot.ini -f "$1"
+"""
+    completed = _run_bash(
+        script,
+        str(project),
+        env={
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "HOME": str(home),
+            "SYSTEMCTL_CALLS": str(calls),
+        },
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    unit = home / ".config" / "systemd" / "user" / "discordian-bot@bot.service"
+    text = unit.read_text(encoding="utf-8")
+    assert f'ExecStart="{SCRIPT_PATH}" -c "bot.ini" -f "{project}"' in text
+    assert f'WorkingDirectory="{project}"' in text
+    assert f'ReadWritePaths="{project}"' in text
+    invocations = calls.read_text(encoding="utf-8").splitlines()
+    assert invocations == [
+        "--user daemon-reload",
+        "--user enable discordian-bot@bot.service",
+        "--user start discordian-bot@bot.service",
+    ]
