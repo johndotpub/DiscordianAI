@@ -80,7 +80,7 @@ The included [discordian.sh](discordian.sh) script handles Python environment re
 ./discordian.sh --install-systemd bot.ini
 ```
 
-The launcher resolves Python in this order: pyenv → project-local `.venv` → shell venv → system `python3`. It creates a `.venv/` automatically if none exists. It also ensures the working directory is correct — no more `ModuleNotFoundError: No module named 'src'` when running from cron. In daemon mode it redirects both stdout and stderr to `bot.log` (`>> bot.log 2>&1`) and records each config's process ID in `.bot-<stem>.pid` (for example `.bot-bot.pid`).
+The launcher resolves Python in this order: pyenv → project-local `.venv` → shell venv → system `python3`. It creates a `.venv/` automatically if none exists. It also ensures the working directory is correct — no more `ModuleNotFoundError: No module named 'src'` when running from cron. In daemon mode it redirects both stdout and stderr to `bot.log` (`>> bot.log 2>&1`) and records each config's process ID in `.bot-<stem>-<hash>.pid`, where the hash comes from the resolved absolute config path so two configs with the same basename stay separate.
 
 `--install-systemd` generates a complete systemd user unit from the config file name (e.g., `bot.ini` → `discordian-bot@bot.service`), writes it to `~/.config/systemd/user/`, enables and starts it, and prints management commands. See [docs/Daemon.md](docs/Daemon.md) for both cron and systemd setup. The shipped logrotate fragment is [contrib/logrotate/discordianai](contrib/logrotate/discordianai); it uses `copytruncate` because the bot never reopens a log file it did not open.
 

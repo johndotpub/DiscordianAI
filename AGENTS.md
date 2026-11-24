@@ -215,8 +215,10 @@ diff or with the named command.
   it. Check callers, not just the report.
 - **Classify errors by type and status.** Use `error_handling.classify_error()` and the
   typed `ErrorType`/`ErrorSeverity` branches; do not match on a raw string when the
-  exception type or HTTP status is available. A deterministic 4xx is not configurable and
-  must not be reported as a transient provider failure.
+  exception type or HTTP status is available. A user-caused request error is neutral for
+  the breaker; configuration errors (401, 403, 404, and a 400 reporting an invalid or missing
+  model) count. A deterministic 4xx is not configurable and must not be reported as a
+  transient provider failure.
 - **Retry policy.** Retry failures a repeat can help: connection errors where no request
   was established, 429 with `Retry-After` honoured (capped at 30 seconds), and 5xx. Do not
   retry read timeouts, auth failures, validation errors, or other 4xx. Bound every retry
@@ -308,8 +310,8 @@ tox -e py312
   running. Check:
   `tests/test_health_truth.py::test_bind_failure_disables_health_server_without_killing_bot`.
 - **One instance per config.** `discordian.sh` records each config's PID in
-  `.bot-<stem>.pid` and stops only that instance, so a second config in the same checkout
-  keeps running. The straggler scan resolves each process's `--conf` against its working
+  `.bot-<stem>-<hash>.pid` and stops only that instance, so a second config in the same
+  checkout keeps running. The straggler scan resolves each process's `--conf` against its working
   directory and matches this instance's absolute config path; a legacy `.bot.pid` is used
   only when its process runs the same config. A Discord token still cannot have two live
   gateway sessions without duplicate replies: one instance per token remains the

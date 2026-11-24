@@ -50,6 +50,7 @@ def test_dockerignore_excludes_local_config_and_caches():
         "config.ini",
         "config.ini.bak-2026-10-30",
         ".bot.pid",
+        ".bot-bot-12345678.pid",
         "bot.log-2026-10-30.gz",
         ".pytest_cache/v/cache",
         ".ruff_cache/content",

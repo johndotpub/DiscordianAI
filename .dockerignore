@@ -103,6 +103,7 @@ config.ini
 
 # Local runtime and tool caches
 .bot.pid
+.bot-*.pid
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/

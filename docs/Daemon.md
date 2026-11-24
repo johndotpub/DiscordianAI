@@ -10,7 +10,7 @@
 - **Process management**: Stops previous instances before starting, with graceful shutdown and forced kill fallback
 - **Daemon and foreground modes**: Background mode for cron, foreground mode for systemd
 - **Startup health check**: In daemon mode, waits 3 seconds and confirms the process survived
-- **systemd installation**: `--install-systemd bot.ini` generates a ready-to-run user service unit with all paths auto-detected
+- **systemd installation**: `--install-systemd bot.ini` generates a ready-to-run user service unit, installs it, enables it, and starts it, with all paths auto-detected
 
 ## Requirements
 
@@ -43,7 +43,7 @@ If no venv exists, the launcher creates one automatically using the resolved Pyt
 # Specify project directory explicitly
 ./discordian.sh -d -c production.ini -f /opt/discordianai
 
-# Install and enable a systemd user service
+# Install, enable, and start a systemd user service
 ./discordian.sh --install-systemd bot.ini
 ```
 
@@ -54,7 +54,7 @@ If no venv exists, the launcher creates one automatically using the resolved Pyt
 | `-d` | `--daemon` | Run in background, redirect output to `bot.log` |
 | `-c` | `--config` | Configuration file (default: `bot.ini`) |
 | `-f` | `--folder` | Project directory (default: script location) |
-| | `--install-systemd` | Generate and install a systemd user service for the given config file, then exit |
+| | `--install-systemd` | Generate, install, enable, and start a systemd user service for the given config file, then exit |
 | `-h` | `--help` | Show usage information |
 
 ## Running with Cron
@@ -159,11 +159,13 @@ Point the fragment at that `bot.log`, install it as above, and logrotate will ro
 
 ## Process Management
 
-The launcher tracks each config's bot PID in `.bot-<stem>.pid` (for example
-`.bot-bot.pid` for `bot.ini`, `.bot-production.pid` for `production.ini`) and uses
-it for clean shutdown:
+The launcher tracks each config's bot PID in `.bot-<stem>-<hash>.pid`, where the
+short hash comes from the resolved absolute config path. Two configs that share a
+basename in different directories therefore keep separate files. The launcher uses
+the file for clean shutdown:
 
 1. If the instance's PID file exists, it sends `SIGTERM` and waits up to 10 seconds
+   (override with `DISCORDIANAI_STOP_TIMEOUT`)
 2. If the process doesn't stop, it sends `SIGKILL`
 3. It removes the PID file, including when the recorded process had already exited
 4. It scans for stray processes started with the same resolved config file

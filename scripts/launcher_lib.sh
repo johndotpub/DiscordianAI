@@ -23,15 +23,20 @@ resolve_config_path() {
     realpath -m -- "${candidate}" 2>/dev/null || realpath -- "${candidate}" 2>/dev/null || printf '%s\n' "${candidate}"
 }
 
-# PID file for one config, derived from its file stem.
+# PID file for one config, derived from its file stem and the resolved
+# absolute config path. The hash separates two configs that share a basename
+# but live in different directories.
 instance_pid_file() {
     local project_dir="$1"
     local config_file="$2"
-    local stem
+    local stem resolved digest
 
     stem="$(basename -- "${config_file}")"
     stem="${stem%.ini}"
-    printf '%s/.bot-%s.pid\n' "${project_dir}" "${stem}"
+    resolved="$(resolve_config_path "${project_dir}" "${config_file}")"
+    digest="$(printf '%s' "${resolved}" | cksum)"
+    digest="${digest%% *}"
+    printf '%s/.bot-%s-%s.pid\n' "${project_dir}" "${stem}" "${digest:0:8}"
 }
 
 # Command line of a running process, or an empty string when it is gone.
@@ -56,17 +61,35 @@ process_working_directory() {
     fi
 }
 
+# The argument that follows --conf, preserving spaces. /proc keeps arguments
+# NUL-separated, so a path such as "/srv/my bot/bot.ini" stays one argument.
+process_conf_argument() {
+    local pid="$1"
+    local previous="" argument cmdline
+
+    if [[ -r "/proc/${pid}/cmdline" ]]; then
+        while IFS= read -r argument; do
+            if [[ "${previous}" == "--conf" ]]; then
+                printf '%s\n' "${argument}"
+                return 0
+            fi
+            previous="${argument}"
+        done < <(tr '\0' '\n' < "/proc/${pid}/cmdline" 2>/dev/null || true)
+    fi
+
+    cmdline="$(process_command_line "${pid}")"
+    [[ -n "${cmdline}" ]] || return 1
+    printf '%s\n' "${cmdline}" | sed -n 's/.*--conf[[:space:]][[:space:]]*\([^[:space:]]*\).*/\1/p' | head -n 1
+}
+
 # True when the process was started with this exact config file. A relative
 # --conf value is resolved against the process's own working directory.
 process_uses_config() {
     local pid="$1"
     local expected_config="$2"
-    local cmdline conf_arg cwd resolved
+    local conf_arg cwd resolved
 
-    cmdline="$(process_command_line "${pid}")"
-    [[ -n "${cmdline}" ]] || return 1
-
-    conf_arg="$(printf '%s\n' "${cmdline}" | sed -n 's/.*--conf[[:space:]][[:space:]]*\([^[:space:]]*\).*/\1/p' | head -n 1)"
+    conf_arg="$(process_conf_argument "${pid}")"
     [[ -n "${conf_arg}" ]] || return 1
 
     if [[ "${conf_arg}" = /* ]]; then
@@ -78,6 +101,18 @@ process_uses_config() {
     fi
 
     [[ "${resolved}" == "${expected_config}" ]]
+}
+
+# Seconds to wait for a signalled process before forcing it. Tests and unusual
+# supervisors can shorten it; the default keeps the documented 10 seconds.
+launcher_stop_timeout() {
+    local timeout="${DISCORDIANAI_STOP_TIMEOUT:-10}"
+
+    if [[ "${timeout}" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "${timeout}"
+    else
+        printf '10\n'
+    fi
 }
 
 # Wait up to timeout seconds for the process to exit. The caller checks
@@ -106,7 +141,7 @@ stop_pid_file_instance() {
     if [[ -n "${old_pid}" ]] && kill -0 "${old_pid}" 2>/dev/null; then
         log "Stopping previous instance (PID ${old_pid})"
         kill "${old_pid}" 2>/dev/null || true
-        wait_for_exit "${old_pid}" 10
+        wait_for_exit "${old_pid}" "$(launcher_stop_timeout)"
         if kill -0 "${old_pid}" 2>/dev/null; then
             log "Force-killing unresponsive process ${old_pid}"
             kill -9 "${old_pid}" 2>/dev/null || true
@@ -135,7 +170,7 @@ stop_legacy_pid_file_instance() {
     if process_uses_config "${old_pid}" "${expected_config}"; then
         log "Stopping legacy PID file instance (PID ${old_pid})"
         kill "${old_pid}" 2>/dev/null || true
-        wait_for_exit "${old_pid}" 10
+        wait_for_exit "${old_pid}" "$(launcher_stop_timeout)"
         if kill -0 "${old_pid}" 2>/dev/null; then
             log "Force-killing unresponsive process ${old_pid}"
             kill -9 "${old_pid}" 2>/dev/null || true
