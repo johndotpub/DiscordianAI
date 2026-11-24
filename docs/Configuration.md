@@ -379,9 +379,10 @@ merged.
 
 A file passed with `--conf` must be readable and syntactically valid. A missing file,
 a permission error, a duplicated key, or a malformed section stops startup with an
-error that names the file and quotes the parser's message. The bot never continues
-with built-in defaults after a config file fails to load; omit `--conf` to run from
-environment variables and defaults.
+error that names the file, the error class, and any source line numbers. It does not
+reproduce the offending line or the parser's message, because that text can contain a
+token or another secret. The bot never continues with built-in defaults after a config
+file fails to load; omit `--conf` to run from environment variables and defaults.
 
 An empty value means the setting is not set, so its documented default applies. Two
 settings keep an explicit empty meaning: a blank `OPENAI_API_KEY` or

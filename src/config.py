@@ -300,12 +300,44 @@ _CONFIG_DEFAULTS: dict[str, Any] = {
 # ============================================================================
 
 
+def _config_error_line_numbers(error: BaseException) -> list[int]:
+    """Return the source line numbers attached to a parser error.
+
+    Only the numeric positions are read. Parser messages and the ``errors``
+    tuples can quote the offending configuration line, which may hold a
+    secret, so their text is never copied.
+    """
+    lines: set[int] = set()
+    errors = getattr(error, "errors", None)
+    if isinstance(errors, list):
+        for entry in errors:
+            if isinstance(entry, tuple) and entry and isinstance(entry[0], int):
+                lines.add(entry[0])
+    lineno = getattr(error, "lineno", None)
+    if isinstance(lineno, int):
+        lines.add(lineno)
+    return sorted(lines)
+
+
 class ConfigFileError(RuntimeError):
     """Raised when an explicitly requested configuration file cannot be used."""
 
-    def __init__(self, path: Path | str, detail: object) -> None:
-        """Build the fatal startup message with the file and parser detail."""
-        super().__init__(f"Could not read configuration file {path}: {detail}")
+    def __init__(self, path: Path | str, error: object) -> None:
+        """Build the fatal startup message without reproducing parser text.
+
+        The message names the file, the error class, and any source line
+        numbers. ``configparser`` quotes the raw offending line in its own
+        message, so that text is deliberately left out to keep a token or
+        other secret in the file out of the fatal log.
+        """
+        error_name = type(error).__name__ if isinstance(error, BaseException) else "Error"
+        lines = _config_error_line_numbers(error) if isinstance(error, BaseException) else []
+        if lines:
+            label = "line" if len(lines) == 1 else "lines"
+            location = f" at {label} {', '.join(str(line) for line in lines)}"
+        else:
+            location = ""
+        super().__init__(f"Could not read configuration file {path}: {error_name}{location}")
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -361,7 +393,7 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
             with config_path.open(encoding="utf-8") as config_stream:
                 config.read_file(config_stream)
         except (configparser.Error, OSError, UnicodeError) as exc:
-            raise ConfigFileError(config_path, exc) from exc
+            raise ConfigFileError(config_path, exc) from None
 
         openai_explicit, openai_key_disabled = _provider_option_flags(config, "OPENAI")
         perplexity_explicit, perplexity_key_disabled = _provider_option_flags(config, "PERPLEXITY")

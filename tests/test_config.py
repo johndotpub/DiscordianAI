@@ -171,7 +171,7 @@ LOG_LEVEL=DEBUG
 
         message = str(exc_info.value)
         assert "nonexistent_file.ini" in message
-        assert "No such file" in message or "cannot find" in message.lower()
+        assert "FileNotFoundError" in message
 
     def test_load_config_with_base_folder(self):
         """Test config loading with base folder."""
@@ -436,7 +436,7 @@ OPENAI_API_KEY=test_key
 
             message = str(exc_info.value)
             assert temp_config_path in message
-            assert "section" in message.lower() or "header" in message.lower()
+            assert "MissingSectionHeaderError" in message
         finally:
             os.unlink(temp_config_path)
 

@@ -1,8 +1,8 @@
 """Contract tests for literal config values and fatal file errors."""
 
-import configparser
 import os
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -65,9 +65,10 @@ def test_duplicate_option_is_a_fatal_error_naming_the_file(tmp_path):
         load_config(str(config_path))
 
     message = str(exc_info.value)
-    assert str(config_path) in message
-    assert "discord_token" in message.lower()
-    assert "already exists" in message
+    assert message == (
+        f"Could not read configuration file {config_path}: DuplicateOptionError at line 3"
+    )
+    assert exc_info.value.__cause__ is None
 
 
 def test_malformed_file_is_a_fatal_error_naming_the_file(tmp_path):
@@ -78,8 +79,10 @@ def test_malformed_file_is_a_fatal_error_naming_the_file(tmp_path):
         load_config(str(config_path))
 
     message = str(exc_info.value)
-    assert str(config_path) in message
-    assert isinstance(exc_info.value.__cause__, configparser.Error)
+    assert message == (
+        f"Could not read configuration file {config_path}: MissingSectionHeaderError at line 1"
+    )
+    assert exc_info.value.__cause__ is None
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root can read mode-000 files")
@@ -95,8 +98,8 @@ def test_unreadable_file_is_a_fatal_error_naming_the_file(tmp_path):
         config_path.chmod(0o600)
 
     message = str(exc_info.value)
-    assert str(config_path) in message
-    assert "Permission denied" in message
+    assert message == f"Could not read configuration file {config_path}: PermissionError"
+    assert exc_info.value.__cause__ is None
 
 
 def test_missing_explicit_file_is_a_fatal_error(tmp_path):
@@ -106,7 +109,29 @@ def test_missing_explicit_file_is_a_fatal_error(tmp_path):
     with pytest.raises(ConfigFileError) as exc_info:
         load_config(str(missing))
 
-    assert str(missing) in str(exc_info.value)
+    assert str(exc_info.value) == (
+        f"Could not read configuration file {missing}: FileNotFoundError"
+    )
+    assert exc_info.value.__cause__ is None
+
+
+def test_malformed_file_secret_is_absent_from_the_fatal_startup_log(monkeypatch, tmp_path, capsys):
+    """The fatal log names the file, error class, and line without the raw line."""
+    secret = "FAKE-CONFIG-SECRET-CANARY-123"  # noqa: S105 — fixture value, not a credential
+    config_path = _write_config(tmp_path, f"{secret}=not-a-real-token\n")
+    monkeypatch.setattr(sys, "argv", ["discordianai", "--conf", str(config_path)])
+
+    from src import main
+
+    with pytest.raises(SystemExit) as exit_info:
+        main.main()
+
+    assert exit_info.value.code == 1
+    captured = capsys.readouterr()
+    logged = captured.out + captured.err
+    assert secret not in logged
+    assert "MissingSectionHeaderError" in logged
+    assert "line 1" in logged
 
 
 def test_blank_models_and_urls_use_the_documented_defaults(tmp_path):
