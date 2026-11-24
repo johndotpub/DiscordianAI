@@ -37,9 +37,10 @@ broke it, and each break is a user-visible bug.
   back, and record the successful turn. No client module imports routing code or decides
   which provider runs. *Why:* routing is a single policy with one place to test.
   *Consequence:* duplicated routing drifts and produces answers from the wrong provider.
-  *Check:* `rg -n 'build_router|build_router_input|\.decide\(' src` shows the router is
-  built in `bot.py` and used to decide in `smart_orchestrator.py`; the remaining matches
-  are the `routing` package. The router is built once at startup, not per message.
+  *Check:* `rg -n 'build_router|build_router_input|\.decide\(' src` shows `bot.py` builds
+  the startup router and `smart_orchestrator.py` builds one cached fallback per effective
+  config and calls `router.decide()` once per message; the remaining matches are the
+  `routing` package.
   *Mode:* `ROUTER_MODE=heuristic|clef` selects the deterministic gate (default) or the optional
   Clef decision model; `model` is retired and raises. The Clef key is scoped to its endpoint:
   `ROUTER_CLEF_API_KEY`, then `OLLAMA_API_KEY` from the environment, then `OPENAI_API_KEY`
@@ -65,17 +66,20 @@ broke it, and each break is a user-visible bug.
   `tests/test_log_file_contract.py::test_configuration_keeps_exactly_one_root_handler` and
   `tests/test_structured_logging.py`.
 
-- **One delivery helper owns the mention policy.** Every model-derived answer goes through
-  `message_splitter.send_formatted_message()` and the private `_deliver()` it delegates to.
-  `_deliver()` is the only place in `src/` that constructs `discord.AllowedMentions` or sets
-  `mention_author=False`; no other module may call `Message.reply` for an answer. Fixed
-  operational notices (rate-limit and error text) use `error_handling.safe_discord_send()`
-  or the router's last-resort `channel.send`; they must stay constant text and must never
-  carry model output. *Why:* an answer must not be able to mention `@everyone` or a role,
-  and splitting must not create two mention policies. Pings are prevented both by the
-  allowed-mentions policy (`everyone=False`, `roles=[]`) and by output neutralisation;
-  delivery sets the policy explicitly. *Consequence:* mention abuse and inconsistent reply
-  targeting. *Check:*
+- **One delivery helper owns the reference and mention policy.** Every model-derived
+  answer goes through `message_splitter.send_formatted_message()` and the private
+  `_deliver()` it delegates to. `_deliver()` is the only place in `src/` that constructs
+  `discord.AllowedMentions`, sets `mention_author=False`, or builds a reply reference
+  (`original_message.to_reference(fail_if_not_exists=False)`), and every answer is sent
+  with `channel.send`; no module calls `Message.reply`. Fixed operational notices
+  (rate-limit and error text) use `error_handling.safe_discord_send()` or the router's
+  last-resort `channel.send`; they must stay constant text and must never carry model
+  output. *Why:* an answer must not be able to mention `@everyone` or a role, splitting
+  must not create two mention policies, and a reply must still arrive when the question
+  was deleted. Pings are prevented both by the allowed-mentions policy (`everyone=False`,
+  `roles=[]`) and by output neutralisation; delivery sets the policy explicitly.
+  *Consequence:* mention abuse, inconsistent reply targeting, and failed delivery after a
+  deletion. *Check:*
   `tests/test_delivery_helper.py::test_only_one_allowed_mentions_construction`,
   `tests/test_delivery_helper.py`, and `tests/test_golden_behaviour.py`.
 
@@ -179,8 +183,8 @@ diff or with the named command.
   and every `CONSTANT = value` line in prose is checked against `src/config.py`; change both
   sides in the same commit.
 - **No references to deleted modules or functions, and no test-tree listings that enumerate
-  files.** `tests/test_docs_truth.py` scans `README.md` and the top level of `docs/*.md` for missing modules,
-  stale symbols, and non-existent commands.
+  files.** `tests/test_docs_truth.py` scans `README.md` and every Markdown file under
+  `docs/` recursively for missing modules, stale symbols, and non-existent commands.
 - **When behaviour changes, the doc changes in the same commit.** A follow-up documentation
   PR is a broken contract, not a plan.
 - **CHANGELOG.** Follow Keep a Changelog. Use the established section vocabulary:
@@ -314,7 +318,10 @@ tox -e py312
 - **Log rotation uses the shipped fragment.** `contrib/logrotate/discordianai` rotates a
   supervisor-owned `bot.log` with `copytruncate`, because the bot does not reopen a log file
   it never opened. Install it and replace the placeholder path and the `su USER GROUP`
-  placeholders; the `su` line is required when the log directory is not root-owned.
+  placeholders; the `su` line is required when the log's parent directory is world-writable
+  or group-writable by a group other than root. `size` is checked when logrotate runs, so
+  the live file is about 100 MB plus the growth since the previous check, and
+  `delaycompress` leaves the newest rotation uncompressed.
 - **The supervisor owns stderr.** Logs go to stderr (`LOG_FILE` is ignored). The shipped
   systemd unit appends stdout/stderr to `bot.log`; Docker captures both streams. Use one
   owner for redirection so lines are neither duplicated nor lost.

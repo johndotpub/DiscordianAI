@@ -62,7 +62,7 @@ PERPLEXITY_MODEL=perplexity/sonar
 # Sonar web path. The 128K window comes from the former Sonar model page; the
 # Agent API models page publishes no context figure. The chat path keeps
 # INPUT_TOKENS and CONTEXT_WINDOW. If you lower INPUT_TOKENS or
-# CONTEXT_WINDOW below the Perplexity value, the smaller shared limit also
+# CONTEXT_WINDOW below the Perplexity value, the smaller chat value also
 # constrains the Perplexity prompt.
 INPUT_TOKENS=250000
 OUTPUT_TOKENS=16384
@@ -178,5 +178,5 @@ HEALTH_PROVIDER_STALE_SECONDS=300
 #
 # === INVITE URL TEMPLATE ===
 # Permissions: View Channel, Send Messages, Send Messages in Threads,
-# Read Message History, Embed Links, Attach Files.
-# https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_CLIENT_ID&permissions=274878024704&scope=bot
+# Read Message History, Embed Links. The bot sends no files.
+# https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_CLIENT_ID&permissions=274877991936&scope=bot

@@ -65,11 +65,11 @@ a bash test or the launcher.
 
 - Scripts that need provider credentials read them from the environment or from an
   explicit config path; none ships a private config name or a credential.
-- `mutation_check.py` and `regen_golden.py --write` modify files by design.
-  `mutation_check.py` verifies and restores its targets; `regen_golden.py` rewrites
-  fixtures only when explicitly asked. The other scripts are read-only.
-- Keep generated logs, `.ini` files, and `.hermes/` state out of the repository;
-  they are ignored by `.gitignore`.
+- `mutation_check.py` copies the checkout to a scratch directory and mutates that copy,
+  so the working tree is never modified. `regen_golden.py --write` rewrites fixtures only
+  when explicitly asked. The other scripts are read-only.
+- Keep generated logs, local `.ini` files, and local state directories out of the
+  repository; they are ignored by `.gitignore`.
 - Use the project virtual environment at `.venv` so the scripts import the same
   dependencies as the test suite.
 

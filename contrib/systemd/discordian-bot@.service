@@ -7,8 +7,8 @@
 #   ./discordian.sh --install-systemd bot.ini
 #
 # That command creates ~/.config/systemd/user/discordian-bot@bot.service
-# with all paths filled in from the script's actual location, enables
-# it, and prints management commands.
+# with all paths filled in from the script's actual location, enables and
+# starts it, and prints management commands.
 #
 # MANUAL SETUP: If you prefer to install by hand:
 #

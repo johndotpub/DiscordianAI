@@ -103,6 +103,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 - **Direct Messages** (`bot.py`): DM sessions bypass mention requirements but still honour rate limits, and follow-ups inherit the previous service through the router.
 - **Channel Targeting** (`message_router.py`): `ALLOWED_CHANNELS` gating ensures the bot only replies where it is expected.
 - **Smart Message Splitting** (`message_splitter.py`): Discord-safe splitting protects code blocks, embeds, and citations from truncation.
+- **Delivery Policy** (`message_splitter.py`): One helper sends every answer with `channel.send`, builds the reply reference with `fail_if_not_exists=False`, and owns the allowed-mentions policy (`everyone=False`, `roles=[]`).
 - **Global Exception Handling** (`error_handling.py` + `bot.py`): Centralized logging and graceful fallbacks keep the process alive after faults.
 - **Shutdown Order** (`bot_manager.py`): Message intake stops first, then provider connection pools and the router's HTTP client close, and Discord closes last. Closing Discord first lets `Client.run` finish and cancel the remaining shutdown work.
 - **Health Server** (`health_server.py`): Lightweight HTTP endpoint for liveness/readiness probes, compatible with Kubernetes and load balancers.

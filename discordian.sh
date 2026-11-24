@@ -11,7 +11,7 @@
 #   ./discordian.sh -c bot.ini               # custom config file
 #   ./discordian.sh -f /path/to/project      # project directory
 #   ./discordian.sh -d -c production.ini -f /opt/discordianai
-#   ./discordian.sh --install-systemd bot.ini # install and enable systemd service
+#   ./discordian.sh --install-systemd bot.ini # install, enable, start systemd service
 #
 # Python resolution order:
 #   1. pyenv-managed python3 (preferred — version-pinned, reproducible)
@@ -52,8 +52,8 @@ while [[ "$#" -gt 0 ]]; do
             echo "  -d, --daemon            Run in background (daemon mode)"
             echo "  -c, --config            Configuration file (default: bot.ini)"
             echo "  -f, --folder            Project directory (default: script location)"
-            echo "      --install-systemd   Generate and install a systemd user service for"
-            echo "                          the given config file, then exit"
+            echo "      --install-systemd   Generate, install, enable, and start a systemd"
+            echo "                          user service for the given config file, then exit"
             echo "  -h, --help              Show this help message"
             exit 0 ;;
         *) shift ;;
@@ -142,7 +142,8 @@ EOF
     echo ""
     echo "Service installed, enabled, and started. Manage with:"
     echo "  systemctl --user status ${UNIT_NAME}"
-    echo "  journalctl --user -u ${UNIT_NAME} -f"
+    echo "  tail -f ${PROJECT_DIR}/bot.log"
+    echo "  journalctl --user -u ${UNIT_NAME}  # unit lifecycle only"
     echo ""
     echo "To uninstall:"
     echo "  systemctl --user disable ${UNIT_NAME}"

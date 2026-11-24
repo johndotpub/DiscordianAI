@@ -116,21 +116,21 @@ The connection pool automatically enables HTTP/2 when available:
 ### Requirements
 To enable HTTP/2 support, install the full httpx package:
 ```bash
-pip install httpx[http2]>=0.28.1 h2>=4.3.0
+pip install "httpx[http2]>=0.28.1" "h2>=4.3.0"
 ```
 
 **Note**: HTTP/2 support requires httpx 0.28.1+ for reliable operation. Earlier versions may fall back to HTTP/1.1.
 
 ### Troubleshooting HTTP/2
 If you see "HTTP/2 not available" warnings:
-1. Install HTTP/2 dependencies: `pip install httpx[http2]>=0.28.1 h2>=4.3.0`
+1. Install HTTP/2 dependencies: `pip install "httpx[http2]>=0.28.1" "h2>=4.3.0"`
 2. Restart the bot to enable HTTP/2
 3. Check logs for "HTTP/2 enabled" confirmation
 
 **Common Issues:**
 - **httpx < 0.28.1**: HTTP/2 support is unreliable, upgrade to 0.28.1+
-- **Missing h2 package**: Install with `pip install h2>=4.3.0`
-- **Version conflicts**: Use `pip install --force-reinstall httpx[http2]>=0.28.1 h2>=4.3.0`
+- **Missing h2 package**: Install with `pip install "h2>=4.3.0"`
+- **Version conflicts**: Use `pip install --force-reinstall "httpx[http2]>=0.28.1" "h2>=4.3.0"`
 
 ## HTTP Timeouts
 

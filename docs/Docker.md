@@ -64,6 +64,8 @@ container does not write to `./logs` or `./data`.
 docker build . -t discordianai:latest
 cp config.ini.example config.ini
 docker run --restart always \
+  --log-opt max-size=10m \
+  --log-opt max-file=3 \
   --env-file .env \
   -p 127.0.0.1:8080:8080 \
   -e HEALTH_HOST=0.0.0.0 \

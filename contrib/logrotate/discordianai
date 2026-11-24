@@ -2,9 +2,10 @@
 #
 # Install it as /etc/logrotate.d/discordianai and replace the placeholders
 # below: the bot.log path, and USER/GROUP with the account and group that own
-# the log directory. The su directive is required when that directory is not
-# owned by root, because logrotate otherwise refuses with "parent directory
-# has insecure permissions"; it tells logrotate which account to rotate as.
+# the log directory. The su directive is required when the log's parent
+# directory is world-writable or group-writable by a group other than root,
+# because logrotate otherwise refuses with "parent directory has insecure
+# permissions"; it tells logrotate which account to rotate as.
 #
 # Rotation keeps history rather than trimming it. Each rotated file is
 # date-stamped and compressed, and the generation count is high enough that
