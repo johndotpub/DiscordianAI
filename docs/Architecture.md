@@ -343,7 +343,8 @@ perplexity_client = pool.create_perplexity_client(perplexity_api_key, perplexity
 ```
 
 ### Caching Strategy
-- Response cache: one 10-minute TTL (`DEFAULT_CACHE_TTL`) for every answer, regardless of length
+- Response cache: one 10-minute TTL (`DEFAULT_CACHE_TTL`) for every complete answer, regardless of
+  length; an answer cut off at the provider's output cap is not cached
 - Time-sensitive answers (for example a phrase such as "as of today" anywhere in the text) are
   not cached
 - Conversation cache: 2-hour TTL

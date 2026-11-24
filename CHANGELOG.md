@@ -128,7 +128,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A partial answer that hit the provider's output-token limit says so.** Both the chat and
   Perplexity adapters report the normalised length signal, and delivery appends one fixed
   notice line after the visible partial answer. The notice is bot text, is not written into
-  conversation history, and does not change the system prompt.
+  conversation history, and does not change the system prompt. A partial answer is also not
+  cached, so a later identical request asks the provider again instead of replaying the cut-off
+  text.
 - **An answer survives its question being deleted.** Replies carry a reference built with
   `fail_if_not_exists=False`, so Discord delivers the same content once to the channel with
   the same mention policy instead of rejecting the reply and losing the answer. The bot no

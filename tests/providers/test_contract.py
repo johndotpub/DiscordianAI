@@ -476,6 +476,44 @@ async def test_identical_perplexity_calls_hit_the_cache():
     assert len(client.calls) == 1
 
 
+@pytest.mark.asyncio
+async def test_truncated_openai_answer_is_not_cached():
+    """A partial answer stopped at the output cap is fetched again."""
+    client = FakeChatClient(
+        [
+            _chat_response("A partial answer", finish_reason="length"),
+            _chat_response("A fresh answer"),
+        ]
+    )
+    request = _request("cache me")
+
+    first = await process_openai_message(request, [], client, _openai_config())
+    second = await process_openai_message(request, [], client, _openai_config())
+
+    assert first == "A partial answer"
+    assert second == "A fresh answer"
+    assert len(client.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_truncated_perplexity_answer_is_not_cached():
+    """An incomplete Agent response is not replayed from the cache."""
+    partial = _agent_response("A partial web answer.")
+    partial["status"] = "incomplete"
+    partial["incomplete_details"] = {"reason": "max_output_tokens"}
+    client = FakeResponsesClient([partial, _agent_response("A fresh web answer.")])
+    request = _request("cache me")
+
+    first = await process_perplexity_message(request, client, _perplexity_config())
+    second = await process_perplexity_message(request, client, _perplexity_config())
+
+    assert first is not None
+    assert first[0] == "A partial web answer."
+    assert second is not None
+    assert second[0] == "A fresh web answer."
+    assert len(client.calls) == 2
+
+
 def test_registry_is_the_single_source_for_provider_wiring():
     assert tuple(PROVIDERS) == ("openai", "perplexity")
     assert get("openai").config_type is OpenAIConfig

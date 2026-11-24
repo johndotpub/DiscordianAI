@@ -356,6 +356,9 @@ class ResponseCache:
         if error:
             return False  # Don't cache errors
 
+        if getattr(response, "truncated", False):
+            return False  # A partial answer must not be replayed as the answer
+
         if not response or len(response.strip()) < MIN_CACHABLE_RESPONSE_LENGTH:
             return False  # Don't cache very short responses
 
