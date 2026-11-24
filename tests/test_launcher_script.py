@@ -9,6 +9,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "discordian.sh"
 LIBRARY_PATH = REPO_ROOT / "scripts" / "launcher_lib.sh"
 BASH_PATH = shutil.which("bash") or "/bin/bash"
+PS_PATH = shutil.which("ps") or "/bin/ps"
 
 
 def _run_bash(
@@ -52,7 +53,8 @@ def _start_fake_bot(config_arg: str, cwd: Path) -> subprocess.Popen[bytes]:
         os.sched_yield()
     process.kill()
     process.wait(timeout=5)
-    raise AssertionError("fake bot process did not exec")
+    msg = "fake bot process did not exec"
+    raise AssertionError(msg)
 
 
 def _process_args(pid: int) -> str:
@@ -60,7 +62,7 @@ def _process_args(pid: int) -> str:
         raw = Path(f"/proc/{pid}/cmdline").read_bytes()
     except OSError:
         completed = subprocess.run(  # noqa: S603 - fixed ps executable
-            ["ps", "-o", "args=", "-p", str(pid)],
+            [PS_PATH, "-o", "args=", "-p", str(pid)],
             capture_output=True,
             text=True,
             timeout=5,
