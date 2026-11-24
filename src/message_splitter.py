@@ -32,7 +32,6 @@ _RAW_MENTION_PATTERN = re.compile(r"<(@[!&]?|#)(\d+)>")
 _MARKDOWN_LINK_PATTERN = re.compile(r"!?\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)]+)\)")
 _AUTOLINK_PATTERN = re.compile(r"<(https?://[^>\s]+)>", re.IGNORECASE)
 _BARE_HTTP_URL_PATTERN = re.compile(r"https?://(?!\u200b)[^\s<>]+", re.IGNORECASE)
-_FENCE_OPEN_PATTERN = re.compile(r"^( {0,3})(`{3,})([^\n`]*)$", re.MULTILINE)
 _FENCE_BLOCK_PATTERN = re.compile(r"(`{3,})[\s\S]*?\1")
 _URL_TRAILING_PUNCTUATION = ".,;:!?)]}'\""
 _CONTINUED_FOOTER = "🌐 Web search results (continued)"
@@ -652,48 +651,24 @@ def _fence_span(text: str, start: int, marker: str, end: int, language: str) -> 
     )
 
 
-def _scan_fences(text: str) -> list[_FenceSpan]:
-    """Return fenced code blocks, including an unclosed fence at a line start.
+def _fence_spans(text: str) -> list[_FenceSpan]:
+    """Return fenced code blocks that Discord renders as code.
 
-    Closed fences may appear anywhere, matching the legacy detector, so a
-    fence that shares a line with prose is still protected.  Their opening and
-    closing marker lengths must match.  Unclosed fences are only recognised at
-    the start of a line, where Discord would actually render them as code.
+    Only a closed fence whose opening marker is not backslash-escaped counts.
+    The splitter and the sanitiser share this detector, so a fence either
+    protects link-like syntax or keeps a split inside the code block; an
+    unclosed or escaped marker is literal text in both paths.
     """
     fences: list[_FenceSpan] = []
     for match in _FENCE_BLOCK_PATTERN.finditer(text):
+        if _is_escaped(text, match.start()):
+            continue
         marker = match.group(1)
         opening_end = match.start() + len(marker)
         newline = text.find("\n", opening_end, match.end())
         language = text[opening_end : newline if newline != -1 else match.end()].strip()
         fences.append(_fence_span(text, match.start(), marker, match.end(), language))
-
-    gaps: list[tuple[int, int]] = []
-    cursor = 0
-    for fence in fences:
-        if cursor < fence.start:
-            gaps.append((cursor, fence.start))
-        cursor = max(cursor, fence.end)
-    if cursor < len(text):
-        gaps.append((cursor, len(text)))
-
-    for gap_start, gap_end in gaps:
-        opening = _FENCE_OPEN_PATTERN.search(text, gap_start, gap_end)
-        if not opening:
-            continue
-        line_start = opening.start()
-        content_start = text.find("\n", opening.end(), gap_end)
-        fences.append(
-            _FenceSpan(
-                start=line_start,
-                content_start=gap_end if content_start == -1 else content_start + 1,
-                end=gap_end,
-                marker=opening.group(2),
-                language=opening.group(3).strip(),
-            )
-        )
-
-    return sorted(fences, key=lambda fence: fence.start)
+    return fences
 
 
 def _snap_citation_marker(message: str, split_index: int) -> int:
@@ -736,7 +711,7 @@ def split_fence_aware(
     preferred = min(max(1, preferred), limit, len(message) - 1)
 
     fence = next(
-        (span for span in _scan_fences(message) if span.start < preferred < span.end),
+        (span for span in _fence_spans(message) if span.start < preferred < span.end),
         None,
     )
     if fence is None:
@@ -762,38 +737,6 @@ def split_fence_aware(
         head = f"{head_text}{separator}{fence.marker}"
 
     return head, f"{reopen}{message[cut:]}"
-
-
-def detect_code_blocks(text: str) -> list[tuple[int, int]]:
-    """Detect code block boundaries in text."""
-    pattern = re.compile(r"```[\s\S]*?```", re.MULTILINE)
-    return [(match.start(), match.end()) for match in pattern.finditer(text)]
-
-
-def is_inside_code_block(position: int, code_blocks: list[tuple[int, int]]) -> bool:
-    """Check if a position is inside a code block."""
-    return any(start <= position <= end for start, end in code_blocks)
-
-
-def adjust_split_for_code_blocks(message: str, split_point: int) -> tuple[str, str]:
-    """Adjust message split to avoid breaking code blocks."""
-    code_blocks = detect_code_blocks(message)
-
-    # If split point is not inside a code block, use it as-is
-    if not is_inside_code_block(split_point, code_blocks):
-        return message[:split_point], message[split_point:]
-
-    # Find the code block containing our split point
-    for start, end in code_blocks:
-        if start <= split_point <= end:
-            # If we're closer to the start, split before the code block
-            if split_point - start < end - split_point:
-                return message[:start], message[start:]
-            # Otherwise, split after the code block
-            return message[:end], message[end:]
-
-    # Fallback (shouldn't reach here)
-    return message[:split_point], message[split_point:]
 
 
 # ============================================================================
@@ -871,15 +814,6 @@ def _is_escaped(text: str, position: int) -> bool:
     return backslashes % 2 == 1
 
 
-def _closed_fence_spans(text: str) -> list[tuple[int, int]]:
-    """Return closed fenced code blocks whose opening marker is not escaped."""
-    return [
-        (match.start(), match.end())
-        for match in _FENCE_BLOCK_PATTERN.finditer(text)
-        if not _is_escaped(text, match.start())
-    ]
-
-
 def _inline_code_spans(text: str, start: int, end: int) -> list[tuple[int, int]]:
     """Return balanced inline code spans with unescaped backtick delimiters."""
     spans: list[tuple[int, int]] = []
@@ -920,7 +854,7 @@ def _rendered_code_spans(text: str) -> list[tuple[int, int]]:
     An unclosed fence or a backslash-escaped backtick is literal text, so the
     links after it remain clickable and must be neutralised.
     """
-    fences = _closed_fence_spans(text)
+    fences = [(span.start, span.end) for span in _fence_spans(text)]
     spans = list(fences)
     cursor = 0
     for fence_start, fence_end in fences:
@@ -928,6 +862,11 @@ def _rendered_code_spans(text: str) -> list[tuple[int, int]]:
         cursor = fence_end
     spans.extend(_inline_code_spans(text, cursor, len(text)))
     return sorted(spans)
+
+
+def is_inside_rendered_code(text: str, position: int) -> bool:
+    """Return True when ``position`` falls inside code Discord renders."""
+    return any(start <= position < end for start, end in _rendered_code_spans(text))
 
 
 def sanitize_model_output(text: str, citations: dict[str, str] | None = None) -> str:

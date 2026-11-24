@@ -224,6 +224,9 @@ def _joined(*parts: str) -> str:
 
 
 _URL_CANDIDATE_PATTERN = re.compile(r"(?<!\S)\S*\.\S*")
+# Routing deliberately masks an unclosed fence through the end of the text:
+# a cue inside pasted or dangling code must not decide a route. Delivery uses
+# a different contract because only code Discord renders may hide a link.
 _FENCE_PATTERN = re.compile(r"```(?:.*?```|.*\Z)", re.DOTALL)
 _DOT_LETTER_PATTERN = re.compile(r"\.[A-Za-z]")
 _FILENAME_PATTERN = re.compile(

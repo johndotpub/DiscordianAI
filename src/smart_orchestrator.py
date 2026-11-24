@@ -16,6 +16,7 @@ from .config import (
     get_error_messages,
 )
 from .error_handling import ProviderCallError, get_circuit_breaker
+from .message_splitter import is_inside_rendered_code
 from .models import AIClients, AIConfig, AIRequest, RoutingMetadata
 from .openai_processing import process_openai_message
 from .perplexity_processing import process_perplexity_message
@@ -226,7 +227,7 @@ def _is_quoted_text(response_text: str, position: int) -> bool:
     if response_text[line_start:line_end].lstrip().startswith(">"):
         return True
 
-    return response_text.count("```", 0, position) % 2 == 1
+    return is_inside_rendered_code(response_text, position)
 
 
 def _is_narrative_context(response_text: str, position: int) -> bool:

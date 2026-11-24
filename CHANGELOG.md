@@ -139,6 +139,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Embed heads never split a citation marker or a code fence.** A split that would land
   inside `[n]` moves the marker whole into the next embed, and long fences are closed and
   reopened with the same language tag.
+- **Delivery uses one code-fence detector.** The message splitter and the link
+  sanitiser now share the same rule for the fences Discord renders, so an unclosed or
+  escaped marker is literal in both paths. The three now-unused code-block helpers and
+  the smart orchestrator's fence-counting shortcut are gone; routing keeps its own
+  masker because cues inside dangling pasted code must not decide a route.
 - **Link neutralisation skips only code Discord renders.** A closed fenced block and a
   balanced, unescaped inline code span keep link-like syntax and bare URLs unchanged, while
   an untrusted link is still stripped when its label is inline code. An unclosed fence or a

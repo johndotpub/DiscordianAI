@@ -104,6 +104,27 @@ class TestMessageSplittingBasic:
         assert split_index < len(message)
 
 
+class TestFenceDetector:
+    """The splitter and sanitiser agree on which fences Discord renders."""
+
+    def test_unclosed_fence_is_literal_when_splitting(self):
+        """An unclosed fence hides nothing, so it must not reshape a split."""
+        message = "```\n" + ("A" * 60) + "\nhttps://evil.example"
+        head, tail = split_fence_aware(message, 20, 10)
+
+        assert head == message[:10]
+        assert tail == message[10:]
+
+    def test_closed_fence_still_splits_inside_the_code(self):
+        """A rendered fence is still closed and reopened across the split."""
+        message = "```python\n" + ("A" * 600) + "\n```"
+
+        head, tail = split_fence_aware(message, 200)
+
+        assert head.endswith("```")
+        assert tail.startswith("```python")
+
+
 class TestMessageSplittingIntegration:
     """Test integrated message splitting functionality."""
 

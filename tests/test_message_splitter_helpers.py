@@ -1,17 +1,15 @@
 """Tests for the helper functions in src.message_splitter.
 
-This suite covers split-point selection, code-block detection, content
-cleaning, link counting, embed suppression, sanitisation, and formatting
-helpers that are not already exercised by ``test_message_splitting.py``.
+This suite covers split-point selection, content cleaning, link counting,
+embed suppression, sanitisation, and formatting helpers that are not already
+exercised by ``test_message_splitting.py``.
 """
 
 from src.message_splitter import (
     clean_message_content,
     count_links,
-    detect_code_blocks,
     error_message,
     find_optimal_split_point,
-    is_inside_code_block,
     sanitize_for_discord,
     should_suppress_embeds,
     truncation_notice,
@@ -41,75 +39,6 @@ class TestFindOptimalSplitPoint:
 
         # Should be within message bounds
         assert split_point <= len(message)
-
-
-class TestCodeBlockDetection:
-    """Test code block detection and handling."""
-
-    def test_detect_single_code_block(self):
-        """Test detecting a single code block."""
-        text = "Some text\n```\ncode here\n```\nMore text"
-
-        blocks = detect_code_blocks(text)
-
-        assert len(blocks) == 1
-        assert blocks[0] == (10, 27)  # Actual position observed
-
-    def test_detect_multiple_code_blocks(self):
-        """Test detecting multiple code blocks."""
-        text = "Text\n```python\ncode1\n```\nMiddle\n```js\ncode2\n```\nEnd"
-
-        blocks = detect_code_blocks(text)
-
-        assert len(blocks) == 2
-        assert blocks[0][0] < blocks[1][0]  # First block comes before second
-
-    def test_detect_code_blocks_with_language(self):
-        """Test detecting code blocks with language specification."""
-        text = "```python\nprint('hello')\n```"
-
-        blocks = detect_code_blocks(text)
-
-        assert len(blocks) == 1
-        assert blocks[0] == (0, len(text))
-
-    def test_detect_no_code_blocks(self):
-        """Test text without code blocks."""
-        text = "Just regular text without any code blocks"
-
-        blocks = detect_code_blocks(text)
-
-        assert len(blocks) == 0
-
-    def test_detect_incomplete_code_blocks(self):
-        """Test text with incomplete code blocks."""
-        text = "```\nincomplete code block without closing"
-
-        blocks = detect_code_blocks(text)
-
-        # Should not detect incomplete blocks
-        assert len(blocks) == 0
-
-    def test_is_inside_code_block_true(self):
-        """Test position inside code block."""
-        code_blocks = [(10, 30), (50, 80)]
-
-        assert is_inside_code_block(15, code_blocks) is True
-        assert is_inside_code_block(60, code_blocks) is True
-        assert is_inside_code_block(10, code_blocks) is True  # At boundary
-        assert is_inside_code_block(30, code_blocks) is True  # At boundary
-
-    def test_is_inside_code_block_false(self):
-        """Test position outside code block."""
-        code_blocks = [(10, 30), (50, 80)]
-
-        assert is_inside_code_block(5, code_blocks) is False
-        assert is_inside_code_block(40, code_blocks) is False
-        assert is_inside_code_block(90, code_blocks) is False
-
-    def test_is_inside_empty_code_blocks(self):
-        """Test with empty code blocks list."""
-        assert is_inside_code_block(15, []) is False
 
 
 class TestCleanMessageContent:
