@@ -300,7 +300,7 @@ def test_unclosed_fence_and_indented_code_do_not_protect_a_link() -> None:
 
 def test_nul_characters_are_not_used_as_placeholder_tokens() -> None:
     """Model output cannot forge an internal marker because none exists."""
-    case = "a\x00SAFE0\x00 [x](https://evil.example/g)"
+    case = "a\x00SAFE0\x00 `code` [x](https://evil.example/g)"
 
     sanitized = sanitize_for_discord(case)
 
