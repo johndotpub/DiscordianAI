@@ -7,7 +7,6 @@ successful turn in conversation history.
 
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
-import os
 import re
 from typing import Any
 
@@ -21,7 +20,7 @@ from .message_splitter import is_inside_rendered_code
 from .models import AIClients, AIConfig, AIRequest, RoutingMetadata
 from .openai_processing import process_openai_message
 from .perplexity_processing import process_perplexity_message
-from .routing import HeuristicRouter, build_router, decision_log_fields
+from .routing import HeuristicRouter, build_router, decision_log_fields, router_config_key
 from .routing.context import build_router_input
 from .routing.contracts import RouteDecision
 from .routing.lexicon import LexiconError
@@ -353,50 +352,15 @@ def _lookback(orchestrator_config: dict | None) -> int:
 _DEFAULT_ROUTERS: dict[tuple[Any, ...], Any] = {}
 
 
-def _configured_router_value(config: Mapping | None, key: str) -> Any:
-    """Return the value ``build_router`` would read for ``key``."""
-    if isinstance(config, Mapping):
-        if key in config:
-            return config[key]
-    elif config is not None and hasattr(config, key):
-        return getattr(config, key)
-    return os.environ.get(key)
-
-
-def _eligible_key_value(config: Mapping | None, key: str) -> str | None:
-    """Return a non-blank config value, a non-blank environment value, or None."""
-    value = _configured_router_value(config, key)
-    if value is not None and str(value).strip():
-        return str(value).strip()
-    env_value = os.environ.get(key)
-    if env_value is not None and env_value.strip():
-        return env_value.strip()
-    return None
-
-
-def _router_cache_key(config: Mapping | None) -> tuple[Any, ...]:
-    """Return a hashable snapshot of every setting ``build_router`` reads."""
-    return (
-        build_router,
-        _configured_router_value(config, "ROUTER_MODE"),
-        _eligible_key_value(config, "ROUTER_CLEF_API_KEY"),
-        os.environ.get("OLLAMA_API_KEY"),
-        _eligible_key_value(config, "OPENAI_API_KEY"),
-        _configured_router_value(config, "OPENAI_API_URL"),
-        _configured_router_value(config, "ROUTER_CLEF_MODEL"),
-        _configured_router_value(config, "ROUTER_CLEF_THRESHOLD"),
-        _configured_router_value(config, "ROUTER_CLEF_TIMEOUT_MS"),
-    )
-
-
 def _default_router(config: Mapping | None) -> Any:
     """Return the fallback router, built once per effective configuration.
 
     Production injects the startup router. Direct callers that do not inject
     one still pay for at most one construction per configuration instead of
-    rebuilding the router for every message.
+    rebuilding the router for every message. The key comes from the routing
+    package so it cannot drift from what ``build_router`` reads.
     """
-    key = _router_cache_key(config)
+    key = (build_router, *router_config_key(config))
     cached = _DEFAULT_ROUTERS.get(key)
     if cached is None:
         cached = build_router(config)

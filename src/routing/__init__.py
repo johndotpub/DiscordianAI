@@ -45,6 +45,7 @@ __all__ = [
     "build_router",
     "decide",
     "decision_log_fields",
+    "router_config_key",
 ]
 
 _LOGGER = logging.getLogger(__name__)
@@ -90,6 +91,11 @@ def build_router(config: Any = None) -> Router:
 
     try:
         if mode == "clef":
+            # Load the deterministic gate's lexicon now. Clef itself consults
+            # the gate on every decision, so a corrupt lexicon must select the
+            # same local fallback at startup instead of failing on the first
+            # message.
+            HeuristicRouter()
             return _build_clef_router(config)
         return HeuristicRouter()
     except LexiconError as exc:
@@ -98,6 +104,21 @@ def build_router(config: Any = None) -> Router:
             type(exc).__name__,
         )
         return LocalFallbackRouter()
+
+
+def router_config_key(config: Any) -> tuple[Any, ...]:
+    """Return a hashable snapshot of every setting ``build_router`` reads.
+
+    Callers that cache a router use this instead of re-deriving the mode, the
+    eligible Clef key, and the model settings in a second place.
+    """
+    return (
+        str(_config_value(config, "ROUTER_MODE", "heuristic")).strip().lower(),
+        _clef_api_key(config),
+        _config_value(config, "ROUTER_CLEF_MODEL", DEFAULT_ROUTER_CLEF_MODEL),
+        _config_value(config, "ROUTER_CLEF_THRESHOLD", DEFAULT_ROUTER_CLEF_THRESHOLD),
+        _config_value(config, "ROUTER_CLEF_TIMEOUT_MS", DEFAULT_ROUTER_CLEF_TIMEOUT_MS),
+    )
 
 
 def _build_clef_router(config: Any) -> Router:

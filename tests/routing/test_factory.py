@@ -106,11 +106,20 @@ def test_retired_model_mode_keeps_its_explicit_startup_error() -> None:
     [None, b"{not valid json"],
     ids=["missing", "corrupt"],
 )
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"ROUTER_MODE": "heuristic"},
+        {"ROUTER_MODE": "clef", "ROUTER_CLEF_API_KEY": "clef-key"},
+    ],
+    ids=["heuristic", "clef"],
+)
 def test_a_missing_or_corrupt_lexicon_injects_a_local_fallback(
     tmp_path,
     monkeypatch,
     caplog,
     contents,
+    config,
 ) -> None:
     """Startup keeps the bot answering on the local route when the lexicon fails."""
     lexicon_path = tmp_path / "lexicon.en.json"
@@ -122,7 +131,7 @@ def test_a_missing_or_corrupt_lexicon_injects_a_local_fallback(
     try:
         with caplog.at_level(logging.CRITICAL, logger="src.routing"):
             try:
-                router = build_router({"ROUTER_MODE": "heuristic"})
+                router = build_router(config)
             except LexiconError as exc:
                 msg = "build_router aborted startup instead of injecting a local router"
                 raise AssertionError(msg) from exc
