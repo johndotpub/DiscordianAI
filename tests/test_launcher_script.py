@@ -739,3 +739,35 @@ def test_install_systemd_escapes_percent_quotes_and_backslashes(tmp_path):
     assert '\\"' in directives["ExecStart"][0]
     assert '\\"' in directives["ReadWritePaths"][0]
     assert 'Environment="HOME=' in text
+
+
+def test_install_systemd_unit_passes_the_systemd_validator_when_available(tmp_path):
+    """The unit verifies with systemd, or the parser check alone must pass."""
+    project = tmp_path / "space project 50%"
+    home = tmp_path / "home"
+    _write_stub_project(project)
+    unit, _invocations = _generate_systemd_unit(tmp_path, project, home)
+
+    text = unit.read_text(encoding="utf-8")
+    _assert_unit_directives(text, project, home)
+
+    analyzer = shutil.which("systemd-analyze")
+    if analyzer is None:
+        return
+    runtime = tmp_path / "runtime"
+    runtime.mkdir(mode=0o700)
+    completed = subprocess.run(  # noqa: S603 - fixed systemd-analyze executable
+        [analyzer, "verify", "--user", str(unit)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "XDG_RUNTIME_DIR": str(runtime),
+        },
+    )
+    output = completed.stdout + completed.stderr
+    assert completed.returncode == 0, output
+    assert "fatal error" not in output.lower(), output
