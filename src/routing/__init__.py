@@ -28,6 +28,7 @@ from .contracts import (
 )
 from .gate import decide
 from .heuristic import HeuristicRouter
+from .lexicon import LexiconError
 from .telemetry import decision_log_fields
 
 __all__ = [
@@ -35,6 +36,7 @@ __all__ = [
     "ConversationContext",
     "EvidenceClass",
     "HeuristicRouter",
+    "LocalFallbackRouter",
     "Route",
     "RouteDecision",
     "Router",
@@ -50,6 +52,25 @@ _LOGGER = logging.getLogger(__name__)
 _OLLAMA_CLOUD_HOST = "ollama.com"
 
 
+class LocalFallbackRouter:
+    """A deterministic local-only router used when the lexicon cannot load."""
+
+    router_id = "gate"
+    policy_version = "1"
+
+    async def decide(self, request: RouterInput) -> RouteDecision:
+        """Return the local fallback decision for ``request``."""
+        return self.decide_sync(request)
+
+    def decide_sync(self, request: RouterInput) -> RouteDecision:
+        """Return the local fallback decision synchronously."""
+        return RouteDecision(
+            route="local",
+            reasons=("fallback:lexicon_error",),
+            text=request.text,
+        )
+
+
 def build_router(config: Any = None) -> Router:
     """Return the configured router implementation.
 
@@ -57,17 +78,27 @@ def build_router(config: Any = None) -> Router:
     optional decision-model router when an eligible key is available; it falls
     back to the gate when no key is configured. ``model`` is rejected by name so
     an old configuration fails loudly instead of silently changing routers.
+    A missing or corrupt lexicon is logged at CRITICAL and replaced with a
+    local-only router, so the bot keeps answering instead of aborting startup.
     """
     mode = str(_config_value(config, "ROUTER_MODE", "heuristic")).strip().lower()
-    if mode == "clef":
-        return _build_clef_router(config)
     if mode == "model":
         msg = "ROUTER_MODE=model is not implemented; use ROUTER_MODE=clef"
         raise NotImplementedError(msg)
-    if mode != "heuristic":
+    if mode not in {"heuristic", "clef"}:
         msg = f"Unknown ROUTER_MODE {mode!r}; expected 'heuristic', 'clef', or 'model'"
         raise ValueError(msg)
-    return HeuristicRouter()
+
+    try:
+        if mode == "clef":
+            return _build_clef_router(config)
+        return HeuristicRouter()
+    except LexiconError as exc:
+        _LOGGER.critical(
+            "Routing lexicon failed to load (%s); using a local-only fallback router",
+            type(exc).__name__,
+        )
+        return LocalFallbackRouter()
 
 
 def _build_clef_router(config: Any) -> Router:

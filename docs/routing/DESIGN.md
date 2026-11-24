@@ -120,8 +120,10 @@ local-with-bearing-cue", expressed at the call site — there is no router-emitt
 
 ## Failure modes
 
-- Lexicon missing/corrupt at load → `LexiconError`; orchestrator falls back to a deterministic local
-  decision with `reasons=("fallback:lexicon_error",)` and logs at CRITICAL. Bot keeps answering local.
+- Lexicon missing/corrupt at load → `build_router` catches the `LexiconError`, logs it at CRITICAL, and
+  injects a local-only fallback router whose decisions use `reasons=("fallback:lexicon_error",)`. The
+  bot keeps answering on the local route and startup does not abort. If a lexicon error still reaches a
+  decision at runtime, the orchestrator uses the same local fallback and logs at ERROR.
 - Router itself raising unexpectedly → caught at the decision site, deterministic gate with a
   `fallback:router_error` reason and an ERROR log. If the gate cannot run either, the answer uses the local
   fallback.

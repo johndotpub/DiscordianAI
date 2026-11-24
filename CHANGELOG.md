@@ -51,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Clef is consulted only when it can act, under one deadline.** A deterministic gate override such as a
   supplied artifact is returned without a Clef call, the router is built once and reuses a pooled client,
   and `ROUTER_CLEF_TIMEOUT_MS` is a hard total deadline for one decision.
+- **A missing or corrupt routing lexicon no longer stops startup.** `build_router` logs it
+  at CRITICAL and injects a local-only fallback router, so the bot keeps answering on the
+  local route instead of aborting before it connects.
 - **Router faults fall back to the deterministic gate.** An unexpected router failure or a Clef error logs
   a reason and continues through the gate instead of turning every hybrid message into an error reply.
   An unknown `ROUTER_MODE` now fails startup validation; `model` keeps its explicit retirement error.

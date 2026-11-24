@@ -5,7 +5,15 @@ import logging
 import pytest
 
 from src.main import validate_critical_config
-from src.routing import ClefRouter, HeuristicRouter, build_router
+from src.routing import (
+    ClefRouter,
+    HeuristicRouter,
+    LocalFallbackRouter,
+    RouterInput,
+    build_router,
+)
+from src.routing.heuristic import _bundled_lexicon
+from src.routing.lexicon import LexiconError
 
 
 def test_build_router_defaults_to_the_heuristic() -> None:
@@ -85,3 +93,43 @@ def test_retired_model_mode_keeps_its_explicit_startup_error() -> None:
         validate_critical_config(_startup_config("model"), logging.getLogger("test.router-mode"))
 
     assert "ROUTER_MODE=model is not implemented; use ROUTER_MODE=clef" in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [None, b"{not valid json"],
+    ids=["missing", "corrupt"],
+)
+def test_a_missing_or_corrupt_lexicon_injects_a_local_fallback(
+    tmp_path,
+    monkeypatch,
+    caplog,
+    contents,
+) -> None:
+    """Startup keeps the bot answering on the local route when the lexicon fails."""
+    lexicon_path = tmp_path / "lexicon.en.json"
+    if contents is not None:
+        lexicon_path.write_bytes(contents)
+    monkeypatch.setattr("src.routing.lexicon._BUNDLED_PATH", lexicon_path)
+    _bundled_lexicon.cache_clear()
+
+    try:
+        with caplog.at_level(logging.CRITICAL, logger="src.routing"):
+            try:
+                router = build_router({"ROUTER_MODE": "heuristic"})
+            except LexiconError as exc:
+                msg = "build_router aborted startup instead of injecting a local router"
+                raise AssertionError(msg) from exc
+
+        assert isinstance(router, LocalFallbackRouter)
+        decision = router.decide_sync(RouterInput(text="is it raining right now?"))
+        assert decision.route == "local"
+        assert decision.reasons == ("fallback:lexicon_error",)
+        records = [
+            record
+            for record in caplog.records
+            if record.levelno >= logging.CRITICAL and "lexicon" in record.getMessage()
+        ]
+        assert len(records) == 1
+    finally:
+        _bundled_lexicon.cache_clear()
