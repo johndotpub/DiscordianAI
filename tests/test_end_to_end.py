@@ -18,7 +18,6 @@ from src.conversation_manager import (
 )
 from src.dependencies import BotDependencies
 from src.rate_limits import RateLimiter
-from tests.helpers import FakeChannel, FakeGuild, FakeMessage, FakeUser
 
 SYSTEM_PROMPT = "You are the end-to-end test assistant. Answer plainly."
 USER_TEXT = "Please explain the deterministic end-to-end path."
@@ -87,21 +86,11 @@ def _build_dependencies(bot, channel, openai_client):
     ],
 )
 @pytest.mark.asyncio
-async def test_guild_mention_travels_the_real_pipeline(base_url: str, cap_param: str):
-    guild = FakeGuild(1)
-    channel = FakeChannel(555, "general", guild)
-    guild.text_channels.append(channel)
-    guild.channels = guild.text_channels
-    bot_user = FakeUser(1, bot=True)
-    author = FakeUser(42)
-    bot = SimpleNamespace(user=bot_user, guilds=[guild])
-    message = FakeMessage(
-        author=author,
-        channel=channel,
-        guild=guild,
-        mentions=[bot_user],
-        content=f"{bot_user.mention} {USER_TEXT}",
-    )
+async def test_guild_mention_travels_the_real_pipeline(base_url: str, cap_param: str, e2e_scene):
+    scene = e2e_scene(USER_TEXT)
+    channel = scene.channel
+    message = scene.message
+    bot = scene.bot
 
     response = SimpleNamespace(
         choices=[
@@ -158,21 +147,12 @@ async def test_guild_mention_travels_the_real_pipeline(base_url: str, cap_param:
 
 
 @pytest.mark.asyncio
-async def test_length_finish_reason_delivers_partial_answer_with_one_notice():
-    guild = FakeGuild(1)
-    channel = FakeChannel(555, "general", guild)
-    guild.text_channels.append(channel)
-    guild.channels = guild.text_channels
-    bot_user = FakeUser(1, bot=True)
-    author = FakeUser(42)
-    bot = SimpleNamespace(user=bot_user, guilds=[guild])
-    message = FakeMessage(
-        author=author,
-        channel=channel,
-        guild=guild,
-        mentions=[bot_user],
-        content=f"{bot_user.mention} {USER_TEXT}",
-    )
+async def test_length_finish_reason_delivers_partial_answer_with_one_notice(e2e_scene):
+    scene = e2e_scene(USER_TEXT)
+    channel = scene.channel
+    message = scene.message
+    bot = scene.bot
+    author = scene.author
     partial = "A partial answer that stops mid-sentence"
 
     response = SimpleNamespace(
@@ -205,21 +185,12 @@ async def test_length_finish_reason_delivers_partial_answer_with_one_notice():
 
 
 @pytest.mark.asyncio
-async def test_model_output_mentions_are_neutralised_in_delivery():
-    guild = FakeGuild(1)
-    channel = FakeChannel(555, "general", guild)
-    guild.text_channels.append(channel)
-    guild.channels = guild.text_channels
-    bot_user = FakeUser(1, bot=True)
-    author = FakeUser(42)
-    bot = SimpleNamespace(user=bot_user, guilds=[guild])
-    message = FakeMessage(
-        author=author,
-        channel=channel,
-        guild=guild,
-        mentions=[bot_user],
-        content=f"{bot_user.mention} {USER_TEXT}",
-    )
+async def test_model_output_mentions_are_neutralised_in_delivery(e2e_scene):
+    scene = e2e_scene(USER_TEXT)
+    channel = scene.channel
+    message = scene.message
+    bot = scene.bot
+    author = scene.author
     hostile = "Hello @everyone @here <@123> <@&456> <#789>"
 
     response = SimpleNamespace(

@@ -230,12 +230,16 @@ class TestResponseCache:
         assert self.cache.get_cached_response("test message", context, salt="test-salt") is None
 
     def test_long_response_uses_the_configured_cache_default_ttl(self):
-        """Response length no longer selects a separate cache TTL."""
+        """A long answer hits before the TTL and misses after it."""
         long_response = "A sufficiently detailed answer. " * 100
         context = {"model": "gpt-5-mini", "user_id": "test-user"}
 
-        with patch("src.caching.time.time", side_effect=[100.0, 401.0]):
+        with patch("src.caching.time.time", side_effect=[100.0, 400.0, 401.0]):
             self.cache.cache_response("test message", context, long_response, salt="test-salt")
+            assert (
+                self.cache.get_cached_response("test message", context, salt="test-salt")
+                == long_response
+            )
             assert (
                 self.cache.get_cached_response("test message", context, salt="test-salt") is None
             )

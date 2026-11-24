@@ -162,7 +162,7 @@ class TestProcessOpenAIMessageAdditionalCoverage:
         )
 
         assert result == "Test response"
-        assert logger.debug.call_count >= 1
+        assert logger.debug.call_count == 1
 
     @pytest.mark.asyncio
     async def test_usage_logging(self, make_request, openai_response):

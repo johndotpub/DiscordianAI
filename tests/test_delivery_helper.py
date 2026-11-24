@@ -87,57 +87,42 @@ def _assert_deny_all_mentions(kwargs: dict) -> None:
     assert "roles" not in parse
 
 
-class _AllowedMentionsVisitor(ast.NodeVisitor):
-    """Find AllowedMentions construction calls and their enclosing function."""
-
-    def __init__(
-        self,
-        discord_names: set[str],
-        allowed_names: set[str],
-        path_label: str,
-        constructions: list[tuple[str, str]],
-    ) -> None:
-        self.discord_names = discord_names
-        self.allowed_names = allowed_names
-        self.path_label = path_label
-        self.constructions = constructions
-        self.function_stack: list[str] = []
-
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        self._visit_function(node)
-
-    def visit_AsyncFunctionDef(
-        self,
-        node: ast.AsyncFunctionDef,
-    ) -> None:
-        self._visit_function(node)
-
-    def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
-        self.function_stack.append(node.name)
-        self.generic_visit(node)
-        self.function_stack.pop()
-
-    def visit_Call(self, node: ast.Call) -> None:
-        func = node.func
-        is_construction = isinstance(func, ast.Name) and func.id in self.allowed_names
-        if (
-            isinstance(func, ast.Attribute)
-            and func.attr == "AllowedMentions"
-            and isinstance(func.value, ast.Name)
-            and func.value.id in self.discord_names
-        ):
-            is_construction = True
-        if is_construction:
-            location = self.function_stack[-1] if self.function_stack else "<module>"
-            self.constructions.append((self.path_label, location))
-        self.generic_visit(node)
+def _allowed_mentions_call(
+    func: ast.expr, discord_names: set[str], allowed_names: set[str]
+) -> bool:
+    """Return True when a call expression constructs AllowedMentions."""
+    if isinstance(func, ast.Name) and func.id in allowed_names:
+        return True
+    return (
+        isinstance(func, ast.Attribute)
+        and func.attr == "AllowedMentions"
+        and isinstance(func.value, ast.Name)
+        and func.value.id in discord_names
+    )
 
 
-def _allowed_mentions_constructions() -> list[tuple[str, str]]:
-    """Return every module and function that constructs AllowedMentions."""
+def _enclosing_scope(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> str:
+    """Return the nearest function, lambda, or module scope label."""
+    current = parents.get(node)
+    while current is not None:
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return current.name
+        if isinstance(current, ast.Lambda):
+            return "<lambda>"
+        current = parents.get(current)
+    return "<module>"
+
+
+def _allowed_mentions_constructions(directory: Path = SRC_DIR) -> list[tuple[str, str]]:
+    """Return every module and function that constructs AllowedMentions.
+
+    Every ``ast.Call`` is inspected, including calls inside comprehensions,
+    lambdas, default arguments, and decorators, so a new construction cannot
+    hide in an expression context the old visitor did not enter.
+    """
     constructions: list[tuple[str, str]] = []
 
-    for path in SRC_DIR.rglob("*.py"):
+    for path in directory.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         discord_names = {"discord"}
         allowed_names = {"AllowedMentions"}
@@ -151,12 +136,15 @@ def _allowed_mentions_constructions() -> list[tuple[str, str]]:
                     if alias.name == "AllowedMentions":
                         allowed_names.add(alias.asname or alias.name)
 
-        _AllowedMentionsVisitor(
-            discord_names,
-            allowed_names,
-            str(path.relative_to(SRC_DIR)),
-            constructions,
-        ).visit(tree)
+        parents = {
+            child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)
+        }
+        constructions.extend(
+            (str(path.relative_to(directory)), _enclosing_scope(node, parents))
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and _allowed_mentions_call(node.func, discord_names, allowed_names)
+        )
 
     return constructions
 
@@ -363,3 +351,14 @@ async def test_embed_fallback_text_parts_honour_suppress_embeds() -> None:
     fallback = channel.send.call_args_list[1]
     assert fallback.args[0] == "Fallback text"
     assert fallback.kwargs["suppress_embeds"] is True
+
+
+def test_allowed_mentions_guard_sees_a_call_in_a_comprehension(tmp_path):
+    """A construction inside a comprehension is not invisible to the guard."""
+    module = tmp_path / "sample.py"
+    module.write_text(
+        "import discord\nVALUES = [discord.AllowedMentions() for _ in range(1)]\n",
+        encoding="utf-8",
+    )
+
+    assert _allowed_mentions_constructions(tmp_path) == [("sample.py", "<module>")]

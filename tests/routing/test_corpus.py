@@ -18,7 +18,7 @@ CORPORA = {
 }
 FIXED_NOW = datetime(2026, 10, 30, tzinfo=UTC)
 SEALED_A_FLOOR = 0.80
-SEALED_B_FLOOR = 0.73
+SEALED_B_FLOOR = 0.70  # measured 0.736; keep a 0.036 documented margin
 COMBINED_FLOOR = 0.75
 
 

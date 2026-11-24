@@ -166,8 +166,6 @@ async def test_health_monitor_loop_visits_healthy_and_raising_clients():
     assert set(results) == {"openai", "perplexity"}
     assert results["openai"].status == "healthy"
     assert results["perplexity"].status == "unhealthy"
-    aggregate = "unhealthy" if any(r.status != "healthy" for r in results.values()) else "healthy"
-    assert aggregate == "unhealthy"
 
 
 @pytest.mark.asyncio

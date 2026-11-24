@@ -276,3 +276,37 @@ def mock_conversation_manager():
     cm.add_message = MagicMock()
     cm.get_conversation = MagicMock(return_value=[])
     return cm
+
+
+@pytest.fixture
+def e2e_scene():
+    """Return a factory for the guild/channel/message scene used end to end."""
+    from types import SimpleNamespace
+
+    from tests.helpers import FakeChannel, FakeGuild, FakeMessage, FakeUser
+
+    def _build(text: str):
+        guild = FakeGuild(1)
+        channel = FakeChannel(555, "general", guild)
+        guild.text_channels.append(channel)
+        guild.channels = guild.text_channels
+        bot_user = FakeUser(1, bot=True)
+        author = FakeUser(42)
+        bot = SimpleNamespace(user=bot_user, guilds=[guild])
+        message = FakeMessage(
+            author=author,
+            channel=channel,
+            guild=guild,
+            mentions=[bot_user],
+            content=f"{bot_user.mention} {text}",
+        )
+        return SimpleNamespace(
+            guild=guild,
+            channel=channel,
+            bot=bot,
+            bot_user=bot_user,
+            author=author,
+            message=message,
+        )
+
+    return _build

@@ -262,6 +262,36 @@ MUTATIONS = [
         ),
     ),
     Mutation(
+        name="protect-escaped-inline-opener",
+        path="src/message_splitter.py",
+        test="tests/test_code_protection.py",
+        old=(
+            "            if _is_escaped(parse.text, span.start):\n"
+            "                continue\n"
+        ),
+        new="",
+    ),
+    Mutation(
+        name="protect-unclosed-fence",
+        path="src/message_splitter.py",
+        test="tests/test_code_protection.py",
+        old=(
+            '    accepted = [fence for fence in parse.fences '
+            'if fence.marker == "```" and fence.closed]\n'
+        ),
+        new=(
+            '    accepted = [fence for fence in parse.fences '
+            'if fence.marker == "```"]\n'
+        ),
+    ),
+    Mutation(
+        name="neutralize-only-first-scheme",
+        path="src/message_splitter.py",
+        test="tests/test_code_protection.py",
+        old="        position = scheme_end\n",
+        new="        position = len(text)\n",
+    ),
+    Mutation(
         name="sanitizer-keeps-link-syntax",
         path="src/message_splitter.py",
         test="tests/test_code_protection.py",
