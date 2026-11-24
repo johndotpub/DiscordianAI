@@ -258,8 +258,8 @@ def test_run_disables_discord_default_logging(base_deps):
 
 
 @pytest.mark.asyncio
-async def test_graceful_shutdown_closes_discord_last(base_deps):
-    """Provider pools and the router close before the gateway does."""
+async def test_graceful_shutdown_closes_discord_last(monkeypatch, base_deps):
+    """Provider pools, cached routers, and the router close before the gateway."""
     order = []
 
     class OrderedBot(DummyBot):
@@ -273,6 +273,10 @@ async def test_graceful_shutdown_closes_discord_last(base_deps):
     async def close_router():
         order.append("router")
 
+    async def close_cached_routers():
+        order.append("cached-routers")
+
+    monkeypatch.setattr("src.smart_orchestrator.close_default_routers", close_cached_routers)
     base_deps["bot"] = OrderedBot()
     base_deps["connection_pool_manager"] = SimpleNamespace(close_all=close_pools)
     base_deps["router"] = SimpleNamespace(aclose=close_router)
@@ -280,7 +284,7 @@ async def test_graceful_shutdown_closes_discord_last(base_deps):
     manager = DiscordBotManager(base_deps)
     await manager.graceful_shutdown()
 
-    assert order == ["pools", "router", "discord"]
+    assert order == ["pools", "router", "cached-routers", "discord"]
 
 
 @pytest.mark.asyncio
@@ -347,7 +351,7 @@ def test_real_client_run_teardown_closes_provider_resources(base_deps):
 
 
 @pytest.mark.asyncio
-async def test_shutdown_guard_logs_unexpected_error_and_exits_zero(monkeypatch, base_deps):
+async def test_shutdown_guard_contains_errors_and_exits_zero(monkeypatch, base_deps):
     """Any shutdown exception is contained and the process exits cleanly."""
     manager = DiscordBotManager(base_deps)
 

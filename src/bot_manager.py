@@ -173,6 +173,16 @@ class DiscordBotManager:
         """Publish the gateway connection state for the health endpoint."""
         self.bot.discordian_gateway_connected = connected
 
+    async def _close_cached_routers(self) -> None:
+        """Close fallback routers cached for direct callers."""
+        from . import smart_orchestrator  # noqa: PLC0415 - lazy shutdown import
+
+        try:
+            await smart_orchestrator.close_default_routers()
+            self.logger.info("Cached fallback routers closed")
+        except Exception:
+            self.logger.exception("Cached fallback router close failed")
+
     async def graceful_shutdown(self):
         """Perform graceful shutdown of the bot and cleanup resources.
 
@@ -219,6 +229,8 @@ class DiscordBotManager:
                 self.logger.info("Router HTTP client closed")
             except Exception:
                 self.logger.exception("Router HTTP client close failed")
+
+        await self._close_cached_routers()
 
         if not self.bot.is_closed():
             await self.bot.close()

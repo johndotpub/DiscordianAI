@@ -436,3 +436,82 @@ async def test_perplexity_only_mode_reports_the_classified_outage_not_a_rephrase
     assert suppress is False
     assert embed is None
     manager.add_message.assert_not_called()
+
+
+class _ClosableRouter:
+    """Minimal cached router that records its close."""
+
+    def __init__(self, name):
+        self.name = name
+        self.closed = False
+
+    async def aclose(self):
+        self.closed = True
+
+    async def decide(self, request):
+        return RouteDecision(route="local", reasons=("fake",), text=request.text)
+
+
+@pytest.fixture
+def empty_default_router_cache():
+    """Keep the process-wide fallback router cache isolated per test."""
+    from src import smart_orchestrator
+
+    smart_orchestrator._DEFAULT_ROUTERS.clear()
+    yield
+    smart_orchestrator._DEFAULT_ROUTERS.clear()
+
+
+@pytest.mark.asyncio
+async def test_default_router_cache_is_bounded_and_closes_the_oldest(
+    empty_default_router_cache,
+):
+    """A long-lived direct caller must not accumulate HTTP clients."""
+    from src import smart_orchestrator
+
+    created = []
+
+    def build(_config):
+        router = _ClosableRouter(f"router-{len(created)}")
+        created.append(router)
+        return router
+
+    request = _request("Tell me something interesting", None)
+    with patch("src.smart_orchestrator.build_router", side_effect=build):
+        for index in range(9):
+            await _build_route_decision(
+                request, {"ROUTER_MODE": "heuristic", "ROUTER_CLEF_MODEL": f"model-{index}"}
+            )
+
+    assert len(smart_orchestrator._DEFAULT_ROUTERS) == 8
+    assert created[0].closed is True
+    assert created[-1].closed is False
+
+
+@pytest.mark.asyncio
+async def test_close_default_routers_closes_every_cached_router(empty_default_router_cache):
+    """Shutdown closes fallback routers alongside the injected one."""
+    from src import smart_orchestrator
+
+    first = _ClosableRouter("first")
+    second = _ClosableRouter("second")
+    with patch("src.smart_orchestrator.build_router", side_effect=[first, second]):
+        await smart_orchestrator._default_router({"ROUTER_CLEF_MODEL": "one"})
+        await smart_orchestrator._default_router({"ROUTER_CLEF_MODEL": "two"})
+
+    await smart_orchestrator.close_default_routers()
+
+    assert first.closed is True
+    assert second.closed is True
+    assert smart_orchestrator._DEFAULT_ROUTERS == {}
+
+
+def test_router_config_key_includes_the_clef_key():
+    """Changing the Clef key must produce a different cached-router key."""
+    from src.routing import router_config_key
+
+    base = {"ROUTER_MODE": "clef"}
+    first = router_config_key({**base, "ROUTER_CLEF_API_KEY": "key-one"})
+    second = router_config_key({**base, "ROUTER_CLEF_API_KEY": "key-two"})
+
+    assert first != second

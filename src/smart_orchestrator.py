@@ -5,6 +5,7 @@ message, then calls the selected provider, handles fallback, and records the
 successful turn in conversation history.
 """
 
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
 import re
@@ -349,23 +350,44 @@ def _lookback(orchestrator_config: dict | None) -> int:
     )
 
 
-_DEFAULT_ROUTERS: dict[tuple[Any, ...], Any] = {}
+_DEFAULT_ROUTER_CACHE_SIZE = 8
+_DEFAULT_ROUTERS: OrderedDict[tuple[Any, ...], Any] = OrderedDict()
 
 
-def _default_router(config: Mapping | None) -> Any:
+async def _close_cached_router(router: Any) -> None:
+    """Close one cached router that owns an HTTP client, if it has one."""
+    close = getattr(router, "aclose", None)
+    if callable(close):
+        await close()
+
+
+async def _default_router(config: Mapping | None) -> Any:
     """Return the fallback router, built once per effective configuration.
 
     Production injects the startup router. Direct callers that do not inject
     one still pay for at most one construction per configuration instead of
-    rebuilding the router for every message. The key comes from the routing
-    package so it cannot drift from what ``build_router`` reads.
+    rebuilding the router for every message. The cache is bounded; the oldest
+    router is closed when it is evicted. The key comes from the routing package
+    so it cannot drift from what ``build_router`` reads.
     """
     key = (build_router, *router_config_key(config))
     cached = _DEFAULT_ROUTERS.get(key)
-    if cached is None:
-        cached = build_router(config)
-        _DEFAULT_ROUTERS[key] = cached
-    return cached
+    if cached is not None:
+        _DEFAULT_ROUTERS.move_to_end(key)
+        return cached
+    router = build_router(config)
+    _DEFAULT_ROUTERS[key] = router
+    while len(_DEFAULT_ROUTERS) > _DEFAULT_ROUTER_CACHE_SIZE:
+        _old_key, evicted = _DEFAULT_ROUTERS.popitem(last=False)
+        await _close_cached_router(evicted)
+    return router
+
+
+async def close_default_routers() -> None:
+    """Close and drop every fallback router cached for direct callers."""
+    while _DEFAULT_ROUTERS:
+        _key, router = _DEFAULT_ROUTERS.popitem(last=False)
+        await _close_cached_router(router)
 
 
 async def _build_route_decision(
@@ -380,7 +402,9 @@ async def _build_route_decision(
     propagate so startup and direct callers fail loudly.
     """
     try:
-        active_router = router if router is not None else _default_router(orchestrator_config)
+        active_router = (
+            router if router is not None else await _default_router(orchestrator_config)
+        )
         router_input = build_router_input(
             request,
             getattr(request, "conversation_manager", None),
