@@ -61,7 +61,8 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 VENV_DIR="${PROJECT_DIR}/.venv"
-PID_FILE="${PROJECT_DIR}/.bot.pid"
+LEGACY_PID_FILE="${PROJECT_DIR}/.bot.pid"
+PID_FILE="$(instance_pid_file "${PROJECT_DIR}" "${CONFIG_FILE}")"
 LOG_FILE="${PROJECT_DIR}/bot.log"
 
 # ── systemd installation ─────────────────────────────────────────────
@@ -243,21 +244,26 @@ log "✓ All core dependencies available"
 # ── 6. Kill existing instances (cron restart) ──────────────────────────
 log "Stopping any existing instances..."
 my_pid="$$"
+CONFIG_PATH="$(resolve_config_path "${PROJECT_DIR}" "${CONFIG_FILE}")"
 
-# By PID file. The helper removes the file even when the process already died.
+# The legacy shared file is used only when it records this same config.
+stop_legacy_pid_file_instance "${LEGACY_PID_FILE}" "${CONFIG_PATH}"
+
+# By this config's PID file. The helper removes the file even when the process
+# already died.
 stop_pid_file_instance "${PID_FILE}"
 
 # Stragglers for this config only (but not ourselves). A different config's
 # instance is a different managed service and must keep running.
-for pid in $(straggler_pids "${CONFIG_FILE}"); do
+for pid in $(straggler_pids "${CONFIG_PATH}"); do
     if [[ "${pid}" != "${my_pid}" ]]; then
-        log "Killing stray process ${pid} for ${CONFIG_FILE}"
+        log "Killing stray process ${pid} for ${CONFIG_PATH}"
         kill "${pid}" 2>/dev/null || true
     fi
 done
 
 # ── 7. Build and launch the command ────────────────────────────────────
-CMD_ARGS=(-m src.main --conf "${CONFIG_FILE}")
+CMD_ARGS=(-m src.main --conf "${CONFIG_PATH}")
 if [[ "${PROJECT_DIR}" != "$(pwd)" ]]; then
     CMD_ARGS+=(--folder "${PROJECT_DIR}")
 fi

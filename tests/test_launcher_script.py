@@ -15,23 +15,91 @@ def _run_bash(
     script: str,
     *args: str,
     env: dict[str, str] | None = None,
+    cwd: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(  # noqa: S603 - fixed bash executable, no shell
         [BASH_PATH, "-c", script, "launcher-test", *args],
-        cwd=REPO_ROOT,
+        cwd=cwd or REPO_ROOT,
         capture_output=True,
         text=True,
         timeout=15,
         check=False,
-        env={**os.environ, **(env or {})},
+        env={
+            **os.environ,
+            "LAUNCHER_LIB": str(LIBRARY_PATH),
+            **(env or {}),
+        },
     )
+
+
+def _start_fake_bot(config_arg: str, cwd: Path) -> subprocess.Popen[bytes]:
+    """Start a sleeping process whose command line looks like the bot's."""
+    process = subprocess.Popen(  # noqa: S603 - fixed bash and sleep executables
+        [
+            BASH_PATH,
+            "-c",
+            'exec -a "$1" /bin/sleep 30',
+            "fake-bot",
+            f"python -m src.main --conf {config_arg}",
+        ],
+        cwd=cwd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    for _ in range(500):
+        if "src.main" in _process_args(process.pid):
+            return process
+        os.sched_yield()
+    process.kill()
+    process.wait(timeout=5)
+    raise AssertionError("fake bot process did not exec")
+
+
+def _process_args(pid: int) -> str:
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        completed = subprocess.run(  # noqa: S603 - fixed ps executable
+            ["ps", "-o", "args=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        return completed.stdout
+    return raw.replace(b"\0", b" ").decode()
+
+
+def _assert_stopped(process: subprocess.Popen[bytes]) -> None:
+    assert process.wait(timeout=5) is not None
+
+
+def _instance_pid_file(project: Path, config_file: str) -> Path:
+    script = """
+set -euo pipefail
+source "$LAUNCHER_LIB"
+instance_pid_file "$1" "$2"
+"""
+    completed = _run_bash(script, str(project), config_file)
+    assert completed.returncode == 0, completed.stderr
+    return Path(completed.stdout.strip())
+
+
+def _stop_instance(project: Path, config_file: str) -> subprocess.CompletedProcess[str]:
+    script = """
+set -euo pipefail
+source "$LAUNCHER_LIB"
+log() { :; }
+stop_pid_file_instance "$(instance_pid_file "$1" "$2")"
+"""
+    return _run_bash(script, str(project), config_file)
 
 
 def test_wait_for_exit_does_not_abort_under_set_e():
     """The post-increment of zero used to exit the launcher on the first second."""
     script = """
 set -euo pipefail
-source scripts/launcher_lib.sh
+source "$LAUNCHER_LIB"
 /bin/sleep 30 >/dev/null 2>&1 &
 target=$!
 sleep() { :; }
@@ -53,7 +121,7 @@ def test_stop_pid_file_removes_the_file_even_after_a_wait(tmp_path):
     pid_file = tmp_path / ".bot.pid"
     script = """
 set -euo pipefail
-source scripts/launcher_lib.sh
+source "$LAUNCHER_LIB"
 log() { :; }
 pid_file="$1"
 /bin/sleep 30 >/dev/null 2>&1 &
@@ -77,43 +145,124 @@ echo cleaned
     assert not pid_file.exists()
 
 
-def test_straggler_lookup_is_scoped_to_one_config(tmp_path):
-    """A different config's instance is a different service and is not matched."""
-    fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
-    fake_pgrep = fake_bin / "pgrep"
-    fake_pgrep.write_text(
-        """#!/usr/bin/env bash
-pattern="${@: -1}"
-grep -E "$pattern" "$PGREP_FIXTURES" | cut -d' ' -f1
-""",
-        encoding="utf-8",
-    )
-    fake_pgrep.chmod(0o755)
-    fixtures = tmp_path / "processes.txt"
-    fixtures.write_text(
-        "1234 python -m src.main --conf alpha.ini\n"
-        "5678 python -m src.main --conf beta.ini\n"
-        "9012 python -m src.main --conf alpha.ini.bak\n",
-        encoding="utf-8",
-    )
+def test_two_configs_keep_separate_instances(tmp_path):
+    """Starting prod.ini must not stop the bot.ini instance; bot.ini restarts itself."""
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "bot.ini").write_text("", encoding="utf-8")
+    (project / "prod.ini").write_text("", encoding="utf-8")
 
-    script = """
+    bot = _start_fake_bot("bot.ini", project)
+    prod = _start_fake_bot("prod.ini", project)
+    try:
+        bot_pid_file = _instance_pid_file(project, "bot.ini")
+        prod_pid_file = _instance_pid_file(project, "prod.ini")
+        assert bot_pid_file.name == ".bot-bot.pid"
+        assert prod_pid_file.name == ".bot-prod.pid"
+        assert bot_pid_file != prod_pid_file
+        bot_pid_file.write_text(f"{bot.pid}\n", encoding="utf-8")
+        prod_pid_file.write_text(f"{prod.pid}\n", encoding="utf-8")
+
+        completed = _stop_instance(project, "prod.ini")
+
+        assert completed.returncode == 0, completed.stderr
+        _assert_stopped(prod)
+        assert bot.poll() is None
+        assert bot_pid_file.exists(), "starting prod.ini removed bot.ini's PID file"
+        assert bot_pid_file.read_text(encoding="utf-8") == f"{bot.pid}\n"
+        assert not prod_pid_file.exists()
+
+        completed = _stop_instance(project, "bot.ini")
+
+        assert completed.returncode == 0, completed.stderr
+        _assert_stopped(bot)
+        assert not bot_pid_file.exists()
+    finally:
+        for process in (bot, prod):
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+
+
+def test_straggler_lookup_matches_only_the_same_checkout(tmp_path):
+    """Two checkouts that both use bot.ini must not match each other's process."""
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    for project in (first, second):
+        project.mkdir()
+        (project / "bot.ini").write_text("", encoding="utf-8")
+
+    first_bot = _start_fake_bot("bot.ini", first)
+    second_bot = _start_fake_bot("bot.ini", second)
+    try:
+        script = """
 set -euo pipefail
-source scripts/launcher_lib.sh
-straggler_pids "$1"
+source "$LAUNCHER_LIB"
+straggler_pids "bot.ini"
 """
-    completed = _run_bash(
-        script,
-        "alpha.ini",
-        env={
-            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
-            "PGREP_FIXTURES": str(fixtures),
-        },
-    )
+        completed = _run_bash(script, cwd=first)
 
-    assert completed.returncode == 0, completed.stderr
-    assert completed.stdout.split() == ["1234"]
+        assert completed.returncode == 0, completed.stderr
+        assert completed.stdout.split() == [str(first_bot.pid)]
+        assert second_bot.poll() is None
+    finally:
+        for process in (first_bot, second_bot):
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+
+
+def test_legacy_pid_file_is_used_for_the_same_config(tmp_path):
+    """An upgrade must stop the instance recorded in the shared legacy file."""
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "bot.ini").write_text("", encoding="utf-8")
+    bot = _start_fake_bot("bot.ini", project)
+    legacy = project / ".bot.pid"
+    legacy.write_text(f"{bot.pid}\n", encoding="utf-8")
+    try:
+        script = """
+set -euo pipefail
+source "$LAUNCHER_LIB"
+log() { :; }
+stop_legacy_pid_file_instance "$1" "$2"
+"""
+        completed = _run_bash(script, str(legacy), str(project / "bot.ini"))
+
+        assert completed.returncode == 0, completed.stderr
+        _assert_stopped(bot)
+        assert not legacy.exists()
+    finally:
+        if bot.poll() is None:
+            bot.kill()
+            bot.wait(timeout=5)
+
+
+def test_legacy_pid_file_for_another_config_is_left_alone(tmp_path):
+    """The shared file may belong to a different config; it must not be touched."""
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "bot.ini").write_text("", encoding="utf-8")
+    (project / "other.ini").write_text("", encoding="utf-8")
+    other = _start_fake_bot("other.ini", project)
+    legacy = project / ".bot.pid"
+    legacy.write_text(f"{other.pid}\n", encoding="utf-8")
+    try:
+        script = """
+set -euo pipefail
+source "$LAUNCHER_LIB"
+log() { :; }
+stop_legacy_pid_file_instance "$1" "$2"
+"""
+        completed = _run_bash(script, str(legacy), str(project / "bot.ini"))
+
+        assert completed.returncode == 0, completed.stderr
+        assert other.poll() is None
+        assert legacy.read_text(encoding="utf-8") == f"{other.pid}\n"
+    finally:
+        if other.poll() is None:
+            other.kill()
+            other.wait(timeout=5)
 
 
 def test_install_systemd_enables_then_starts_the_unit():

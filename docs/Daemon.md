@@ -159,17 +159,27 @@ Point the fragment at that `bot.log`, install it as above, and logrotate will ro
 
 ## Process Management
 
-The launcher tracks the bot's PID in `.bot.pid` (in the project directory) and uses it for clean shutdown:
+The launcher tracks each config's bot PID in `.bot-<stem>.pid` (for example
+`.bot-bot.pid` for `bot.ini`, `.bot-production.pid` for `production.ini`) and uses
+it for clean shutdown:
 
-1. If a `.bot.pid` file exists, it sends `SIGTERM` and waits up to 10 seconds
+1. If the instance's PID file exists, it sends `SIGTERM` and waits up to 10 seconds
 2. If the process doesn't stop, it sends `SIGKILL`
 3. It removes the PID file, including when the recorded process had already exited
-4. It scans for stray processes started with the same `--conf` file
+4. It scans for stray processes started with the same resolved config file
 
-The straggler scan is scoped to this invocation's config file. Another launcher
-running a different config is a separate managed instance and is left alone, which
-is what makes the multi-instance pattern safe. This ensures clean restarts whether
-triggered by cron, systemd, or manual invocation.
+The straggler scan resolves each process's `--conf` argument against that process's
+working directory and compares it with this instance's absolute config path. Another
+config in the same checkout is a separate managed instance and is left alone, and a
+second checkout that also uses `bot.ini` is not mistaken for this one. On upgrade, a
+legacy `.bot.pid` is honoured only when its process runs the same config; a legacy PID
+belonging to another config is left in place.
+
+One instance per config is enforced for launches the launcher owns. One instance per
+Discord token is still the operator's rule: the Python process does not lock the token,
+so containers, systemd, or other supervisors that bypass the launcher must enforce it
+externally. Running two configs that use the same token would give it two gateway
+sessions and duplicate replies.
 
 ## Venv Details
 

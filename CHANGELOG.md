@@ -20,11 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   channel reply now asks the user to wait before sending another message, matching
   the direct-message notice, instead of using a second hand-written copy.
 
-- **The launcher survives a restart wait and leaves other instances alone.** The restart
-  loop no longer exits the script on its first second under `set -e`, the PID file is
-  removed even when the old process is gone, and straggler cleanup matches only the
-  config file this invocation manages. `--install-systemd` now starts the unit after
-  enabling it.
+- **The launcher keeps one instance per config.** The restart loop no longer exits the
+  script on its first second under `set -e`, and each config now records its PID in
+  `.bot-<stem>.pid`, so starting `production.ini` leaves a running `bot.ini` alone. The
+  straggler scan resolves each process's `--conf` against its working directory and
+  compares the absolute config path, so two checkouts that both use `bot.ini` no longer
+  match each other. A legacy `.bot.pid` is honoured only when its process runs the same
+  config. `--install-systemd` now starts the unit after enabling it.
 - **`LOG_FILE` is mentioned only when it is actually set.** The deprecated key has a
   built-in default, so every startup used to log an "ignored" notice while directing
   operators to stdout even though logs go to stderr. The notice now appears only when the

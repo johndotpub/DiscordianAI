@@ -4,6 +4,7 @@ bot.log
 *.log-*
 test.log
 .bot.pid
+.bot-*.pid
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -303,10 +303,14 @@ tox -e py312
   bind/startup failure, logs once, disables the endpoint, and leaves the Discord client
   running. Check:
   `tests/test_health_truth.py::test_bind_failure_disables_health_server_without_killing_bot`.
-- **One instance per token.** A Discord token cannot have two live gateway sessions without
-  duplicate replies. `discordian.sh` enforces this for launches it owns through `.bot.pid`;
-  containers, systemd, and other supervisors must enforce the same rule externally. The
-  Python process itself does not lock the token.
+- **One instance per config.** `discordian.sh` records each config's PID in
+  `.bot-<stem>.pid` and stops only that instance, so a second config in the same checkout
+  keeps running. The straggler scan resolves each process's `--conf` against its working
+  directory and matches this instance's absolute config path; a legacy `.bot.pid` is used
+  only when its process runs the same config. A Discord token still cannot have two live
+  gateway sessions without duplicate replies: one instance per token remains the
+  operator's rule, and containers, systemd, and other supervisors that bypass the launcher
+  must enforce it externally. The Python process itself does not lock the token.
 - **Log rotation uses the shipped fragment.** `contrib/logrotate/discordianai` rotates a
   supervisor-owned `bot.log` with `copytruncate`, because the bot does not reopen a log file
   it never opened. Install it and replace the placeholder path and the `su USER GROUP`
