@@ -243,6 +243,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   terms are no longer read from fenced code, matching the masking order in `docs/routing/DESIGN.md`.
 - **Clef honours gate overrides as data.** The gate marks a deterministic override on the decision, and
   Clef returns it without a network call instead of relying on a `reasons` prefix.
+- **A chat key without an explicit URL is not sent to Clef.** A direct caller that supplies only
+  `OPENAI_API_KEY` no longer has that key treated as an Ollama Cloud credential through an implicit
+  default URL. The loaded configuration still carries `OPENAI_API_URL`, so normal deployments that
+  use the default Ollama Cloud endpoint keep the existing fallback.
 - **Clef failures cannot strand a message.** Any unexpected router exception falls back to the
   deterministic gate with a `fallback:router_error` reason and an ERROR log.
 - **Structured logs carry the Discord context they were given.** The formatter now reads the

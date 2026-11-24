@@ -98,8 +98,9 @@ text cannot be flipped to web by Clef.
 
 The Clef key is scoped to the Clef endpoint. Resolution order is `ROUTER_CLEF_API_KEY`, then
 `OLLAMA_API_KEY` from the environment, then `OPENAI_API_KEY` only when `OPENAI_API_URL`'s host is
-`ollama.com`. A key issued for any other chat provider is never sent to Ollama Cloud. When no eligible key
-exists, startup warns once and selects the deterministic gate.
+`ollama.com`. A missing `OPENAI_API_URL` is not treated as the default URL, so a caller that supplies
+only a chat key cannot send it to Clef. A key issued for any other chat provider is never sent to
+Ollama Cloud. When no eligible key exists, startup warns once and selects the deterministic gate.
 
 The router is built once at startup and reuses one pooled HTTP client for the process; the client is closed
 with the other connection pools during shutdown. An image request is decided as `images:local` before any

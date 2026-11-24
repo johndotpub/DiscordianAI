@@ -57,8 +57,14 @@ def test_clef_mode_without_a_key_falls_back_to_the_heuristic(monkeypatch) -> Non
 
 
 def test_clef_mode_with_a_key_builds_the_clef_router() -> None:
-    """A configured key selects the decision-model implementation."""
-    router = build_router({"ROUTER_MODE": "clef", "OPENAI_API_KEY": "test-key"})
+    """A configured Ollama Cloud key selects the decision-model implementation."""
+    router = build_router(
+        {
+            "ROUTER_MODE": "clef",
+            "OPENAI_API_KEY": "test-key",
+            "OPENAI_API_URL": "https://ollama.com/v1/",
+        }
+    )
 
     assert isinstance(router, ClefRouter)
     assert router.router_id == "clef"

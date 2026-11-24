@@ -9,7 +9,6 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from src.config import (
-    DEFAULT_OPENAI_API_URL,
     DEFAULT_ROUTER_CLEF_MODEL,
     DEFAULT_ROUTER_CLEF_THRESHOLD,
     DEFAULT_ROUTER_CLEF_TIMEOUT_MS,
@@ -125,7 +124,9 @@ def _clef_api_key(config: Any) -> str | None:
 
     The resolution order is the dedicated Clef key, an Ollama Cloud key from
     the environment, and finally the chat key only when its API URL is Ollama
-    Cloud itself. A key issued by another provider is never sent to Ollama.
+    Cloud itself. A missing URL is not a default: a caller that supplies only a
+    chat key cannot prove that key belongs to Ollama Cloud, so it is refused.
+    A key issued by another provider is never sent to Ollama.
     """
     explicit = _first_config_or_env(config, ("ROUTER_CLEF_API_KEY",))
     if explicit is not None:
@@ -138,7 +139,7 @@ def _clef_api_key(config: Any) -> str | None:
     openai_key = _first_config_or_env(config, ("OPENAI_API_KEY",))
     if openai_key is None:
         return None
-    openai_url = _config_value(config, "OPENAI_API_URL", DEFAULT_OPENAI_API_URL)
+    openai_url = _config_value(config, "OPENAI_API_URL", None)
     if _is_ollama_cloud_url(openai_url):
         return openai_key
     return None

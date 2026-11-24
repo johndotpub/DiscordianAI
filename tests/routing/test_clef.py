@@ -347,6 +347,7 @@ def test_build_router_selects_clef_and_clamps_the_threshold(monkeypatch) -> None
         {
             "ROUTER_MODE": "clef",
             "OPENAI_API_KEY": "test-key",
+            "OPENAI_API_URL": "https://ollama.com/v1/",
             "ROUTER_CLEF_THRESHOLD": 2.0,
             "ROUTER_CLEF_TIMEOUT_MS": 500,
         }
@@ -430,6 +431,17 @@ def test_openai_key_is_not_sent_to_clef_for_another_host(monkeypatch) -> None:
             "OPENAI_API_URL": "https://api.openai.com/v1/",
         }
     )
+
+    assert isinstance(router, HeuristicRouter)
+
+
+def test_openai_key_without_a_url_is_not_sent_to_clef(monkeypatch) -> None:
+    """A direct caller that omits the URL cannot prove the key belongs to Ollama."""
+    monkeypatch.delenv("ROUTER_CLEF_API_KEY", raising=False)
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_URL", raising=False)
+
+    router = build_router({"ROUTER_MODE": "clef", "OPENAI_API_KEY": "sk-openai"})
 
     assert isinstance(router, HeuristicRouter)
 
