@@ -224,6 +224,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not. A host:port number such as `:443` in a connect message is no longer read as an HTTP
   status, and a structured `insufficient_quota` 429 is not retried and keeps its quota
   notice.
+- **Unclassified exceptions are not retried.** The retry policy now refuses an exception
+  it cannot classify instead of treating the unknown type as transient. Built-in
+  `ConnectionError` still classifies as a network error and remains retryable.
 - **Perplexity carries its four-step bound.** The Agent API request sends `max_steps: 4` in
   `extra_body` because the SDK has no `max_steps` kwarg, so the tool loop is bounded as
   documented instead of dropping the value.

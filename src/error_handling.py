@@ -549,6 +549,7 @@ def _is_retryable_error(error_details: ErrorDetails, exception: Exception) -> bo
         ErrorType.API_AUTH_ERROR,
         ErrorType.API_TIMEOUT,
         ErrorType.CONFIG_ERROR,
+        ErrorType.UNKNOWN,
         ErrorType.VALIDATION_ERROR,
     }
 
@@ -728,7 +729,10 @@ def _classify_typed_error(exception: Exception) -> ErrorDetails | None:
             10,
         )
 
-    if isinstance(exception, (openai.APIConnectionError, *_HTTPX_TRANSPORT_ERRORS)):
+    if isinstance(
+        exception,
+        (ConnectionError, openai.APIConnectionError, *_HTTPX_TRANSPORT_ERRORS),
+    ):
         return _error_details(
             ErrorType.NETWORK_ERROR,
             ErrorSeverity.HIGH,

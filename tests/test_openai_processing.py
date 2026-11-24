@@ -137,8 +137,8 @@ class TestProcessOpenAIMessageBasic:
             )
 
         assert result is None
-        assert openai_client.chat.completions.create.await_count == 2
-        sleep.assert_awaited_once()
+        assert openai_client.chat.completions.create.await_count == 1
+        sleep.assert_not_awaited()
         logger.exception.assert_called()
         conversation_manager.add_message.assert_not_called()
 

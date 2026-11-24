@@ -308,7 +308,7 @@ class TestRetryWithBackoff:
             call_count += 1
             if call_count < 3:
                 msg = "Temporary failure"
-                raise ValueError(msg)
+                raise ConnectionError(msg)
             return "success"
 
         mock_logger = Mock()
@@ -326,12 +326,12 @@ class TestRetryWithBackoff:
             nonlocal call_count
             call_count += 1
             msg = f"Failure {call_count}"
-            raise ValueError(msg)
+            raise ConnectionError(msg)
 
         mock_logger = Mock()
         config = RetryConfig(max_attempts=2, base_delay=0.1, jitter=False)
 
-        with pytest.raises(ValueError, match="Failure 2"):
+        with pytest.raises(ConnectionError, match="Failure 2"):
             await retry_with_backoff(test_func, config, mock_logger)
         assert call_count == 2
 
@@ -344,7 +344,7 @@ class TestRetryWithBackoff:
             call_count += 1
             if call_count < 3:
                 msg = "Temporary failure"
-                raise ValueError(msg)
+                raise ConnectionError(msg)
             return "success"
 
         mock_logger = Mock()

@@ -113,8 +113,8 @@ The bot handles upstream API rate limits gracefully:
    backoff, and 429 responses honour `Retry-After` up to 30 seconds. A
    90-second deadline stops retries even when attempts remain.
 2. **Transient Failures Only**: 429, 5xx, connection errors, and connect
-   timeouts are retried. Authentication errors, read timeouts, and exhausted
-   quotas fail immediately.
+   timeouts are retried. Authentication errors, read timeouts, exhausted
+   quotas, and unclassified exceptions fail immediately.
 3. **Circuit Breaker**: A shared per-provider breaker opens after 5 failed
    logical calls (all retries for one call count as one failure) and allows a
    single probe after 60 seconds.
