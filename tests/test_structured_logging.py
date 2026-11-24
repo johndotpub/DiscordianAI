@@ -4,6 +4,7 @@ from io import StringIO
 import logging
 import os
 import re
+import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -157,6 +158,27 @@ def test_rendered_tracebacks_never_include_frame_locals(json_logs, log_colors):
     assert _CANARY_VALUE not in plain_output
     assert "Traceback (most recent call last)" in plain_output
     assert "RuntimeError: boom" in plain_output
+
+
+def test_exception_logging_falls_back_when_rich_is_unavailable(monkeypatch):
+    """A console logger without Rich renders the traceback instead of failing."""
+    stream = StringIO()
+    monkeypatch.setitem(sys.modules, "rich", None)
+
+    configure_structlog(json_logs=False, log_colors=False, stream=stream)
+    log = logging.getLogger("test.no_rich")
+    try:
+        _raise_with_secret_local()
+    except RuntimeError:
+        log.exception("rendered failure")
+
+    output = stream.getvalue()
+    plain_output = _ANSI_ESCAPE.sub("", output)
+    assert "Logging error" not in output
+    assert "NameError" not in output
+    assert "Traceback (most recent call last)" in plain_output
+    assert "RuntimeError: boom" in plain_output
+    assert _CANARY_VALUE not in output
 
 
 @pytest.mark.parametrize("json_logs", [False, True])

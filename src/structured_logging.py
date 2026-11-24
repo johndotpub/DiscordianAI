@@ -23,6 +23,7 @@ Usage::
     logger.info("request completed", service="openai", duration_ms=340)
 """
 
+import importlib
 import logging
 import os
 import sys
@@ -83,6 +84,26 @@ def _resolve_colours(force_colors: bool | None, stream: Any) -> tuple[bool, str]
     return False, "disabled because the stream is not a terminal"
 
 
+def _console_exception_formatter(colors_enabled: bool) -> Any:
+    """Return a traceback formatter that works without the optional Rich package.
+
+    structlog exposes ``RichTracebackFormatter`` even when ``rich`` is not
+    installed, but instantiating it and rendering an exception then fails with
+    ``NameError: Console``. Rich is not a runtime dependency, so use the plain
+    structlog renderer unless it can actually be imported. Neither formatter
+    prints frame locals.
+    """
+    try:
+        importlib.import_module("rich")
+    except ImportError:
+        return structlog.dev.plain_traceback
+
+    return structlog.dev.RichTracebackFormatter(
+        show_locals=False,
+        color_system="truecolor" if colors_enabled else None,
+    )
+
+
 def configure_structlog(
     *,
     json_logs: bool | None = None,
@@ -132,10 +153,7 @@ def configure_structlog(
         renderer = structlog.dev.ConsoleRenderer(
             colors=colors_enabled,
             pad_event_to=0,
-            exception_formatter=structlog.dev.RichTracebackFormatter(
-                show_locals=False,
-                color_system="truecolor" if colors_enabled else None,
-            ),
+            exception_formatter=_console_exception_formatter(colors_enabled),
         )
 
     structlog.configure(
