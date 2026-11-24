@@ -54,7 +54,7 @@ flowchart TD
 
     MODE -->|"OpenAI-compatible only"| J["Use chat provider"]
     MODE -->|"Hybrid"| IMG{"Image attached?"}
-    IMG -->|"Yes"| ITERM["Chat answer with images<br/>(images:local; no reroute)"]
+    IMG -->|"Yes"| ITERM["Chat answer with images<br/>(images:local; no reroute; empty answer is an error)"]
     IMG -->|"No"| S["Build RouterInput<br/>message + history"]
 
     S --> C{"Override: web instruction,<br/>URL, or local instruction?"}
