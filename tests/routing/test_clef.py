@@ -446,6 +446,32 @@ def test_openai_key_without_a_url_is_not_sent_to_clef(monkeypatch) -> None:
     assert isinstance(router, HeuristicRouter)
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://ollama.com.evil.example/v1/",
+        "https://ollama.com@evil.example/v1/",
+        "https://evil.example/ollama.com/v1/",
+        "https://notollama.com/v1/",
+    ],
+    ids=["suffix", "userinfo", "path", "prefix"],
+)
+def test_lookalike_hosts_are_not_treated_as_ollama(monkeypatch, url) -> None:
+    """Only an exact ollama.com hostname may receive the chat key."""
+    monkeypatch.delenv("ROUTER_CLEF_API_KEY", raising=False)
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+
+    router = build_router(
+        {
+            "ROUTER_MODE": "clef",
+            "OPENAI_API_KEY": "sk-openai",
+            "OPENAI_API_URL": url,
+        }
+    )
+
+    assert isinstance(router, HeuristicRouter)
+
+
 def test_ollama_cloud_chat_key_still_builds_clef(monkeypatch) -> None:
     """An existing Ollama Cloud deployment keeps working without a new key."""
     monkeypatch.delenv("ROUTER_CLEF_API_KEY", raising=False)

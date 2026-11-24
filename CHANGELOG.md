@@ -295,6 +295,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests ✅
 
+- **Clef host eligibility is pinned against lookalike names.** A suffix such as
+  `ollama.com.evil.example`, userinfo such as `ollama.com@evil.example`, a path containing
+  `ollama.com`, and a prefix such as `notollama.com` are all refused. The test fails if the
+  exact-hostname check is weakened to a substring match.
 - **Root logging is restored between tests.** A test that configures production logging
   no longer leaves its rich handler installed for later tests, which had made traceback
   rendering, not retry sleep, the slow part of the outage tests.
