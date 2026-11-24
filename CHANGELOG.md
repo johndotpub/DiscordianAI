@@ -481,8 +481,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Clef no longer reuses the chat key for a local daemon URL.** With an `OPENAI_API_URL`
   such as `http://localhost:11434/v1/`, `OPENAI_API_KEY` is not eligible for Clef. Set
   `ROUTER_CLEF_API_KEY` or `OLLAMA_API_KEY` to use `ROUTER_MODE=clef`.
-- **A missing `--conf` file now stops startup.** The 0.4.0 launcher allowed a missing file
-  to fall through to environment defaults; an explicitly requested file must now exist.
+- **A missing `--conf` file now stops startup.** The 0.4.0 configuration loader allowed an
+  explicitly requested file to fall through to environment defaults. Every entry point now
+  rejects a missing file; the launcher is not the only path that must fail.
 - **The launcher PID file is per config.** An existing `.bot.pid` is honoured only when its
   process runs the same config, then removed; new runs write
   `.bot-<stem>-<hash>.pid`.

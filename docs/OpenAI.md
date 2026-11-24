@@ -140,18 +140,20 @@ INPUT_TOKENS=60000    # Adjust based on conversation length
 
 The console format is `<iso timestamp> [level    ] <event> [<logger>] [field=value ...]`;
 `channel_id`, `guild_id`, and `user_id` follow the logger when the message logger supplied
-them. Grep for the event text. A runtime line from the bot uses the `discordianai.bot` logger.
+them. Grep for the event text. Module loggers render as `[src.<module>]`; the top-level bot
+logger is `[discordianai.bot]`. The provider request lines below come from the adapter
+modules.
 
 ### Response Logs
 ```
-2026-11-23T17:04:06Z [info     ] OpenAI response generated successfully: 245 characters, finish_reason: stop [discordianai.bot]
-2026-11-23T17:04:06Z [warning  ] OpenAI returned empty response content (finish_reason=length) [discordianai.bot]
+2026-11-23T17:04:06Z [info     ] OpenAI response generated successfully: 245 characters, finish_reason: stop [src.providers.openai_chat]
+2026-11-23T17:04:06Z [warning  ] OpenAI returned empty response content (finish_reason=length) [src.providers.openai_chat]
 ```
 
 ### Service Selection Logs
 ```
-2026-11-23T17:04:06Z [info     ] Routing decision: {'route': 'local', 'service': 'openai', ...} [discordianai.bot]
-2026-11-23T17:04:06Z [info     ] Routing to OpenAI [discordianai.bot]
+2026-11-23T17:04:06Z [info     ] Routing decision: {'route': 'local', 'service': 'openai', ...} [src.smart_orchestrator]
+2026-11-23T17:04:06Z [info     ] Routing to OpenAI [src.smart_orchestrator]
 ```
 
 ### Error Logs

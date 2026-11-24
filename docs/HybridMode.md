@@ -103,13 +103,14 @@ flowchart TD
     G --> OW["Chat Provider Response"]
     OW --> EMPTY{"Empty answer?"}
     EMPTY -->|"Yes, hybrid and no image"| H
-    EMPTY -->|"Yes, image request"| IERR["No-answer notice<br/>(hybrid: ai_service_unavailable;<br/>OpenAI-only: no_response_generated;<br/>no Perplexity fallback)"]
+    EMPTY -->|"Yes, image request"| IERR["No-answer notice<br/>(OpenAI-only: no_response_generated;<br/>image requests are never rerouted)"]
     EMPTY -->|"No"| WI{"Hybrid local answer indicates<br/>web-inability?"}
     WI -->|"Yes, Perplexity not tried"| H
     WI -->|"No or already tried"| U["Return local answer"]
     H --> PR["Agent API Response + Citations"]
 
-    ITERM --> W["send_formatted_message"]
+    PREF --> W["send_formatted_message"]
+    ITERM --> W
     IERR --> W
     U --> W
     PR --> V["Citation Embed Formatter"]

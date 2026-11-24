@@ -11,10 +11,11 @@
 # date-stamped, `delaycompress` leaves the newest one uncompressed, and older
 # generations are compressed. The generation count is high enough that the
 # archive is effectively unbounded at this bot's volume: at roughly 50 MB
-# every few months, 50 rotated files of up to 100 MB each is about 5 GB of
-# archives, plus the live file, which is about 100 MB plus the growth since the
-# previous check (about one day's growth with a daily check). That is years of
-# logs. Compressed files are smaller. If you ever need a hard limit, lower
+# every few months, 50 rotated files of at least 100 MB each is about 5 GB of
+# archives, plus the live file, which is at least 100 MB plus the growth since
+# the previous check (about one day's growth with a daily check). The size is
+# only checked when logrotate runs, so both figures are lower bounds. That is
+# years of logs. Compressed files are smaller. If you ever need a hard limit, lower
 # `rotate` — that is the only knob that deletes anything.
 #
 # copytruncate is required because the bot holds bot.log open through the
