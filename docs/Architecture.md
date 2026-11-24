@@ -308,12 +308,14 @@ a 90-second overall deadline stops retries even when attempts remain.
 dependencies. The block grammar finds fenced code, and each inline node is reparsed with
 the inline grammar to find code spans, links, images, and autolinks. One function,
 `protected_code_regions()`, applies the conservative protection filter that both the
-sanitiser and the splitter use. Only a closed fence with exact three-backtick markers and
-no stray triple run, or a closed inline span with an unescaped opener in a text that uses
-one backtick run length, is protected. Sanitisation then rewrites parser spans outside
-those regions and applies parse-independent catch-all passes; splitting closes and reopens
-a fence and sanitises every final chunk again. The routing package keeps a separate masker
-because its contract is to remove code-shaped cues before a route decision.
+sanitiser and the splitter use. Only a closed fence with exact three-backtick markers whose
+opener and closer are the next sequential Discord triple-run pair, with no stray triple run
+inside or outside it, or a closed inline span with an unescaped opener in a text that uses
+one backtick run length and the next sequential Discord pair, is protected. Sanitisation
+then rewrites parser spans outside those regions and applies parse-independent catch-all
+passes; splitting closes and reopens a fence and sanitises every final chunk again. The
+routing package keeps a separate masker because its contract is to remove code-shaped cues
+before a route decision.
 
 ## 🔐 Security Architecture
 

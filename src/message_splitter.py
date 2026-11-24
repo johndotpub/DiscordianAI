@@ -325,47 +325,55 @@ def _parse_markdown(text: str, *, include_inline: bool = True) -> _MarkdownParse
     )
 
 
-def _backtick_run_lengths(text: str) -> set[int]:
-    """Return the distinct backtick run lengths present in ``text``."""
-    lengths: set[int] = set()
-    position = 0
-    while position < len(text):
-        if text[position] != "`":
-            position += 1
-            continue
+def _backtick_runs(text: str) -> list[tuple[int, int]]:
+    """Return every maximal backtick run as a ``(start, end)`` pair.
+
+    The runs are collected in one forward pass. The protection filter and the
+    split-only Discord pairing share this scan, so neither has to search the
+    text again for each fence or span.
+    """
+    runs: list[tuple[int, int]] = []
+    position = text.find("`")
+    while position >= 0:
         start = position
         while position < len(text) and text[position] == "`":
             position += 1
-        lengths.add(position - start)
-    return lengths
+        runs.append((start, position))
+        position = text.find("`", position)
+    return runs
 
 
 def _filtered_code_regions(parse: _MarkdownParse) -> list[_CodeRegion]:
     """Return the code regions the conservative protection rule accepts.
 
-    A fenced block is protected only when it uses exactly three backticks,
-    is closed by a three-backtick closer, and no other triple-backtick run
-    appears outside the accepted blocks. Any other shape makes the pairing
-    uncertain, so the whole text protects nothing. Indented blocks are never
-    protected because Discord has no indented code. Inline spans are skipped
-    when the text mixes backtick run lengths, because the pairing is then
-    ambiguous.
+    A fenced block is protected only when it uses exactly three backticks, is
+    closed by a three-backtick closer, and the sequential pairing Discord
+    applies to triple-backtick runs pairs that fence's opener with its closer.
+    A triple-backtick run inside the content, or any other run outside the
+    accepted blocks, makes the pairing uncertain, so the whole text protects
+    nothing. Indented blocks are never protected because Discord has no
+    indented code. Inline spans are skipped when the text mixes backtick run
+    lengths; otherwise a span is protected only when its opener and closer are
+    the next sequential pair, because Discord would end the code elsewhere.
     """
+    runs = _backtick_runs(parse.text)
     accepted = [fence for fence in parse.fences if fence.marker == "```" and fence.closed]
     accepted.sort(key=lambda fence: fence.start)
 
-    accepted_index = 0
-    run_index = parse.text.find("```")
-    while run_index >= 0:
-        while accepted_index < len(accepted) and accepted[accepted_index].end <= run_index:
-            accepted_index += 1
-        inside = (
-            accepted_index < len(accepted)
-            and accepted[accepted_index].start <= run_index < accepted[accepted_index].end
-        )
-        if not inside:
+    fence_runs = [(start, end) for start, end in runs if end - start >= len("```")]
+    run_index = 0
+    for fence in accepted:
+        if run_index >= len(fence_runs) or fence_runs[run_index][0] != fence.start:
             return []
-        run_index = parse.text.find("```", run_index + 3)
+        opener_index = run_index
+        run_index += 1
+        while run_index < len(fence_runs) and fence_runs[run_index][1] <= fence.end:
+            run_index += 1
+        closer_index = run_index - 1
+        if closer_index != opener_index + 1 or opener_index % 2:
+            return []
+    if run_index != len(fence_runs):
+        return []
 
     regions = [
         _CodeRegion(
@@ -378,10 +386,18 @@ def _filtered_code_regions(parse: _MarkdownParse) -> list[_CodeRegion]:
         )
         for fence in accepted
     ]
-    run_lengths = _backtick_run_lengths(parse.text)
+    run_lengths = {end - start for start, end in runs}
     if len(run_lengths) <= 1:
+        run_index_by_start = {start: index for index, (start, _end) in enumerate(runs)}
+        run_index_by_end = {end: index for index, (_start, end) in enumerate(runs)}
         for span in parse.inline:
             if span.kind != "code":
+                continue
+            opener_index = run_index_by_start.get(span.start)
+            closer_index = run_index_by_end.get(span.end)
+            if opener_index is None or closer_index is None:
+                continue
+            if opener_index % 2 or closer_index != opener_index + 1:
                 continue
             if _is_escaped(parse.text, span.start):
                 continue
@@ -1291,15 +1307,9 @@ def _discord_fence_spans(text: str) -> list[_FenceSpan]:
     built in one forward pass.
     """
     runs: list[tuple[int, int]] = []
-    position = text.find("```")
-    while position >= 0:
-        start = position
-        position = start
-        while position < len(text) and text[position] == "`":
-            position += 1
-        if not _is_escaped(text, start):
-            runs.append((start, position))
-        position = text.find("```", position)
+    for start, end in _backtick_runs(text):
+        if end - start >= len("```") and not _is_escaped(text, start):
+            runs.append((start, end))
 
     pending: dict[int, int] = {}
     pending_order: list[int] = []

@@ -262,16 +262,14 @@ MUTATIONS = [
         ),
     ),
     Mutation(
-        name="protect-escaped-inline-closer",
+        name="protect-misaligned-inline-span",
         path="src/message_splitter.py",
         test="tests/test_code_protection.py",
         old=(
-            "            if _is_escaped(parse.text, span.end - 1):\n"
-            "                # A backslash-escaped closing backtick does not close the span\n"
-            "                # Discord renders, so the parsed end is not trustworthy.\n"
+            "            if opener_index % 2 or closer_index != opener_index + 1:\n"
             "                continue\n"
         ),
-        new="",
+        new="            if False:\n                continue\n",
     ),
     Mutation(
         name="protect-unclosed-fence",
@@ -284,6 +282,21 @@ MUTATIONS = [
         new=(
             '    accepted = [fence for fence in parse.fences '
             'if fence.marker == "```"]\n'
+        ),
+    ),
+    Mutation(
+        name="protect-fence-with-inner-run",
+        path="src/message_splitter.py",
+        test="tests/test_code_protection.py",
+        old=(
+            "        closer_index = run_index - 1\n"
+            "        if closer_index != opener_index + 1 or opener_index % 2:\n"
+            "            return []\n"
+        ),
+        new=(
+            "        closer_index = run_index - 1\n"
+            "        if False:\n"
+            "            return []\n"
         ),
     ),
     Mutation(

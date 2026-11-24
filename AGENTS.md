@@ -86,8 +86,10 @@ broke it, and each break is a user-visible bug.
 - **One parser decides what is code, and each chunk is sanitised after splitting.**
   `message_splitter.protected_code_regions()` is the only code-region source for the
   sanitiser and the splitter; it is built on `tree-sitter`/`tree-sitter-markdown` and keeps
-  only the conservative subset (closed exact three-backtick fence with no stray triple run,
-  or a closed inline span with an unescaped opener and one backtick run length). Outside
+  only the conservative subset (closed exact three-backtick fence whose opener and closer
+  Discord's sequential triple-run pairing matches, with no stray triple run inside or
+  outside it, or a closed inline span with an unescaped opener, one backtick run length,
+  and the next sequential Discord pair). Outside
   those regions the parser rewrite is followed by parse-independent passes that break
   every `](`, neutralise every `://`, and separate `<` from a scheme. Every final chunk is
   sanitised again, so a split cannot turn protected text into a live link, and no line is

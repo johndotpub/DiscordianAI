@@ -369,6 +369,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   chunk after splitting, and a split never protects text the region function did not
   protect. A URL inside an inline code span that the split cuts is therefore neutralised in
   the delivered chunk instead of becoming clickable.
+- **A fence is protected only where Discord ends it.** Discord pairs triple-backtick runs
+  sequentially anywhere in the text, while CommonMark requires a line-start closer. A fence
+  with a stray triple-backtick run between its opener and closer is now treated as ordinary
+  text, so a link after that run is neutralised instead of being delivered live. Inline code
+  spans follow the same sequential pairing, and blank lines or backslash-escaped backticks
+  can no longer shift the protected span away from Discord's boundary.
 
 ### Tests ✅
 
