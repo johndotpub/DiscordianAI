@@ -59,6 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   An unknown `ROUTER_MODE` now fails startup validation; `model` keeps its explicit retirement error.
 - **The web-inability reroute requires a first-person admission.** General statements, quoted text, and
   creative output such as a haiku mentioning browsing no longer discard a good local answer.
+  Typographic apostrophes are normalised before matching, so an answer such as "I’m unable
+  to browse the internet" still triggers the one Perplexity retry.
 - **Shutdown closes provider resources before Discord.** Message intake stops first, then
   the provider connection pools and the router's HTTP client close, and Discord closes
   last inside the existing 8-second guard. Closing Discord first let `Client.run` finish

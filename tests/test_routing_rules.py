@@ -457,6 +457,51 @@ async def test_local_answer_admitting_web_inability_still_reroutes_to_perplexity
     perplexity.assert_awaited_once()
 
 
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "I\u2019m unable to browse the internet, sorry.",
+        "I can\u2019t access the web right now.",
+        "I don\u2019t have access to the internet for this.",
+    ],
+)
+def test_typographic_apostrophes_do_not_hide_web_inability(answer: str) -> None:
+    """U+2019 must be normalised before the first-person patterns run."""
+    assert _detect_openai_web_inability(answer)
+
+
+@pytest.mark.asyncio
+async def test_typographic_apostrophe_admission_still_reroutes_to_perplexity() -> None:
+    request = AIRequest(
+        "what is a monad",
+        SimpleNamespace(id=793),
+        MagicMock(),
+        logging.getLogger("curly-routing-test"),
+        conversation_key="dm:793",
+    )
+    clients = AIClients(openai=object(), perplexity=object())
+
+    with (
+        patch(
+            "src.smart_orchestrator.process_openai_message",
+            new=AsyncMock(return_value="I\u2019m unable to browse the internet to check."),
+        ),
+        patch(
+            "src.smart_orchestrator.process_perplexity_message",
+            new=AsyncMock(return_value=("replacement", False, None)),
+        ) as perplexity,
+    ):
+        response, _suppress, _embed = await _process_hybrid_mode(
+            request,
+            [],
+            clients,
+            AIConfig(),
+        )
+
+    assert response == "replacement"
+    perplexity.assert_awaited_once()
+
+
 @pytest.mark.asyncio
 async def test_reroute_perplexity_call_is_stamped_as_a_web_reroute() -> None:
     request = AIRequest(

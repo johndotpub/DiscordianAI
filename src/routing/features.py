@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 
 from .contracts import EvidenceClass, Source
 from .lexicon import Lexicon, TermHit
-from .text import TOKEN_PATTERN
+from .text import APOSTROPHES, TOKEN_PATTERN
 
 SOURCE_EXTENSIONS = frozenset(
     {
@@ -170,15 +170,6 @@ _KNOWN_SUFFIXES = frozenset(
         "wiki",
         "xyz",
         "za",
-    }
-)
-_APOSTROPHES = str.maketrans(
-    {
-        "\u2018": "'",
-        "\u2019": "'",
-        "\u201b": "'",
-        "\u02bc": "'",
-        "\u2032": "'",
     }
 )
 _CONTRACTIONS = {
@@ -613,7 +604,7 @@ def views(text: str) -> TextViews:
             while end < len(text) and unicodedata.combining(text[end]):
                 end += 1
             folded_cluster = unicodedata.normalize(
-                "NFKC", text[index:end].translate(_APOSTROPHES)
+                "NFKC", text[index:end].translate(APOSTROPHES)
             ).lower()
             for output in folded_cluster:
                 preliminary.append(output)

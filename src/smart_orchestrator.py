@@ -24,6 +24,7 @@ from .routing.context import build_router_input
 from .routing.contracts import RouteDecision
 from .routing.lexicon import LexiconError
 from .routing.services import ROUTE_BY_SERVICE
+from .routing.text import normalise_apostrophes
 
 # Get centralized error messages
 ERROR_MESSAGES = get_error_messages()
@@ -269,8 +270,11 @@ def _detect_openai_web_inability(response_text: str) -> bool:
     if not response_text:
         return False
 
+    # Apostrophe normalisation is one-for-one, so the match offsets remain
+    # valid positions in the original text used by the quote/narrative checks.
+    normalised_text = normalise_apostrophes(response_text)
     for pattern in _OPENAI_WEB_INABILITY_PATTERNS:
-        for match in pattern.finditer(response_text):
+        for match in pattern.finditer(normalised_text):
             if match.start() > _EARLY_WEB_INABILITY_WINDOW:
                 continue
             if _is_quoted_text(response_text, match.start()):

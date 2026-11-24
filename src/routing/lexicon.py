@@ -9,7 +9,7 @@ from types import MappingProxyType
 from typing import Literal
 import unicodedata
 
-from .text import TOKEN_PATTERN
+from .text import APOSTROPHES, TOKEN_PATTERN
 
 TermClass = Literal["bearing", "framing"]
 
@@ -18,15 +18,6 @@ _SUPPORTED_LANGUAGE = "en"
 _FUZZY_MIN_LENGTH = 4
 _FUZZY_CACHE_MAX = 2048
 _EVIDENCE_CLASSES = frozenset({"bearing", "framing"})
-_APOSTROPHES = str.maketrans(
-    {
-        "\u2018": "'",
-        "\u2019": "'",
-        "\u201b": "'",
-        "\u02bc": "'",
-        "\u2032": "'",
-    }
-)
 _WHITESPACE = re.compile(r"\s+")
 _NEVER_MATCH = re.compile(r"(?!)")
 _BUNDLED_PATH = Path(__file__).resolve().parent / "data" / "lexicon.en.json"
@@ -509,5 +500,5 @@ def _compile_overrides(
 
 
 def _fold_term(text: str) -> str:
-    folded = unicodedata.normalize("NFKC", text).translate(_APOSTROPHES).lower()
+    folded = unicodedata.normalize("NFKC", text).translate(APOSTROPHES).lower()
     return _WHITESPACE.sub(" ", folded).strip()
