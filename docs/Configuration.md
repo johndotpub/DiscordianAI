@@ -142,8 +142,10 @@ Lightweight HTTP health checks for Docker and Kubernetes deployments.
 
 A configured provider is `unhealthy` when its breaker is open, `degraded` when it is half-open or when a
 failure happened after its last success, and `healthy` otherwise. A configuration error (401, 403,
-404, or a 400 that reports an invalid or missing model) counts as a failure; a user-caused client
-error does not. A provider that has never been called is healthy: silence is not a failure. The payload still reports
+404, or a 400 whose structured error names the model: type or code `invalid_model` or
+`model_not_found`, `param` equal to `model`, or a message that combines `model` with
+`is not supported`, `not found`, or `does not exist`) counts as a failure; a user-caused
+client error does not. A provider that has never been called is healthy: silence is not a failure. The payload still reports
 `last_success_age_seconds` and `last_success_stale` for diagnostics, but neither decides health.
 
 Readiness also requires a live Discord gateway connection. The bot records disconnect and resume events,

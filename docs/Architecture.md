@@ -213,10 +213,12 @@ A user-caused request error (400, 409, 413, 422, and other deterministic
 client errors) means the provider received and rejected this request. It is
 neutral for the breaker: a half-open probe is released, but no failure or
 success is stamped and no counter moves. Configuration errors (401, 403, 404,
-and a 400 whose structured type or code is `invalid_model` or
-`model_not_found`) are not neutral, because a revoked key or retired model
-fails every call; they count as failures so `/health` reports the provider
-degraded or unhealthy. Timeouts, connection failures, 408, 429, and 5xx still
+and a 400 whose structured error names the model: type or code
+`invalid_model` or `model_not_found`, `param` equal to `model`, or a message
+that combines `model` with `is not supported`, `not found`, or `does not
+exist`) are not neutral, because a revoked key or retired model fails every
+call; they count as failures so `/health` reports the provider degraded or
+unhealthy. Timeouts, connection failures, 408, 429, and 5xx still
 count. One user's bad request still cannot open the breaker or turn health red.
 
 The health server publishes each breaker's state through

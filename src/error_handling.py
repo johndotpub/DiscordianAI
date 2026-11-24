@@ -16,8 +16,10 @@ from email.utils import parsedate_to_datetime
 from enum import Enum
 import functools
 import logging
+import math
 import re
 import secrets
+import socket
 import threading
 import time
 from typing import Any
@@ -478,21 +480,35 @@ def _iter_error_body_strings(value: Any) -> Iterator[str]:
             yield from _iter_error_body_strings(item)
 
 
+def _message_names_an_unsupported_model(message: str) -> bool:
+    """Return True when provider prose says the model itself is the problem."""
+    lowered = message.lower()
+    if not re.search(r"\bmodel\b", lowered):
+        return False
+    return any(phrase in lowered for phrase in ("is not supported", "not found", "does not exist"))
+
+
 def _model_configuration_error(exception: Exception) -> bool:
     """Return True when a 400 reports a retired or unknown model.
 
     Providers put the machine-readable reason in a structured error object.
     Both Perplexity's Agent API (``error.type: invalid_model``) and the
-    OpenAI-style ``error.code: model_not_found`` are configuration errors: every
-    call with that model will fail, so the breaker must count them.
+    OpenAI-style ``error.code: model_not_found`` are configuration errors.
+    A 400 that names the model itself is too: ``param`` is ``"model"``, or the
+    message combines the word ``model`` with ``is not supported``, ``not
+    found``, or ``does not exist``. The real SDK exposes the inner error object
+    as ``body`` and coerces the recorded numeric ``code`` to the string
+    ``"400"``, so the markers are read from either wrapping.
     """
     candidates: list[str] = []
     body = getattr(exception, "body", None)
+    structured: Mapping | None = None
     if isinstance(body, Mapping):
-        error = body.get("error", body)
-        if isinstance(error, Mapping):
+        inner = body.get("error", body)
+        if isinstance(inner, Mapping):
+            structured = inner
             for key in ("type", "code"):
-                value = error.get(key)
+                value = inner.get(key)
                 if isinstance(value, str):
                     candidates.append(value)
         for key in ("type", "code"):
@@ -503,9 +519,19 @@ def _model_configuration_error(exception: Exception) -> bool:
         value = getattr(exception, attribute, None)
         if isinstance(value, str):
             candidates.append(value)
-    return any(
+    if any(
         candidate.strip().lower() in _MODEL_CONFIGURATION_ERROR_MARKERS for candidate in candidates
-    )
+    ):
+        return True
+
+    if structured is not None:
+        param = structured.get("param")
+        if isinstance(param, str) and param.strip().lower() == "model":
+            return True
+        message = structured.get("message")
+        if isinstance(message, str) and _message_names_an_unsupported_model(message):
+            return True
+    return False
 
 
 def _is_quota_exhausted(exception: Exception) -> bool:
@@ -559,7 +585,9 @@ def is_retryable_status(status: int | None) -> bool:
     return status == HTTP_STATUS_TOO_MANY_REQUESTS or status >= _HTTP_STATUS_SERVER_ERROR
 
 
-def _is_retryable_error(error_details: ErrorDetails, exception: Exception) -> bool:
+def _is_retryable_error(  # noqa: PLR0911 - one branch per retry policy rule
+    error_details: ErrorDetails, exception: Exception
+) -> bool:
     if isinstance(exception, CircuitBreakerOpenError):
         return False
     if _is_quota_exhausted(exception):
@@ -568,6 +596,17 @@ def _is_retryable_error(error_details: ErrorDetails, exception: Exception) -> bo
     status_code = _status_code_from_exception(exception)
     if status_code is not None:
         return is_retryable_status(status_code)
+
+    if isinstance(exception, (ConnectionRefusedError, socket.gaierror)):
+        # Refused before a connection existed and DNS failure both prove the
+        # request never reached the provider.
+        return True
+
+    if isinstance(exception, (ConnectionResetError, BrokenPipeError, ConnectionAbortedError)):
+        # These three can arrive after the request was sent, so a repeat is
+        # not provably safe. The bare ConnectionError keeps its historical
+        # retryable classification for callers that use it as a connect alias.
+        return False
 
     if isinstance(exception, (openai.APITimeoutError, *_HTTPX_TIMEOUT_ERRORS)):
         # The SDK wraps every transport timeout in APITimeoutError. Only a
@@ -599,13 +638,13 @@ def _retry_delay(
         or _status_code_from_exception(exception) == HTTP_STATUS_TOO_MANY_REQUESTS
     )
     if is_rate_limit:
-        retry_after = error_details.retry_after
+        retry_after = _bounded_retry_after(error_details.retry_after)
         if retry_after is None:
             retry_after = retry_after_seconds(
                 getattr(getattr(exception, "response", None), "headers", None)
             )
         if retry_after is not None:
-            return min(max(float(retry_after), 0.0), _RATE_LIMIT_MAX_RETRY_AFTER)
+            return retry_after
 
     return calculate_backoff_delay(attempt, config)
 
@@ -655,8 +694,26 @@ def _header_value(headers: Any, name: str) -> Any:
     return None
 
 
+def _bounded_retry_after(value: Any) -> float | None:
+    """Return a finite, non-negative Retry-After bounded by the policy cap."""
+    if value is None:
+        return None
+    try:
+        delay = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(delay) or delay < 0.0:
+        return None
+    return min(delay, _RATE_LIMIT_MAX_RETRY_AFTER)
+
+
 def retry_after_seconds(headers: Any) -> float | None:
-    """Parse a Retry-After header and bound it to the retry policy maximum."""
+    """Parse a Retry-After header and bound it to the retry policy maximum.
+
+    A header that is not a finite, non-negative number of seconds and is not a
+    valid HTTP date returns ``None`` so the caller uses normal backoff instead
+    of sleeping on ``nan`` or a huge value.
+    """
     value = _header_value(headers, "Retry-After")
     if value is None:
         return None
@@ -670,7 +727,7 @@ def retry_after_seconds(headers: Any) -> float | None:
     except (TypeError, ValueError, OverflowError):
         pass
     else:
-        return min(max(delay, 0.0), _RATE_LIMIT_MAX_RETRY_AFTER)
+        return _bounded_retry_after(delay)
 
     try:
         retry_at = parsedate_to_datetime(text)
@@ -700,12 +757,20 @@ def _classify_api_status_error(exception: openai.APIStatusError) -> ErrorDetails
         )
 
     if status_code == HTTP_STATUS_TOO_MANY_REQUESTS:
+        # A missing header keeps the historical 30-second default. A header
+        # that is present but unusable (nan, negative, absurd) leaves the delay
+        # to normal backoff instead of sleeping on a bogus value.
+        if (
+            retry_after is None
+            and _header_value(getattr(exception.response, "headers", None), "Retry-After") is None
+        ):
+            retry_after = 30
         return _error_details(
             ErrorType.API_RATE_LIMIT,
             ErrorSeverity.MEDIUM,
             exception,
             "⏱️ Service is busy. Please try again in a moment.",
-            retry_after if retry_after is not None else 30,
+            retry_after,
         )
 
     if status_code in {401, 403}:
@@ -765,7 +830,7 @@ def _classify_typed_error(exception: Exception) -> ErrorDetails | None:
 
     if isinstance(
         exception,
-        (ConnectionError, openai.APIConnectionError, *_HTTPX_TRANSPORT_ERRORS),
+        (ConnectionError, socket.gaierror, openai.APIConnectionError, *_HTTPX_TRANSPORT_ERRORS),
     ):
         return _error_details(
             ErrorType.NETWORK_ERROR,

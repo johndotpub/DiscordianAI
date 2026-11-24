@@ -303,17 +303,24 @@ export PERPLEXITY_MODEL="perplexity/sonar"
 
 ### Error Handling
 - In hybrid mode, falls back to OpenAI when Perplexity returns no response
-- `retry_with_backoff` allows 2 attempts total and retries only transient
-  failures (429, 5xx, connection errors, and connect timeouts); authentication
-  errors, read timeouts, and exhausted quotas fail immediately. Delays use
-  capped exponential backoff with full jitter.
+- `retry_with_backoff` allows 2 attempts total and retries only failures where
+  no request was established: connection-refused errors, DNS failures, connect
+  timeouts, 429 responses (honouring `Retry-After` up to 30 seconds), and 5xx.
+  Read timeouts, connection resets, broken pipes, aborted connections,
+  authentication errors, validation errors, and exhausted quotas fail
+  immediately. Delays use capped exponential backoff with full jitter and a
+  90-second overall deadline.
 - A shared per-provider circuit breaker opens after 5 failed logical calls,
   counting the whole retry sequence for one call as one failure, and admits one
-  probe after 60 seconds. A user-caused client error (HTTP 400, 409, 413, 422,
-  and other 4xx except 408 and 429) does not count: the provider answered, so
-  the failure count resets. Configuration errors — 401, 403, 404, and a 400
-  whose structured type or code is `invalid_model` or `model_not_found` — do
-  count, because every call with a bad key or retired model fails.
+  probe after 60 seconds. A user-caused request error (400, 409, 413, 422, and
+  other deterministic client errors) is neutral: the provider answered, so the
+  error releases a half-open probe but does not reset the failure count, stamp
+  a success, or move any counter. Configuration errors — 401, 403, 404, and a
+  400 whose structured error names the model: type or code `invalid_model` or
+  `model_not_found`, `param` equal to `model`, or a message that combines
+  `model` with `is not supported`, `not found`, or `does not exist` — do count,
+  because every call with a bad key or retired model fails. 5xx, 429, and
+  timeouts also count.
 - Perplexity prompts use `PERPLEXITY_INPUT_TOKENS` and
   `PERPLEXITY_CONTEXT_WINDOW` because the former Sonar model page documented a
   128K-token context window. The Agent API models page publishes no context

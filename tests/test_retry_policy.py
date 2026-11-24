@@ -13,6 +13,7 @@ from src.error_handling import (
     ErrorType,
     RetryConfig,
     classify_error,
+    retry_after_seconds,
     retry_with_backoff,
 )
 
@@ -254,5 +255,87 @@ async def test_insufficient_quota_is_not_retried():
 
     assert details.error_type == ErrorType.API_AUTH_ERROR
     assert "quota exhausted" in details.user_message.lower()
+    assert attempts == 1
+    assert delays == []
+
+
+def _real_rate_limit_error(retry_after: str) -> openai.RateLimitError:
+    """Build a real SDK rate-limit error around a real HTTP response."""
+    request = httpx.Request("POST", "https://api.perplexity.ai/v1/responses")
+    response = httpx.Response(429, request=request, headers={"Retry-After": retry_after})
+    return openai.RateLimitError("rate limited", response=response, body=None)
+
+
+@pytest.mark.parametrize("header", ["nan", "inf", "-5", "", "abc", "1e999"])
+@pytest.mark.asyncio
+async def test_unusable_retry_after_falls_back_to_normal_backoff(header):
+    """nan, inf, negative, empty, and absurd headers must not hang the retry."""
+    config = RetryConfig(
+        max_attempts=2,
+        base_delay=2.0,
+        max_delay=10.0,
+        exponential_base=2.0,
+        jitter=False,
+    )
+    error = _real_rate_limit_error(header)
+
+    assert retry_after_seconds({"Retry-After": header}) is None
+    attempts, delays = await _run_raising(error, config)
+
+    assert attempts == 2
+    assert delays == [2.0]
+
+
+@pytest.mark.asyncio
+async def test_usable_retry_after_still_sets_the_delay():
+    """A finite positive header keeps the documented retry delay."""
+    config = RetryConfig(
+        max_attempts=2,
+        base_delay=2.0,
+        max_delay=10.0,
+        exponential_base=2.0,
+        jitter=False,
+    )
+    error = _real_rate_limit_error("30")
+
+    attempts, delays = await _run_raising(error, config)
+
+    assert attempts == 2
+    assert delays == [30.0]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ConnectionRefusedError("connection refused"),
+        __import__("socket").gaierror(-2, "Name or service not known"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_connection_failures_before_a_request_are_retried(error):
+    """A refused or unresolvable connection never established the request."""
+    from src.error_handling import ErrorType
+
+    details = classify_error(error)
+    attempts, delays = await _run_raising(error)
+
+    assert details.error_type == ErrorType.NETWORK_ERROR
+    assert attempts == 2
+    assert len(delays) == 1
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ConnectionResetError("connection reset by peer"),
+        BrokenPipeError("broken pipe"),
+        ConnectionAbortedError("connection aborted"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_connection_failures_after_send_are_not_retried(error):
+    """Reset, broken pipe, and aborted errors may arrive after the request."""
+    attempts, delays = await _run_raising(error)
+
     assert attempts == 1
     assert delays == []

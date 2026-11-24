@@ -87,9 +87,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exception raised during shutdown is logged and the process still exits 0.
 - **Configuration errors make a provider unhealthy; a user's bad request does not.**
   A 401, 403, or 404 now counts as a provider failure, and so does a 400 whose structured
-  error type or code reports `invalid_model` or `model_not_found`. A revoked key or a
-  retired model therefore shows up as degraded or unhealthy on `/health` instead of looking
-  healthy while every call fails. A 400, 409, 413, 422, or other user-caused client error
+  error names the model: type or code `invalid_model` or `model_not_found`, `param` equal to
+  `model`, or a message that combines `model` with `is not supported`, `not found`, or
+  `does not exist`. This covers the recorded Agent API response, whose inner error says
+  `validation failed: model "sonar" is not supported`. A revoked key or a retired model
+  therefore shows up as degraded or unhealthy on `/health` instead of looking healthy while
+  every call fails. A 400, 409, 413, 422, or other user-caused client error
   stays neutral: it releases a half-open probe without stamping a success or moving any
   counter.
 - **Startup reachability checks log one line per provider.** Each checked service
