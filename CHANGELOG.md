@@ -19,7 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The channel rate-limit notice uses the standard message.** A rate-limited
   channel reply now asks the user to wait before sending another message, matching
   the direct-message notice, instead of using a second hand-written copy.
-
 - **The launcher keeps one instance per config.** The restart loop no longer exits the
   script on its first second under `set -e`, and each config now records its PID in
   `.bot-<stem>.pid`, so starting `production.ini` leaves a running `bot.ini` alone. The
@@ -39,20 +38,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still disables its provider.
 - **Config values are literal, and a bad config file stops startup.** A `%` in a prompt or
   secret (for example `SYSTEM_MESSAGE=I am 100% sure`) no longer breaks parsing, and `%%` is
-  kept as two characters instead of being collapsed. A missing, unreadable, duplicated, or
-  malformed config file now fails startup with the file path, the error class, and any source
-  line numbers, without quoting the offending line or chaining the parser exception.
+  kept as two characters instead of being collapsed. A missing `--conf` file already failed
+  startup; an unreadable, duplicated, or malformed file now fails the same way, with the file
+  path, the error class, and any source line numbers, without quoting the offending line or
+  chaining the parser exception. Files are read as UTF-8 and a decode error is fatal.
 - **Perplexity prompts fit the Sonar context window.** The web path now budgets prompts with
   `PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW` (111,000 and 128,000 by default)
   instead of the chat provider's 250,000 and 1,000,000. The fixed `fetch_url` instruction
   suffix is charged against the prompt budget before history is trimmed, so a full prompt
-  plus `PERPLEXITY_OUTPUT_TOKENS` stays inside the documented 128K window. Both Perplexity
+  plus `PERPLEXITY_OUTPUT_TOKENS` stays inside the 128K window taken from the former Sonar
+  model page (the Agent API models page publishes no context figure). Both Perplexity
   limits must be positive integers like the shared limits, and an operator who lowers
   `INPUT_TOKENS` or `CONTEXT_WINDOW` still caps the Perplexity prompt with the smaller
   value.
 - **Pasted code and logs stay local.** A version string, current year, price, or other bearing cue inside
-  a fenced code block no longer routes the message to web search; every cue is now extracted from the
-  code-masked view, and text outside the fence still counts as before.
+  a fenced code block no longer routes the message to web search; bearing and override cues are extracted
+  from the code-masked view, and text outside the fence still counts as before. Code-shape and traceback
+  cues still read the original text so a pasted artifact is marked as code-shaped, but they are framing
+  cues and cannot decide a route alone.
 - **Image requests decide before the router runs.** An image-bearing message uses the `images:local`
   decision without consulting Clef, and the single routing log line reports that decision.
 - **Clef is consulted only when it can act, under one deadline.** A deterministic gate override such as a
@@ -77,7 +80,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shows up as degraded or unhealthy on `/health` instead of looking healthy while every
   call fails. A 400, 409, 413, 422, or other user-caused client error stays neutral: it
   releases a half-open probe without stamping a success or moving any counter.
-
+- **Startup reachability checks log one line per provider.** Each checked service
+  reports its status, latency, and classified error type; provider text, request
+  and response bodies, and keys are not logged.
 - **Ollama Cloud is the default OpenAI-compatible chat provider.** `OPENAI_API_URL` defaults to
   `https://ollama.com/v1/` and `GPT_MODEL` defaults to `deepseek-v4.1-flash:1017`. OpenAI remains
   supported by changing `OPENAI_API_URL`, `GPT_MODEL`, and `OPENAI_API_KEY`; the Perplexity path is
@@ -110,7 +115,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conversation scope, routing salt, and degraded flag, so a cached answer is never replayed across
   conversations or routes.
 - **The response cache has one TTL, and time-sensitive wording is found anywhere.** Every
-  cached answer uses the configured 600-second TTL; the undocumented 1,800-second
+  cached answer uses the fixed `DEFAULT_CACHE_TTL` of 600 seconds; the undocumented 1,800-second
   long-response TTL never applied, so this removes a false promise rather than changing the
   effective lifetime. An answer such as "Bitcoin is trading at $97,000 as of today" is no
   longer cached just because the phrase is mid-sentence.
@@ -135,10 +140,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conversation history, and does not change the system prompt. A partial answer is also not
   cached, so a later identical request asks the provider again instead of replaying the cut-off
   text.
-- **An answer survives its question being deleted.** Replies carry a reference built with
-  `fail_if_not_exists=False`, so Discord delivers the same content once to the channel with
-  the same mention policy instead of rejecting the reply and losing the answer. The bot no
-  longer guesses Discord error codes to detect a missing target.
+- **An answer survives its question being deleted.** Every answer is sent with
+  `channel.send` and a reference built with `fail_if_not_exists=False`, so Discord delivers
+  the same content once to the channel with the same mention policy instead of rejecting a
+  reply and losing the answer. The bot no longer guesses Discord error codes to detect a
+  missing target.
 - **Connection notices describe the bot's situation.** The fixed network and Discord notices
   say the bot could not reach its service and ask the user to try again shortly; neither asks
   the user to check their own network or claims a reconnect that does not happen.
@@ -160,9 +166,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added ✨
 
 - **`PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW`**: control the prompt budget
-  and context window for the Perplexity Sonar path only. Defaults are 111,000 and 128,000,
-  matching Sonar's documented 128K context length; the chat path keeps `INPUT_TOKENS` and
-  `CONTEXT_WINDOW`.
+  and context window for the Perplexity Sonar path only. Defaults are 111,000 and 128,000;
+  the 128K figure comes from the former Sonar model page, and the Agent API models page
+  publishes no context figure. The chat path keeps `INPUT_TOKENS` and `CONTEXT_WINDOW`.
 - **`ROUTER_CLEF_API_KEY`**: optional dedicated credential for the Clef decision endpoint. When it is
   unset, `OLLAMA_API_KEY` from the environment is eligible, and `OPENAI_API_KEY` is eligible only when
   `OPENAI_API_URL` is an Ollama Cloud URL. A key issued for another provider is never sent to Clef.
@@ -229,9 +235,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Unclassified exceptions are not retried.** The retry policy now refuses an exception
   it cannot classify instead of treating the unknown type as transient. Built-in
   `ConnectionError` still classifies as a network error and remains retryable.
-- **Perplexity carries its four-step bound.** The Agent API request sends `max_steps: 4` in
-  `extra_body` because the SDK has no `max_steps` kwarg, so the tool loop is bounded as
-  documented instead of dropping the value.
+- **The budget-conflict warning names the path's own keys.** A Perplexity request that
+  exceeds its window reports `PERPLEXITY_INPUT_TOKENS`, `PERPLEXITY_OUTPUT_TOKENS`, and
+  `PERPLEXITY_CONTEXT_WINDOW` instead of the shared chat keys.
 - **An idle provider no longer reads unhealthy.** A configured provider that has never been
   called and has no recorded failure is healthy; only an open breaker or a failure after the
   last success degrades it. `last_success_age_seconds` and `last_success_stale` remain
@@ -246,14 +252,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without repeating the traceback, the orchestrator no longer logs the classified failure a
   second time, and the delivery helper logs its own final failure once. One logical failure
   now produces one traceback instead of two or three.
-- **Shutdown closes Discord before provider pools.** In-flight requests no longer fail
-  against already-closed clients while Discord is still connected, and any shutdown
-  exception is logged and ends the process cleanly.
 - **`/health` reports gateway disconnects.** A disconnect is recorded and reported as
   disconnected even while discord.py's `is_ready()` remains set; `/health/ready` returns
   503 during the outage.
-- **Code-fence masking covers all routing cues.** Bearing cues such as version, year, money, and commerce
-  terms are no longer read from fenced code, matching the masking order in `docs/routing/DESIGN.md`.
 - **Clef honours gate overrides as data.** The gate marks a deterministic override on the decision, and
   Clef returns it without a network call instead of relying on a `reasons` prefix.
 - **A chat key without an explicit URL is not sent to Clef.** A direct caller that supplies only
@@ -263,8 +264,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The fallback router is built once, not once per message.** When no startup router is injected,
   the orchestrator caches the router for the effective routing configuration instead of calling
   `build_router` for every message.
-- **Clef failures cannot strand a message.** Any unexpected router exception falls back to the
-  deterministic gate with a `fallback:router_error` reason and an ERROR log.
 - **Structured logs carry the Discord context they were given.** The formatter now reads the
   stdlib record extras before removing the record, so `user_id`, `channel_id`, `guild_id`, and
   the logger name appear in both console and JSON output. The adapter attaches ids only; a guild
@@ -285,9 +284,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   group-writable by a non-root group. The shipped compose file caps Docker's
   `json-file` log at three 10 MB files instead of letting it grow unbounded.
 - **Repository ignores cover the artefacts the project produces.** Rotated
-  `bot.log-YYYY-MM-DD.gz` files, `*.ini.bak-<date>` configuration backups, and the
-  local `.hermes/` state directory are excluded from git and the Docker build context,
-  while `config.ini.example` and `tox.ini` stay tracked.
+  `bot.log-YYYY-MM-DD.gz` files, `*.ini.bak-<date>` configuration backups, and local
+  state directories are excluded from git and the Docker build context, while
+  `config.ini.example` and `tox.ini` stay tracked.
 
 ### Security 🛡️
 
@@ -311,6 +310,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests ✅
 
+- **The mutation checker works on a scratch copy.** `scripts/mutation_check.py` copies
+  the checkout (minus VCS state, caches, logs, local `*.ini`, and `.env`) into a temporary
+  directory before applying mutations, so an interrupted run cannot corrupt the working
+  tree. Three stale mutation anchors were re-anchored to the current source, and
+  `tests/test_mutation_check.py` fails if any anchor stops matching.
 - **The safe embed limit is an absolute number in the split assertion.** The expected head
   and tail now use `3840` instead of importing the constant under test, so a change to the
   production safe limit fails this delivery contract instead of silently moving with it.
@@ -346,7 +350,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   round-tripping; multimodal message shape; image-aware token accounting and truncation; cache
   keys scoped by image digest; image-only messages; disabled-vision short-circuiting; local route
   forcing; Perplexity refusal; and history labels without base64.
-
 - **Delivery splitting coverage** checks a long fence spanning three or more messages with
   every line delivered and balanced fences, prose after the fence, the first-chunk mention
   limit, the chunk-cap notice's original length, citation-marker and fence safety in embed
@@ -354,19 +357,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation 📝
 
-- **The mutation checker works on a scratch copy.** `scripts/mutation_check.py` copies
-  the checkout (minus VCS state, caches, logs, local `*.ini`, and `.env`) into a temporary
-  directory before applying mutations, so an interrupted run cannot corrupt the working
-  tree. Three stale mutation anchors were re-anchored to the current source, and
-  `tests/test_mutation_check.py` fails if any anchor stops matching.
 - **The scripts README matches the shipped tools.** The unimportable
   `debug_perplexity_citations.py` helper is deleted; `scripts/README.md` now documents
   only the scripts that exist, what each reads, and which ones write files by design.
 - **Routing docs describe the masking, credential, lifecycle, and reroute rules.** `docs/routing/DESIGN.md`,
-  `docs/HybridMode.md`, and `docs/Configuration.md` now state that all cues are code-masked, how the Clef
+  `docs/HybridMode.md`, and `docs/Configuration.md` now state that bearing and override cues are
+  code-masked while code-shape and traceback framing cues still read the original text, how the Clef
   key is resolved, that the router is built once and closed at shutdown, and that only first-person
   browsing admissions trigger the safety-net reroute.
-
 - **`docs/Vision.md`** documents how to send images, the provider used, limits, fallback
   behavior, and the privacy note that images leave the bot for the configured chat provider.
   The README documentation map and `docs/Configuration.md` link to it.
@@ -377,8 +375,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MAX_URLS_PER_MESSAGE`, `MAX_TOTAL_SCRAPED_CHARS`, and `SCRAPE_DEADLINE_SECONDS` are no
   longer read because URL fetching now happens in the provider tools. An existing
   `config.ini` that still sets them loads and ignores them; delete those lines during the
-  upgrade. `PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW` replace the local
-  scrape budget for the web path.
+  upgrade. `PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW` bound the bot's own
+  prompt on the web path; they do not replace a scraping budget because fetching now happens
+  in the provider tools.
+- **Double percent signs are no longer collapsed.** A value that wrote `%%` to mean one
+  literal `%` now keeps both characters; write a single `%`.
+- **Clef no longer reuses the chat key for a local daemon URL.** With an `OPENAI_API_URL`
+  such as `http://localhost:11434/v1/`, `OPENAI_API_KEY` is not eligible for Clef. Set
+  `ROUTER_CLEF_API_KEY` or `OLLAMA_API_KEY` to use `ROUTER_MODE=clef`.
+- **The launcher PID file is per config.** An existing `.bot.pid` is honoured only when its
+  process runs the same config, then removed; new runs write `.bot-<stem>.pid`.
 
 ## [0.4.0] - 2026-10-28
 
@@ -507,7 +513,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Implementation scope**: critical bug fixes, config cleanup, async HTTP modernization, docs refresh, and test hardening.
 - **Release quality**: all changes are aligned to current code paths and no stale descriptions remain.
 
-### Fixed 🔧 — Dependency & Configuration
+### Fixed 🔧 — Dependency & Configuration (VectorContext QA)
 - **`websockets` dependency**: Added `websockets>=16.0` to `requirements.txt` to match `pyproject.toml` declaration and ensure Docker builds include the runtime dependency.
 - **`ConnectionPool` config parsing**: Wired `[ConnectionPool]` section parser (`_parse_connection_pool_config()`) into `load_config()` — this section was documented in `config.ini.example` and had defaults defined, but was silently ignored at runtime.
 - **`ENTITY_DETECTION_MIN_WORDS`**: Now reads from config file and environment variables (was documented but unimplemented in the parser).
