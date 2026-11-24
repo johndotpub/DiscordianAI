@@ -262,6 +262,41 @@ MUTATIONS = [
         ),
     ),
     Mutation(
+        name="sanitizer-keeps-link-syntax",
+        path="src/message_splitter.py",
+        test="tests/test_code_protection.py",
+        old='    text = text.replace("](", f"]{_ZERO_WIDTH_SPACE}(")\n',
+        new="",
+    ),
+    Mutation(
+        name="sanitizer-keeps-url-scheme",
+        path="src/message_splitter.py",
+        test="tests/test_code_protection.py",
+        old=(
+            "    pieces: list[str] = []\n"
+            "    position = 0\n"
+            "    while True:\n"
+            '        scheme = text.find("://", position)\n'
+            "        if scheme < 0:\n"
+            "            pieces.append(text[position:])\n"
+            "            break\n"
+            "        scheme_end = scheme + 3\n"
+            "        pieces.append(text[position:scheme_end])\n"
+            "        if not text.startswith(_ZERO_WIDTH_SPACE, scheme_end):\n"
+            "            pieces.append(_ZERO_WIDTH_SPACE)\n"
+            "        position = scheme_end\n"
+            '    text = "".join(pieces)\n'
+        ),
+        new="",
+    ),
+    Mutation(
+        name="delivery-skips-per-chunk-sanitise",
+        path="src/message_splitter.py",
+        test="tests/test_code_protection.py",
+        old="        chunk_text = sanitize_for_discord(chunk, citations)\n",
+        new="        chunk_text = chunk\n",
+    ),
+    Mutation(
         name="routing-skips-markup-sanitization",
         path="src/smart_orchestrator.py",
         test="tests/test_smart_orchestrator_coverage.py",
