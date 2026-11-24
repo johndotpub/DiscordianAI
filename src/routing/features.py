@@ -13,6 +13,19 @@ from .contracts import EvidenceClass, Source
 from .lexicon import Lexicon, TermHit
 from .text import APOSTROPHES, TOKEN_PATTERN
 
+_DECISION_STATS = {"clauses": 0}
+
+
+def _reset_decision_stats() -> None:
+    """Reset the cue-work counters used by the routing performance test."""
+    _DECISION_STATS["clauses"] = 0
+
+
+def _decision_stats() -> dict[str, int]:
+    """Return a snapshot of the cue-work counters."""
+    return dict(_DECISION_STATS)
+
+
 SOURCE_EXTENSIONS = frozenset(
     {
         "astro",
@@ -685,18 +698,20 @@ def extract_overrides(text_views: TextViews, lexicon: Lexicon) -> tuple[Cue, ...
     cues: list[Cue] = []
     for kind in sorted(lexicon.overrides):
         for pattern in lexicon.overrides[kind]:
-            cues.extend(
-                Cue(
-                    signal=f"override.{kind}",
-                    klass="override",
-                    span=text_views.surface_span(match.start(), match.end()),
-                    detail=match.group(),
-                    source="override",
+            for match in pattern.finditer(text_views.folded):
+                _DECISION_STATS["clauses"] += 1
+                cues.append(
+                    Cue(
+                        signal=f"override.{kind}",
+                        klass="override",
+                        span=text_views.surface_span(match.start(), match.end()),
+                        detail=match.group(),
+                        source="override",
+                    )
                 )
-                for match in pattern.finditer(text_views.folded)
-            )
 
     for match in _URL_CANDIDATE_PATTERN.finditer(text_views.surface):
+        _DECISION_STATS["clauses"] += 1
         token = match.group().strip(".,;:!?)]}>'\"")
         if token and is_url(token):
             cues.append(
@@ -749,6 +764,7 @@ def extract_cues(
 
     current_year = (clock or date.today)().year
     for match in _YEAR_PATTERN.finditer(folded):
+        _DECISION_STATS["clauses"] += 1
         if int(match.group()) >= current_year - 1:
             add("time.year", "bearing", match.span(), match.group())
 
@@ -777,6 +793,7 @@ def extract_cues(
     _add_pattern(cues, cue_views, _LOOKUP_PATTERN, ("cue.lookup", "framing"))
 
     for match in _ENTITY_PATTERN.finditer(surface):
+        _DECISION_STATS["clauses"] += 1
         first_word = match.group().split()[0].lower()
         if first_word in _ENTITY_STOPWORDS or is_url(match.group()):
             continue
@@ -785,6 +802,7 @@ def extract_cues(
     for start, end, kind in code_regions:
         add("code.shape", "framing", (start, end), kind)
     for match in _TRACEBACK_PATTERN.finditer(original.surface):
+        _DECISION_STATS["clauses"] += 1
         add("code.shape", "framing", match.span(), "traceback")
 
     cues.extend(
@@ -821,6 +839,7 @@ def _lexicon_cues(
     duration_spans = _duration_spans(folded) if "hour" in folded else ()
     entries: list[tuple[TermHit, bool]] = []
     for hit in lexicon.find(folded):
+        _DECISION_STATS["clauses"] += 1
         if supplied_spans and hit.term.class_name in _SUPPLIED_CANCELLED_CLASSES:
             continue
         if hit.term.class_name == "volatile_topic" and _overlaps(hit.span, duration_spans):
@@ -974,16 +993,25 @@ def _term_token_indexes(
 def _supplied_artefact_spans(views: TextViews) -> tuple[tuple[int, int], ...]:
     if not any(marker in views.folded for marker in _SUPPLIED_MARKERS):
         return ()
-    spans = {match.span() for match in _SUPPLIED_ARTEFACT_PATTERN.finditer(views.folded)}
+    spans: set[tuple[int, int]] = set()
+    for match in _SUPPLIED_ARTEFACT_PATTERN.finditer(views.folded):
+        _DECISION_STATS["clauses"] += 1
+        spans.add(match.span())
     if _IN_PLAIN_ENGLISH_PATTERN.search(views.folded) and _QUOTED_BLOCK_PATTERN.search(
         views.surface
     ):
-        spans.update(match.span() for match in _IN_PLAIN_ENGLISH_PATTERN.finditer(views.folded))
+        for match in _IN_PLAIN_ENGLISH_PATTERN.finditer(views.folded):
+            _DECISION_STATS["clauses"] += 1
+            spans.add(match.span())
     return tuple(sorted(spans))
 
 
 def _duration_spans(folded: str) -> tuple[tuple[int, int], ...]:
-    return tuple(match.span() for match in _DURATION_PATTERN.finditer(folded))
+    spans: list[tuple[int, int]] = []
+    for match in _DURATION_PATTERN.finditer(folded):
+        _DECISION_STATS["clauses"] += 1
+        spans.append(match.span())
+    return tuple(spans)
 
 
 def _overlaps(span: tuple[int, int], regions: tuple[tuple[int, int], ...]) -> bool:
@@ -1011,16 +1039,17 @@ def _add_pattern(
     source: Source = "structural",
 ) -> None:
     signal, klass = signal_klass
-    cues.extend(
-        Cue(
-            signal=signal,
-            klass=klass,
-            span=text_views.surface_span(match.start(), match.end()),
-            detail=match.group(),
-            source=source,
+    for match in pattern.finditer(text_views.folded):
+        _DECISION_STATS["clauses"] += 1
+        cues.append(
+            Cue(
+                signal=signal,
+                klass=klass,
+                span=text_views.surface_span(match.start(), match.end()),
+                detail=match.group(),
+                source=source,
+            )
         )
-        for match in pattern.finditer(text_views.folded)
-    )
 
 
 def _sorted_cues(cues: list[Cue]) -> tuple[Cue, ...]:
@@ -1038,9 +1067,11 @@ def _sorted_cues(cues: list[Cue]) -> tuple[Cue, ...]:
 
 
 def _tokens(folded: str) -> tuple[tuple[str, int, int], ...]:
-    return tuple(
-        (match.group(), match.start(), match.end()) for match in TOKEN_PATTERN.finditer(folded)
-    )
+    tokens: list[tuple[str, int, int]] = []
+    for match in TOKEN_PATTERN.finditer(folded):
+        _DECISION_STATS["clauses"] += 1
+        tokens.append((match.group(), match.start(), match.end()))
+    return tuple(tokens)
 
 
 def _has_copula_near(
@@ -1072,13 +1103,16 @@ def _valid_host(host: str, *, require_known_suffix: bool) -> bool:
 def _code_regions(text: str) -> tuple[tuple[int, int, str], ...]:
     if "```" not in text and _DOT_LETTER_PATTERN.search(text) is None:
         return ()
-    fences = _merge_adjacent_regions(
-        [(match.start(), match.end(), "fence") for match in _FENCE_PATTERN.finditer(text)]
-    )
+    fences: list[tuple[int, int, str]] = []
+    for match in _FENCE_PATTERN.finditer(text):
+        _DECISION_STATS["clauses"] += 1
+        fences.append((match.start(), match.end(), "fence"))
+    fences = _merge_adjacent_regions(fences)
     masked = _mask_regions(text, fences)
-    filenames = [
-        (match.start(), match.end(), "filename") for match in _FILENAME_PATTERN.finditer(masked)
-    ]
+    filenames: list[tuple[int, int, str]] = []
+    for match in _FILENAME_PATTERN.finditer(masked):
+        _DECISION_STATS["clauses"] += 1
+        filenames.append((match.start(), match.end(), "filename"))
     return tuple(_merge_adjacent_regions([*fences, *filenames]))
 
 
