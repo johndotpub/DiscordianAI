@@ -59,7 +59,9 @@ a 10% safety margin and a small per-message overhead. Oldest question/answer pai
 trimmed first; an oversized message is truncated with a visible marker. The prompt budget
 also leaves room for the provider's output cap inside `CONTEXT_WINDOW`; if the input and
 output budgets exceed `CONTEXT_WINDOW`, the context window wins and a warning naming the
-conflicting settings is logged.
+conflicting settings is logged. On the Perplexity path the warning names
+`PERPLEXITY_INPUT_TOKENS`, `PERPLEXITY_OUTPUT_TOKENS`, and
+`PERPLEXITY_CONTEXT_WINDOW`; the chat path names the shared keys.
 
 The chat and Perplexity paths have different windows. Chat requests use `INPUT_TOKENS` and
 `CONTEXT_WINDOW`; Perplexity requests use `PERPLEXITY_INPUT_TOKENS` and

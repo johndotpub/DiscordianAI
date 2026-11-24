@@ -90,17 +90,23 @@ def resolve_completion_budget(
     return min(completion_budget, max(1, window - MINIMUM_PROMPT_TOKENS))
 
 
-def resolve_prompt_budget(
+def resolve_prompt_budget(  # noqa: PLR0913 - the setting labels mirror config keys
     input_tokens: int | None,
     output_tokens: int | None,
     context_window: int | None,
     logger: Any = None,
+    *,
+    input_setting: str = "INPUT_TOKENS",
+    output_setting: str = "OUTPUT_TOKENS",
+    context_setting: str = "CONTEXT_WINDOW",
 ) -> int | None:
     """Return the prompt budget after reserving room for the completion.
 
-    The configured ``INPUT_TOKENS`` is used unless it plus the completion budget
-    exceeds ``CONTEXT_WINDOW``. In that case the context window wins and the
+    The configured prompt setting is used unless it plus the completion budget
+    exceeds the context window. In that case the context window wins and the
     prompt budget is reduced, with a warning naming the conflicting settings.
+    The callers pass their own setting names so the warning matches the
+    provider path that raised it.
     """
     if input_tokens is None:
         return None
@@ -119,10 +125,13 @@ def resolve_prompt_budget(
     if prompt_budget + configured_output > window:
         if logger is not None:
             logger.warning(
-                "INPUT_TOKENS (%d) + OUTPUT_TOKENS (%d) exceed CONTEXT_WINDOW (%d); "
+                "%s (%d) + %s (%d) exceed %s (%d); "
                 "limiting prompt budget to %d tokens and completion budget to %d tokens",
+                input_setting,
                 prompt_budget,
+                output_setting,
                 configured_output,
+                context_setting,
                 window,
                 max(0, available_for_prompt),
                 completion_budget,
@@ -288,6 +297,9 @@ def build_messages(  # noqa: PLR0913 - the builder mirrors the provider request 
     logger: Any = None,
     images: Sequence[ImagePayload] | None = None,
     vision_token_estimate: int = DEFAULT_VISION_TOKEN_ESTIMATE,
+    input_setting: str = "INPUT_TOKENS",
+    output_setting: str = "OUTPUT_TOKENS",
+    context_setting: str = "CONTEXT_WINDOW",
 ) -> list[dict[str, Any]]:
     """Build system, prior turns, and current user message in order.
 
@@ -303,6 +315,9 @@ def build_messages(  # noqa: PLR0913 - the builder mirrors the provider request 
         images: Optional image payloads attached to the current turn. History
             turns stay text-only.
         vision_token_estimate: Flat prompt-token estimate charged per image.
+        input_setting: Configuration key that supplied ``input_tokens``.
+        output_setting: Configuration key that supplied ``output_tokens``.
+        context_setting: Configuration key that supplied ``context_window``.
 
     Returns:
         A message list containing the system message, any prior turns, and the
@@ -320,7 +335,15 @@ def build_messages(  # noqa: PLR0913 - the builder mirrors the provider request 
         current_entry = {"role": "user", "content": user_message}
     history_entries = [dict(message) for message in history] if history else []
 
-    budget = resolve_prompt_budget(input_tokens, output_tokens, context_window, logger)
+    budget = resolve_prompt_budget(
+        input_tokens,
+        output_tokens,
+        context_window,
+        logger,
+        input_setting=input_setting,
+        output_setting=output_setting,
+        context_setting=context_setting,
+    )
     if budget is None:
         return [system_entry, *history_entries, current_entry]
 

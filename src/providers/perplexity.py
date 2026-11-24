@@ -340,6 +340,9 @@ def _completion_request(  # noqa: PLR0913 - one builder carries every request op
         output_tokens=completion_tokens,
         context_window=context_window,
         logger=logger,
+        input_setting="PERPLEXITY_INPUT_TOKENS",
+        output_setting="PERPLEXITY_OUTPUT_TOKENS",
+        context_setting="PERPLEXITY_CONTEXT_WINDOW",
     )
 
     instructions = system

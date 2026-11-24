@@ -300,3 +300,30 @@ async def test_perplexity_prompt_budget_charges_the_fetch_url_suffix():
     assert FETCH_URL_INSTRUCTIONS in request.messages[0]["content"]
     assert estimate_messages_tokens(request.messages) <= config.input_tokens
     assert request.max_output_tokens == 100
+
+
+def test_perplexity_budget_warning_names_the_perplexity_settings():
+    """The conflict warning must not point an operator at the chat keys."""
+    from src.providers.perplexity import AgentResponsesProvider
+
+    logger = MagicMock()
+    provider = AgentResponsesProvider(MagicMock(), logger=logger)
+
+    provider.build_request(
+        "System prompt",
+        CURRENT,
+        None,
+        100,
+        input_tokens=8000,
+        output_tokens=5000,
+        context_window=9000,
+        logger=logger,
+    )
+
+    warning_text = " ".join(
+        str(argument) for call in logger.warning.call_args_list for argument in call.args
+    )
+    assert "PERPLEXITY_INPUT_TOKENS" in warning_text
+    assert "PERPLEXITY_OUTPUT_TOKENS" in warning_text
+    assert "PERPLEXITY_CONTEXT_WINDOW" in warning_text
+    assert " INPUT_TOKENS " not in warning_text
