@@ -2,10 +2,16 @@
 
 from copy import deepcopy
 import logging
+import os
 from unittest.mock import AsyncMock, MagicMock
 import warnings
 
 import pytest
+
+# Provider and router settings may leak in from the host environment. Every
+# test starts from a clean slate; a test that needs one sets it with
+# monkeypatch. This keeps the suite identical under ``env -i``.
+_HOST_PROVIDER_PREFIXES = ("OLLAMA_", "OPENAI_", "PERPLEXITY_", "ROUTER_")
 
 # Discord.py still imports the stdlib audioop module, which raises a global
 # DeprecationWarning on Python 3.12+ when tests enable ``-W error``. Keep the
@@ -40,6 +46,14 @@ def _reset_provider_circuit_breakers() -> None:
         for attribute, value in list(vars(module).items()):
             if id(value) in old_to_new:
                 setattr(module, attribute, old_to_new[id(value)])
+
+
+@pytest.fixture(autouse=True)
+def hermetic_provider_environment(monkeypatch):
+    """Remove provider and router variables inherited from the host shell."""
+    for name in list(os.environ):
+        if name.startswith(_HOST_PROVIDER_PREFIXES) or name == "DISCORD_TOKEN":
+            monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture(autouse=True)
