@@ -352,6 +352,46 @@ async def test_configuration_errors_count_as_provider_failures(error_type, statu
     assert breaker.state == "OPEN"
 
 
+@pytest.mark.parametrize(
+    ("error_field", "error_value"),
+    [
+        ("type", "invalid_model"),
+        ("code", "model_not_found"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_400_invalid_model_counts_as_a_provider_failure(error_field, error_value):
+    """A retired or unknown model fails every call, so /health must not stay green."""
+    breaker = CircuitBreaker(failure_threshold=5)
+    request = httpx.Request("POST", "https://api.perplexity.ai/v1/responses")
+    response = httpx.Response(
+        400,
+        request=request,
+        json={
+            "error": {
+                "message": "model is not supported",
+                error_field: error_value,
+            }
+        },
+    )
+    error = openai.BadRequestError(
+        "model is not supported",
+        response=response,
+        body=response.json(),
+    )
+
+    async def rejected():
+        raise error
+
+    for expected_failures in range(1, 6):
+        with pytest.raises(openai.BadRequestError):
+            await breaker.call(rejected)
+        assert breaker.failure_count == expected_failures
+        assert breaker.last_success_time == 0.0
+
+    assert breaker.state == "OPEN"
+
+
 @pytest.mark.asyncio
 async def test_a_neutral_request_error_releases_a_half_open_probe():
     """A user's bad request must not hold the single half-open probe slot."""

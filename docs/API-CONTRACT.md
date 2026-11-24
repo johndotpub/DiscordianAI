@@ -88,7 +88,7 @@ The bot uses the current Agent API, not Sonar Chat Completions. The OpenAI SDK's
 | `fetch_url_results` item | fetched pages under `contents[]` (or `results[]` on older shapes), each with `url` and `title`; citation markers resolve the same way as search results | code |
 | No-search response | `output` contains only the `message` item; there is no `search_results` item | probe |
 | Usage | `input_tokens`, `output_tokens`, `total_tokens`, and `cost` with input, output, tool-call, and total cost | probe |
-| Invalid model | HTTP **400** with `error.type: invalid_request`, `error.code: 400`, message `validation failed: model "…" is not supported`. The legacy path used `invalid_model`. Classify as a deterministic validation error and never retry | probe |
+| Invalid model | HTTP **400**. The structured error reports `invalid_model` (the legacy path used that name) or the OpenAI-style `model_not_found`; an earlier probe saw `error.type: invalid_request`, `error.code: 400`, message `validation failed: model "…" is not supported`. Treat it as a configuration error for the breaker and `/health`, and never retry | probe + code |
 | Rate limit | HTTP **429**; classified as a rate limit and handled by the shared retry policy | probe + code |
 | Attribution header | `X-Pplx-Integration: discordian-ai` accepted, 200, no behaviour change | probe |
 

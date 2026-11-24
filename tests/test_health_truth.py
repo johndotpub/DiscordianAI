@@ -343,6 +343,46 @@ def test_client_errors_keep_provider_health_healthy():
     assert body["providers"]["openai"]["consecutive_failures"] == 0, body
 
 
+def test_invalid_model_400_makes_provider_health_degraded():
+    """A retired Perplexity model must show on /health instead of looking neutral."""
+    import httpx
+    import openai
+
+    from src.error_handling import get_circuit_breaker
+
+    async def exercise_breaker():
+        breaker = get_circuit_breaker("perplexity")
+        request = httpx.Request("POST", "https://api.perplexity.ai/v1/responses")
+        response = httpx.Response(
+            400,
+            request=request,
+            json={"error": {"message": "model is not supported", "type": "invalid_model"}},
+        )
+        error = openai.BadRequestError(
+            "model is not supported",
+            response=response,
+            body=response.json(),
+        )
+
+        async def rejected():
+            raise error
+
+        with pytest.raises(openai.BadRequestError):
+            await breaker.call(rejected)
+
+    asyncio.run(exercise_breaker())
+    app = create_health_app(_deps())
+
+    with TestClient(app) as client:
+        response = client.get("/health")
+
+    body = response.json()
+    assert response.status_code == 503, body
+    assert body["failing_providers"] == ["perplexity"], body
+    assert body["providers"]["perplexity"]["status"] == "degraded", body
+    assert body["providers"]["perplexity"]["consecutive_failures"] == 1, body
+
+
 @pytest.mark.parametrize(
     ("error_type", "status_code"),
     [

@@ -11,7 +11,8 @@ bot's default:
 - **Real-time information access** from current web sources
 - **Automatic citation extraction** with numbered `[n]` source links
 - **`web_search` and `fetch_url` offered on every call**; the model chooses
-  when to search, and fetches a URL only when the user supplied one
+  when to search; the instructions ask it to use `fetch_url` for a URL the
+  user supplied
 
 The legacy Sonar names (`sonar`, `sonar-pro`, `sonar-deep-research`,
 `sonar-reasoning-pro`) still answer on Chat Completions, but that interface is
@@ -308,8 +309,11 @@ export PERPLEXITY_MODEL="perplexity/sonar"
   capped exponential backoff with full jitter.
 - A shared per-provider circuit breaker opens after 5 failed logical calls,
   counting the whole retry sequence for one call as one failure, and admits one
-  probe after 60 seconds. Deterministic client errors (HTTP 4xx other than 408
-  and 429) do not count: the provider answered, so the failure count resets.
+  probe after 60 seconds. A user-caused client error (HTTP 400, 409, 413, 422,
+  and other 4xx except 408 and 429) does not count: the provider answered, so
+  the failure count resets. Configuration errors — 401, 403, 404, and a 400
+  whose structured type or code is `invalid_model` or `model_not_found` — do
+  count, because every call with a bad key or retired model fails.
 - Perplexity prompts use `PERPLEXITY_INPUT_TOKENS` and
   `PERPLEXITY_CONTEXT_WINDOW` because the former Sonar model page documented a
   128K-token context window. The Agent API models page publishes no context

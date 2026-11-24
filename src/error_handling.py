@@ -9,7 +9,7 @@ This module provides robust error handling patterns including:
 """
 
 import asyncio
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -387,6 +387,7 @@ _HTTP_STATUS_REQUEST_TIMEOUT = 408
 HTTP_STATUS_TOO_MANY_REQUESTS = 429
 _HTTP_STATUS_SERVER_ERROR = 500
 _CONFIGURATION_ERROR_STATUSES = frozenset({401, 403, 404})
+_MODEL_CONFIGURATION_ERROR_MARKERS = frozenset({"invalid_model", "model_not_found"})
 
 _RATE_LIMIT_MAX_RETRY_AFTER = 30.0
 # Match a status token in prose, never the port in "host:443" or a dotted
@@ -477,6 +478,36 @@ def _iter_error_body_strings(value: Any) -> Iterator[str]:
             yield from _iter_error_body_strings(item)
 
 
+def _model_configuration_error(exception: Exception) -> bool:
+    """Return True when a 400 reports a retired or unknown model.
+
+    Providers put the machine-readable reason in a structured error object.
+    Both Perplexity's Agent API (``error.type: invalid_model``) and the
+    OpenAI-style ``error.code: model_not_found`` are configuration errors: every
+    call with that model will fail, so the breaker must count them.
+    """
+    candidates: list[str] = []
+    body = getattr(exception, "body", None)
+    if isinstance(body, Mapping):
+        error = body.get("error", body)
+        if isinstance(error, Mapping):
+            for key in ("type", "code"):
+                value = error.get(key)
+                if isinstance(value, str):
+                    candidates.append(value)
+        for key in ("type", "code"):
+            value = body.get(key)
+            if isinstance(value, str):
+                candidates.append(value)
+    for attribute in ("type", "code"):
+        value = getattr(exception, attribute, None)
+        if isinstance(value, str):
+            candidates.append(value)
+    return any(
+        candidate.strip().lower() in _MODEL_CONFIGURATION_ERROR_MARKERS for candidate in candidates
+    )
+
+
 def _is_quota_exhausted(exception: Exception) -> bool:
     """Return True when the structured error body reports exhausted quota."""
     candidates = [
@@ -497,7 +528,8 @@ def _is_user_request_error(exception: Exception) -> bool:
 
     A user-caused request error (400, 409, 413, 422, and other client errors)
     proves the provider answered; it must neither push the breaker towards OPEN
-    nor stamp a success. Configuration errors (401, 403, 404) are different:
+    nor stamp a success. Configuration errors (401, 403, 404, and a 400 whose
+    structured type or code marks the model invalid or missing) are different:
     a revoked key or retired model fails every call and must make /health
     report the provider degraded or unhealthy. Timeouts, 408, 429, 5xx, and
     unclassified errors count as provider failures.
@@ -508,6 +540,8 @@ def _is_user_request_error(exception: Exception) -> bool:
     status_code = _structured_status_code(exception)
     if status_code is not None:
         if not _HTTP_STATUS_BAD_REQUEST <= status_code < _HTTP_STATUS_SERVER_ERROR:
+            return False
+        if status_code == _HTTP_STATUS_BAD_REQUEST and _model_configuration_error(exception):
             return False
         return status_code not in {
             *_CONFIGURATION_ERROR_STATUSES,
