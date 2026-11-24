@@ -388,10 +388,11 @@ reproduce the offending line or the parser's message, because that text can cont
 token or another secret. The bot never continues with built-in defaults after a config
 file fails to load; omit `--conf` to run from environment variables and defaults.
 
-An empty value means the setting is not set, so its documented default applies. Two
-settings keep an explicit empty meaning: a blank `OPENAI_API_KEY` or
-`PERPLEXITY_API_KEY` disables that provider, and a blank `REASONING_EFFORT` omits the
-parameter from chat requests.
+An empty value means the setting is not set, so its documented default applies. This
+applies to config-file values and environment overrides alike: a blank provider URL or
+model does not select that provider. Two settings keep an explicit empty meaning: a blank
+`OPENAI_API_KEY` or `PERPLEXITY_API_KEY` disables that provider, and a blank
+`REASONING_EFFORT` omits the parameter from chat requests.
 
 ### Startup Validation
 - **Required Fields**: Ensures DISCORD_TOKEN and the credentials for every configured provider are present

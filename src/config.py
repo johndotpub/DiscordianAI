@@ -415,7 +415,7 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
         log_file_explicit = True
 
     for provider, keys in _PROVIDER_SETTINGS.items():
-        if any(key in os.environ for key in keys):
+        if any(key in os.environ and os.environ[key].strip() for key in keys):
             if provider == "OPENAI":
                 openai_explicit = True
             else:
