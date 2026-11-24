@@ -45,8 +45,8 @@ The following diagram shows how messages are intelligently split:
 flowchart TD
     A[Message Content] --> B{Content Type?}
     
-    B -->|Regular Text| C{Length > 2000?}
-    B -->|Embed Content| D{Length > EMBED_SAFE_LIMIT?}
+    B -->|Regular Text| C{Length > the chunk limit?}
+    B -->|Embed Content| D{Length > the safe embed limit?}
     
     C -->|No| E[Send Single Message]
     C -->|Yes| F[Find Optimal Split Point]
@@ -57,7 +57,7 @@ flowchart TD
     F --> I[Check for Code Blocks]
     H --> J[Check Citation Distribution]
     
-    I --> K{Inside Code Block?}
+    I --> K{Preferred split inside a closed fence?}
     K -->|Yes| L[Adjust Split to Preserve Code]
     K -->|No| M[Split at Natural Boundary]
     
@@ -100,12 +100,12 @@ inside a fenced block:
 
 ```mermaid
 flowchart TD
-    A[Split Point Found] --> B{Inside Code Block?}
+    A[Split Point Found] --> B{Preferred split inside a closed fence?}
     B -->|No| C[Use Split Point]
-    B -->|Yes| D{Block Fits in One Chunk?}
+    B -->|Yes| D{Closing fence at or before the limit?}
 
     D -->|Yes| E[Move Split After Block]
-    D -->|No| F{Content Before Block?}
+    D -->|No| F{Content before the fence?}
     F -->|Yes| G[Move Split Before Block]
     F -->|No| H[Split at Line Boundary]
 

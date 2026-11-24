@@ -13,7 +13,9 @@ from src.conversation_manager import ThreadSafeConversationManager
 from src.message_splitter import (
     sanitize_for_discord,
     send_formatted_message,
+    send_split_message,
     send_split_message_with_embed,
+    truncation_notice,
 )
 from src.models import AIRequest, PerplexityConfig
 from src.perplexity_processing import process_perplexity_message
@@ -193,6 +195,22 @@ async def test_truncated_head_does_not_render_hostile_citation_markdown() -> Non
         assert "](https://" not in description
         assert "https://phish" not in content
         assert "https://phish" not in description
+
+
+@pytest.mark.asyncio
+async def test_a_truncated_final_chunk_closes_an_open_fence_before_the_notice() -> None:
+    """A chunk cut at the length limit must not leave the last code fence open."""
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock()
+
+    message = "```python\n" + ("x" * 3000)
+
+    await send_split_message(channel, message, _deps(), _chunk_budget=1)
+
+    sent = channel.send.call_args.args[0]
+    assert sent.endswith(truncation_notice(len(message)))
+    assert sent.count("```") == 2
+    assert "```\n\n" in sent
 
 
 @pytest.mark.asyncio

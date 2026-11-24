@@ -26,13 +26,18 @@ from .config import (
     MESSAGE_LIMIT,
 )
 from .discord_embeds import citation_embed_formatter
-from .truncation import truncate_with_notice
 
 _RAW_MENTION_PATTERN = re.compile(r"<(@[!&]?|#)(\d+)>")
 _MARKDOWN_LINK_PATTERN = re.compile(r"!?\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)]+)\)")
 _AUTOLINK_PATTERN = re.compile(r"<(https?://[^>\s]+)>", re.IGNORECASE)
 _BARE_HTTP_URL_PATTERN = re.compile(r"https?://(?!\u200b)[^\s<>]+", re.IGNORECASE)
 _FENCE_BLOCK_PATTERN = re.compile(r"(`{3,})[\s\S]*?\1")
+_CODE_SPAN_LINK_TARGET_PATTERN = re.compile(r"\]\(\s*<?https?://", re.IGNORECASE)
+_FENCE_OPEN_PATTERN = re.compile(r"^ {0,3}(`{3,})([^`]*)$")
+_REFERENCE_DEFINITION_PATTERN = re.compile(
+    r"^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*(?:<[^>\n]*>|[^\s<\n]+).*$",
+    re.MULTILINE,
+)
 _URL_TRAILING_PUNCTUATION = ".,;:!?)]}'\""
 _CONTINUED_FOOTER = "🌐 Web search results (continued)"
 TRUNCATION_NOTICE = "✂️ The answer was cut off at the length limit."
@@ -137,14 +142,34 @@ def append_truncation_notice(text: str) -> str:
     return f"{text.rstrip()}\n\n{TRUNCATION_NOTICE}"
 
 
+def _close_open_fence(text: str, available: int) -> str:
+    """Return at most ``available`` characters with an open fence closed.
+
+    A cut inside a fenced block appends the opening marker so the delivered
+    chunk renders as code. When the shorter cut falls outside the fence, the
+    original prefix is safe and is returned unchanged.
+    """
+    prefix = text[:available]
+    marker = _unclosed_fence_marker(prefix)
+    if marker is None:
+        return prefix
+
+    shorter = text[: max(0, available - len(marker) - 1)]
+    shorter_marker = _unclosed_fence_marker(shorter)
+    if shorter_marker is None:
+        return prefix
+    return f"{shorter}\n{shorter_marker}"
+
+
 def _truncate_to_limit(text: str, limit: int, original_length: int | None = None) -> str:
     """Truncate text to ``limit`` characters with the visible Discord notice."""
     notice = truncation_notice(len(text) if original_length is None else original_length)
     available = limit - len(notice)
     if available <= 0:
         return text[:limit]
-    truncated, _ = truncate_with_notice(text, available, notice)
-    return truncated
+    if len(text) <= available:
+        return text
+    return f"{_close_open_fence(text, available)}{notice}"
 
 
 def _split_message_chunks(
@@ -252,7 +277,8 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
     for index, chunk in enumerate(chunks):
         content = f"{prefix_text}{chunk}" if index == 0 and prefix_text else chunk
         if len(content) > MESSAGE_LIMIT:
-            content, _ = truncate_with_notice(content, MESSAGE_LIMIT - 3, "...")
+            available = MESSAGE_LIMIT - 3
+            content = f"{_close_open_fence(content, available)}..."
         await _deliver(
             channel,
             content,
@@ -651,13 +677,76 @@ def _fence_span(text: str, start: int, marker: str, end: int, language: str) -> 
     )
 
 
-def _fence_spans(text: str) -> list[_FenceSpan]:
-    """Return fenced code blocks that Discord renders as code.
+def _line_spans(text: str) -> list[tuple[int, str, int]]:
+    """Return ``(start, content, end)`` for each physical Markdown line.
 
-    Only a closed fence whose opening marker is not backslash-escaped counts.
-    The splitter and the sanitiser share this detector, so a fence either
-    protects link-like syntax or keeps a split inside the code block; an
-    unclosed or escaped marker is literal text in both paths.
+    Only CR, LF, and CRLF end a line, matching CommonMark. Splitting on other
+    Unicode separators would let a fence opener appear at a position the
+    parser does not treat as a line start.
+    """
+    lines: list[tuple[int, str, int]] = []
+    position = 0
+    while position < len(text):
+        content_end = position
+        while content_end < len(text) and text[content_end] not in "\r\n":
+            content_end += 1
+        line_end = content_end
+        if line_end < len(text):
+            if text.startswith("\r\n", line_end):
+                line_end += 2
+            else:
+                line_end += 1
+        lines.append((position, text[position:content_end], line_end))
+        position = line_end
+    return lines
+
+
+def _rendered_fence_spans(text: str) -> tuple[list[_FenceSpan], str | None]:
+    """Return fences CommonMark renders as blocks and any unclosed marker.
+
+    An opening fence is at most three spaces indented and starts a line; a
+    closing fence is a run of at least as many backticks alone on a later line.
+    This stricter rule is for the sanitizer: a mid-line run is inline code, not
+    a block, and treating it as a block could hide a link.
+    """
+    fences: list[_FenceSpan] = []
+    open_marker: str | None = None
+    open_start = 0
+    open_language = ""
+
+    for start, line, end in _line_spans(text):
+        if open_marker is None:
+            if _is_escaped(text, start):
+                continue
+            opener = _FENCE_OPEN_PATTERN.match(line)
+            if opener is None:
+                continue
+            open_marker = opener.group(1)
+            open_start = start
+            open_language = opener.group(2).strip()
+            continue
+
+        closer = re.match(rf"^ {{0,3}}`{{{len(open_marker)},}}[ \t]*$", line)
+        if closer is not None:
+            fences.append(_fence_span(text, open_start, open_marker, end, open_language))
+            open_marker = None
+
+    return fences, open_marker
+
+
+def _unclosed_fence_marker(text: str) -> str | None:
+    """Return the opening marker of an unclosed fenced block, if any."""
+    _fences, marker = _rendered_fence_spans(text)
+    return marker
+
+
+def _fence_spans(text: str) -> list[_FenceSpan]:
+    """Return closed fence spans for display-aware splitting.
+
+    The splitter keeps the historical rule that a run of three or more
+    backticks opens a block wherever it appears, because a split must not cut
+    a block the model wrote. The sanitizer uses ``_rendered_fence_spans``
+    instead, whose line-start rule matches what CommonMark actually renders.
     """
     fences: list[_FenceSpan] = []
     for match in _FENCE_BLOCK_PATTERN.finditer(text):
@@ -744,19 +833,6 @@ def split_fence_aware(
 # ============================================================================
 
 
-def clean_message_content(content: str, max_length: int = 100) -> str:
-    """Clean and truncate message content for logging."""
-    if not content:
-        return "[empty]"
-
-    # Remove extra whitespace and newlines
-    cleaned = re.sub(r"\s+", " ", content.strip())
-
-    cleaned, _ = truncate_with_notice(cleaned, max_length, "...")
-
-    return cleaned
-
-
 def count_links(text: str) -> int:
     """Count the number of links in text for embed suppression decisions."""
     # Count Discord hyperlinks [title](url)
@@ -815,12 +891,23 @@ def _is_escaped(text: str, position: int) -> bool:
 
 
 def _inline_code_spans(text: str, start: int, end: int) -> list[tuple[int, int]]:
-    """Return balanced inline code spans with unescaped backtick delimiters."""
+    """Return balanced inline code spans with an explicit closing run.
+
+    A backslash escapes an opening backtick, but it has no meaning inside a
+    code span: a closing run ends the span whatever precedes it. When a run
+    is ambiguous, or the span would hide a Markdown link target, the detector
+    protects nothing, so a link is sanitised rather than hidden.
+    """
     spans: list[tuple[int, int]] = []
     position = start
 
     while position < end:
-        if text[position] != "`" or _is_escaped(text, position):
+        if text[position] != "`":
+            position += 1
+            continue
+        if _is_escaped(text, position):
+            # Only the first backtick is escaped; any remaining backticks in
+            # the run can still open a code span.
             position += 1
             continue
 
@@ -837,10 +924,9 @@ def _inline_code_spans(text: str, start: int, end: int) -> list[tuple[int, int]]
             close_start = search
             while search < end and text[search] == "`":
                 search += 1
-            if _is_escaped(text, close_start):
-                continue
             if search - close_start == run_length:
-                spans.append((run_start, search))
+                if not _CODE_SPAN_LINK_TARGET_PATTERN.search(text[run_start:search]):
+                    spans.append((run_start, search))
                 position = search
                 break
 
@@ -851,10 +937,14 @@ def _rendered_code_spans(text: str) -> list[tuple[int, int]]:
     """Return the spans Discord actually renders as code.
 
     Only closed fenced blocks and balanced, unescaped inline code spans count.
-    An unclosed fence or a backslash-escaped backtick is literal text, so the
-    links after it remain clickable and must be neutralised.
+    An unclosed fence makes the whole answer uncertain: the detector then
+    protects nothing, so link syntax inside it is sanitised rather than left
+    live. A backslash-escaped opener is literal text for the same reason.
     """
-    fences = [(span.start, span.end) for span in _fence_spans(text)]
+    fence_spans, open_marker = _rendered_fence_spans(text)
+    if open_marker is not None:
+        return []
+    fences = [(span.start, span.end) for span in fence_spans]
     spans = list(fences)
     cursor = 0
     for fence_start, fence_end in fences:
@@ -880,10 +970,12 @@ def sanitize_model_output(text: str, citations: dict[str, str] | None = None) ->
 
     The link rewrite runs over the whole text. Code that Discord renders is
     swapped for a placeholder first, then restored, so a link whose label is
-    inline code is still evaluated. Only closed fenced blocks and balanced,
-    unescaped inline code are protected: an unclosed fence or an escaped
-    backtick is literal text and does not hide a link. Mention neutralisation
-    applies everywhere, including inside code.
+    inline code is still evaluated. Only closed fenced blocks and balanced
+    inline code are protected: a closing backtick run ends the span whatever
+    precedes it, while an unclosed fence makes the answer uncertain and
+    protects nothing. Link reference definitions are removed so a reference
+    link cannot resolve to an untrusted target. Mention neutralisation applies
+    everywhere, including inside code.
 
     Args:
         text: Model-generated text bound for Discord.
@@ -940,13 +1032,42 @@ def sanitize_model_output(text: str, citations: dict[str, str] | None = None) ->
             return raw
         return f"{_neutralize_url(core)}{trailing}"
 
+    # Definitions are removed before code protection so a placeholder cannot
+    # hide a line start and leave a reference link resolvable.
+    text = _REFERENCE_DEFINITION_PATTERN.sub("", text)
     text = protect_code(text)
+    text = _REFERENCE_DEFINITION_PATTERN.sub("", text)
     text = _MARKDOWN_LINK_PATTERN.sub(replace_link, text)
     text = _AUTOLINK_PATTERN.sub(replace_autolink, text)
     text = _BARE_HTTP_URL_PATTERN.sub(replace_bare_url, text)
     # Restore in reverse so a protected link can contain a protected code span.
     for index in range(len(protected) - 1, -1, -1):
         text = text.replace(f"\x00SAFE{index}\x00", protected[index])
+
+    # Link removal changes where the Markdown parser finds code spans, which
+    # can expose a different link. Re-check the restored text and remove any
+    # remaining HTTP link until the text stops changing. Removing link syntax
+    # inside what looked like code is acceptable; a live link is not.
+    def replace_remaining_link(match: re.Match[str]) -> str:
+        target = _normalize_link_target(match.group(2))
+        if target.lower().startswith(("http://", "https://")) and target not in allowed_urls:
+            return match.group(1)
+        return match.group(0)
+
+    def replace_remaining_autolink(match: re.Match[str]) -> str:
+        target = _normalize_link_target(match.group(1))
+        if target.lower().startswith(("http://", "https://")) and target not in allowed_urls:
+            return _neutralize_url(match.group(1))
+        return match.group(0)
+
+    for _attempt in range(8):
+        updated = _REFERENCE_DEFINITION_PATTERN.sub("", text)
+        updated = _MARKDOWN_LINK_PATTERN.sub(replace_remaining_link, updated)
+        updated = _AUTOLINK_PATTERN.sub(replace_remaining_autolink, updated)
+        if updated == text:
+            break
+        text = updated
+
     text = _RAW_MENTION_PATTERN.sub(
         lambda match: f"<{match.group(1)}\u200b{match.group(2)}>",
         text,

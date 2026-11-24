@@ -136,7 +136,7 @@ RetryConfig(
 ### Message Handling
 
 - **Inbound text is not sanitized.** The message body is sent to the configured provider unchanged; the bot does not strip instructions, links, or markdown before the request.
-- **Outbound text is neutralised.** Messages longer than Discord's 2000-character limit are split, and model output is sanitised for mentions and links before delivery. The link rewrite skips only regions Discord renders as code: closed fenced blocks and balanced, unescaped inline code. An unclosed fence or an escaped backtick is literal text, so links after it are still neutralised. These controls apply to outbound text only.
+- **Outbound text is neutralised.** Messages longer than Discord's 2000-character limit are split, and model output is sanitised for mentions and links before delivery. A closed fenced block and a balanced inline code span keep link-like syntax and bare URLs; a closing backtick run ends a span whatever precedes it, and only an opening run can be backslash-escaped. An unclosed fence makes the detector protect nothing, reference definitions are removed, and restored text is re-checked for a link that parsing changes may have exposed. These controls apply to outbound text only.
 - **Discord does not moderate bot messages.** Server AutoMod or channel permissions can restrict what users send, but the bot's own replies are not passed through Discord's moderation.
 - **URLs are opened by provider tools.** User-supplied URLs are passed to the provider's native search and fetch tools. The bot does not fetch page content itself.
 
@@ -160,10 +160,12 @@ On startup, DiscordianAI validates:
 Not every invalid configuration prevents startup. Fatal errors are logged and
 abort startup with a non-zero exit: missing Discord credentials, a missing key
 for a configured provider, invalid Perplexity key formats, malformed or
-non-absolute base URLs, non-integer or non-positive rate/input/context limits,
-output-token caps outside 1..128,000 (a fixed ceiling independent of the context
-window), an unknown `ROUTER_MODE` (only `heuristic` and `clef` are accepted), and
-invalid presence or activity values.
+non-absolute base URLs, non-positive rate/input/context limits,
+`INPUT_TOKENS` or `PERPLEXITY_INPUT_TOKENS` below 1,000, output-token caps outside
+1..128,000 (a fixed ceiling independent of the context window), an unknown
+`ROUTER_MODE` (only `heuristic` and `clef` are accepted), and invalid presence or
+activity values. A malformed integer in the file or environment is reported with
+a warning and its default applies.
 Warnings are logged and startup continues: non-`sk-` OpenAI-compatible key
 formats, well-formed non-standard provider URLs, unusually small or large token
 values, high rate limits, and a missing channel allowlist.

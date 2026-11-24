@@ -6,7 +6,6 @@ exercised by ``test_message_splitting.py``.
 """
 
 from src.message_splitter import (
-    clean_message_content,
     count_links,
     error_message,
     find_optimal_split_point,
@@ -39,65 +38,6 @@ class TestFindOptimalSplitPoint:
 
         # Should be within message bounds
         assert split_point <= len(message)
-
-
-class TestCleanMessageContent:
-    """Test clean_message_content function."""
-
-    def test_clean_normal_text(self):
-        """Test cleaning normal text."""
-        content = "This is a normal message"
-
-        result = clean_message_content(content)
-
-        assert result == "This is a normal message"
-
-    def test_clean_with_whitespace(self):
-        """Test cleaning text with extra whitespace."""
-        content = "  This   has    extra   spaces  \n\n  and newlines  "
-
-        result = clean_message_content(content)
-
-        assert result == "This has extra spaces and newlines"
-
-    def test_clean_empty_content(self):
-        """Test cleaning empty content."""
-        result = clean_message_content("")
-        assert result == "[empty]"
-
-        result = clean_message_content(None)
-        assert result == "[empty]"
-
-        result = clean_message_content("   ")
-        assert result == ""  # Whitespace-only content gets cleaned to empty string
-
-    def test_clean_with_truncation(self):
-        """Test cleaning with truncation."""
-        content = "A" * 150  # 150 characters
-
-        result = clean_message_content(content, max_length=50)
-
-        assert len(result) == 53  # 50 + "..."
-        assert result.endswith("...")
-        assert result.startswith("A")
-
-    def test_clean_exact_length(self):
-        """Test cleaning with exact max length."""
-        content = "A" * 50
-
-        result = clean_message_content(content, max_length=50)
-
-        assert result == content  # Should not be truncated
-        assert not result.endswith("...")
-
-    def test_clean_custom_max_length(self):
-        """Test cleaning with custom max length."""
-        content = "This is a longer message for testing"
-
-        result = clean_message_content(content, max_length=10)
-
-        assert len(result) == 13  # 10 + "..."
-        assert result == "This is a ..."
 
 
 class TestCountLinks:
