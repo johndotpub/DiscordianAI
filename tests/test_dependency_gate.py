@@ -156,3 +156,18 @@ def test_satisfied_environment_passes() -> None:
     success, missing = gate.check_dependencies()
     assert success is True
     assert missing == []
+
+
+def test_entry_point_reports_a_missing_package_before_importing_it(monkeypatch, capsys):
+    """The friendly gate runs before the entry module imports structlog."""
+    from src import main as entry_point
+
+    monkeypatch.setattr(importlib.util, "find_spec", _find_spec_without("structlog"))
+
+    with pytest.raises(SystemExit) as exc_info:
+        entry_point.main()
+
+    assert exc_info.value.code == 1
+    error = capsys.readouterr().err
+    assert "Missing required packages: structlog" in error
+    assert "pip install -r requirements.txt" in error

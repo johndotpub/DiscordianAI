@@ -739,13 +739,17 @@ def _log_validation_messages(
         warnings: List of warning messages
         errors: List of error messages
     """
-    # Log warnings with sanitization
+    # Log warnings with sanitization. The collected strings carry a
+    # "WARNING:"/"ERROR:" prefix only for classification; strip it so a
+    # warning does not read "WARNING: WARNING: ..." once the level is added.
     for warning in warnings:
-        logger.warning("Config validation: %s", _sanitize_log_message(warning))
+        message = warning.removeprefix("WARNING:").strip()
+        logger.warning("Config validation: %s", _sanitize_log_message(message))
 
     # Log errors with sanitization
     for error in errors:
-        logger.error("Config validation: %s", _sanitize_log_message(error))
+        message = error.removeprefix("ERROR:").strip()
+        logger.error("Config validation: %s", _sanitize_log_message(message))
 
 
 def log_validation_results(config: dict, logger: logging.Logger | None = None) -> bool:

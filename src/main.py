@@ -20,12 +20,8 @@ import configparser
 import logging
 import os
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, NoReturn
 
-import discord
-
-from .api_validation import log_validation_results, validate_output_token_limits
-from .bot import run_bot
 from .config import (
     DEFAULT_ACTIVITY_TYPE,
     DEFAULT_BOT_PRESENCE,
@@ -36,7 +32,29 @@ from .config import (
     parse_arguments,
 )
 from .dependency_check import check_dependencies
-from .structured_logging import configure_structlog
+
+
+def run_bot(config: dict[str, Any]) -> None:
+    """Run the bot through the real implementation after the import gate.
+
+    The wrapper keeps the entry module free of the third-party imports in
+    :mod:`src.bot` until :func:`check_dependencies` has explained any missing
+    package. Tests patch this module attribute directly.
+    """
+    from .bot import run_bot as _run_bot  # noqa: PLC0415 - deferred until the gate passes
+
+    _run_bot(config)
+
+
+def configure_structlog(**kwargs: Any) -> None:
+    """Configure structured logging after the dependency gate has run.
+
+    The entry module exposes this name so callers and tests can patch it, but
+    the structlog import itself stays inside the function.
+    """
+    from .structured_logging import configure_structlog as _configure_structlog  # noqa: PLC0415
+
+    _configure_structlog(**kwargs)
 
 
 def setup_early_logging() -> logging.Logger:
@@ -207,6 +225,10 @@ def validate_critical_config(config: dict, logger: logging.Logger) -> None:
     Raises:
         ValueError: If critical configuration is missing or invalid
     """
+    import discord  # noqa: PLC0415 - deferred until the gate passes
+
+    from .api_validation import validate_output_token_limits  # noqa: PLC0415
+
     errors = _credential_errors(config)
     warnings = []
 
@@ -256,14 +278,8 @@ def validate_critical_config(config: dict, logger: logging.Logger) -> None:
             "(the retired value is 'model')"
         )
 
-    # Check allowed channels; ID-based targeting is just as valid as names.
-    allowed_channels = config.get("ALLOWED_CHANNELS", [])
-    allowed_channel_ids = config.get("ALLOWED_CHANNEL_IDS", [])
-    if not allowed_channels and not allowed_channel_ids:
-        warnings.append(
-            "No ALLOWED_CHANNELS or ALLOWED_CHANNEL_IDS configured - "
-            "bot will not respond in any channels"
-        )
+    # The full API validation in ``log_validation_results`` owns the
+    # no-channels warning, so it is logged once rather than twice.
 
     # Log warnings
     for warning in warnings:
@@ -324,14 +340,19 @@ def main() -> NoReturn:
     Raises:
         SystemExit: If critical initialization fails
     """
-    # Step 1: Set up early logging before anything else
-    early_logger = setup_early_logging()
-    logger = None
-
+    # Step 1: check dependencies before importing the packages they describe.
     dependencies_ok, missing_dependencies = check_dependencies()
     if not dependencies_ok:
-        early_logger.error("Missing required packages: %s", ", ".join(missing_dependencies))
+        sys.stderr.write(
+            "Missing required packages: "
+            f"{', '.join(missing_dependencies)}\n"
+            "Install them with: pip install -r requirements.txt\n"
+        )
         sys.exit(1)
+
+    # Step 2: Set up early logging before anything else
+    early_logger = setup_early_logging()
+    logger = None
 
     try:
         # Step 2: Parse command-line arguments
@@ -365,6 +386,8 @@ def main() -> NoReturn:
         validate_critical_config(config, logger)
 
         # Step 5.1: Validate API parameters
+        from .api_validation import log_validation_results  # noqa: PLC0415
+
         logger.info("Validating API parameters")
         api_validation_passed = log_validation_results(config, logger)
         if not api_validation_passed:
