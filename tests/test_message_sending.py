@@ -190,11 +190,11 @@ class TestSendFormattedMessage:
     async def test_send_formatted_message_reply_with_mention(self):
         """Send uses reply with mention prefix when original_message is provided."""
         channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
         author = MagicMock()
         author.mention = "<@user>"
         original_message = MagicMock(spec=discord.Message)
         original_message.author = author
-        original_message.reply = AsyncMock()
 
         message = "Hello there"
         deps = {"logger": MagicMock()}
@@ -207,10 +207,11 @@ class TestSendFormattedMessage:
             mention_prefix=f"{author.mention} ",
         )
 
-        original_message.reply.assert_called_once()
-        call_args, call_kwargs = original_message.reply.call_args
+        channel.send.assert_called_once()
+        call_args, call_kwargs = channel.send.call_args
         assert call_args[0].startswith(f"{author.mention} ")
         assert call_kwargs["mention_author"] is False
+        original_message.to_reference.assert_called_once_with(fail_if_not_exists=False)
 
     @pytest.mark.asyncio
     async def test_send_formatted_message_regular_long(self):
@@ -240,23 +241,24 @@ class TestSendFormattedMessage:
         author.mention = "<@user>"
         original_message = MagicMock(spec=discord.Message)
         original_message.author = author
-        original_message.reply = AsyncMock()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
 
         long_message = "A" * 2500
         deps = {"logger": MagicMock()}
 
         await send_split_message(
-            MagicMock(spec=discord.TextChannel),
+            channel,
             long_message,
             deps,
             original_message=original_message,
             mention_prefix=f"{author.mention} ",
         )
 
-        # Should have multiple replies (due to split)
-        assert original_message.reply.call_count >= 2
-        first_content = original_message.reply.call_args_list[0][0][0]
-        second_content = original_message.reply.call_args_list[1][0][0]
+        # Should have multiple sends (due to split)
+        assert channel.send.call_count >= 2
+        first_content = channel.send.call_args_list[0][0][0]
+        second_content = channel.send.call_args_list[1][0][0]
         assert first_content.startswith(f"{author.mention} ")
         assert not second_content.startswith(f"{author.mention} ")
 
@@ -346,7 +348,6 @@ class TestSendSplitMessageWithEmbed:
         author.mention = "<@user>"
         original_message = MagicMock(spec=discord.Message)
         original_message.author = author
-        original_message.reply = AsyncMock()
 
         # Craft content that exceeds the safe limit so a continuation is needed
         long_content = "A" * (EMBED_SAFE_LIMIT + 50) + " [1] " + ("B" * 50) + " [2]"
@@ -370,15 +371,15 @@ class TestSendSplitMessageWithEmbed:
                 mention_prefix=f"{author.mention} ",
             )
 
-        # First reply should include the mention prefix
-        first_call_args, first_call_kwargs = original_message.reply.call_args_list[0]
+        # First send should include the mention prefix
+        first_call_args, first_call_kwargs = channel.send.call_args_list[0]
         assert first_call_args[0].startswith(f"{author.mention} ")
         assert first_call_kwargs["embed"] is first_embed
         assert first_call_kwargs["mention_author"] is False
         assert isinstance(first_call_kwargs["allowed_mentions"], discord.AllowedMentions)
 
-        # Continuation reply should omit the mention prefix and use the continuation embed
-        second_call_args, second_call_kwargs = original_message.reply.call_args_list[1]
+        # Continuation send should omit the prefix and use the continuation embed
+        second_call_args, second_call_kwargs = channel.send.call_args_list[1]
         assert second_call_args[0] == ""
         assert second_call_kwargs["embed"] is continuation_embed
         assert second_call_kwargs["mention_author"] is False
@@ -395,7 +396,6 @@ class TestSendSplitMessageWithEmbed:
         author.mention = "<@user>"
         original_message = MagicMock(spec=discord.Message)
         original_message.author = author
-        original_message.reply = AsyncMock()
 
         citations = {"1": "https://example.com/one"}
         first_embed = MagicMock(spec=discord.Embed)
@@ -413,8 +413,8 @@ class TestSendSplitMessageWithEmbed:
             )
 
         mock_split.assert_not_called()
-        original_message.reply.assert_called_once()
-        assert original_message.reply.call_args.kwargs["embed"] is first_embed
+        channel.send.assert_called_once()
+        assert channel.send.call_args.kwargs["embed"] is first_embed
 
 
 class TestEmbedCharacterLimits:
