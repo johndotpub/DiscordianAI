@@ -267,6 +267,35 @@ def test_default_shared_limits_do_not_replace_the_perplexity_budget():
     assert resolved.context_window == 128000
 
 
+def test_perplexity_budget_warning_names_the_key_that_supplied_the_value():
+    """A shared cap must be named as the shared key, not as the Sonar default."""
+    from src.message_processor import _perplexity_service_config
+    from src.providers.perplexity import AgentResponsesProvider
+
+    deps = {"SYSTEM_MESSAGE": "System prompt", "OUTPUT_TOKENS": 16384}
+    config = {
+        "INPUT_TOKENS": 5000,
+        "CONTEXT_WINDOW": 15000,
+        "PERPLEXITY_INPUT_TOKENS": 111000,
+        "PERPLEXITY_CONTEXT_WINDOW": 128000,
+        "PERPLEXITY_OUTPUT_TOKENS": 12000,
+    }
+    resolved = _perplexity_service_config(deps, config, "perplexity/sonar")
+    logger = MagicMock()
+    provider = AgentResponsesProvider(MagicMock(), resolved, logger=logger)
+
+    provider.build_request("System prompt", CURRENT, None, 12000, logger=logger)
+
+    warning_text = " ".join(
+        str(argument) for call in logger.warning.call_args_list for argument in call.args
+    )
+    assert "INPUT_TOKENS 5000" in warning_text
+    assert "CONTEXT_WINDOW 15000" in warning_text
+    assert "PERPLEXITY_OUTPUT_TOKENS 12000" in warning_text
+    assert "PERPLEXITY_INPUT_TOKENS" not in warning_text
+    assert "PERPLEXITY_CONTEXT_WINDOW" not in warning_text
+
+
 def test_perplexity_defaults_fit_the_sonar_context_window():
     """The Perplexity path budgets for Sonar's documented 128K window."""
     from src.models import PerplexityConfig

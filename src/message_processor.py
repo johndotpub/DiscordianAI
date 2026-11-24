@@ -67,23 +67,31 @@ def _shared_limit(
     return value, value != default
 
 
-def _cap_to_shared(own_value: Any, shared_value: Any, was_set: bool) -> Any:
-    """Return the smaller of a provider budget and an explicit shared budget."""
-    if not was_set:
-        return own_value
-    return min(int(own_value), int(shared_value))
+def _cap_to_shared(
+    own_value: Any,
+    own_setting: str,
+    shared_value: Any,
+    shared_setting: str,
+    was_set: bool,
+) -> tuple[Any, str]:
+    """Return the effective limit and the key that supplied it."""
+    if was_set and int(shared_value) < int(own_value):
+        return int(shared_value), shared_setting
+    return own_value, own_setting
 
 
 def _perplexity_token_limits(
     deps: dict[str, Any] | Any,
     config: dict[str, Any],
-) -> tuple[int, int]:
-    """Return the Sonar prompt budget and context window.
+) -> tuple[int, int, str, str]:
+    """Return the Sonar prompt budget, context window, and their setting names.
 
     The provider-specific keys stay authoritative unless the operator
     explicitly lowered the shared chat budget, in which case the smaller of
     the two values applies. This keeps an existing `INPUT_TOKENS` or
-    `CONTEXT_WINDOW` limit effective for Perplexity prompts.
+    `CONTEXT_WINDOW` limit effective for Perplexity prompts, and the returned
+    names keep a budget warning pointed at the key that actually supplied the
+    effective value.
     """
     input_tokens = config.get(
         "PERPLEXITY_INPUT_TOKENS",
@@ -105,10 +113,21 @@ def _perplexity_token_limits(
         "CONTEXT_WINDOW",
         DEFAULT_CONTEXT_WINDOW,
     )
-    return (
-        _cap_to_shared(input_tokens, shared_input, input_was_set),
-        _cap_to_shared(context_window, shared_context, context_was_set),
+    effective_input, input_setting = _cap_to_shared(
+        input_tokens,
+        "PERPLEXITY_INPUT_TOKENS",
+        shared_input,
+        "INPUT_TOKENS",
+        input_was_set,
     )
+    effective_context, context_setting = _cap_to_shared(
+        context_window,
+        "PERPLEXITY_CONTEXT_WINDOW",
+        shared_context,
+        "CONTEXT_WINDOW",
+        context_was_set,
+    )
+    return effective_input, effective_context, input_setting, context_setting
 
 
 def _perplexity_output_tokens(deps: dict[str, Any] | Any, config: dict[str, Any]) -> int:
@@ -127,13 +146,17 @@ def _perplexity_service_config(
     model: str,
 ) -> PerplexityConfig:
     """Build the Perplexity config with its own Sonar budget."""
-    input_tokens, context_window = _perplexity_token_limits(deps, config)
+    input_tokens, context_window, input_setting, context_setting = _perplexity_token_limits(
+        deps, config
+    )
     return PerplexityConfig(
         model=model,
         system_message=deps["SYSTEM_MESSAGE"],
         output_tokens=_perplexity_output_tokens(deps, config),
         input_tokens=input_tokens,
         context_window=context_window,
+        input_setting=input_setting,
+        context_setting=context_setting,
     )
 
 

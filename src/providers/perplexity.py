@@ -321,12 +321,16 @@ def _completion_request(  # noqa: PLR0913 - one builder carries every request op
     input_tokens: int = DEFAULT_PERPLEXITY_INPUT_TOKENS,
     output_tokens: int | None = None,
     context_window: int = DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
+    input_setting: str = "PERPLEXITY_INPUT_TOKENS",
+    context_setting: str = "PERPLEXITY_CONTEXT_WINDOW",
     logger=None,
 ) -> CompletionRequest:
     """Build one normalised Agent API request.
 
     The fixed fetch-url instruction suffix is charged against the prompt budget
-    and carried in the system message exactly once.
+    and carried in the system message exactly once. The setting names come from
+    the caller so a budget warning names whichever shared key supplied the
+    effective value.
     """
     completion_tokens = tokens if output_tokens is None else output_tokens
     prompt_budget = (
@@ -336,13 +340,14 @@ def _completion_request(  # noqa: PLR0913 - one builder carries every request op
         system,
         user_msg,
         history,
-        input_tokens=prompt_budget,
+        input_tokens=input_tokens,
         output_tokens=completion_tokens,
         context_window=context_window,
         logger=logger,
-        input_setting="PERPLEXITY_INPUT_TOKENS",
+        input_setting=input_setting,
         output_setting="PERPLEXITY_OUTPUT_TOKENS",
-        context_setting="PERPLEXITY_CONTEXT_WINDOW",
+        context_setting=context_setting,
+        prompt_reserve_tokens=FETCH_URL_SUFFIX_TOKENS,
     )
 
     instructions = system
@@ -394,6 +399,8 @@ def _build_api_params(  # noqa: PLR0913 - mirrors _completion_request's options
     input_tokens: int = DEFAULT_PERPLEXITY_INPUT_TOKENS,
     output_tokens: int | None = None,
     context_window: int = DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
+    input_setting: str = "PERPLEXITY_INPUT_TOKENS",
+    context_setting: str = "PERPLEXITY_CONTEXT_WINDOW",
     logger=None,
 ) -> dict[str, Any]:
     """Prepare Perplexity Agent API request parameters.
@@ -412,6 +419,8 @@ def _build_api_params(  # noqa: PLR0913 - mirrors _completion_request's options
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         context_window=context_window,
+        input_setting=input_setting,
+        context_setting=context_setting,
         logger=logger,
     )
     return _api_params(request, default_system=system)
@@ -467,6 +476,8 @@ class AgentResponsesProvider:
             input_tokens=config.input_tokens if input_tokens is None else input_tokens,
             output_tokens=config.output_tokens if output_tokens is None else output_tokens,
             context_window=(config.context_window if context_window is None else context_window),
+            input_setting=config.input_setting,
+            context_setting=config.context_setting,
             logger=logger or self._logger,
         )
 

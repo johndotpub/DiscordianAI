@@ -72,6 +72,8 @@ class PerplexityConfig:
     output_tokens: int = DEFAULT_PERPLEXITY_OUTPUT_TOKENS
     input_tokens: int = DEFAULT_PERPLEXITY_INPUT_TOKENS
     context_window: int = DEFAULT_PERPLEXITY_CONTEXT_WINDOW
+    input_setting: str = "PERPLEXITY_INPUT_TOKENS"
+    context_setting: str = "PERPLEXITY_CONTEXT_WINDOW"
 
 
 @dataclass(frozen=True)

@@ -99,6 +99,7 @@ def resolve_prompt_budget(  # noqa: PLR0913 - the setting labels mirror config k
     input_setting: str = "INPUT_TOKENS",
     output_setting: str = "OUTPUT_TOKENS",
     context_setting: str = "CONTEXT_WINDOW",
+    reserve_tokens: int = 0,
 ) -> int | None:
     """Return the prompt budget after reserving room for the completion.
 
@@ -106,12 +107,15 @@ def resolve_prompt_budget(  # noqa: PLR0913 - the setting labels mirror config k
     exceeds the context window. In that case the context window wins and the
     prompt budget is reduced, with a warning naming the conflicting settings.
     The callers pass their own setting names so the warning matches the
-    provider path that raised it.
+    provider path that raised it. ``reserve_tokens`` is charged against the
+    prompt budget before the window check; the warning still prints the value
+    the named setting supplied.
     """
     if input_tokens is None:
         return None
 
-    prompt_budget = max(0, int(input_tokens))
+    configured_input = max(0, int(input_tokens))
+    prompt_budget = max(0, configured_input - max(0, int(reserve_tokens)))
     if output_tokens is None or context_window is None:
         return prompt_budget
 
@@ -120,7 +124,9 @@ def resolve_prompt_budget(  # noqa: PLR0913 - the setting labels mirror config k
         return prompt_budget
 
     configured_output = max(0, int(output_tokens))
-    completion_budget = resolve_completion_budget(output_tokens, context_window, input_tokens) or 0
+    completion_budget = (
+        resolve_completion_budget(output_tokens, context_window, prompt_budget) or 0
+    )
     available_for_prompt = window - completion_budget
     if prompt_budget + configured_output > window:
         if logger is not None:
@@ -128,7 +134,7 @@ def resolve_prompt_budget(  # noqa: PLR0913 - the setting labels mirror config k
                 "%s (%d) + %s (%d) exceed %s (%d); "
                 "limiting prompt budget to %d tokens and completion budget to %d tokens",
                 input_setting,
-                prompt_budget,
+                configured_input,
                 output_setting,
                 configured_output,
                 context_setting,
@@ -300,6 +306,7 @@ def build_messages(  # noqa: PLR0913 - the builder mirrors the provider request 
     input_setting: str = "INPUT_TOKENS",
     output_setting: str = "OUTPUT_TOKENS",
     context_setting: str = "CONTEXT_WINDOW",
+    prompt_reserve_tokens: int = 0,
 ) -> list[dict[str, Any]]:
     """Build system, prior turns, and current user message in order.
 
@@ -318,6 +325,8 @@ def build_messages(  # noqa: PLR0913 - the builder mirrors the provider request 
         input_setting: Configuration key that supplied ``input_tokens``.
         output_setting: Configuration key that supplied ``output_tokens``.
         context_setting: Configuration key that supplied ``context_window``.
+        prompt_reserve_tokens: Fixed prompt tokens charged before the window
+            check, such as a provider instruction suffix.
 
     Returns:
         A message list containing the system message, any prior turns, and the
@@ -343,6 +352,7 @@ def build_messages(  # noqa: PLR0913 - the builder mirrors the provider request 
         input_setting=input_setting,
         output_setting=output_setting,
         context_setting=context_setting,
+        reserve_tokens=prompt_reserve_tokens,
     )
     if budget is None:
         return [system_entry, *history_entries, current_entry]
