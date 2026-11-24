@@ -143,6 +143,14 @@ def test_websockets_is_not_required_and_absence_is_harmless(monkeypatch) -> None
     assert missing == []
 
 
+def test_new_parser_dependencies_use_their_distribution_names() -> None:
+    """Import names with underscores map to the installable distribution names."""
+    distributions = gate.required_distributions()
+
+    assert distributions["tree_sitter"] == "tree-sitter"
+    assert distributions["tree_sitter_markdown"] == "tree-sitter-markdown"
+
+
 def test_satisfied_environment_passes() -> None:
     """The test environment has every required dependency installed."""
     success, missing = gate.check_dependencies()

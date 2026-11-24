@@ -20,6 +20,8 @@ dependencies = [
     "starlette>=1.2.1",
     "uvicorn>=0.34.0",
     "structlog>=25.5.0",
+    "tree-sitter>=0.27",
+    "tree-sitter-markdown>=0.5.4",
 ]
 urls = {"Homepage" = "https://github.com/johndotpub/DiscordianAI"}
 classifiers = [
@@ -56,6 +58,7 @@ dev = [
     "pytest-timeout>=2.4.0",
     "pytest-xdist[psutil]>=3.8.0",  # For parallel test execution
     "markdown-it-py>=4.0",  # Independent CommonMark oracle for sanitizer tests
+    "discord-markdown-ast-parser>=1.0.6",  # Test oracle for Discord markdown rules
     "coverage[toml]>=7.13.5",
     "PyYAML>=6.0",  # Parses docker-compose.yml and docs YAML in the container-asset tests
     "httpx2>=0.2.0",  # Required by starlette.testclient ≥1.0

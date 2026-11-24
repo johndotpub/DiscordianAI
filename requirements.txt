@@ -7,3 +7,5 @@ h2>=4.3.0
 starlette>=1.2.1
 uvicorn>=0.34.0
 structlog>=25.5.0
+tree-sitter>=0.27
+tree-sitter-markdown>=0.5.4

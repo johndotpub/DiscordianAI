@@ -23,6 +23,8 @@ _IMPORT_ERRORS = {"ImportError", "ModuleNotFoundError"}
 # Import names that differ from the distribution users need to install.
 _DISTRIBUTION_ALIASES = {
     "discord": "discord.py",
+    "tree_sitter": "tree-sitter",
+    "tree_sitter_markdown": "tree-sitter-markdown",
 }
 
 
