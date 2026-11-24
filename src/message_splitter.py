@@ -149,6 +149,18 @@ class _LinkSpan:
 
 
 _thread_state = threading.local()
+_PARSE_STATS = {"calls": 0, "bytes": 0}
+
+
+def _reset_parse_stats() -> None:
+    """Reset the parser work counters used by the delivery complexity test."""
+    _PARSE_STATS["calls"] = 0
+    _PARSE_STATS["bytes"] = 0
+
+
+def _parse_stats() -> dict[str, int]:
+    """Return a snapshot of the parser work counters."""
+    return dict(_PARSE_STATS)
 
 
 def _parsers() -> tuple[Parser, Parser]:
@@ -268,6 +280,8 @@ def _inline_infos_from_node(
     spans: list[_InlineInfo] = []
     try:
         inline_tree = inline_parser.parse(raw)
+        _PARSE_STATS["calls"] += 1
+        _PARSE_STATS["bytes"] += len(raw)
         inline_stack = [inline_tree.root_node]
         while inline_stack:
             child = inline_stack.pop()
@@ -304,6 +318,8 @@ def _parse_markdown(text: str, *, include_inline: bool = True) -> _MarkdownParse
     offsets = _byte_offsets(raw, text)
     block_parser, inline_parser = _parsers()
     tree = block_parser.parse(raw)
+    _PARSE_STATS["calls"] += 1
+    _PARSE_STATS["bytes"] += len(raw)
     fences: list[_FenceInfo] = []
     inline: list[_InlineInfo] = []
     stack = [tree.root_node]

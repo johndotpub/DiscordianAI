@@ -487,38 +487,43 @@ COMPLEXITY_SHAPES = [
 ]
 
 
-async def _best_delivery_time(shape: str, attempts: int = 3) -> float:
-    """Return the fastest of a few sanitise-and-deliver runs for one shape."""
-    best = float("inf")
-    for _attempt in range(attempts):
-        started = time.perf_counter()
-        sanitize_for_discord(shape)
-        channel = _RecordingChannel()
-        await send_formatted_message(channel, shape, _deps())
-        best = min(best, time.perf_counter() - started)
-    return best
+async def _delivery_parse_stats(shape: str) -> dict[str, int]:
+    """Return the parser work for one sanitise-and-deliver run of ``shape``."""
+    message_splitter._reset_parse_stats()
+    sanitize_for_discord(shape)
+    channel = _RecordingChannel()
+    await send_formatted_message(channel, shape, _deps())
+    return message_splitter._parse_stats()
 
 
 @pytest.mark.asyncio
 async def test_sanitise_and_deliver_are_not_superlinear() -> None:
-    """The bound is the behaviour under test, so this is a wall-clock guard.
+    """Doubling the input must not more than double the parser work.
 
-    Every adversarial shape is built at 32,000 and 64,000 characters. The
-    64,000-character run must stay under two seconds, and doubling the input
-    must not more than triple the best delivery time. The ratio is the real
-    guard; the absolute ceiling is deliberately generous. Both are wall-clock
-    assertions made on purpose because the complexity bound itself is the
-    behaviour under test.
+    The assertion counts bytes passed to ``Parser.parse`` and the number of
+    parse calls, not wall-clock seconds: a shared two-core CI machine makes
+    elapsed-time budgets flaky even when the code is linear. Every adversarial
+    shape is built at 32,000 and 64,000 characters. The 64,000-character run
+    may use 2.5 times the 32,000-character run's parser bytes plus a small
+    fixed constant, and at most three times its parse calls plus two. Both
+    bounds are work counters, so they measure the code rather than the host.
+
+    Revert check: making the sanitiser parse the whole input once per 1,024
+    bytes fails the bytes assertion because the counted work then grows with
+    the square of the input length.
     """
     for shape in COMPLEXITY_SHAPES:
         smaller = shape(32_000)
         larger = shape(64_000)
-        smaller_time = await _best_delivery_time(smaller)
-        larger_time = await _best_delivery_time(larger)
-        assert larger_time < 2.0, f"{larger_time:.2f}s for {len(larger)} characters"
-        assert larger_time / smaller_time < 3.0, (
-            f"{larger_time / smaller_time:.2f}x when doubling {len(smaller)} characters "
-            f"({smaller_time:.3f}s to {larger_time:.3f}s)"
+        smaller_stats = await _delivery_parse_stats(smaller)
+        larger_stats = await _delivery_parse_stats(larger)
+        assert larger_stats["bytes"] <= 2.5 * smaller_stats["bytes"] + 4096, (
+            f"{larger_stats['bytes']} parser bytes for {len(larger)} characters "
+            f"vs {smaller_stats['bytes']} for {len(smaller)}"
+        )
+        assert larger_stats["calls"] <= 3 * smaller_stats["calls"] + 2, (
+            f"{larger_stats['calls']} parse calls for {len(larger)} characters "
+            f"vs {smaller_stats['calls']} for {len(smaller)}"
         )
 
 
