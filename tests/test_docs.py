@@ -2,6 +2,7 @@
 
 import importlib
 import importlib.util
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -106,5 +107,13 @@ def test_docs_sphinx_build_is_warning_free(tmp_path):
         text=True,
         timeout=120,
         check=False,
+        env={
+            **os.environ,
+            "HTTP_PROXY": "http://127.0.0.1:9",
+            "HTTPS_PROXY": "http://127.0.0.1:9",
+            "http_proxy": "http://127.0.0.1:9",
+            "https_proxy": "http://127.0.0.1:9",
+            "DISCORDIANAI_DOCS_OFFLINE": "1",
+        },
     )
     assert result.returncode == 0, result.stdout + result.stderr

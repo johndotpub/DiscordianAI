@@ -1,5 +1,6 @@
 """Sphinx configuration for DiscordianAI API reference."""
 
+import os
 from pathlib import Path
 import sys
 
@@ -61,3 +62,5 @@ intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "discord": ("https://discordpy.readthedocs.io/en/stable", None),
 }
+if os.environ.get("DISCORDIANAI_DOCS_OFFLINE"):
+    intersphinx_mapping = {}
