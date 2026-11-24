@@ -538,11 +538,15 @@ class TestSafeDiscordSend:
         mock_channel.send.side_effect = Exception("Discord API error")
         mock_logger = Mock()
 
-        result = await safe_discord_send(mock_channel, "Test message", mock_logger, max_retries=2)
+        with patch("src.error_handling.asyncio.sleep") as sleep:
+            result = await safe_discord_send(
+                mock_channel, "Test message", mock_logger, max_retries=2
+            )
 
         assert result is False
         mock_logger.exception.assert_called_once()
         assert mock_channel.send.call_count == 2  # Should retry
+        sleep.assert_awaited_once()
 
     async def test_safe_discord_send_retry_success(self):
         """Test message sending succeeds after retry."""

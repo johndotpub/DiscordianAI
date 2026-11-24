@@ -309,6 +309,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests ✅
 
+- **The Discord send failure test patches its retry sleep.** The failure case waited a
+  real second before retrying; it now patches `src.error_handling.asyncio.sleep` and
+  asserts the one backoff, so the suite has no wall-clock wait on this path.
 - **The launcher stop test waits for the child before asserting.** The test used to
   check `kill -0` immediately after the stop helper returned, which raced the child's
   exit and intermittently exited 5. Waiting on the child first makes the test report a
