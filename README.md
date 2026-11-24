@@ -47,6 +47,11 @@ DiscordianAI is a Discord bot that routes each message to an OpenAI-compatible c
 5. **Run the bot**: `python -m src.main --conf config.ini` (or the installed console script: `discordianai --conf config.ini`).
 6. **Run tests** before shipping: `pytest` (coverage gate: 84% via tox/Codecov)
 
+Runtime dependencies are `discord.py`, `openai`, `httpx[http2]`, `h2`, `starlette`,
+`uvicorn`, `structlog`, `tree-sitter`, and `tree-sitter-markdown`; `pip install -r
+requirements.txt` or `pip install -e ".[dev]"` installs them. The two tree-sitter packages
+ship prebuilt CPython 3.12 wheels, so the slim container needs no compiler.
+
 Logs go to stderr. The bot does not open `bot.log`; the deprecated `LOG_FILE` setting is ignored. `bot.log` exists only when `discordian.sh` in daemon mode or a process supervisor captures stderr. Redirect stderr, or both streams with `>> bot.log 2>&1`; redirecting stdout alone produces an empty file.
 
 Need the full Discord bot creation walkthrough and environment prep? See [docs/Setup.md](docs/Setup.md).

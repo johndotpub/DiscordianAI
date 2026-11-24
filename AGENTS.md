@@ -83,6 +83,19 @@ broke it, and each break is a user-visible bug.
   `tests/test_delivery_helper.py::test_only_one_allowed_mentions_construction`,
   `tests/test_delivery_helper.py`, and `tests/test_golden_behaviour.py`.
 
+- **One parser decides what is code, and each chunk is sanitised after splitting.**
+  `message_splitter.protected_code_regions()` is the only code-region source for the
+  sanitiser and the splitter; it is built on `tree-sitter`/`tree-sitter-markdown` and keeps
+  only the conservative subset (closed exact three-backtick fence with no stray triple run,
+  or a closed inline span with an unescaped opener and one backtick run length). Outside
+  those regions the parser rewrite is followed by parse-independent passes that break
+  every `](`, neutralise every `://`, and separate `<` from a scheme. Every final chunk is
+  sanitised again, so a split cannot turn protected text into a live link, and no line is
+  ever deleted. *Why:* two hand-written code detectors disagreed and leaked links or
+  froze on long backtick runs. *Consequence:* a live link, content loss, or an event-loop
+  stall. *Check:* `tests/test_code_protection.py`, including the fixed thousand-case
+  differential corpus and the 64,000-character complexity guard.
+
 - **The breaker wraps the retry.** Every chat-completion call goes through
   `get_circuit_breaker(provider).call(retry_with_backoff, ...)`. The breaker wraps the whole
   retry sequence, so the retry sequence for one logical call counts as one failure
@@ -145,8 +158,9 @@ diff or with the named command.
   contain legacy imports of `MESSAGE_LIMIT`; do not add more.
 - **No new wall-clock assertions.** Patch `time.monotonic` and `asyncio.sleep` (see
   `tests/test_retry_policy.py`) instead of sleeping or asserting elapsed time. The
-  subprocess shutdown test and the fast-fail breaker test are deliberate exceptions because
-  the bound itself is the behaviour under test. Do not leave unawaited tasks, and reset
+  subprocess shutdown test, the fast-fail breaker test, and the 64,000-character delivery
+  complexity guard are deliberate exceptions because the bound itself is the behaviour
+  under test. Do not leave unawaited tasks, and reset
   shared mutable state between tests (`tests/conftest.py` resets the provider breakers).
 - **Shared fixtures live in `tests/conftest.py`.** A setup block copied three times is a
   defect. File-local fakes are fine when they are the boundary under test.

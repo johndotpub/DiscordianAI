@@ -92,7 +92,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 | **Citation Formatting** | `citation_formatting.py` | Renders numbered citations as markdown links for messages and embeds, and vets each URL before it can become clickable |
 | **Truncation** | `truncation.py` | Generic character-limit helper that appends the caller's own notice |
 | **Message Processor** | `message_processor.py` | Normalizes Discord events, delegates to orchestrator, records metadata |
-| **Message Splitter** | `message_splitter.py` | Message splitting, formatting, sanitization |
+| **Message Splitter** | `message_splitter.py` | Message splitting, formatting, sanitization, and the shared parser-backed code regions |
 | **API Validation** | `api_validation.py` | Configuration validation, API key format checks |
 
 ## ⚙️ Operational Features
@@ -299,6 +299,19 @@ DEFAULT_API_RETRY_CONFIG = RetryConfig(
 `max_attempts=2` means one initial request plus one retry. The exponential
 delay is capped at 30 seconds, then full jitter picks a random value below it;
 a 90-second overall deadline stops retries even when attempts remain.
+
+### 7. Parser-Backed Code Regions
+
+`src/message_splitter.py` uses `tree-sitter` and `tree-sitter-markdown` as runtime
+dependencies. The block grammar finds fenced code, and each inline node is reparsed with
+the inline grammar to find code spans, links, images, and autolinks. One function,
+`protected_code_regions()`, applies the conservative protection filter that both the
+sanitiser and the splitter use. Only a closed fence with exact three-backtick markers and
+no stray triple run, or a closed inline span with an unescaped opener in a text that uses
+one backtick run length, is protected. Sanitisation then rewrites parser spans outside
+those regions and applies parse-independent catch-all passes; splitting closes and reopens
+a fence and sanitises every final chunk again. The routing package keeps a separate masker
+because its contract is to remove code-shaped cues before a route decision.
 
 ## 🔐 Security Architecture
 

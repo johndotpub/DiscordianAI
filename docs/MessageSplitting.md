@@ -118,6 +118,35 @@ flowchart TD
     C --> K
 ```
 
+## Link and Code Protection
+
+Sanitisation and splitting use the same `protected_code_regions()` function in
+`src/message_splitter.py`, built on `tree-sitter-markdown`. Protection is deliberately
+smaller than the parser's view:
+
+- A fenced block is protected only when its opener and closer are exactly three backticks
+  and no other triple-backtick run appears outside it. Tilde fences, four-or-more-backtick
+  fences, indented code blocks, unclosed fences, and a text with any stray triple run
+  protect nothing.
+- An inline code span is protected only when it is closed, its opener is not
+  backslash-escaped, and the text uses a single backtick run length. Mixing run lengths is
+  ambiguous, so inline protection is dropped for that text.
+- Anything uncertain is ordinary text.
+
+Outside protected regions the sanitiser has two layers. The parser-driven layer rewrites
+links, images, and autolinks to their label text with the URL neutralised, except for a
+trusted citation URL from the allowlist. The catch-all layer does not depend on a parse:
+it breaks every `](`, inserts a zero-width space after every `://`, and separates `<` from
+a following URL scheme. Definition-shaped lines such as `[label]: destination` stay in the
+text; an invisible separator stops a CommonMark renderer from resolving them, and no line
+is ever deleted. Mentions are neutralised everywhere, including inside code.
+
+After splitting, every final chunk is sanitised again on its own. A URL that was inside an
+inline code span at the whole-message level is therefore neutralised when a split cuts the
+span before its closer. Fences are closed at the end of a chunk and reopened with the same
+language tag in the next. A split-only Discord pairing places boundaries for backtick runs
+that CommonMark does not treat as a fence; those extra spans never suppress sanitisation.
+
 ## Citation-Aware Splitting
 
 For Perplexity responses with citations, the splitting algorithm ensures citations remain functional. An embed head is also snapped so a split never falls inside a `[n]` citation marker or inside a code fence: a marker that would be cut moves whole into the next embed, and a long fence is closed and reopened with the same language tag.

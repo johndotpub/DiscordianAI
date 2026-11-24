@@ -158,19 +158,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Embed heads never split a citation marker or a code fence.** A split that would land
   inside `[n]` moves the marker whole into the next embed, and long fences are closed and
   reopened with the same language tag.
-- **Delivery uses one code-fence span builder and two matching rules.** The splitter
-  keeps its historical ``'``'`` rule so a split never cuts a block the model wrote; the
-  sanitiser applies CommonMark's line-start rule and treats an unclosed fence as uncertain.
-  The three now-unused code-block helpers and the smart orchestrator's fence-counting
-  shortcut are gone; routing keeps its own masker because cues inside dangling pasted code
-  must not decide a route.
-- **Link neutralisation fails closed at every code boundary.** A closing backtick run ends
-  an inline code span whatever precedes it; only the opening run can be backslash-escaped.
-  A closed fenced block still keeps link-like syntax and bare URLs unchanged, while an
-  unclosed fence makes the detector protect nothing. Link reference definitions are removed,
-  and a restored text that could now parse as a link is re-checked and stripped. Mention
-  neutralisation (`@everyone`, `@here`, raw user/role/channel mentions) still applies
-  everywhere, including inside code.
+- **One parser decides what is code, and every chunk is sanitised after splitting.**
+  `tree-sitter-markdown` supplies the spans to both the sanitiser and the splitter. Only a
+  closed fence opened and closed by exactly three backticks, with no other triple-backtick
+  run outside it, is protected; a closed inline code span is protected only when its opener
+  is not backslash-escaped and the text does not mix backtick run lengths. Tilde fences,
+  four-or-more-backtick fences, indented blocks, unclosed fences, and every uncertain shape
+  protect nothing. Outside those regions parser-reported links, images, and autolinks become
+  their label text or a neutralised URL, then catch-all passes break every `](`, add a
+  zero-width space after every `://`, and separate `<` from a following scheme. Definition
+  shaped lines stay as text with an invisible separator instead of being deleted. Chunk
+  boundaries use the same protected fences, close and reopen them with the same language
+  tag, and each final chunk is sanitised independently; a split-only Discord pairing still
+  places a boundary for a block CommonMark does not recognise, and those extra spans never
+  suppress sanitisation. Routing keeps its own masker because cues inside dangling pasted
+  code must not decide a route.
+- **No line is deleted to neutralise a link.** A line shaped `[label]: destination` is
+  ordinary text to Discord; its URL receives the zero-width space and the definition syntax
+  is broken with an invisible separator so a CommonMark renderer cannot resolve it. Several
+  URLs in one whitespace-free run are all neutralised, and nesting depth no longer limits
+  the rewrite. Mention neutralisation (`@everyone`, `@here`, raw user/role/channel mentions)
+  still applies everywhere, including inside code.
 
 ### Added ✨
 
@@ -196,6 +204,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`VISION_ENABLED`, `VISION_MAX_IMAGES`, `VISION_MAX_BYTES`, and `VISION_TOKEN_ESTIMATE`**:
   control image attachment handling, per-image size and count caps, and the flat prompt-token
   estimate charged per image during budget trimming.
+- **`tree-sitter` and `tree-sitter-markdown` are runtime dependencies.** Both are MIT
+  licensed, actively released, and ship prebuilt CPython 3.12 wheels for manylinux and
+  musllinux on x86_64 and aarch64, so the slim container needs no compiler. They provide the
+  shared code-region parser used by output sanitisation and message splitting.
 
 ### Changed 🔁
 
@@ -319,9 +331,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The Clef key is scoped to its endpoint.** `ROUTER_MODE=clef` no longer sends the chat provider's
   `OPENAI_API_KEY` to Ollama Cloud when `OPENAI_API_URL` points at another host. Existing Ollama Cloud
   deployments keep working with no config change.
+- **A link cannot survive a chunk boundary.** The sanitiser runs again on every final
+  chunk after splitting, and a split never protects text the region function did not
+  protect. A URL inside an inline code span that the split cuts is therefore neutralised in
+  the delivered chunk instead of becoming clickable.
 
 ### Tests ✅
 
+- **The code-region contract is checked with two independent parsers.** A fixed-seed corpus
+  of one thousand adversarial cases, the reported bypasses, and each delivered chunk are
+  rendered with markdown-it-py and parsed with discord-markdown-ast-parser; the complexity
+  guard sanitises and delivers 64,000-character adversarial shapes five times under a
+  generous two-second bound. The mutation checker now kills a removed `](` pass, a removed
+  `://` pass, and a delivery path that skips the per-chunk sanitiser.
 - **The mutation checker works on a scratch copy.** `scripts/mutation_check.py` copies
   the checkout (minus VCS state, caches, logs, local `*.ini`, and `.env`) into a temporary
   directory before applying mutations, so an interrupted run cannot corrupt the working
@@ -388,6 +410,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation 📝
 
+- **Delivery and security docs state the code-protection rule that ships.** The shared
+  region function, the two neutralisation layers, per-chunk sanitising, the no-deletion
+  rule, and the new runtime dependencies are recorded in `docs/MessageSplitting.md`,
+  `docs/Security.md`, `docs/Architecture.md`, and the dependency notes in the README and
+  setup guide.
 - **The scripts README matches the shipped tools.** The unimportable
   `debug_perplexity_citations.py` helper is deleted; `scripts/README.md` now documents
   only the scripts that exist, what each reads, and which ones write files by design.
