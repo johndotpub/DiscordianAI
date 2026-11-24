@@ -103,7 +103,7 @@ flowchart TD
     G --> OW["Chat Provider Response"]
     OW --> EMPTY{"Empty answer?"}
     EMPTY -->|"Yes, hybrid and no image"| H
-    EMPTY -->|"Yes, image request"| IERR["Service-unavailable notice<br/>(no Perplexity fallback)"]
+    EMPTY -->|"Yes, image request"| IERR["No-answer notice<br/>(hybrid: ai_service_unavailable;<br/>OpenAI-only: no_response_generated;<br/>no Perplexity fallback)"]
     EMPTY -->|"No"| WI{"Hybrid local answer indicates<br/>web-inability?"}
     WI -->|"Yes, Perplexity not tried"| H
     WI -->|"No or already tried"| U["Return local answer"]
@@ -230,8 +230,9 @@ The hybrid orchestrator (`smart_orchestrator.py`) provides bounded fallback betw
 - **Perplexity failure -> chat provider**: When the web answer fails, the orchestrator falls back to the
   OpenAI-compatible provider for a standard completion and marks the answer degraded.
 - **Images have no Perplexity fallback.** Perplexity-only mode refuses an image request, and an image
-  answer is never rerouted. If the chat provider returns no answer for an image request, the bot sends the
-  service-unavailable notice instead of calling Perplexity without the image.
+  answer is never rerouted. If the chat provider returns no answer for an image request, hybrid mode sends
+  the `ai_service_unavailable` notice and OpenAI-only mode sends `no_response_generated`; neither calls
+  Perplexity without the image.
 - **Web-inability reroute**: If the chat provider makes a first-person admission that it cannot browse the
   web, and Perplexity has not been tried in this request, the orchestrator reroutes once. General statements,
   quoted text, and creative or narrative output do not trigger this reroute. If Perplexity already failed,
@@ -267,7 +268,8 @@ counter runs out answers live questions from stale weights and cannot tell you i
 ### Routing decision logs
 
 Each hybrid decision logs one content-free line. The console format is
-`<iso timestamp> [level    ] <event> [<logger>]`; grep for the event text.
+`<iso timestamp> [level    ] <event> [<logger>] [channel_id=... guild_id=... user_id=...]`;
+the context fields appear when the logger adapter supplied them. Grep for the event text.
 
 ```
 2026-11-23T17:04:06Z [info     ] Routing decision: {'route': 'web', 'service': 'perplexity', 'router_id': 'gate', 'reasons': 'bearing:topic.volatile,bearing:time.deixis', 'latency_ms': 0.14} [discordianai.bot]

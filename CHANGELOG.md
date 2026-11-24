@@ -21,11 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the direct-message notice, instead of using a second hand-written copy.
 - **The launcher keeps one instance per config.** The restart loop no longer exits the
   script on its first second under `set -e`, and each config now records its PID in
-  `.bot-<stem>.pid`, so starting `production.ini` leaves a running `bot.ini` alone. The
-  straggler scan resolves each process's `--conf` against its working directory and
-  compares the absolute config path, so two checkouts that both use `bot.ini` no longer
-  match each other. A legacy `.bot.pid` is honoured only when its process runs the same
-  config. `--install-systemd` now starts the unit after enabling it.
+  `.bot-<stem>-<hash>.pid`, where the hash comes from the resolved absolute config path.
+  Starting `production.ini` leaves a running `bot.ini` alone, and two configs that share a
+  basename in different directories no longer share one PID file. The straggler scan reads
+  the NUL-separated argv, so a checkout path containing a space still matches, and compares
+  the absolute config path, so two checkouts that both use `bot.ini` no longer match each
+  other. A legacy `.bot.pid` is honoured only when its process runs the same config. The
+  force-kill wait is overridable with `DISCORDIANAI_STOP_TIMEOUT` for tests and unusual
+  supervisors. `--install-systemd` now starts the unit after enabling it.
 - **`LOG_FILE` is mentioned only when it is actually set.** The deprecated key has a
   built-in default, so every startup used to log an "ignored" notice while directing
   operators to stdout even though logs go to stderr. The notice now appears only when the
@@ -38,10 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still disables its provider.
 - **Config values are literal, and a bad config file stops startup.** A `%` in a prompt or
   secret (for example `SYSTEM_MESSAGE=I am 100% sure`) no longer breaks parsing, and `%%` is
-  kept as two characters instead of being collapsed. A missing `--conf` file already failed
-  startup; an unreadable, duplicated, or malformed file now fails the same way, with the file
-  path, the error class, and any source line numbers, without quoting the offending line or
-  chaining the parser exception. Files are read as UTF-8 and a decode error is fatal.
+  kept as two characters instead of being collapsed. A missing, unreadable, duplicated, or
+  malformed `--conf` file now stops startup with the file path, the error class, and any
+  source line numbers, without quoting the offending line or chaining the parser exception.
+  Files are read as UTF-8 and a decode error is fatal.
 - **Perplexity prompts fit the Sonar context window.** The web path now budgets prompts with
   `PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW` (111,000 and 128,000 by default)
   instead of the chat provider's 250,000 and 1,000,000. The fixed `fetch_url` instruction
@@ -50,7 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   model page (the Agent API models page publishes no context figure). Both Perplexity
   limits must be positive integers like the shared limits, and an operator who lowers
   `INPUT_TOKENS` or `CONTEXT_WINDOW` still caps the Perplexity prompt with the smaller
-  value.
+  value. `INPUT_TOKENS` and `PERPLEXITY_INPUT_TOKENS` also share a 1,000-token minimum, so a
+  budget that would cut a real question to a fragment is rejected at startup.
 - **Pasted code and logs stay local.** A version string, current year, price, or other bearing cue inside
   a fenced code block no longer routes the message to web search; bearing and override cues are extracted
   from the code-masked view, and text outside the fence still counts as before. Code-shape and traceback
@@ -74,12 +78,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Shutdown closes provider resources before Discord.** Message intake stops first, then
   the provider connection pools and the router's HTTP client close, and Discord closes
   last inside the existing 8-second guard. Closing Discord first let `Client.run` finish
-  and cancel the rest of shutdown, leaking those HTTP connections on a normal stop.
+  and cancel the rest of shutdown, leaking those HTTP connections on a normal stop. Any
+  exception raised during shutdown is logged and the process still exits 0.
 - **Configuration errors make a provider unhealthy; a user's bad request does not.**
-  A 401, 403, or 404 now counts as a provider failure, so a revoked key or retired model
-  shows up as degraded or unhealthy on `/health` instead of looking healthy while every
-  call fails. A 400, 409, 413, 422, or other user-caused client error stays neutral: it
-  releases a half-open probe without stamping a success or moving any counter.
+  A 401, 403, or 404 now counts as a provider failure, and so does a 400 whose structured
+  error type or code reports `invalid_model` or `model_not_found`. A revoked key or a
+  retired model therefore shows up as degraded or unhealthy on `/health` instead of looking
+  healthy while every call fails. A 400, 409, 413, 422, or other user-caused client error
+  stays neutral: it releases a half-open probe without stamping a success or moving any
+  counter.
 - **Startup reachability checks log one line per provider.** Each checked service
   reports its status, latency, and classified error type; provider text, request
   and response bodies, and keys are not logged.
@@ -151,15 +158,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Embed heads never split a citation marker or a code fence.** A split that would land
   inside `[n]` moves the marker whole into the next embed, and long fences are closed and
   reopened with the same language tag.
-- **Delivery uses one code-fence detector.** The message splitter and the link
-  sanitiser now share the same rule for the fences Discord renders, so an unclosed or
-  escaped marker is literal in both paths. The three now-unused code-block helpers and
-  the smart orchestrator's fence-counting shortcut are gone; routing keeps its own
-  masker because cues inside dangling pasted code must not decide a route.
-- **Link neutralisation skips only code Discord renders.** A closed fenced block and a
-  balanced, unescaped inline code span keep link-like syntax and bare URLs unchanged, while
-  an untrusted link is still stripped when its label is inline code. An unclosed fence or a
-  backslash-escaped backtick is literal text, so a link after it is neutralised. Mention
+- **Delivery uses one code-fence span builder and two matching rules.** The splitter
+  keeps its historical ``'``'`` rule so a split never cuts a block the model wrote; the
+  sanitiser applies CommonMark's line-start rule and treats an unclosed fence as uncertain.
+  The three now-unused code-block helpers and the smart orchestrator's fence-counting
+  shortcut are gone; routing keeps its own masker because cues inside dangling pasted code
+  must not decide a route.
+- **Link neutralisation fails closed at every code boundary.** A closing backtick run ends
+  an inline code span whatever precedes it; only the opening run can be backslash-escaped.
+  A closed fenced block still keeps link-like syntax and bare URLs unchanged, while an
+  unclosed fence makes the detector protect nothing. Link reference definitions are removed,
+  and a restored text that could now parse as a link is re-checked and stripped. Mention
   neutralisation (`@everyone`, `@here`, raw user/role/channel mentions) still applies
   everywhere, including inside code.
 
@@ -223,10 +232,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
-- **Client errors no longer open the provider breaker.** A deterministic 4xx (anything
-  400–499 except 408 and 429) means the provider answered and rejected the request, so it
-  does not count as a failure or mark the provider unhealthy; a success while the breaker
-  is closed now clears the consecutive-failure count.
+- **User-caused client errors no longer open the provider breaker.** A deterministic 4xx
+  caused by the request itself (400, 409, 413, 422, and other client errors except 401, 403,
+  404, 408, and 429) means the provider answered and rejected the request, so it does not
+  count as a failure or mark the provider unhealthy; a success while the breaker is closed
+  now clears the consecutive-failure count. A 400 with `invalid_model` or `model_not_found`
+  is a configuration error and counts.
 - **Retries follow the wrapped transport cause.** A connect timeout is retried because no
   request was sent, while read timeouts, read errors, and protocol errors after send are
   not. A host:port number such as `:443` in a connect message is no longer read as an HTTP
@@ -235,9 +246,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Unclassified exceptions are not retried.** The retry policy now refuses an exception
   it cannot classify instead of treating the unknown type as transient. Built-in
   `ConnectionError` still classifies as a network error and remains retryable.
-- **The budget-conflict warning names the path's own keys.** A Perplexity request that
-  exceeds its window reports `PERPLEXITY_INPUT_TOKENS`, `PERPLEXITY_OUTPUT_TOKENS`, and
-  `PERPLEXITY_CONTEXT_WINDOW` instead of the shared chat keys.
+- **The budget-conflict warning names the key that supplied each value.** A Perplexity
+  request that exceeds its window reports the effective prompt and context keys, so a
+  lowered shared `INPUT_TOKENS` or `CONTEXT_WINDOW` is named as the shared key rather than
+  as the Sonar default it replaced.
 - **An idle provider no longer reads unhealthy.** A configured provider that has never been
   called and has no recorded failure is healthy; only an open breaker or a failure after the
   last success degrades it. `last_success_age_seconds` and `last_success_stale` remain
@@ -350,6 +362,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   round-tripping; multimodal message shape; image-aware token accounting and truncation; cache
   keys scoped by image digest; image-only messages; disabled-vision short-circuiting; local route
   forcing; Perplexity refusal; and history labels without base64.
+- **The sanitiser is checked against an independent CommonMark parser.** A fixed-seed
+  corpus of backticks, fences, escapes, autolinks, reference links, and inline-code labels
+  is rendered with `markdown-it-py`; any `<a>` element or surviving mention fails the test,
+  and the same corpus runs through the embed description path.
+- **Provider environment variables cannot leak into a test.** An autouse fixture removes
+  `OLLAMA_*`, `OPENAI_*`, `PERPLEXITY_*`, `ROUTER_*`, and `DISCORD_TOKEN` before each test,
+  so the suite is identical under `env -i` and the normal shell.
+- **A retired model is not a neutral 400.** A real SDK `BadRequestError` built from the
+  provider's `invalid_model` response and the OpenAI-style `model_not_found` body opens the
+  provider breaker and makes `/health` report the provider degraded.
+- **A tiny prompt budget is rejected.** `INPUT_TOKENS` and `PERPLEXITY_INPUT_TOKENS` below
+  1,000 are startup errors, while 1,000 is accepted.
+- **The launcher reads its stop timeout and PID assignment from code.** The
+  `DISCORDIANAI_STOP_TIMEOUT` override is exercised, the script's own `PID_FILE=` line is
+  evaluated for two configs that share a basename, and a config path with a space is matched
+  by the straggler scan.
+- **A truncated chunk closes its open fence.** A one-chunk cut inside a fenced code block
+  ends with the closing marker before the length notice.
+
 - **Delivery splitting coverage** checks a long fence spanning three or more messages with
   every line delivered and balanced fences, prose after the fence, the first-chunk mention
   limit, the chunk-cap notice's original length, citation-marker and fence safety in embed
@@ -383,8 +414,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Clef no longer reuses the chat key for a local daemon URL.** With an `OPENAI_API_URL`
   such as `http://localhost:11434/v1/`, `OPENAI_API_KEY` is not eligible for Clef. Set
   `ROUTER_CLEF_API_KEY` or `OLLAMA_API_KEY` to use `ROUTER_MODE=clef`.
+- **A missing `--conf` file now stops startup.** The 0.4.0 launcher allowed a missing file
+  to fall through to environment defaults; an explicitly requested file must now exist.
 - **The launcher PID file is per config.** An existing `.bot.pid` is honoured only when its
-  process runs the same config, then removed; new runs write `.bot-<stem>.pid`.
+  process runs the same config, then removed; new runs write
+  `.bot-<stem>-<hash>.pid`.
 
 ## [0.4.0] - 2026-10-28
 
@@ -513,7 +547,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Implementation scope**: critical bug fixes, config cleanup, async HTTP modernization, docs refresh, and test hardening.
 - **Release quality**: all changes are aligned to current code paths and no stale descriptions remain.
 
-### Fixed 🔧 — Dependency & Configuration (VectorContext QA)
+### Fixed 🔧 — Dependency & Configuration (internal QA)
 - **`websockets` dependency**: Added `websockets>=16.0` to `requirements.txt` to match `pyproject.toml` declaration and ensure Docker builds include the runtime dependency.
 - **`ConnectionPool` config parsing**: Wired `[ConnectionPool]` section parser (`_parse_connection_pool_config()`) into `load_config()` — this section was documented in `config.ini.example` and had defaults defined, but was silently ignored at runtime.
 - **`ENTITY_DETECTION_MIN_WORDS`**: Now reads from config file and environment variables (was documented but unimplemented in the parser).

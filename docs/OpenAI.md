@@ -138,8 +138,9 @@ INPUT_TOKENS=60000    # Adjust based on conversation length
 
 ## Monitoring & Debugging
 
-The console format is `<iso timestamp> [level    ] <event> [<logger>]`; grep for the
-event text. A runtime line from the bot uses the `discordianai.bot` logger.
+The console format is `<iso timestamp> [level    ] <event> [<logger>] [field=value ...]`;
+`channel_id`, `guild_id`, and `user_id` follow the logger when the message logger supplied
+them. Grep for the event text. A runtime line from the bot uses the `discordianai.bot` logger.
 
 ### Response Logs
 ```

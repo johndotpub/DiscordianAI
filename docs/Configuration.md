@@ -59,9 +59,11 @@ a 10% safety margin and a small per-message overhead. Oldest question/answer pai
 trimmed first; an oversized message is truncated with a visible marker. The prompt budget
 also leaves room for the provider's output cap inside `CONTEXT_WINDOW`; if the input and
 output budgets exceed `CONTEXT_WINDOW`, the context window wins and a warning naming the
-conflicting settings is logged. On the Perplexity path the warning names
-`PERPLEXITY_INPUT_TOKENS`, `PERPLEXITY_OUTPUT_TOKENS`, and
-`PERPLEXITY_CONTEXT_WINDOW`; the chat path names the shared keys.
+conflicting settings is logged. On the Perplexity path the warning names whichever key
+supplied each effective value: `PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW` by
+default, or the shared `INPUT_TOKENS` and `CONTEXT_WINDOW` when a lowered shared limit caps
+the Sonar prompt. `PERPLEXITY_OUTPUT_TOKENS` names the completion cap, and the chat path
+names the shared keys.
 
 The chat and Perplexity paths have different windows. Chat requests use `INPUT_TOKENS` and
 `CONTEXT_WINDOW`; Perplexity requests use `PERPLEXITY_INPUT_TOKENS` and
@@ -72,8 +74,11 @@ context length (the Agent API models page publishes no figure) rather than the c
 Perplexity prompts, so an existing budget keeps constraining the web path. The Perplexity
 prompt budget also reserves the fixed `fetch_url` instruction suffix before history is
 trimmed, so a full prompt plus `PERPLEXITY_OUTPUT_TOKENS` fits the Sonar window. All four
-prompt-budget and context-window keys must be positive integers; zero or a malformed value
-stops startup.
+prompt-budget and context-window keys must be positive integers. `INPUT_TOKENS` and
+`PERPLEXITY_INPUT_TOKENS` must be at least 1,000; a parsed value below its minimum, or a
+non-positive value, stops startup with an error naming the key. A value that cannot be parsed
+at all (for example `INPUT_TOKENS=not_an_integer` in `config.ini` or the environment) is
+reported with a warning and the documented default applies.
 
 #### Web Tools
 - **`WEB_TOOLS`**: Offer native web search and page fetch to Ollama-compatible chat providers; OpenAI endpoints never receive these tools *(default: true)*
@@ -136,8 +141,9 @@ Lightweight HTTP health checks for Docker and Kubernetes deployments.
 - **`HEALTH_PROVIDER_STALE_SECONDS`**: Seconds after a provider's last success before the informational `last_success_stale` flag is set; it does not change health status *(default: `300`)*
 
 A configured provider is `unhealthy` when its breaker is open, `degraded` when it is half-open or when a
-failure happened after its last success, and `healthy` otherwise. A provider that has never been called is
-healthy: silence is not a failure. The payload still reports
+failure happened after its last success, and `healthy` otherwise. A configuration error (401, 403,
+404, or a 400 that reports an invalid or missing model) counts as a failure; a user-caused client
+error does not. A provider that has never been called is healthy: silence is not a failure. The payload still reports
 `last_success_age_seconds` and `last_success_stale` for diagnostics, but neither decides health.
 
 Readiness also requires a live Discord gateway connection. The bot records disconnect and resume events,
@@ -388,9 +394,9 @@ interpolation marker, so write `SYSTEM_MESSAGE=I am 100% sure` without escaping 
 `%%` is kept as two characters rather than collapsed to one. Duplicate keys are not
 merged.
 
-A file passed with `--conf` must exist; a missing file has always failed startup. An
-unreadable file, a permission error, a duplicated key, or a malformed section now also
-stops startup with an error that names the file, the error class, and any source line
+A file passed with `--conf` must exist. A missing file, an unreadable file, a permission
+error, a duplicated key, or a malformed section stops startup with an error that names the
+file, the error class, and any source line
 numbers. It does not reproduce the offending line or the parser's message, because that
 text can contain a token or another secret. Files are read as UTF-8; a decode error is
 fatal. The bot never continues with built-in defaults after a config file fails to load;
@@ -404,7 +410,7 @@ model does not select that provider. Three settings keep an explicit empty meani
 
 ### Startup Validation
 - **Required Fields**: Ensures DISCORD_TOKEN and the credentials for every configured provider are present
-- **Errors Abort Startup**: Missing credentials, malformed base URLs, non-positive limits, output caps above 128,000, and an unknown `ROUTER_MODE` stop the process
+- **Errors Abort Startup**: Missing credentials, malformed base URLs, non-positive limits, prompt budgets below 1,000, output caps above 128,000, and an unknown `ROUTER_MODE` stop the process
 - **Warnings Continue**: Non-standard provider base URLs, small chat-provider output caps, non-`sk-` OpenAI-compatible keys, and other provider-tolerated settings are logged without blocking startup
 - **Value Validation**: Checks integer fields, validates rate limits, and ensures proper data types
 

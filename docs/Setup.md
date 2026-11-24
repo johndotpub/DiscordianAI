@@ -163,12 +163,14 @@ The bot writes logs to stderr. Where they end up depends on how you started it:
 
 When `bot.log` is being written by the supervisor or your redirect, grep for the event
 text rather than a bare level prefix. The console format is
-`<iso timestamp> [info     ] <event> [<logger>]`, for example:
+`<iso timestamp> [level    ] <event> [<logger>] [field=value ...]`; the trailing
+fields include `channel_id`, `guild_id`, and `user_id` when the message logger
+supplied that context. For example:
 
 ```
 2026-11-23T17:04:06Z [info     ] Bot logged in as YourBotName (ID: 123456789012345678) [discordianai.bot]
 2026-11-23T17:04:06Z [info     ] Running in hybrid mode (OpenAI + Perplexity); smart orchestration enabled [discordianai.bot]
-2026-11-23T17:04:06Z [info     ] Processing message (ID: 123456789012345678, length: 42) [discordianai.bot]
+2026-11-23T17:04:06Z [info     ] Processing message (ID: 123456789012345678, length: 42) [discordianai.bot] channel_id=123456789012345678 guild_id=123456789012345679 user_id=987654321098765432
 2026-11-23T17:04:06Z [info     ] Routing decision: {'route': 'web', 'service': 'perplexity', ...} [discordianai.bot]
 ```
 
