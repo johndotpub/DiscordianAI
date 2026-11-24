@@ -162,7 +162,8 @@ abort startup with a non-zero exit: missing Discord credentials, a missing key
 for a configured provider, invalid Perplexity key formats, malformed or
 non-absolute base URLs, non-integer or non-positive rate/input/context limits,
 output-token caps outside 1..128,000 (a fixed ceiling independent of the context
-window), and invalid presence or activity values.
+window), an unknown `ROUTER_MODE` (only `heuristic` and `clef` are accepted), and
+invalid presence or activity values.
 Warnings are logged and startup continues: non-`sk-` OpenAI-compatible key
 formats, well-formed non-standard provider URLs, unusually small or large token
 values, high rate limits, and a missing channel allowlist.

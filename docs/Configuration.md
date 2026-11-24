@@ -68,7 +68,7 @@ The chat and Perplexity paths have different windows. Chat requests use `INPUT_T
 `PERPLEXITY_CONTEXT_WINDOW` because the former Sonar model page documented a 128K-token
 context length (the Agent API models page publishes no figure) rather than the chat model's
 1,000,000. When the operator lowers the shared `INPUT_TOKENS` or
-`CONTEXT_WINDOW` below the Perplexity value, the smaller shared limit also applies to
+`CONTEXT_WINDOW` below the Perplexity value, the smaller chat value also applies to
 Perplexity prompts, so an existing budget keeps constraining the web path. The Perplexity
 prompt budget also reserves the fixed `fetch_url` instruction suffix before history is
 trimmed, so a full prompt plus `PERPLEXITY_OUTPUT_TOKENS` fits the Sonar window. All four
@@ -141,8 +141,8 @@ healthy: silence is not a failure. The payload still reports
 `last_success_age_seconds` and `last_success_stale` for diagnostics, but neither decides health.
 
 Readiness also requires a live Discord gateway connection. The bot records disconnect and resume events,
-so `/health` reports `discord: disconnected` and `/health/ready` returns 503 during an outage even though
-discord.py's `is_ready()` remains set.
+so `/health` and `/health/ready` return 503 during an outage even though discord.py's
+`is_ready()` remains set.
 
 > **No cost cap.** Routing carries no budget knob: the gate decides from the message alone, so spend
 > follows the message mix rather than a configured ceiling. Measured precision also falls on trap-heavy
@@ -302,6 +302,8 @@ export ACTIVITY_STATUS="Humans"
 # AI service settings
 export OPENAI_API_KEY="your_ollama_cloud_key"
 export OPENAI_API_URL="https://ollama.com/v1/"
+# Optional Clef fallback key; environment only, not a config.ini key.
+export OLLAMA_API_KEY="your_ollama_cloud_key"
 export PERPLEXITY_API_KEY="your_perplexity_key"
 export PERPLEXITY_API_URL="https://api.perplexity.ai"
 export PERPLEXITY_MODEL="perplexity/sonar"
@@ -331,6 +333,8 @@ export USER_LOCK_CLEANUP_INTERVAL="3600"
 export ENTITY_DETECTION_MIN_WORDS="10"
 export ROUTER_MODE="heuristic"
 export ROUTER_CLEF_API_KEY="your_clef_key"
+# Resolution order: ROUTER_CLEF_API_KEY, then OLLAMA_API_KEY, then
+# OPENAI_API_KEY only when OPENAI_API_URL is an ollama.com URL.
 export ROUTER_CLEF_MODEL="clef"
 export ROUTER_CLEF_THRESHOLD="0.5"
 export ROUTER_CLEF_TIMEOUT_MS="2000"
@@ -384,22 +388,23 @@ interpolation marker, so write `SYSTEM_MESSAGE=I am 100% sure` without escaping 
 `%%` is kept as two characters rather than collapsed to one. Duplicate keys are not
 merged.
 
-A file passed with `--conf` must be readable and syntactically valid. A missing file,
-a permission error, a duplicated key, or a malformed section stops startup with an
-error that names the file, the error class, and any source line numbers. It does not
-reproduce the offending line or the parser's message, because that text can contain a
-token or another secret. The bot never continues with built-in defaults after a config
-file fails to load; omit `--conf` to run from environment variables and defaults.
+A file passed with `--conf` must exist; a missing file has always failed startup. An
+unreadable file, a permission error, a duplicated key, or a malformed section now also
+stops startup with an error that names the file, the error class, and any source line
+numbers. It does not reproduce the offending line or the parser's message, because that
+text can contain a token or another secret. Files are read as UTF-8; a decode error is
+fatal. The bot never continues with built-in defaults after a config file fails to load;
+omit `--conf` to run from environment variables and defaults.
 
 An empty value means the setting is not set, so its documented default applies. This
 applies to config-file values and environment overrides alike: a blank provider URL or
-model does not select that provider. Two settings keep an explicit empty meaning: a blank
+model does not select that provider. Three settings keep an explicit empty meaning: a blank
 `OPENAI_API_KEY` or `PERPLEXITY_API_KEY` disables that provider, and a blank
 `REASONING_EFFORT` omits the parameter from chat requests.
 
 ### Startup Validation
 - **Required Fields**: Ensures DISCORD_TOKEN and the credentials for every configured provider are present
-- **Errors Abort Startup**: Missing credentials, malformed base URLs, non-positive limits, and output caps above 128,000 stop the process
+- **Errors Abort Startup**: Missing credentials, malformed base URLs, non-positive limits, output caps above 128,000, and an unknown `ROUTER_MODE` stop the process
 - **Warnings Continue**: Non-standard provider base URLs, small chat-provider output caps, non-`sk-` OpenAI-compatible keys, and other provider-tolerated settings are logged without blocking startup
 - **Value Validation**: Checks integer fields, validates rate limits, and ensures proper data types
 

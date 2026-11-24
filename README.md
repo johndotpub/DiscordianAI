@@ -80,9 +80,9 @@ The included [discordian.sh](discordian.sh) script handles Python environment re
 ./discordian.sh --install-systemd bot.ini
 ```
 
-The launcher resolves Python in this order: pyenv → project-local `.venv` → shell venv → system `python3`. It creates a `.venv/` automatically if none exists. It also ensures the working directory is correct — no more `ModuleNotFoundError: No module named 'src'` when running from cron. In daemon mode it redirects both stdout and stderr to `bot.log` (`>> bot.log 2>&1`) and records the process ID in `.bot.pid`.
+The launcher resolves Python in this order: pyenv → project-local `.venv` → shell venv → system `python3`. It creates a `.venv/` automatically if none exists. It also ensures the working directory is correct — no more `ModuleNotFoundError: No module named 'src'` when running from cron. In daemon mode it redirects both stdout and stderr to `bot.log` (`>> bot.log 2>&1`) and records each config's process ID in `.bot-<stem>.pid` (for example `.bot-bot.pid`).
 
-`--install-systemd` generates a complete systemd user unit from the config file name (e.g., `bot.ini` → `discordian-bot@bot.service`), writes it to `~/.config/systemd/user/`, enables it, and prints management commands. See [docs/Daemon.md](docs/Daemon.md) for both cron and systemd setup. The shipped logrotate fragment is [contrib/logrotate/discordianai](contrib/logrotate/discordianai); it uses `copytruncate` because the bot never reopens a log file it did not open.
+`--install-systemd` generates a complete systemd user unit from the config file name (e.g., `bot.ini` → `discordian-bot@bot.service`), writes it to `~/.config/systemd/user/`, enables and starts it, and prints management commands. See [docs/Daemon.md](docs/Daemon.md) for both cron and systemd setup. The shipped logrotate fragment is [contrib/logrotate/discordianai](contrib/logrotate/discordianai); it uses `copytruncate` because the bot never reopens a log file it did not open.
 
 ## Configuration Essentials
 
@@ -93,12 +93,19 @@ The launcher resolves Python in this order: pyenv → project-local `.venv` → 
 | `PERPLEXITY_MODEL` | Perplexity model name. Default `perplexity/sonar`, the current Agent API Sonar model. Legacy Sonar names still answer on Chat Completions but are not used by this bot.
 | `INPUT_TOKENS` / `OUTPUT_TOKENS` | Prompt budget and chat completion cap. `OUTPUT_TOKENS` is sent as `max_tokens` and includes reasoning tokens.
 | `PERPLEXITY_OUTPUT_TOKENS` | Perplexity completion cap, sent as `max_output_tokens` to the Agent API (output only). Defaults to `OUTPUT_TOKENS`.
-| `CONTEXT_WINDOW` | Shared context window (default 1000000). The default chat model's window is 1,000,000 tokens; the value feeds the prompt budget and truncation, not billing.
+| `PERPLEXITY_INPUT_TOKENS` | Prompt budget for the Perplexity web path (default 111000). History is trimmed to it after the fixed `fetch_url` instructions are reserved.
+| `CONTEXT_WINDOW` | Chat-provider context window (default 1000000). The default chat model's window is 1,000,000 tokens; the value feeds the prompt budget and truncation, not billing.
+| `PERPLEXITY_CONTEXT_WINDOW` | Perplexity web-path context window (default 128000). The figure comes from the former Sonar model page; the Agent API models page publishes none, so 128K is unverified there.
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | How many recent messages to inspect when a follow-up inherits the previous provider.
 | `ROUTER_MODE` | Router implementation, `heuristic` by default (deterministic, no network). `clef` uses Ollama Cloud's decision model (~0.4 s per message, billed per token) and falls back to the heuristic on failure; `model` is retired and raises.
 | `CONVERSATION_TTL_SECONDS` | Idle seconds before a conversation and its lock are evicted (default 7200).
 | `WEB_TOOLS` | Offer native web search and page fetch to Ollama-compatible chat providers (default true); OpenAI endpoints never receive these tools.
 | `OPENAI_MAX_CONNECTIONS` / `PERPLEXITY_MAX_CONNECTIONS` | HTTP/2 pool connection limits for each API client.
+
+`CONTEXT_WINDOW` is the chat-provider window, not a value shared with Perplexity. Perplexity
+uses `PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW`; if an operator explicitly
+lowers `INPUT_TOKENS` or `CONTEXT_WINDOW`, the smaller chat value also caps the Perplexity
+prompt.
 
 ### Channel Targeting
 

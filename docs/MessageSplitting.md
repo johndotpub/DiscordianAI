@@ -4,6 +4,15 @@ DiscordianAI implements intelligent message splitting to handle Discord's charac
 
 > **Note**: The constants `EMBED_LIMIT` and `EMBED_SAFE_LIMIT` referenced in this document are defined in `src/config.py`.
 
+## Delivery Policy
+
+Every model-derived answer is sent with `channel.send` by the private `_deliver()` helper in
+`src/message_splitter.py`. When there is an original message, the helper builds the reply
+reference with `to_reference(fail_if_not_exists=False)`, so the answer still arrives if the
+question was deleted, disables the implicit author mention with `mention_author=False`, and
+allows mentions only for the human author. No module calls `Message.reply`; fixed operational
+notices use `error_handling.safe_discord_send()` instead of this path.
+
 ## Discord Character Limits
 
 ### Regular Messages
@@ -80,12 +89,14 @@ flowchart TD
 
 ### Code Block Preservation
 
-A split never leaves a closed code fence unbalanced. If the split point falls inside a
-fenced block that fits in one chunk, the split moves after the block. If the
-block is longer than a chunk, the split moves to a line boundary inside it,
-closes the fence at the end of the chunk, and reopens it with the same language
-tag at the start of the next chunk. A single line longer than the available
-space is hard-wrapped; it is not dropped.
+A split never leaves a closed code fence unbalanced. If the preferred split point falls
+inside a fenced block:
+
+1. When the block ends within the chunk limit, the split moves after the block.
+2. Otherwise, when there is content before the block, the split moves before it.
+3. Otherwise the split moves to a line boundary inside the block, closes the fence at the
+   end of the chunk, and reopens it with the same language tag at the start of the next
+   chunk. A single line longer than the available space is hard-wrapped; it is not dropped.
 
 ```mermaid
 flowchart TD
@@ -289,7 +300,7 @@ cap. DiscordianAI treats that as a partial answer, not a complete one:
 - The notice is one constant line, `TRUNCATION_NOTICE`, appended by
   `append_truncation_notice()`. It is never part of the model output or the conversation
   history, so follow-up turns do not replay it.
-- An embed answer carries the notice in its description; a plain answer carries it after the
+- An embed answer carries the notice in its description; a plain answer carries it inside the
   final text chunk.
 
 ## Advanced Configuration
