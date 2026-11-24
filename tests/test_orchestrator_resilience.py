@@ -9,7 +9,11 @@ from src.conversation_manager import ThreadSafeConversationManager
 from src.models import AIClients, AIConfig, AIRequest
 from src.routing.contracts import RouteDecision
 from src.routing.lexicon import LexiconError
-from src.smart_orchestrator import _process_hybrid_mode, get_smart_response
+from src.smart_orchestrator import (
+    _build_route_decision,
+    _process_hybrid_mode,
+    get_smart_response,
+)
 
 
 def _request(message, manager):
@@ -286,6 +290,31 @@ async def test_injected_router_is_reused_instead_of_rebuilt():
     assert response == "A successful local answer"
     builder.assert_not_called()
     router.decide.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_default_router_is_built_once_per_configuration():
+    """Without an injected router, the fallback construction is cached."""
+    manager = MagicMock(spec=ThreadSafeConversationManager)
+    manager.get_recent_ai_service.return_value = None
+    manager.get_conversation.return_value = []
+    request = _request("Tell me something interesting", manager)
+    router = MagicMock()
+    router.decide = AsyncMock(
+        return_value=RouteDecision(
+            route="local",
+            reasons=("local:default",),
+            text="Tell me something interesting",
+        )
+    )
+    config = {"ROUTER_MODE": "heuristic"}
+
+    with patch("src.smart_orchestrator.build_router", return_value=router) as builder:
+        await _build_route_decision(request, config)
+        await _build_route_decision(request, config)
+
+    builder.assert_called_once()
+    assert router.decide.await_count == 2
 
 
 def _failing_chat_client(error):

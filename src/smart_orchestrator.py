@@ -5,8 +5,9 @@ message, then calls the selected provider, handles fallback, and records the
 successful turn in conversation history.
 """
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
+import os
 import re
 from typing import Any
 
@@ -349,6 +350,60 @@ def _lookback(orchestrator_config: dict | None) -> int:
     )
 
 
+_DEFAULT_ROUTERS: dict[tuple[Any, ...], Any] = {}
+
+
+def _configured_router_value(config: Mapping | None, key: str) -> Any:
+    """Return the value ``build_router`` would read for ``key``."""
+    if isinstance(config, Mapping):
+        if key in config:
+            return config[key]
+    elif config is not None and hasattr(config, key):
+        return getattr(config, key)
+    return os.environ.get(key)
+
+
+def _eligible_key_value(config: Mapping | None, key: str) -> str | None:
+    """Return a non-blank config value, a non-blank environment value, or None."""
+    value = _configured_router_value(config, key)
+    if value is not None and str(value).strip():
+        return str(value).strip()
+    env_value = os.environ.get(key)
+    if env_value is not None and env_value.strip():
+        return env_value.strip()
+    return None
+
+
+def _router_cache_key(config: Mapping | None) -> tuple[Any, ...]:
+    """Return a hashable snapshot of every setting ``build_router`` reads."""
+    return (
+        build_router,
+        _configured_router_value(config, "ROUTER_MODE"),
+        _eligible_key_value(config, "ROUTER_CLEF_API_KEY"),
+        os.environ.get("OLLAMA_API_KEY"),
+        _eligible_key_value(config, "OPENAI_API_KEY"),
+        _configured_router_value(config, "OPENAI_API_URL"),
+        _configured_router_value(config, "ROUTER_CLEF_MODEL"),
+        _configured_router_value(config, "ROUTER_CLEF_THRESHOLD"),
+        _configured_router_value(config, "ROUTER_CLEF_TIMEOUT_MS"),
+    )
+
+
+def _default_router(config: Mapping | None) -> Any:
+    """Return the fallback router, built once per effective configuration.
+
+    Production injects the startup router. Direct callers that do not inject
+    one still pay for at most one construction per configuration instead of
+    rebuilding the router for every message.
+    """
+    key = _router_cache_key(config)
+    cached = _DEFAULT_ROUTERS.get(key)
+    if cached is None:
+        cached = build_router(config)
+        _DEFAULT_ROUTERS[key] = cached
+    return cached
+
+
 async def _build_route_decision(
     request: AIRequest,
     orchestrator_config: dict | None,
@@ -361,7 +416,7 @@ async def _build_route_decision(
     propagate so startup and direct callers fail loudly.
     """
     try:
-        active_router = router if router is not None else build_router(orchestrator_config)
+        active_router = router if router is not None else _default_router(orchestrator_config)
         router_input = build_router_input(
             request,
             getattr(request, "conversation_manager", None),

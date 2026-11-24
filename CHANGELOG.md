@@ -247,6 +247,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `OPENAI_API_KEY` no longer has that key treated as an Ollama Cloud credential through an implicit
   default URL. The loaded configuration still carries `OPENAI_API_URL`, so normal deployments that
   use the default Ollama Cloud endpoint keep the existing fallback.
+- **The fallback router is built once, not once per message.** When no startup router is injected,
+  the orchestrator caches the router for the effective routing configuration instead of calling
+  `build_router` for every message.
 - **Clef failures cannot strand a message.** Any unexpected router exception falls back to the
   deterministic gate with a `fallback:router_error` reason and an ERROR log.
 - **Structured logs carry the Discord context they were given.** The formatter now reads the

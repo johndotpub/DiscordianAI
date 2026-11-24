@@ -103,7 +103,9 @@ only a chat key cannot send it to Clef. A key issued for any other chat provider
 Ollama Cloud. When no eligible key exists, startup warns once and selects the deterministic gate.
 
 The router is built once at startup and reuses one pooled HTTP client for the process; the client is closed
-with the other connection pools during shutdown. An image request is decided as `images:local` before any
+with the other connection pools during shutdown. A direct caller that does not inject the startup router
+builds one fallback router per effective routing configuration and reuses it, rather than rebuilding it for
+every message. An image request is decided as `images:local` before any
 router runs, so Clef is not consulted and the one routing log line is the decision actually used.
 
 Any network error, timeout, HTTP status of 400 or above, or missing/malformed response logs a warning and
