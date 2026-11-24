@@ -181,12 +181,14 @@ class CircuitBreaker:
         try:
             result = await func(*args, **kwargs)
         except self.expected_exception as exc:
-            if _is_provider_failure(exc):
-                await self._record_failure()
+            if _is_user_request_error(exc):
+                # The provider answered and rejected this request. Release a
+                # half-open probe without stamping a success or a failure.
+                await self._release_probe()
             else:
-                # A deterministic client error proves the provider answered;
-                # it must not push the breaker towards OPEN.
-                await self._record_success()
+                # Configuration errors (401, 403, 404) and transient provider
+                # failures must surface through the breaker and /health.
+                await self._record_failure()
             raise
         except BaseException:
             await self._release_probe()
@@ -377,6 +379,7 @@ _HTTP_STATUS_BAD_REQUEST = 400
 _HTTP_STATUS_REQUEST_TIMEOUT = 408
 HTTP_STATUS_TOO_MANY_REQUESTS = 429
 _HTTP_STATUS_SERVER_ERROR = 500
+_CONFIGURATION_ERROR_STATUSES = frozenset({401, 403, 404})
 
 _RATE_LIMIT_MAX_RETRY_AFTER = 30.0
 # Match a status token in prose, never the port in "host:443" or a dotted
@@ -482,28 +485,30 @@ def _is_quota_exhausted(exception: Exception) -> bool:
     return False
 
 
-def _is_provider_failure(exception: Exception) -> bool:
-    """Return whether an exception is evidence of provider ill health.
+def _is_user_request_error(exception: Exception) -> bool:
+    """Return True for a deterministic 4xx caused by this request.
 
-    A deterministic 4xx means the request was received and rejected; it is not
-    a transient provider failure. Timeouts, 408, 429, 5xx, and unclassified
-    errors still count.
+    A user-caused request error (400, 409, 413, 422, and other client errors)
+    proves the provider answered; it must neither push the breaker towards OPEN
+    nor stamp a success. Configuration errors (401, 403, 404) are different:
+    a revoked key or retired model fails every call and must make /health
+    report the provider degraded or unhealthy. Timeouts, 408, 429, 5xx, and
+    unclassified errors count as provider failures.
     """
     if isinstance(exception, CircuitBreakerOpenError):
         return False
 
     status_code = _structured_status_code(exception)
     if status_code is not None:
-        if _HTTP_STATUS_BAD_REQUEST <= status_code < _HTTP_STATUS_SERVER_ERROR:
-            return status_code in {_HTTP_STATUS_REQUEST_TIMEOUT, HTTP_STATUS_TOO_MANY_REQUESTS}
-        return True
+        if not _HTTP_STATUS_BAD_REQUEST <= status_code < _HTTP_STATUS_SERVER_ERROR:
+            return False
+        return status_code not in {
+            *_CONFIGURATION_ERROR_STATUSES,
+            _HTTP_STATUS_REQUEST_TIMEOUT,
+            HTTP_STATUS_TOO_MANY_REQUESTS,
+        }
 
-    error_details = classify_error(exception)
-    return error_details.error_type not in {
-        ErrorType.API_AUTH_ERROR,
-        ErrorType.CONFIG_ERROR,
-        ErrorType.VALIDATION_ERROR,
-    }
+    return classify_error(exception).error_type == ErrorType.VALIDATION_ERROR
 
 
 def is_retryable_status(status: int | None) -> bool:

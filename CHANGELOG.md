@@ -56,6 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   An unknown `ROUTER_MODE` now fails startup validation; `model` keeps its explicit retirement error.
 - **The web-inability reroute requires a first-person admission.** General statements, quoted text, and
   creative output such as a haiku mentioning browsing no longer discard a good local answer.
+- **Configuration errors make a provider unhealthy; a user's bad request does not.**
+  A 401, 403, or 404 now counts as a provider failure, so a revoked key or retired model
+  shows up as degraded or unhealthy on `/health` instead of looking healthy while every
+  call fails. A 400, 409, 413, 422, or other user-caused client error stays neutral: it
+  releases a half-open probe without stamping a success or moving any counter.
 
 - **Ollama Cloud is the default OpenAI-compatible chat provider.** `OPENAI_API_URL` defaults to
   `https://ollama.com/v1/` and `GPT_MODEL` defaults to `deepseek-v4.1-flash:1017`. OpenAI remains

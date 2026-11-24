@@ -207,11 +207,14 @@ class CircuitBreaker:
   calls fail fast until it finishes; success closes the breaker and resets the
   count, failure reopens it.
 
-A deterministic client error (HTTP 4xx other than 408 and 429) means the
-provider received and rejected the request. It is not a failure for the
-breaker, so it does not move the count towards OPEN and it does not make the
-provider unhealthy. Timeouts, connection failures, 408, 429, and 5xx still
-count.
+A user-caused request error (400, 409, 413, 422, and other deterministic
+client errors) means the provider received and rejected this request. It is
+neutral for the breaker: a half-open probe is released, but no failure or
+success is stamped and no counter moves. Configuration errors (401, 403,
+404) are not neutral, because a revoked key or retired model fails every
+call; they count as failures so `/health` reports the provider degraded or
+unhealthy. Timeouts, connection failures, 408, 429, and 5xx still count. One
+user's bad request still cannot open the breaker or turn health red.
 
 The health server publishes each breaker's state through
 `get_circuit_breaker_states()`.

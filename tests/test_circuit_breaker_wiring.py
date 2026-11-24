@@ -10,6 +10,7 @@ import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import openai
 import pytest
 
@@ -289,10 +290,16 @@ async def test_accessor_reports_per_provider_state():
 async def test_deterministic_client_errors_do_not_open_the_breaker():
     """Five 4xx answers must leave the provider healthy and admit later calls."""
     breaker = get_circuit_breaker("openai")
+    request = httpx.Request("POST", "https://api.example/v1/chat/completions")
+    response = httpx.Response(
+        400,
+        request=request,
+        json={"error": {"message": "invalid request", "type": "invalid_request_error"}},
+    )
     bad_request = openai.BadRequestError(
         "invalid request",
-        response=_mock_response(400),
-        body=None,
+        response=response,
+        body=response.json(),
     )
 
     async def rejected():
@@ -304,12 +311,79 @@ async def test_deterministic_client_errors_do_not_open_the_breaker():
 
     assert breaker.state == "CLOSED"
     assert breaker.failure_count == 0
+    assert breaker.last_success_time == 0.0
 
     async def healthy_call():
         return "ok"
 
     for _ in range(20):
         assert await breaker.call(healthy_call) == "ok"
+
+
+@pytest.mark.parametrize(
+    ("error_type", "status_code"),
+    [
+        (openai.AuthenticationError, 401),
+        (openai.PermissionDeniedError, 403),
+        (openai.NotFoundError, 404),
+    ],
+)
+@pytest.mark.asyncio
+async def test_configuration_errors_count_as_provider_failures(error_type, status_code):
+    """A revoked key or retired model must make the provider look unhealthy."""
+    breaker = CircuitBreaker(failure_threshold=5)
+    request = httpx.Request("POST", "https://api.example/v1/chat/completions")
+    response = httpx.Response(
+        status_code,
+        request=request,
+        json={"error": {"message": "request rejected", "type": "invalid_request_error"}},
+    )
+    error = error_type("request rejected", response=response, body=response.json())
+
+    async def rejected():
+        raise error
+
+    for expected_failures in range(1, 6):
+        with pytest.raises(error_type):
+            await breaker.call(rejected)
+        assert breaker.failure_count == expected_failures
+        assert breaker.last_success_time == 0.0
+
+    assert breaker.state == "OPEN"
+
+
+@pytest.mark.asyncio
+async def test_a_neutral_request_error_releases_a_half_open_probe():
+    """A user's bad request must not hold the single half-open probe slot."""
+    breaker = CircuitBreaker(failure_threshold=1, timeout=60)
+    breaker.state = "OPEN"
+    breaker.failure_count = 1
+    breaker.last_failure_time = time.monotonic() - 61
+    request = httpx.Request("POST", "https://api.example/v1/chat/completions")
+    response = httpx.Response(
+        422,
+        request=request,
+        json={"error": {"message": "invalid request", "type": "invalid_request_error"}},
+    )
+
+    message = "invalid request"
+
+    async def rejected():
+        raise openai.UnprocessableEntityError(
+            message,
+            response=response,
+            body=response.json(),
+        )
+
+    with pytest.raises(openai.UnprocessableEntityError):
+        await breaker.call(rejected)
+
+    async def recovered():
+        return "ok"
+
+    assert await breaker.call(recovered) == "ok"
+    assert breaker.state == "CLOSED"
+    assert breaker.failure_count == 0
 
 
 @pytest.mark.asyncio

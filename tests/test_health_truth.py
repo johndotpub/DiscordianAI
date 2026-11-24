@@ -343,6 +343,51 @@ def test_client_errors_keep_provider_health_healthy():
     assert body["providers"]["openai"]["consecutive_failures"] == 0, body
 
 
+@pytest.mark.parametrize(
+    ("error_type", "status_code"),
+    [
+        ("AuthenticationError", 401),
+        ("PermissionDeniedError", 403),
+        ("NotFoundError", 404),
+    ],
+)
+def test_configuration_errors_make_provider_health_degraded(error_type, status_code):
+    """A revoked key or retired model must not keep /health green."""
+    import httpx
+    import openai
+
+    from src.error_handling import get_circuit_breaker
+
+    async def exercise_breaker():
+        breaker = get_circuit_breaker("openai")
+        request = httpx.Request("POST", "https://api.example/v1/chat/completions")
+        response = httpx.Response(
+            status_code,
+            request=request,
+            json={"error": {"message": "request rejected", "type": "invalid_request_error"}},
+        )
+        error_class = getattr(openai, error_type)
+        error = error_class("request rejected", response=response, body=response.json())
+
+        async def rejected():
+            raise error
+
+        with pytest.raises(error_class):
+            await breaker.call(rejected)
+
+    asyncio.run(exercise_breaker())
+    app = create_health_app(_deps())
+
+    with TestClient(app) as client:
+        response = client.get("/health")
+
+    body = response.json()
+    assert response.status_code == 503, body
+    assert body["failing_providers"] == ["openai"], body
+    assert body["providers"]["openai"]["status"] == "degraded", body
+    assert body["providers"]["openai"]["consecutive_failures"] == 1, body
+
+
 def test_gateway_disconnect_is_not_ready_even_when_is_ready_stays_true():
     """A gateway outage must be reported even though discord.py is_ready sticks."""
     deps = _deps(connected=True)
