@@ -356,3 +356,59 @@ def test_perplexity_budget_warning_names_the_perplexity_settings():
     assert "PERPLEXITY_OUTPUT_TOKENS" in warning_text
     assert "PERPLEXITY_CONTEXT_WINDOW" in warning_text
     assert " INPUT_TOKENS " not in warning_text
+
+
+def test_script_aware_estimate_keeps_english_within_two_percent():
+    """ASCII prose stays on the historical four-characters-per-token estimate."""
+    from math import ceil
+
+    from src.message_builder import estimate_text_tokens
+
+    english = ("The quick brown fox jumps over the lazy dog. " * 50)[:2000]
+    old_estimate = ceil(len(english) * 1.1 / 4)
+    new_estimate = estimate_text_tokens(english)
+
+    assert abs(new_estimate - old_estimate) <= 0.02 * old_estimate
+    assert 500 <= new_estimate <= 560
+
+
+@pytest.mark.parametrize(
+    ("sample", "low", "high"),
+    [
+        ("é" * 2000, 0.53, 0.56),
+        ("あ" * 2000, 0.86, 0.90),
+        ("漢" * 2000, 0.86, 0.90),
+        ("ह" * 2000, 0.86, 0.90),
+        ("한" * 2000, 0.86, 0.90),
+        ("🙂" * 2000, 1.84, 1.90),
+    ],
+)
+def test_script_aware_estimate_ratios(sample, low, high):
+    """Each script's estimate per character sits in its fixed absolute range."""
+    from src.message_builder import estimate_text_tokens
+
+    ratio = estimate_text_tokens(sample) / len(sample)
+    assert low <= ratio <= high
+
+
+def test_japanese_history_is_trimmed_to_the_budget():
+    """A Japanese history is counted with its real script weight and trimmed."""
+    history = []
+    for index in range(80):
+        history.append({"role": "user", "content": f"質問{index:03d} " + "あ" * 120})
+        history.append({"role": "assistant", "content": f"回答{index:03d} " + "い" * 120})
+
+    messages = build_messages(
+        "システム",
+        "最新の質問です",
+        history,
+        input_tokens=600,
+        output_tokens=50,
+        context_window=200000,
+    )
+
+    joined = "\n".join(str(message["content"]) for message in messages)
+    assert "質問000" not in joined
+    assert "質問079" in joined
+    assert messages[-1] == {"role": "user", "content": "最新の質問です"}
+    assert estimate_messages_tokens(messages) <= 600

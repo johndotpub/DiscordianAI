@@ -54,16 +54,23 @@ share a fixed validation ceiling of 128,000 tokens that is independent of
 below 512 logs a warning about empty replies.
 
 `INPUT_TOKENS` is enforced as a prompt budget. The bot estimates prompt size from the
-system prompt, history, and current message using roughly four characters per token with
-a 10% safety margin and a small per-message overhead. Oldest question/answer pairs are
-trimmed first; an oversized message is truncated with a visible marker. The prompt budget
-also leaves room for the provider's output cap inside `CONTEXT_WINDOW`; if the input and
-output budgets exceed `CONTEXT_WINDOW`, the context window wins and a warning naming the
-conflicting settings is logged. On the Perplexity path the warning names whichever key
-supplied each effective value: `PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW` by
-default, or the shared `INPUT_TOKENS` and `CONTEXT_WINDOW` when a lowered shared limit caps
-the Sonar prompt. `PERPLEXITY_OUTPUT_TOKENS` names the completion cap, and the chat path
-names the shared keys.
+system prompt, history, and current message. ASCII prose and code use roughly four
+characters per token. Characters from U+0080-U+07FF cost half a token, U+0800-U+FFFF cost
+0.8, and astral-plane characters (most emoji) cost 1.7, each before the shared 10% safety
+margin and the small per-message overhead. History in Chinese, Japanese, Korean, Hindi, or
+emoji is therefore counted at its real script weight instead of the old ASCII ratio.
+Oldest question/answer pairs are trimmed first; an oversized message is truncated with a
+visible marker.
+
+At startup, `INPUT_TOKENS` plus `OUTPUT_TOKENS` must fit inside `CONTEXT_WINDOW`, or
+startup stops with an ERROR naming all three keys. The same relation is checked for
+`PERPLEXITY_INPUT_TOKENS`, `PERPLEXITY_OUTPUT_TOKENS`, and `PERPLEXITY_CONTEXT_WINDOW`.
+On the Perplexity path the effective values are the ones the request builder uses:
+`PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW` by default, or the shared
+`INPUT_TOKENS` and `CONTEXT_WINDOW` when a lowered shared limit caps the Sonar prompt.
+The request builder still clamps values for a direct caller with a warning naming the
+conflicting settings, but a production configuration that would need that clamp is
+rejected before the bot connects.
 
 The chat and Perplexity paths have different windows. Chat requests use `INPUT_TOKENS` and
 `CONTEXT_WINDOW`; Perplexity requests use `PERPLEXITY_INPUT_TOKENS` and

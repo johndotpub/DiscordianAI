@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Behaviour changes
 
+- **Prompt estimates follow the script.** ASCII prose and code keep the historical
+  four-characters-per-token estimate. Characters from U+0080-U+07FF cost half a token,
+  U+0800-U+FFFF cost 0.8, and astral-plane characters (most emoji) cost 1.7, before the
+  existing 10% margin and per-message overhead. A Chinese, Japanese, Korean, Hindi, or
+  emoji history is no longer under-counted by 2-6x, so the Perplexity prompt stays inside
+  its 128K window instead of silently exceeding it.
+- **A context window smaller than its budgets stops startup.** `INPUT_TOKENS` plus
+  `OUTPUT_TOKENS` must fit `CONTEXT_WINDOW`, and the Perplexity trio must fit
+  `PERPLEXITY_CONTEXT_WINDOW` using the same effective values the request builder uses.
+  A configuration such as `CONTEXT_WINDOW=2000` with the default 250,000-token prompt
+  budget now fails with an ERROR naming the keys instead of cutting every question to a
+  fragment.
 - **Oversized answers are bounded before delivery scans them.** An answer longer than
   `MAX_SPLIT_CHUNKS` times `MESSAGE_LIMIT` (100,000 characters with the defaults) is
   truncated with the existing chunk-cap notice and ERROR log line before sanitisation or

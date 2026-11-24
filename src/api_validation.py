@@ -12,8 +12,14 @@ import discord
 
 # Import constants from config.py (single source of truth)
 from .config import (
+    DEFAULT_CONTEXT_WINDOW,
+    DEFAULT_INPUT_TOKENS,
     DEFAULT_OPENAI_API_URL,
+    DEFAULT_OUTPUT_TOKENS,
     DEFAULT_PERPLEXITY_API_URL,
+    DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
+    DEFAULT_PERPLEXITY_INPUT_TOKENS,
+    DEFAULT_PERPLEXITY_OUTPUT_TOKENS,
     DISCORD_ACTIVITY_TYPES,
     MAX_INPUT_TOKENS_THRESHOLD,
     MAX_OUTPUT_TOKENS_CEILING,
@@ -289,8 +295,69 @@ def _positive_limit_issues(
     return []
 
 
+def _config_int(config: dict, key: str, default: int) -> int | None:
+    """Return one configured integer, or None when it cannot be parsed."""
+    value = config.get(key, default)
+    if value is None:
+        value = default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _effective_shared_limit(
+    config: dict,
+    own_key: str,
+    shared_key: str,
+    own_default: int,
+    shared_default: int,
+) -> tuple[int | None, str]:
+    """Return the effective value and the key that supplied it.
+
+    This mirrors the request builder: the provider-specific key stays
+    authoritative unless the operator explicitly changed the shared key to a
+    smaller value.
+    """
+    own_value = _config_int(config, own_key, own_default)
+    shared_value = _config_int(config, shared_key, shared_default)
+    if (
+        own_value is not None
+        and shared_value is not None
+        and shared_value != shared_default
+        and shared_value < own_value
+    ):
+        return shared_value, shared_key
+    return own_value, own_key
+
+
+def _budget_relation_issue(  # noqa: PLR0913, PLR0917 - three key/value pairs are the message
+    input_key: str,
+    input_tokens: int | None,
+    output_key: str,
+    output_tokens: int | None,
+    context_key: str,
+    context_window: int | None,
+) -> list[str]:
+    """Return an error when the configured budgets cannot fit the window."""
+    if input_tokens is None or output_tokens is None or context_window is None:
+        return []
+    if input_tokens + output_tokens <= context_window:
+        return []
+    return [
+        (
+            f"ERROR: {input_key} ({input_tokens}) + {output_key} ({output_tokens}) "
+            f"exceed {context_key} ({context_window}); lower the input or output "
+            "budget, or raise the context window."
+        )
+    ]
+
+
 def _input_and_context_issues(config: dict) -> list[str]:
     """Validate the chat-provider prompt budget and context window."""
+    input_tokens = _config_int(config, "INPUT_TOKENS", DEFAULT_INPUT_TOKENS)
+    output_tokens = _config_int(config, "OUTPUT_TOKENS", DEFAULT_OUTPUT_TOKENS)
+    context_window = _config_int(config, "CONTEXT_WINDOW", DEFAULT_CONTEXT_WINDOW)
     return [
         *_positive_limit_issues(
             config,
@@ -299,11 +366,39 @@ def _input_and_context_issues(config: dict) -> list[str]:
             warning_above=MAX_INPUT_TOKENS_THRESHOLD,
         ),
         *_positive_limit_issues(config, "CONTEXT_WINDOW"),
+        *_budget_relation_issue(
+            "INPUT_TOKENS",
+            input_tokens,
+            "OUTPUT_TOKENS",
+            output_tokens,
+            "CONTEXT_WINDOW",
+            context_window,
+        ),
     ]
 
 
 def _perplexity_prompt_limit_issues(config: dict) -> list[str]:
     """Validate the Perplexity prompt budget and context window."""
+    input_tokens, input_key = _effective_shared_limit(
+        config,
+        "PERPLEXITY_INPUT_TOKENS",
+        "INPUT_TOKENS",
+        DEFAULT_PERPLEXITY_INPUT_TOKENS,
+        DEFAULT_INPUT_TOKENS,
+    )
+    context_window, context_key = _effective_shared_limit(
+        config,
+        "PERPLEXITY_CONTEXT_WINDOW",
+        "CONTEXT_WINDOW",
+        DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
+        DEFAULT_CONTEXT_WINDOW,
+    )
+    output_tokens = _config_int(
+        config,
+        "PERPLEXITY_OUTPUT_TOKENS",
+        _config_int(config, "OUTPUT_TOKENS", DEFAULT_PERPLEXITY_OUTPUT_TOKENS)
+        or DEFAULT_PERPLEXITY_OUTPUT_TOKENS,
+    )
     return [
         *_positive_limit_issues(
             config,
@@ -312,6 +407,14 @@ def _perplexity_prompt_limit_issues(config: dict) -> list[str]:
             warning_above=MAX_INPUT_TOKENS_THRESHOLD,
         ),
         *_positive_limit_issues(config, "PERPLEXITY_CONTEXT_WINDOW"),
+        *_budget_relation_issue(
+            input_key,
+            input_tokens,
+            "PERPLEXITY_OUTPUT_TOKENS",
+            output_tokens,
+            context_key,
+            context_window,
+        ),
     ]
 
 

@@ -294,7 +294,9 @@ export PERPLEXITY_MODEL="perplexity/sonar"
 - The stored conversation history (the last `MAX_HISTORY_PER_USER` entries after
   pruning) is sent as prior turns, not a generated summary
 - That history is trimmed further to fit `PERPLEXITY_INPUT_TOKENS` and
-  `PERPLEXITY_CONTEXT_WINDOW`; the oldest question/answer pairs are dropped first
+  `PERPLEXITY_CONTEXT_WINDOW`, or the lower shared `INPUT_TOKENS` /
+  `CONTEXT_WINDOW` value when the operator set one; the oldest
+  question/answer pairs are dropped first
 
 ### Metadata Tracking
 - All Perplexity responses include service metadata
@@ -325,4 +327,6 @@ export PERPLEXITY_MODEL="perplexity/sonar"
   `PERPLEXITY_CONTEXT_WINDOW` because the former Sonar model page documented a
   128K-token context window. The Agent API models page publishes no context
   figure, so 128K is unverified there. The chat path keeps the larger
-  `INPUT_TOKENS` and `CONTEXT_WINDOW`.
+  `INPUT_TOKENS` and `CONTEXT_WINDOW`. If the operator explicitly lowers
+  `INPUT_TOKENS` or `CONTEXT_WINDOW`, the smaller shared value also caps the
+  Perplexity prompt and window.

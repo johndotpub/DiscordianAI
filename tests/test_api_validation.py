@@ -310,6 +310,7 @@ class TestFullConfigValidation:
             "DISCORD_TOKEN": "test_token",
             "OPENAI_API_KEY": "sk-" + "a" * 32,
             "OUTPUT_TOKENS": 60000,  # Very high (warning)
+            "PERPLEXITY_OUTPUT_TOKENS": 100,
             "RATE_LIMIT": 150,  # Very high (warning)
             "ALLOWED_CHANNELS": [],  # Empty (warning)
         }
@@ -375,3 +376,74 @@ class TestURLPatternValidation:
 
         for url in invalid_urls:
             assert not VALID_PERPLEXITY_URL_PATTERN.match(url), f"URL {url} should be invalid"
+
+
+def test_chat_input_plus_output_must_fit_the_context_window():
+    """A small CONTEXT_WINDOW cannot leave a 250K prompt budget in place."""
+    issues = validate_openai_config(
+        {
+            "INPUT_TOKENS": 250000,
+            "OUTPUT_TOKENS": 16384,
+            "CONTEXT_WINDOW": 2000,
+        }
+    )
+
+    assert any(
+        issue.startswith("ERROR:")
+        and "INPUT_TOKENS (250000)" in issue
+        and "OUTPUT_TOKENS (16384)" in issue
+        and "CONTEXT_WINDOW (2000)" in issue
+        for issue in issues
+    )
+    assert not any(issue.startswith("ERROR:") for issue in validate_openai_config({}))
+
+
+def test_perplexity_input_plus_output_must_fit_the_context_window():
+    """The same relation is enforced for the Sonar budget."""
+    issues = validate_perplexity_config(
+        {
+            "PERPLEXITY_INPUT_TOKENS": 111000,
+            "PERPLEXITY_OUTPUT_TOKENS": 16384,
+            "PERPLEXITY_CONTEXT_WINDOW": 2000,
+        }
+    )
+
+    assert any(
+        issue.startswith("ERROR:")
+        and "PERPLEXITY_INPUT_TOKENS (111000)" in issue
+        and "PERPLEXITY_OUTPUT_TOKENS (16384)" in issue
+        and "PERPLEXITY_CONTEXT_WINDOW (2000)" in issue
+        for issue in issues
+    )
+
+
+def test_perplexity_relation_uses_the_lowered_shared_values():
+    """A lowered shared budget is the effective one, so the error names it."""
+    issues = validate_perplexity_config(
+        {
+            "INPUT_TOKENS": 500,
+            "CONTEXT_WINDOW": 4000,
+            "PERPLEXITY_INPUT_TOKENS": 111000,
+            "PERPLEXITY_CONTEXT_WINDOW": 128000,
+            "PERPLEXITY_OUTPUT_TOKENS": 5000,
+        }
+    )
+
+    assert any(
+        issue.startswith("ERROR:")
+        and "INPUT_TOKENS (500)" in issue
+        and "CONTEXT_WINDOW (4000)" in issue
+        and "PERPLEXITY_INPUT_TOKENS" not in issue
+        for issue in issues
+    )
+
+    accepted = validate_perplexity_config(
+        {
+            "INPUT_TOKENS": 500,
+            "CONTEXT_WINDOW": 4000,
+            "PERPLEXITY_INPUT_TOKENS": 111000,
+            "PERPLEXITY_CONTEXT_WINDOW": 128000,
+            "PERPLEXITY_OUTPUT_TOKENS": 100,
+        }
+    )
+    assert not any(issue.startswith("ERROR:") for issue in accepted)

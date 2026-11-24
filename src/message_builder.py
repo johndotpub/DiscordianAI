@@ -13,13 +13,46 @@ MESSAGE_OVERHEAD_TOKENS = 4
 TRUNCATION_MARKER = "\n\n[truncated to fit the token budget]"
 MINIMUM_PROMPT_TOKENS = 32
 
+# Per-character token weights before the 1.1 safety margin. ASCII stays on the
+# historical four-characters-per-token estimate; non-Latin scripts need more
+# tokens per character, and the astral plane (most emoji) needs the most.
+_UTF8_ONE_BYTE_LIMIT = 0x80
+_UTF8_TWO_BYTE_LIMIT = 0x800
+_UTF8_THREE_BYTE_LIMIT = 0x10000
+_ASCII_TOKEN_WEIGHT = 0.25
+_LATIN_EXTENDED_TOKEN_WEIGHT = 0.5
+_BMP_TOKEN_WEIGHT = 0.8
+_ASTRAL_TOKEN_WEIGHT = 1.7
+
+
+def _character_token_weight(character: str) -> float:
+    """Return the pre-margin token weight for one character."""
+    code_point = ord(character)
+    if code_point < _UTF8_ONE_BYTE_LIMIT:
+        return _ASCII_TOKEN_WEIGHT
+    if code_point < _UTF8_TWO_BYTE_LIMIT:
+        return _LATIN_EXTENDED_TOKEN_WEIGHT
+    if code_point < _UTF8_THREE_BYTE_LIMIT:
+        return _BMP_TOKEN_WEIGHT
+    return _ASTRAL_TOKEN_WEIGHT
+
 
 def estimate_text_tokens(text: Any) -> int:
-    """Estimate tokens for text using a conservative character ratio."""
-    characters = len(str(text or ""))
-    if characters == 0:
+    """Estimate tokens for text with a conservative script-aware ratio.
+
+    English and code stay on the historical four-characters-per-token
+    estimate. Characters from U+0080-U+07FF cost half a token, U+0800-U+FFFF
+    cost 0.8, and astral-plane characters (most emoji) cost 1.7, all before
+    the shared 1.1 safety margin. This keeps a Japanese, Korean, Hindi, or
+    emoji history from being under-counted by the old ASCII-only ratio.
+    """
+    value = str(text or "")
+    if not value:
         return 0
-    return ceil(characters * TOKEN_ESTIMATE_MARGIN / CHARS_PER_TOKEN)
+    if value.isascii():
+        return ceil(len(value) * TOKEN_ESTIMATE_MARGIN / CHARS_PER_TOKEN)
+    weighted = sum(_character_token_weight(character) for character in value)
+    return ceil(weighted * TOKEN_ESTIMATE_MARGIN)
 
 
 def _estimate_content_tokens(content: Any, vision_token_estimate: int) -> int:
@@ -170,22 +203,32 @@ def _trim_history(
     *,
     vision_token_estimate: int,
 ) -> list[dict[str, Any]]:
-    """Drop the oldest history units until the prompt fits the budget."""
+    """Drop the oldest history units until the prompt fits the budget.
+
+    Each message is estimated once. The running total is reduced by the
+    dropped unit's estimate, so trimming a long history stays linear instead
+    of re-estimating the whole prompt for every dropped pair.
+    """
     units = _history_units(history)
-    base_messages = [system_message, user_message]
+    if not units:
+        return []
+    base_tokens = estimate_message_tokens(
+        system_message, vision_token_estimate=vision_token_estimate
+    ) + estimate_message_tokens(user_message, vision_token_estimate=vision_token_estimate)
+    unit_tokens = [
+        sum(
+            estimate_message_tokens(message, vision_token_estimate=vision_token_estimate)
+            for message in unit
+        )
+        for unit in units
+    ]
+    total = base_tokens + sum(unit_tokens)
     while units:
-        kept = [message for unit in units for message in unit]
-        messages = [system_message, *kept, user_message]
-        if (
-            estimate_messages_tokens(messages, vision_token_estimate=vision_token_estimate)
-            <= budget
-        ):
+        if total <= budget:
             break
-        if len(units) == 1 and (
-            estimate_messages_tokens(base_messages, vision_token_estimate=vision_token_estimate)
-            <= budget
-        ):
+        if len(units) == 1 and base_tokens <= budget:
             break
+        total -= unit_tokens.pop(0)
         units.pop(0)
     return [message for unit in units for message in unit]
 
