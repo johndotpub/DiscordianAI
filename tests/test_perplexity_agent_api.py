@@ -356,6 +356,26 @@ async def _raise_recorded_bad_request(body: dict) -> openai.BadRequestError:
         (
             {
                 "error": {
+                    "type": "invalid_model",
+                    "code": 400,
+                    "message": "internal assertion failed",
+                }
+            },
+            True,
+        ),
+        (
+            {
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "model_not_found",
+                    "message": "internal assertion failed",
+                }
+            },
+            True,
+        ),
+        (
+            {
+                "error": {
                     "type": "invalid_request",
                     "code": 400,
                     "message": "This model's maximum context length is 4096 tokens",
