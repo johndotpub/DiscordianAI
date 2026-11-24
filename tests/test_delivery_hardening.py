@@ -20,6 +20,13 @@ from src.perplexity_processing import process_perplexity_message
 from tests.helpers import FakePerplexityClient
 
 TRUSTED_URL = "https://good.example/source"
+HOSTILE_URL = "https://evil.example/gift"
+HOSTILE_LINK = f"[Claim your Nitro]({HOSTILE_URL})"
+UNRENDERED_CODE_INPUTS = [
+    f"Sure:\n```\n{HOSTILE_LINK}",
+    f"\\`{HOSTILE_LINK}\\`",
+    f"[`Claim`]({HOSTILE_URL})",
+]
 
 
 def _deps() -> dict:
@@ -80,6 +87,37 @@ def test_code_spans_and_fences_keep_link_like_syntax_unchanged() -> None:
     assert "handlers[0](event)" in sanitize_for_discord(fenced)
     assert "https://example.com/fenced" in sanitize_for_discord(fenced)
     assert "\u200b" not in sanitize_for_discord(fenced)
+
+
+@pytest.mark.parametrize("message", UNRENDERED_CODE_INPUTS)
+@pytest.mark.asyncio
+async def test_unrendered_code_delimiters_do_not_hide_untrusted_links(message: str) -> None:
+    """Unclosed fences and escaped backticks are literal, so links stay untrusted."""
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock()
+
+    await send_formatted_message(channel, message, _deps())
+
+    sent = channel.send.call_args.args[0]
+    assert HOSTILE_URL not in sent
+    assert "](https://" not in sent
+
+
+@pytest.mark.parametrize("description", UNRENDERED_CODE_INPUTS)
+@pytest.mark.asyncio
+async def test_unrendered_code_delimiters_do_not_hide_links_in_embed_description(
+    description: str,
+) -> None:
+    """The embed description path applies the same code-rendering rules."""
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock()
+    embed = discord.Embed(description=description)
+
+    await send_formatted_message(channel, "See the source.", _deps(), embed_data={"embed": embed})
+
+    delivered = channel.send.call_args.kwargs["embed"]
+    assert HOSTILE_URL not in (delivered.description or "")
+    assert "](https://" not in (delivered.description or "")
 
 
 def test_mentions_are_still_neutralised_inside_code() -> None:

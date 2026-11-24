@@ -121,8 +121,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Embed heads never split a citation marker or a code fence.** A split that would land
   inside `[n]` moves the marker whole into the next embed, and long fences are closed and
   reopened with the same language tag.
-- **Link neutralisation skips code spans and fenced blocks.** Discord does not render links
-  inside code, so `handlers[0](event)` and bare URLs in code stay unchanged. Mention
+- **Link neutralisation skips only code Discord renders.** A closed fenced block and a
+  balanced, unescaped inline code span keep link-like syntax and bare URLs unchanged, while
+  an untrusted link is still stripped when its label is inline code. An unclosed fence or a
+  backslash-escaped backtick is literal text, so a link after it is neutralised. Mention
   neutralisation (`@everyone`, `@here`, raw user/role/channel mentions) still applies
   everywhere, including inside code.
 

@@ -881,13 +881,32 @@ def _neutralize_url(url: str) -> str:
     return url
 
 
+def _is_escaped(text: str, position: int) -> bool:
+    """Return True when a backslash escapes the character at ``position``."""
+    backslashes = 0
+    position -= 1
+    while position >= 0 and text[position] == "\\":
+        backslashes += 1
+        position -= 1
+    return backslashes % 2 == 1
+
+
+def _closed_fence_spans(text: str) -> list[tuple[int, int]]:
+    """Return closed fenced code blocks whose opening marker is not escaped."""
+    return [
+        (match.start(), match.end())
+        for match in _FENCE_BLOCK_PATTERN.finditer(text)
+        if not _is_escaped(text, match.start())
+    ]
+
+
 def _inline_code_spans(text: str, start: int, end: int) -> list[tuple[int, int]]:
-    """Return inline code spans within ``text[start:end]``."""
+    """Return balanced inline code spans with unescaped backtick delimiters."""
     spans: list[tuple[int, int]] = []
     position = start
 
     while position < end:
-        if text[position] != "`":
+        if text[position] != "`" or _is_escaped(text, position):
             position += 1
             continue
 
@@ -904,6 +923,8 @@ def _inline_code_spans(text: str, start: int, end: int) -> list[tuple[int, int]]
             close_start = search
             while search < end and text[search] == "`":
                 search += 1
+            if _is_escaped(text, close_start):
+                continue
             if search - close_start == run_length:
                 spans.append((run_start, search))
                 position = search
@@ -912,34 +933,21 @@ def _inline_code_spans(text: str, start: int, end: int) -> list[tuple[int, int]]
     return spans
 
 
-def _code_spans(text: str) -> list[tuple[int, int]]:
-    """Return the spans of fenced blocks and inline code in ``text``."""
-    fences = _scan_fences(text)
-    spans = [(fence.start, fence.end) for fence in fences]
+def _rendered_code_spans(text: str) -> list[tuple[int, int]]:
+    """Return the spans Discord actually renders as code.
+
+    Only closed fenced blocks and balanced, unescaped inline code spans count.
+    An unclosed fence or a backslash-escaped backtick is literal text, so the
+    links after it remain clickable and must be neutralised.
+    """
+    fences = _closed_fence_spans(text)
+    spans = list(fences)
     cursor = 0
-    for fence in fences:
-        spans.extend(_inline_code_spans(text, cursor, fence.start))
-        cursor = fence.end
+    for fence_start, fence_end in fences:
+        spans.extend(_inline_code_spans(text, cursor, fence_start))
+        cursor = fence_end
     spans.extend(_inline_code_spans(text, cursor, len(text)))
     return sorted(spans)
-
-
-def _transform_outside_code(text: str, transform: Any) -> str:
-    """Apply ``transform`` to the parts of ``text`` outside code spans."""
-    spans = _code_spans(text)
-    if not spans:
-        return transform(text)
-
-    parts: list[str] = []
-    cursor = 0
-    for start, end in spans:
-        if start > cursor:
-            parts.append(transform(text[cursor:start]))
-        parts.append(text[start:end])
-        cursor = end
-    if cursor < len(text):
-        parts.append(transform(text[cursor:]))
-    return "".join(parts)
 
 
 def sanitize_model_output(text: str, citations: dict[str, str] | None = None) -> str:
@@ -951,8 +959,11 @@ def sanitize_model_output(text: str, citations: dict[str, str] | None = None) ->
     terminator, which keeps the text readable without Discord autolinking it.
     A bare URL that exactly matches a trusted citation URL is left intact.
 
-    Link and bare-URL rewriting skips inline code spans and fenced blocks,
-    because Discord never renders links inside them. Mention neutralisation
+    The link rewrite runs over the whole text. Code that Discord renders is
+    swapped for a placeholder first, then restored, so a link whose label is
+    inline code is still evaluated. Only closed fenced blocks and balanced,
+    unescaped inline code are protected: an unclosed fence or an escaped
+    backtick is literal text and does not hide a link. Mention neutralisation
     applies everywhere, including inside code.
 
     Args:
@@ -972,9 +983,23 @@ def sanitize_model_output(text: str, citations: dict[str, str] | None = None) ->
     protected: list[str] = []
 
     def protect(rendered: str) -> str:
-        token = f"\x00LINK{len(protected)}\x00"
+        token = f"\x00SAFE{len(protected)}\x00"
         protected.append(rendered)
         return token
+
+    def protect_code(segment: str) -> str:
+        spans = _rendered_code_spans(segment)
+        if not spans:
+            return segment
+        parts: list[str] = []
+        cursor = 0
+        for start, end in spans:
+            if start > cursor:
+                parts.append(segment[cursor:start])
+            parts.append(protect(segment[start:end]))
+            cursor = end
+        parts.append(segment[cursor:])
+        return "".join(parts)
 
     def replace_link(match: re.Match[str]) -> str:
         label = match.group(1)
@@ -996,14 +1021,13 @@ def sanitize_model_output(text: str, citations: dict[str, str] | None = None) ->
             return raw
         return f"{_neutralize_url(core)}{trailing}"
 
-    def rewrite_links(segment: str) -> str:
-        segment = _MARKDOWN_LINK_PATTERN.sub(replace_link, segment)
-        segment = _AUTOLINK_PATTERN.sub(replace_autolink, segment)
-        return _BARE_HTTP_URL_PATTERN.sub(replace_bare_url, segment)
-
-    text = _transform_outside_code(text, rewrite_links)
-    for index, rendered in enumerate(protected):
-        text = text.replace(f"\x00LINK{index}\x00", rendered)
+    text = protect_code(text)
+    text = _MARKDOWN_LINK_PATTERN.sub(replace_link, text)
+    text = _AUTOLINK_PATTERN.sub(replace_autolink, text)
+    text = _BARE_HTTP_URL_PATTERN.sub(replace_bare_url, text)
+    # Restore in reverse so a protected link can contain a protected code span.
+    for index in range(len(protected) - 1, -1, -1):
+        text = text.replace(f"\x00SAFE{index}\x00", protected[index])
     text = _RAW_MENTION_PATTERN.sub(
         lambda match: f"<{match.group(1)}\u200b{match.group(2)}>",
         text,

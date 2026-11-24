@@ -136,7 +136,7 @@ RetryConfig(
 ### Message Handling
 
 - **Inbound text is not sanitized.** The message body is sent to the configured provider unchanged; the bot does not strip instructions, links, or markdown before the request.
-- **Outbound text is neutralised.** Messages longer than Discord's 2000-character limit are split, and model output is sanitised for mentions and links before delivery. These controls apply to outbound text only.
+- **Outbound text is neutralised.** Messages longer than Discord's 2000-character limit are split, and model output is sanitised for mentions and links before delivery. The link rewrite skips only regions Discord renders as code: closed fenced blocks and balanced, unescaped inline code. An unclosed fence or an escaped backtick is literal text, so links after it are still neutralised. These controls apply to outbound text only.
 - **Discord does not moderate bot messages.** Server AutoMod or channel permissions can restrict what users send, but the bot's own replies are not passed through Discord's moderation.
 - **URLs are opened by provider tools.** User-supplied URLs are passed to the provider's native search and fetch tools. The bot does not fetch page content itself.
 
