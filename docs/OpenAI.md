@@ -138,22 +138,25 @@ INPUT_TOKENS=60000    # Adjust based on conversation length
 
 ## Monitoring & Debugging
 
+The console format is `<iso timestamp> [level    ] <event> [<logger>]`; grep for the
+event text. A runtime line from the bot uses the `discordianai.bot` logger.
+
 ### Response Logs
 ```
-INFO OpenAI response generated successfully: 245 characters, finish_reason: stop
-WARNING OpenAI returned empty response content (finish_reason=length)
+2026-11-23T17:04:06Z [info     ] OpenAI response generated successfully: 245 characters, finish_reason: stop [discordianai.bot]
+2026-11-23T17:04:06Z [warning  ] OpenAI returned empty response content (finish_reason=length) [discordianai.bot]
 ```
 
 ### Service Selection Logs
 ```
-INFO Routing decision: {'route': 'local', 'service': 'openai', ...}
-INFO Routing to OpenAI
+2026-11-23T17:04:06Z [info     ] Routing decision: {'route': 'local', 'service': 'openai', ...} [discordianai.bot]
+2026-11-23T17:04:06Z [info     ] Routing to OpenAI [discordianai.bot]
 ```
 
 ### Error Logs
 ```
-ERROR OpenAI API call failed after retries
-WARNING OpenAI returned no response; attempting Perplexity fallback
+2026-11-23T17:04:06Z [error    ] OpenAI API call failed after retries [discordianai.bot]
+2026-11-23T17:04:06Z [info     ] OpenAI returned no response; attempting Perplexity fallback [discordianai.bot]
 ```
 
 ## Cost Optimization Tips

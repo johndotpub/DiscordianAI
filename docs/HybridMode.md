@@ -266,10 +266,11 @@ counter runs out answers live questions from stale weights and cannot tell you i
 
 ### Routing decision logs
 
-Each hybrid decision logs one content-free line:
+Each hybrid decision logs one content-free line. The console format is
+`<iso timestamp> [level    ] <event> [<logger>]`; grep for the event text.
 
 ```
-INFO Routing decision: {'route': 'web', 'service': 'perplexity', 'router_id': 'gate', 'reasons': 'bearing:topic.volatile,bearing:time.deixis', 'latency_ms': 0.14}
+2026-11-23T17:04:06Z [info     ] Routing decision: {'route': 'web', 'service': 'perplexity', 'router_id': 'gate', 'reasons': 'bearing:topic.volatile,bearing:time.deixis', 'latency_ms': 0.14} [discordianai.bot]
 ```
 
 Message text and matched entity text are not logged. An image request is decided as `images:local` before
@@ -278,16 +279,16 @@ the router runs, so that line is the decision actually used and no Clef call is 
 ### Provider logs
 
 ```
-INFO Routing to Perplexity
+2026-11-23T17:04:06Z [info     ] Routing to Perplexity [discordianai.bot]
 ```
 
 ```
-INFO Routing to OpenAI
-WARNING Perplexity failed, falling back to OpenAI
+2026-11-23T17:04:06Z [warning  ] Perplexity failed, falling back to OpenAI [discordianai.bot]
+2026-11-23T17:04:06Z [info     ] Routing to OpenAI [discordianai.bot]
 ```
 
 ```
-ERROR Both services failed or returned no response
+2026-11-23T17:04:06Z [error    ] Both services failed or returned no response [discordianai.bot]
 ```
 
 ## Thread-Safe Architecture

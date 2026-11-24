@@ -34,7 +34,6 @@ Create and configure your Discord bot:
      - Send Messages in Threads
      - Read Message History
      - Embed Links (for citation embeds)
-     - Attach Files
 
 4. **Invite Bot to Server**
    - Copy the generated OAuth2 URL
@@ -162,12 +161,15 @@ The bot writes logs to stderr. Where they end up depends on how you started it:
   python -m src.main --conf config.ini >> bot.log 2>&1
   ```
 
-When `bot.log` is being written by the supervisor or your redirect, monitor it for these messages:
+When `bot.log` is being written by the supervisor or your redirect, grep for the event
+text rather than a bare level prefix. The console format is
+`<iso timestamp> [info     ] <event> [<logger>]`, for example:
+
 ```
-INFO Bot logged in as YourBotName (ID: 123456789012345678)
-INFO Running in hybrid mode (OpenAI + Perplexity); smart orchestration enabled
-INFO Processing message (ID: 123456789012345678, length: 42)
-INFO Routing decision: {'route': 'web', 'service': 'perplexity', ...}
+2026-11-23T17:04:06Z [info     ] Bot logged in as YourBotName (ID: 123456789012345678) [discordianai.bot]
+2026-11-23T17:04:06Z [info     ] Running in hybrid mode (OpenAI + Perplexity); smart orchestration enabled [discordianai.bot]
+2026-11-23T17:04:06Z [info     ] Processing message (ID: 123456789012345678, length: 42) [discordianai.bot]
+2026-11-23T17:04:06Z [info     ] Routing decision: {'route': 'web', 'service': 'perplexity', ...} [discordianai.bot]
 ```
 
 ## Production Deployment
@@ -189,7 +191,7 @@ INFO Routing decision: {'route': 'web', 'service': 'perplexity', ...}
 - **Consider Docker deployment** for isolation and scalability
 
 ### Monitoring & Maintenance
-- **Log rotation**: The bot writes to stderr and never opens `bot.log`; the launcher or supervisor owns the file. Install the shipped `contrib/logrotate/discordianai` fragment and replace its log path plus the `USER GROUP` placeholders on the `su` line as described in [Daemon.md](Daemon.md). The fragment rotates at 100 MB with `copytruncate` and keeps fifty compressed generations. Container deployments use the compose file's bounded `json-file` driver (three files of 10 MB each) instead.
+- **Log rotation**: The bot writes to stderr and never opens `bot.log`; the launcher or supervisor owns the file. Install the shipped `contrib/logrotate/discordianai` fragment and replace its log path plus the `USER GROUP` placeholders on the `su` line as described in [Daemon.md](Daemon.md). The fragment rotates at 100 MB with `copytruncate`, keeps fifty generations, and leaves the newest rotation uncompressed (`delaycompress`). Container deployments use the compose file's bounded `json-file` driver (three files of 10 MB each) instead.
 - **API usage tracking**: Monitor token consumption and costs
 - **Error monitoring**: Set up alerts for critical errors
 - **Regular updates**: Keep dependencies updated for security
