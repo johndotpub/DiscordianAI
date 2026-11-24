@@ -47,11 +47,18 @@ The bot builds one evidence-based routing decision per message before calling a 
 flowchart TD
     A["User Message"] --> GATE{"Bot addressed<br/>and channel allowed?"}
     GATE -->|"No"| Z["Ignore Message"]
-    GATE -->|"Yes"| IMG{"Image attached?"}
-    IMG -->|"Yes"| J["Use chat provider"]
+    GATE -->|"Yes"| MODE{"Mode selector"}
+    MODE -->|"Perplexity only"| PIMG{"Image attached?"}
+    PIMG -->|"Yes"| PREF["Refuse image request<br/>(Perplexity cannot receive images)"]
+    PIMG -->|"No"| F["Use Perplexity"]
+
+    MODE -->|"OpenAI-compatible only"| J["Use chat provider"]
+    MODE -->|"Hybrid"| IMG{"Image attached?"}
+    IMG -->|"Yes"| ITERM["Chat answer with images<br/>(images:local; no reroute)"]
     IMG -->|"No"| S["Build RouterInput<br/>message + history"]
+
     S --> C{"Override: web instruction,<br/>URL, or local instruction?"}
-    C -->|"web"| F["Use Perplexity"]
+    C -->|"web"| F
     C -->|"local"| J
     C -->|"No override"| G{"Any bearing cue?"}
     G -->|"Yes"| F
@@ -61,9 +68,9 @@ flowchart TD
     I -->|"previous route local"| J
     H -->|"No"| J
 
-    %% Chat path includes a web-inability check that can reroute to Perplexity once
+    %% Only a hybrid, non-image local answer can reroute once to Perplexity
     J --> O["Chat Provider Response"]
-    O --> WI{"Chat provider indicates<br/>web-inability?"}
+    O --> WI{"Hybrid, non-image answer<br/>indicates web-inability?"}
     WI -->|"Yes, Perplexity not tried"| F
     WI -->|"No or already tried"| M["Local answer"]
 

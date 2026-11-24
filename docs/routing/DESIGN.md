@@ -70,8 +70,10 @@ the gate.
 
 ## Invariants tests enforce
 
-- Masked-vs-unmasked handling: no cue inside a code fence fires, whether an override, a version shape, a
-  year, or a money/commerce term. Overrides and bearing cues both read the masked view.
+- Masked-vs-unmasked handling: overrides and bearing cues read the code-masked view, so a version shape,
+  year, money/commerce term, instruction, or URL inside a fence cannot decide a route. `code.shape` and
+  traceback cues still read the original text so a pasted artifact is marked as code-shaped, but they are
+  framing cues and cannot decide a route alone.
 - Inheritance only from a real previous assistant turn, at most one turn back, suppressed on topic shift.
 - Corpus fixture: current behaviour matches the blessed confusion counts (any silent change fails CI).
 - Determinism: same input, same route, every run, no clock/network/model dependence.
@@ -144,7 +146,8 @@ local-with-bearing-cue", expressed at the call site — there is no router-emitt
 - 2026-11-15: optional Clef decision-model router added behind `ROUTER_MODE=clef`; the deterministic gate
   stays the default and the fallback on any Clef failure. `ROUTER_MODE=model` is retired and rejected at
   startup; use `heuristic` or `clef`.
-- 2026-11-23: all cue extraction runs on code-masked text; gate overrides are exposed as decision data so
-  Clef honours supplied artifacts; Clef uses a dedicated credential resolved per endpoint, one pooled
-  client, and a hard total deadline; image requests bypass the router; any router fault falls back to the
-  gate; the web-inability reroute requires a first-person admission.
+- 2026-11-23: bearing and override cue extraction runs on code-masked text; code-shape and traceback
+  framing cues still read the original text; gate overrides are exposed as decision data so Clef honours
+  supplied artifacts; Clef uses a dedicated credential resolved per endpoint, one pooled client, and a
+  hard total deadline; image requests bypass the router; any router fault falls back to the gate; the
+  web-inability reroute requires a first-person admission.

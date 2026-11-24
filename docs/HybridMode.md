@@ -34,8 +34,10 @@ Two rules keep the model honest:
   capital of France?"* stays local because the answer does not change.
 - **Framing cannot decide alone.** Social text such as "thanks" or "best regards" neither triggers nor
   blocks a search.
-- **Every cue is evaluated on code-masked text**, so a version, price, year, or instruction inside a
-  fenced block cannot route the message. Text outside the fence still counts.
+- **Bearing and override cues are evaluated on code-masked text**, so a version, price, year, instruction,
+  or URL inside a fenced block cannot route the message to the web. Text outside the fence still counts.
+  `code.shape` and traceback cues are detected from the original text so a pasted artifact still marks the
+  request as code-shaped, but those are framing cues and cannot decide a route on their own.
 
 There is no threshold, no confidence score, and no per-channel tuning: either the message carries
 live-data evidence or it does not.
@@ -85,24 +87,31 @@ flowchart TD
     C -->|"Failed"| D["Send Rate Limit Message"]
     C -->|"Passed"| E["Build AIRequest"]
 
-    E --> IMG{"Image attached?"}
-    IMG -->|"Yes, local override"| G["OpenAI-Compatible Processing<br/>(Ollama Cloud default)"]
-    IMG -->|"No"| F{"Mode Selector"}
-    F -->|"OpenAI-Compatible Only"| G
-    F -->|"Perplexity Only"| H["Perplexity Processing<br/>(Agent API)"]
-    F -->|"Hybrid"| R["Build RouterInput<br/>+ one route decision"]
+    E --> F{"Mode Selector"}
+    F -->|"Perplexity Only"| PIMG{"Image attached?"}
+    PIMG -->|"Yes"| PREF["Refuse image request<br/>(Perplexity cannot receive images)"]
+    PIMG -->|"No"| H["Perplexity Processing<br/>(Agent API)"]
+
+    F -->|"OpenAI-Compatible Only"| G["OpenAI-Compatible Processing<br/>(Ollama Cloud default)"]
+    F -->|"Hybrid"| IMG{"Image attached?"}
+    IMG -->|"Yes"| ITERM["Chat answer with images<br/>(images:local; no Perplexity reroute;<br/>empty answer is an error, not a fallback)"]
+    IMG -->|"No"| R["Build RouterInput<br/>+ one route decision"]
 
     R -->|"web"| H
     R -->|"local"| G
 
     G --> OW["Chat Provider Response"]
-    OW --> WI{"Indicates web-inability?"}
+    OW --> EMPTY{"Empty answer?"}
+    EMPTY -->|"Yes, hybrid and no image"| H
+    EMPTY -->|"Yes, image request"| IERR["Service-unavailable notice<br/>(no Perplexity fallback)"]
+    EMPTY -->|"No"| WI{"Hybrid local answer indicates<br/>web-inability?"}
     WI -->|"Yes, Perplexity not tried"| H
-    WI -->|"Yes, Perplexity already failed"| U["Return local answer"]
-    WI -->|"No"| U
+    WI -->|"No or already tried"| U["Return local answer"]
     H --> PR["Agent API Response + Citations"]
 
-    U --> W["send_formatted_message"]
+    ITERM --> W["send_formatted_message"]
+    IERR --> W
+    U --> W
     PR --> V["Citation Embed Formatter"]
     V --> W
 
@@ -216,10 +225,13 @@ secrets out of the file system.
 
 The hybrid orchestrator (`smart_orchestrator.py`) provides bounded fallback between services:
 
-- **Chat provider failure -> Perplexity**: When the local answer is empty, the orchestrator may try Perplexity
-  once for a web-enabled fallback.
+- **Chat provider failure -> Perplexity**: In hybrid mode, when a non-image local answer is empty, the
+  orchestrator may try Perplexity once for a web-enabled fallback.
 - **Perplexity failure -> chat provider**: When the web answer fails, the orchestrator falls back to the
   OpenAI-compatible provider for a standard completion and marks the answer degraded.
+- **Images have no Perplexity fallback.** Perplexity-only mode refuses an image request, and an image
+  answer is never rerouted. If the chat provider returns no answer for an image request, the bot sends the
+  service-unavailable notice instead of calling Perplexity without the image.
 - **Web-inability reroute**: If the chat provider makes a first-person admission that it cannot browse the
   web, and Perplexity has not been tried in this request, the orchestrator reroutes once. General statements,
   quoted text, and creative or narrative output do not trigger this reroute. If Perplexity already failed,
