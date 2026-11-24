@@ -425,3 +425,10 @@ def test_delivery_is_repeatable_after_sanitising() -> None:
     for case in CORPUS[:200]:
         once = sanitize_for_discord(case)
         assert sanitize_for_discord(once) == once
+
+
+def test_escaped_inline_closer_is_not_a_protected_region() -> None:
+    """A parsed span whose closing backtick is escaped protects nothing."""
+    text = "`a\\` [x](https://evil.example/e)`"
+
+    assert protected_code_regions(text) == []

@@ -385,6 +385,10 @@ def _filtered_code_regions(parse: _MarkdownParse) -> list[_CodeRegion]:
                 continue
             if _is_escaped(parse.text, span.start):
                 continue
+            if _is_escaped(parse.text, span.end - 1):
+                # A backslash-escaped closing backtick does not close the span
+                # Discord renders, so the parsed end is not trustworthy.
+                continue
             regions.append(_CodeRegion(start=span.start, end=span.end, kind="inline"))
     regions.sort(key=lambda region: region.start)
     return regions

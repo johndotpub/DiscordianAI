@@ -262,11 +262,13 @@ MUTATIONS = [
         ),
     ),
     Mutation(
-        name="protect-escaped-inline-opener",
+        name="protect-escaped-inline-closer",
         path="src/message_splitter.py",
         test="tests/test_code_protection.py",
         old=(
-            "            if _is_escaped(parse.text, span.start):\n"
+            "            if _is_escaped(parse.text, span.end - 1):\n"
+            "                # A backslash-escaped closing backtick does not close the span\n"
+            "                # Discord renders, so the parsed end is not trustworthy.\n"
             "                continue\n"
         ),
         new="",
