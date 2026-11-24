@@ -546,11 +546,88 @@ def test_stale_pid_file_for_an_unrelated_process_is_removed_without_a_signal(tmp
         unrelated.wait(timeout=5)
 
 
-def test_install_systemd_writes_quoted_paths_and_starts_the_unit(tmp_path):
-    """A project path with a space is quoted in the unit and the unit is started."""
-    project = tmp_path / "space project"
-    _write_stub_project(project)
-    home = tmp_path / "home"
+_SYSTEMD_ESCAPES = {
+    "a": "\a",
+    "b": "\b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "v": "\v",
+    "\\": "\\",
+    '"': '"',
+    "'": "'",
+    "s": " ",
+}
+
+
+def _expand_systemd_percent(value: str) -> str:
+    """Decode ``%%`` and reject an unescaped systemd specifier."""
+    result: list[str] = []
+    index = 0
+    while index < len(value):
+        if value[index] != "%":
+            result.append(value[index])
+            index += 1
+            continue
+        assert value[index + 1 : index + 2] == "%", f"unescaped specifier in {value!r}"
+        result.append("%")
+        index += 2
+    return "".join(result)
+
+
+def _split_systemd_words(value: str) -> list[str]:
+    """Split a systemd word list with double quotes and C-style escapes."""
+    words: list[str] = []
+    current: list[str] = []
+    quoted = False
+    index = 0
+    while index < len(value):
+        character = value[index]
+        if character == '"':
+            quoted = not quoted
+            index += 1
+            continue
+        if character == "\\":
+            escaped = value[index + 1 : index + 2]
+            assert escaped in _SYSTEMD_ESCAPES, f"unknown systemd escape in {value!r}"
+            current.append(_SYSTEMD_ESCAPES[escaped])
+            index += 2
+            continue
+        if character.isspace() and not quoted:
+            if current:
+                words.append(_expand_systemd_percent("".join(current)))
+                current = []
+            index += 1
+            continue
+        current.append(character)
+        index += 1
+    assert not quoted, f"unterminated quote in {value!r}"
+    if current:
+        words.append(_expand_systemd_percent("".join(current)))
+    return words
+
+
+def _parse_systemd_unit(text: str) -> dict[str, list[str]]:
+    """Return each directive's raw value, keeping repeated lines in order."""
+    directives: dict[str, list[str]] = {}
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", ";", "[")):
+            continue
+        key, separator, value = stripped.partition("=")
+        assert separator, f"not a systemd directive: {line!r}"
+        directives.setdefault(key, []).append(value)
+    return directives
+
+
+def _escaped_systemd_path(path: str) -> str:
+    """Return a path value with every percent doubled for systemd."""
+    return path.replace("%", "%%")
+
+
+def _generate_systemd_unit(tmp_path: Path, project: Path, home: Path) -> tuple[Path, list[str]]:
+    """Run the real launcher with a stub systemctl and return its unit and calls."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     calls = tmp_path / "systemctl-calls.txt"
@@ -580,13 +657,85 @@ set -euo pipefail
 
     assert completed.returncode == 0, completed.stderr
     unit = home / ".config" / "systemd" / "user" / "discordian-bot@bot.service"
-    text = unit.read_text(encoding="utf-8")
-    assert f'ExecStart="{SCRIPT_PATH}" -c "bot.ini" -f "{project}"' in text
-    assert f'WorkingDirectory="{project}"' in text
-    assert f'ReadWritePaths="{project}"' in text
-    invocations = calls.read_text(encoding="utf-8").splitlines()
+    return unit, calls.read_text(encoding="utf-8").splitlines()
+
+
+def _assert_unit_directives(text: str, project: Path, home: Path) -> None:
+    """Assert the quoting rule for each directive and the decoded values."""
+    directives = _parse_systemd_unit(text)
+
+    exec_start = directives["ExecStart"][0]
+    assert exec_start.startswith('"')
+    assert _split_systemd_words(exec_start) == [
+        str(SCRIPT_PATH),
+        "-c",
+        "bot.ini",
+        "-f",
+        str(project),
+    ]
+
+    working_directory = directives["WorkingDirectory"][0]
+    assert not working_directory.startswith('"')
+    assert working_directory == _escaped_systemd_path(str(project))
+
+    log_path = _escaped_systemd_path(str(project / "bot.log"))
+    assert directives["StandardOutput"] == [f"append:{log_path}"]
+    assert directives["StandardError"] == [f"append:{log_path}"]
+
+    read_write_paths = directives["ReadWritePaths"][0]
+    assert read_write_paths.startswith('"')
+    assert _split_systemd_words(read_write_paths) == [str(project)]
+
+    environment: dict[str, str] = {}
+    home_entry = ""
+    for raw in directives["Environment"]:
+        words = _split_systemd_words(raw)
+        assert len(words) == 1, f"Environment is not one assignment: {raw!r}"
+        name, separator, value = words[0].partition("=")
+        assert separator, f"Environment has no assignment: {raw!r}"
+        environment[name] = value
+        if name == "HOME":
+            home_entry = raw
+
+    assert environment["HOME"] == str(home)
+    assert environment["LANG"] == "en_US.UTF-8"
+    assert environment["PATH"].endswith(
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    )
+    if any(character.isspace() for character in str(home)):
+        assert home_entry.startswith('"HOME=')
+        assert home_entry.endswith('"')
+    else:
+        assert home_entry.startswith("HOME=")
+
+
+def test_install_systemd_quotes_only_word_lists_and_starts_the_unit(tmp_path):
+    """ExecStart and ReadWritePaths are quoted; the path directives are not."""
+    project = tmp_path / "space project"
+    home = tmp_path / "home"
+    _write_stub_project(project)
+    unit, invocations = _generate_systemd_unit(tmp_path, project, home)
+
+    _assert_unit_directives(unit.read_text(encoding="utf-8"), project, home)
     assert invocations == [
         "--user daemon-reload",
         "--user enable discordian-bot@bot.service",
         "--user start discordian-bot@bot.service",
     ]
+
+
+def test_install_systemd_escapes_percent_quotes_and_backslashes(tmp_path):
+    """Each directive receives the escaping systemd applies to it."""
+    project = tmp_path / 'space 50% "quote" \\backslash'
+    home = tmp_path / "home 25%"
+    _write_stub_project(project)
+    unit, _invocations = _generate_systemd_unit(tmp_path, project, home)
+
+    text = unit.read_text(encoding="utf-8")
+    _assert_unit_directives(text, project, home)
+    directives = _parse_systemd_unit(text)
+    assert "%%" in directives["WorkingDirectory"][0]
+    assert "\\\\" in directives["ExecStart"][0]
+    assert '\\"' in directives["ExecStart"][0]
+    assert '\\"' in directives["ReadWritePaths"][0]
+    assert 'Environment="HOME=' in text

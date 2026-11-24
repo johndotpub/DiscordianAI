@@ -105,6 +105,41 @@ if [[ -n "${INSTALL_SYSTEMD}" ]]; then
     fi
     UNIT_PATH="${UNIT_PATH}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
+    # systemd parses ExecStart and ReadWritePaths as word lists, but
+    # WorkingDirectory, StandardOutput, and StandardError take the rest of the
+    # line as a single value. Quote only the word-list directives.
+    systemd_word() {
+        local value="$1"
+        value="${value//\\/\\\\}"
+        value="${value//\"/\\\"}"
+        value="${value//%/%%}"
+        printf '%s' "${value}"
+    }
+    systemd_path() {
+        local value="$1"
+        value="${value//%/%%}"
+        printf '%s' "${value}"
+    }
+    systemd_environment() {
+        local name="$1"
+        local value="$2"
+        local escaped
+        escaped="$(systemd_word "${value}")"
+        if [[ "${value}" =~ [[:space:]] ]]; then
+            printf '"%s=%s"' "${name}" "${escaped}"
+        else
+            printf '%s=%s' "${name}" "${escaped}"
+        fi
+    }
+
+    EXEC_START="\"$(systemd_word "${SCRIPT_DIR}/discordian.sh")\" -c \"$(systemd_word "${CONFIG_FILE}")\" -f \"$(systemd_word "${PROJECT_DIR}")\""
+    WORKING_DIRECTORY="$(systemd_path "${PROJECT_DIR}")"
+    STANDARD_OUTPUT="append:$(systemd_path "${PROJECT_DIR}/bot.log")"
+    READ_WRITE_PATHS="\"$(systemd_word "${PROJECT_DIR}")\""
+    ENV_PATH="$(systemd_environment PATH "${UNIT_PATH}")"
+    ENV_HOME="$(systemd_environment HOME "${HOME}")"
+    ENV_LANG="$(systemd_environment LANG "en_US.UTF-8")"
+
     mkdir -p "${UNIT_DIR}"
     cat > "${UNIT_FILE}" <<EOF
 [Unit]
@@ -114,22 +149,22 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart="${SCRIPT_DIR}/discordian.sh" -c "${CONFIG_FILE}" -f "${PROJECT_DIR}"
-WorkingDirectory="${PROJECT_DIR}"
+ExecStart=${EXEC_START}
+WorkingDirectory=${WORKING_DIRECTORY}
 Restart=on-failure
 RestartSec=15
 
-StandardOutput=append:"${PROJECT_DIR}/bot.log"
-StandardError=append:"${PROJECT_DIR}/bot.log"
+StandardOutput=${STANDARD_OUTPUT}
+StandardError=${STANDARD_OUTPUT}
 
-Environment=PATH=${UNIT_PATH}
-Environment=HOME=${HOME}
-Environment=LANG=en_US.UTF-8
+Environment=${ENV_PATH}
+Environment=${ENV_HOME}
+Environment=${ENV_LANG}
 
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths="${PROJECT_DIR}"
+ReadWritePaths=${READ_WRITE_PATHS}
 
 [Install]
 WantedBy=default.target
