@@ -237,6 +237,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Single-provider outages show the outage notice.** The processing wrappers can report a
   classified failure instead of swallowing it, so an outage in OpenAI-only or
   Perplexity-only mode no longer tells the user to rephrase the question.
+- **A failed provider call logs one traceback.** The retry policy logs its final summary
+  without repeating the traceback, the orchestrator no longer logs the classified failure a
+  second time, and the delivery helper logs its own final failure once. One logical failure
+  now produces one traceback instead of two or three.
 - **Shutdown closes Discord before provider pools.** In-flight requests no longer fail
   against already-closed clients while Discord is still connected, and any shutdown
   exception is logged and ends the process cleanly.

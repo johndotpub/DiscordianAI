@@ -317,34 +317,41 @@ async def retry_with_backoff(
             retry_if = retry_config.retry_if or _is_retryable_error
 
             if not retry_if(error_details, e):
-                logger.exception("Non-retryable error in %s", _callable_name(func))
+                logger.error(
+                    "Non-retryable error in %s (%s)",
+                    _callable_name(func),
+                    type(e).__name__,
+                )
                 raise
 
             if attempt >= retry_config.max_attempts - 1:
-                logger.exception(
-                    "All %s attempts failed for %s",
+                logger.error(
+                    "All %s attempts failed for %s (%s)",
                     retry_config.max_attempts,
                     _callable_name(func),
+                    type(e).__name__,
                 )
                 break
 
             remaining = _remaining_time(started_at, retry_config)
             if remaining is not None and remaining <= 0:
-                logger.exception(
-                    "Retry deadline of %.1fs exceeded for %s",
+                logger.error(
+                    "Retry deadline of %.1fs exceeded for %s (%s)",
                     retry_config.max_elapsed,
                     _callable_name(func),
+                    type(e).__name__,
                 )
                 break
 
             delay_policy = retry_config.delay_for or _retry_delay
             delay = delay_policy(attempt, retry_config, error_details, e)
             if remaining is not None and delay >= remaining:
-                logger.exception(
-                    "Retry delay of %.1fs would exceed deadline of %.1fs for %s",
+                logger.error(
+                    "Retry delay of %.1fs would exceed deadline of %.1fs for %s (%s)",
                     delay,
                     retry_config.max_elapsed,
                     _callable_name(func),
+                    type(e).__name__,
                 )
                 break
 
@@ -931,6 +938,7 @@ async def safe_discord_send(
     try:
         await retry_with_backoff(_send_once, _discord_retry_config(max_retries), logger)
     except Exception as exc:  # noqa: BLE001 — safe_discord_send must never raise
+        logger.exception("Failed to send Discord message after retries")
         error_tracker.record_error(classify_error(exc), {"channel": str(channel)})
         return False
     return True

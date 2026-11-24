@@ -374,7 +374,8 @@ class TestRetryWithBackoff:
 
         # Should only be called once, not retried
         assert call_count == 1
-        mock_logger.exception.assert_called_once()
+        mock_logger.error.assert_called_once()
+        mock_logger.exception.assert_not_called()
 
     async def test_retry_skips_api_timeout_errors(self):
         """Test that API_TIMEOUT is not retried (fails fast to fallback)."""
@@ -393,7 +394,8 @@ class TestRetryWithBackoff:
             await retry_with_backoff(test_func, config, mock_logger)
 
         assert call_count == 1
-        mock_logger.exception.assert_called_once()
+        mock_logger.error.assert_called_once()
+        mock_logger.exception.assert_not_called()
 
 
 class TestClassifyError:

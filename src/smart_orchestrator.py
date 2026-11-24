@@ -571,7 +571,6 @@ async def _process_only_mode(
         if spec.breaker_error is not None and get_circuit_breaker(spec.service).state == "OPEN":
             return spec.breaker_error, False, None
     except ProviderCallError as failure:
-        request.logger.exception("%s processing failed", spec.label)
         return failure.details.user_message, False, None
     except Exception:
         request.logger.exception("%s processing failed", spec.label)
