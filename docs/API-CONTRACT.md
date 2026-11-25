@@ -51,7 +51,7 @@ facts are verified for it:
 
 ### Consequences for this codebase
 
-1. `max_tokens` must never be set low "to save money": on a reasoning model the
+1. `max_tokens` must never be set low "to save tokens": on a reasoning model the
    reasoning budget is consumed first and the reply comes back as an empty string with
    `finish_reason: length`. The empty-content reroute path exists — it is a safety net, not
    a licence to set the cap small.
@@ -87,7 +87,7 @@ The bot uses the current Agent API, not Sonar Chat Completions. The OpenAI SDK's
 | `message` item | `role: "assistant"`, `content: [{"type": "output_text", "text": "…"}]` | probe |
 | `fetch_url_results` item | fetched pages under `contents[]` (or `results[]` on older shapes), each with `url` and `title`; citation markers resolve the same way as search results | code |
 | No-search response | `output` contains only the `message` item; there is no `search_results` item | probe |
-| Usage | `input_tokens`, `output_tokens`, `total_tokens`, and `cost` with input, output, tool-call, and total cost | probe |
+| Usage | `input_tokens`, `output_tokens`, `total_tokens`, and a provider-specific breakdown | probe |
 | Invalid model | HTTP **400**. The recorded probe response was `{"error": {"type": "invalid_request", "code": 400, "message": "validation failed: model \"sonar\" is not supported"}}`; the SDK exposes the inner error object and reports `code` as the string `"400"`. The bot classifies a 400 as a configuration error when the structured error type or code is `invalid_model` or `model_not_found`, when `param` is `model`, or when the message combines the word `model` with `is not supported`, `not found`, or `does not exist`. A 400 about anything else stays neutral. Never retry | probe + code |
 | Rate limit | HTTP **429**; classified as a rate limit and handled by the shared retry policy | probe + code |
 | Attribution header | `X-Pplx-Integration: discordian-ai` accepted, 200, no behaviour change | probe |
@@ -107,8 +107,8 @@ The bot uses the current Agent API, not Sonar Chat Completions. The OpenAI SDK's
    reordered result list cannot misattribute a source.
 5. A response without `search_results` is valid: the parser returns the message text and an
    empty citation map instead of failing.
-6. `usage.cost` is available but not logged today. Do not add a second accounting scheme to
-   report spend.
+6. The `usage` block is available but not logged today. Do not add a second accounting
+   scheme to report token use.
 
 ---
 

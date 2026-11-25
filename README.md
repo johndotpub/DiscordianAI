@@ -103,10 +103,10 @@ The launcher resolves Python in this order: project-local `.venv` (when its depe
 | `INPUT_TOKENS` / `OUTPUT_TOKENS` | Prompt budget and chat completion cap. `OUTPUT_TOKENS` is sent as `max_tokens` and includes reasoning tokens.
 | `PERPLEXITY_OUTPUT_TOKENS` | Perplexity completion cap, sent as `max_output_tokens` to the Agent API (output only). Defaults to `OUTPUT_TOKENS`.
 | `PERPLEXITY_INPUT_TOKENS` | Prompt budget for the Perplexity web path (default 111000). History is trimmed to it after the fixed `fetch_url` instructions are reserved.
-| `CONTEXT_WINDOW` | Chat-provider context window (default 1000000). The default chat model's window is 1,000,000 tokens; the value feeds the prompt budget and truncation, not billing.
+| `CONTEXT_WINDOW` | Chat-provider context window (default 1000000). The default chat model's window is 1,000,000 tokens; the value feeds the prompt budget and truncation, not an API usage limit.
 | `PERPLEXITY_CONTEXT_WINDOW` | Perplexity web-path context window (default 128000). The figure comes from the former Sonar model page; the Agent API models page publishes none, so 128K is unverified there.
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | How many recent messages to inspect when a follow-up inherits the previous provider.
-| `ROUTER_MODE` | Router implementation, `heuristic` by default (deterministic, no network). `clef` uses Ollama Cloud's decision model (~0.4 s per message, billed per token) and falls back to the heuristic on failure; `model` is retired and raises.
+| `ROUTER_MODE` | Router implementation, `heuristic` by default (deterministic, no network). `clef` uses Ollama Cloud's decision model (~0.4 s per message, consuming tokens) and falls back to the heuristic on failure; `model` is retired and raises.
 | `CONVERSATION_TTL_SECONDS` | Idle seconds before a conversation and its lock are evicted (default 7200).
 | `WEB_TOOLS` | Offer native web search and page fetch to Ollama-compatible chat providers (default true); OpenAI endpoints never receive these tools.
 | `OPENAI_MAX_CONNECTIONS` / `PERPLEXITY_MAX_CONNECTIONS` | HTTP/2 pool connection limits for each API client.

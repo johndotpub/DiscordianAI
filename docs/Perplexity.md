@@ -35,8 +35,8 @@ The bot calls the Agent API through the OpenAI SDK's `responses.create()`:
 - **No-search answers**: a query that needs no search returns only the
   `message` item, so the parser tolerates a missing `search_results` item.
 - **Usage**: `usage` reports `input_tokens`, `output_tokens`,
-  `total_tokens`, and a `cost` breakdown. The bot does not currently log that
-  cost.
+  `total_tokens`, and a provider-specific breakdown. The bot does not currently
+  log those figures.
 
 Chat Completions remains supported by Perplexity, but it is the legacy
 interface and this bot no longer calls it.
@@ -228,8 +228,8 @@ One decision is built per message before any provider call:
 
 ### Model Selection
 - Use **perplexity/sonar**, the current Agent API Sonar model, for web search
-- Consider token costs when setting OUTPUT_TOKENS; `usage.cost` reports the
-  provider's own breakdown for each response
+- Consider token use when setting OUTPUT_TOKENS; the provider's `usage` block
+  reports its own breakdown for each response
 
 ### Integration Tips
 - **Hybrid mode recommended**: Combines web search with conversational AI
@@ -245,7 +245,7 @@ One decision is built per message before any provider call:
 - Verify the API key starts with `pplx-`
 
 **"Rate limit exceeded"**:
-- Check your Perplexity billing and usage limits
+- Check your Perplexity usage limits
 - Implement appropriate rate limiting in bot configuration
 
 **"Model not found"**:
@@ -266,7 +266,7 @@ One decision is built per message before any provider call:
 ### Performance Optimization
 
 - **Adjust OUTPUT_TOKENS**: Higher values allow for more complete responses with citations
-- **Monitor API costs**: The bot does not log usage; tune limits for your use case
+- **Monitor API usage**: The bot does not log usage; tune limits for your use case
 
 ## Environment Variables
 
@@ -282,7 +282,7 @@ export PERPLEXITY_MODEL="perplexity/sonar"
 
 - Check Perplexity's [API documentation](https://docs.perplexity.ai/)
 - Monitor the bot logs for specific error messages
-- Verify your API key has sufficient credits and permissions
+- Verify your API key has sufficient access and permissions
 - Test with simple queries first to ensure connectivity
 
 ## Advanced Features
@@ -300,7 +300,7 @@ export PERPLEXITY_MODEL="perplexity/sonar"
 
 ### Metadata Tracking
 - All Perplexity responses include service metadata
-- The response's `usage` block, including `usage.cost`, is available to the provider
+- The response's `usage` block is available to the provider
   adapter, but the bot does not log it
 
 ### Error Handling

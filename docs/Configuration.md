@@ -26,7 +26,7 @@ Configure the OpenAI-compatible chat provider (Ollama Cloud by default) and the 
 - **`OPENAI_API_KEY`**: Key for the configured OpenAI-compatible provider *(leave empty to disable)*. OpenAI keys start with `sk-`; other compatible providers use their own formats, which are accepted with a warning.
 - **`OPENAI_API_URL`**: Chat provider base URL. Accepted: `https://api.openai.com/v1/`, `https://ollama.com/v1/`, and `http(s)://localhost:11434/v1/` or `http(s)://127.0.0.1:11434/v1/` *(default: "https://ollama.com/v1/")*
 - **`GPT_MODEL`**: Model identifier sent as configured. Any non-empty identifier is accepted; the provider decides which names are valid *(default: "deepseek-v4.1-flash:1017")*
-- **`REASONING_EFFORT`**: Reasoning effort sent with chat requests only when non-empty. It is a reasoning-model parameter; valid values are model-defined, `low`, `high`, and `max` are supported by the shipped model, and `none` disables thinking. Leave it blank to omit the parameter entirely. Reasoning tokens are billed as output *(default: "high")*
+- **`REASONING_EFFORT`**: Reasoning effort sent with chat requests only when non-empty. It is a reasoning-model parameter; valid values are model-defined, `low`, `high`, and `max` are supported by the shipped model, and `none` disables thinking. Leave it blank to omit the parameter entirely. Reasoning tokens count toward the output cap *(default: "high")*
 
 OpenAI remains supported by setting all three of `OPENAI_API_URL`, `GPT_MODEL`, and `OPENAI_API_KEY` to OpenAI values.
 
@@ -40,7 +40,7 @@ OpenAI remains supported by setting all three of `OPENAI_API_URL`, `GPT_MODEL`, 
 - **`OUTPUT_TOKENS`**: Maximum chat output tokens per response, sent as `max_tokens` to Ollama-compatible providers and `max_completion_tokens` to `api.openai.com` *(default: 16384)*
 - **`PERPLEXITY_OUTPUT_TOKENS`**: Maximum Perplexity output tokens per response, sent as `max_output_tokens` to the Agent API *(default: the value of `OUTPUT_TOKENS`)*
 - **`PERPLEXITY_INPUT_TOKENS`**: Prompt budget for the Perplexity Sonar path only *(default: 111000)*. It leaves room for `PERPLEXITY_OUTPUT_TOKENS` and the fixed `fetch_url` instruction suffix inside the Sonar context window.
-- **`CONTEXT_WINDOW`**: Total chat-provider context window size *(default: 1000000)*. The default chat model's window is 1,000,000 tokens, so this value may be set that high; it feeds the prompt budget and truncation, not billing.
+- **`CONTEXT_WINDOW`**: Total chat-provider context window size *(default: 1000000)*. The default chat model's window is 1,000,000 tokens, so this value may be set that high; it feeds the prompt budget and truncation, not an API usage limit.
 - **`PERPLEXITY_CONTEXT_WINDOW`**: Total Perplexity Sonar context window *(default: 128000)*. The figure comes from the former Sonar model page, which documented a 128K-token window; the Agent API models page publishes no context figure, so 128K is unverified there. The Perplexity path uses this value instead of the larger chat-provider window.
 - **`SYSTEM_MESSAGE`**: System prompt for AI personality *(default: "You are a helpful assistant.")*
 
@@ -100,7 +100,7 @@ Image attachments are read from normal messages in allowed channels and direct m
 
 ### Rate Limiting
 
-Prevents spam and manages API costs.
+Prevents spam and manages API usage.
 
 - **`RATE_LIMIT`**: Messages per time period *(default: 10)*
 - **`RATE_LIMIT_PER`**: Time period in seconds *(default: 60)*
@@ -124,7 +124,7 @@ Advanced configuration for intelligent AI service routing.
 - **`CONVERSATION_TTL_SECONDS`**: Idle seconds before a conversation and its lock are evicted *(default: 7200)*
 - **`USER_LOCK_CLEANUP_INTERVAL`**: Memory cleanup interval in seconds *(default: 3600)*
 - **`ENTITY_DETECTION_MIN_WORDS`**: Minimum message length intended for entity detection *(default: 10)*. Note: this setting is parsed into config but not yet wired into the current routing implementation; changing it has no runtime effect in this release.
-- **`ROUTER_MODE`**: Router implementation, `heuristic` or `clef` *(default: "heuristic")*. `heuristic` is the deterministic gate and remains the fallback. `clef` sends each message to Ollama Cloud's decision model (about 0.4 seconds, billed per token); network, timeout, HTTP, or malformed-response failures fall back to the deterministic gate. `model` is not implemented and raises with a pointer to `ROUTER_MODE=clef`.
+- **`ROUTER_MODE`**: Router implementation, `heuristic` or `clef` *(default: "heuristic")*. `heuristic` is the deterministic gate and remains the fallback. `clef` sends each message to Ollama Cloud's decision model (about 0.4 seconds, consuming tokens); network, timeout, HTTP, or malformed-response failures fall back to the deterministic gate. `model` is not implemented and raises with a pointer to `ROUTER_MODE=clef`.
 - **`ROUTER_CLEF_API_KEY`**: Optional dedicated key for the Clef decision endpoint. Prefer the environment variable because it is a secret. Resolution order is this key, `OLLAMA_API_KEY` from the environment, then `OPENAI_API_KEY` only when `OPENAI_API_URL` points at `ollama.com`; a key issued by another provider is never sent to Clef. When no eligible key exists, startup warns once and uses the deterministic gate. Unset by default.
 - **`ROUTER_CLEF_MODEL`**: Decision model used when `ROUTER_MODE=clef` *(default: "clef")*
 - **`ROUTER_CLEF_THRESHOLD`**: Probability at or above which Clef routes to the web *(default: 0.5)*
@@ -164,8 +164,8 @@ Discord login, so `/health/live` answers while the connection is still being est
 and resume events, so `/health` and `/health/ready` return 503 during an outage even though
 discord.py's `is_ready()` remains set.
 
-> **No cost cap.** Routing carries no budget knob: the gate decides from the message alone, so spend
-> follows the message mix rather than a configured ceiling. Measured precision also falls on trap-heavy
+> **No usage cap.** Routing carries no budget knob: the gate decides from the message alone, so search
+> volume follows the message mix rather than a configured ceiling. Measured precision also falls on trap-heavy
 > input (pleasantries that contain a date or a state word); the numbers are in `docs/routing/DESIGN.md`.
 
 ## Operation Modes
@@ -447,7 +447,7 @@ INFO: Configuration validation passed successfully
 - **Never commit API keys** to version control
 - **Use environment variables** in production
 - **Restrict file permissions** on config files (chmod 600)
-- **Monitor API usage** to prevent unexpected costs
+- **Monitor API usage** for unexpected activity
 
 ### Performance  
 - **Adjust `MAX_HISTORY_PER_USER`** based on memory constraints

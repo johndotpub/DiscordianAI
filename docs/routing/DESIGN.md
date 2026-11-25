@@ -91,7 +91,7 @@ ignored without a warning because the loader no longer reads those keys.
 request to Ollama Cloud at `/v1/systemone` with the last two prior turns (each capped at 600 characters)
 and the current message as `state`. The single `needs_live_web` question is a `noul` probability;
 `>= ROUTER_CLEF_THRESHOLD` routes web, otherwise local. A live probe measured roughly 0.35–0.43 s per
-decision, billed per token; `ROUTER_CLEF_TIMEOUT_MS` defaults to 2 s and is enforced as a hard total
+decision, consuming tokens; `ROUTER_CLEF_TIMEOUT_MS` defaults to 2 s and is enforced as a hard total
 deadline for the asynchronous decision, not as a per-phase timeout.
 
 A deterministic gate override is carried as data on the decision, and Clef returns that decision without a

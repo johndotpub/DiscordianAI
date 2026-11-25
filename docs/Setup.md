@@ -195,7 +195,7 @@ supplied that context. For example:
 
 ### Monitoring & Maintenance
 - **Log rotation**: The bot writes to stderr and never opens `bot.log`; the launcher or supervisor owns the file. Install the shipped `contrib/logrotate/discordianai` fragment and replace its log path plus the `USER GROUP` placeholders on the `su` line as described in [Daemon.md](Daemon.md). The fragment rotates at 100 MB with `copytruncate`, keeps fifty generations, and leaves the newest rotation uncompressed (`delaycompress`). Container deployments use the compose file's bounded `json-file` driver (three files of 10 MB each) instead.
-- **API usage tracking**: Monitor token consumption and costs
+- **API usage tracking**: Monitor token consumption
 - **Error monitoring**: Set up alerts for critical errors
 - **Regular updates**: Keep dependencies updated for security
 
@@ -210,7 +210,7 @@ supplied that context. For example:
 
 **AI service not working**:
 - Verify API keys are correct and active
-- Check API usage limits/billing
+- Check API usage limits
 - Review logs for specific error messages
 
 **Memory issues**:

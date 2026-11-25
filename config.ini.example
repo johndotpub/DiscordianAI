@@ -41,7 +41,7 @@ GPT_MODEL=deepseek-v4.1-flash:1017
 
 # Reasoning effort sent with chat requests. Valid values are model-defined
 # (low|high|max for deepseek-v4.1-flash:1017; none disables thinking).
-# Reasoning tokens are billed as output.
+# Reasoning tokens count toward the output cap.
 REASONING_EFFORT=high
 
 # === PERPLEXITY CONFIGURATION ===  
@@ -129,7 +129,7 @@ USER_LOCK_CLEANUP_INTERVAL=3600
 ENTITY_DETECTION_MIN_WORDS=10
 
 # Router implementation: heuristic (default, no network) or clef (Ollama Cloud
-# decision model, ~0.4 s per message and billed per token). "model" is retired.
+# decision model, ~0.4 s per message and consuming tokens). "model" is retired.
 ROUTER_MODE=heuristic
 # Clef settings; ignored unless ROUTER_MODE=clef
 # Optional dedicated Clef key. Prefer the environment variable. When unset,

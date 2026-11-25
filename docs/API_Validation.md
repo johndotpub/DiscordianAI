@@ -53,7 +53,7 @@ The live provider behaviour behind these checks is recorded in
   a small cap can be spent entirely on reasoning. The API can then return HTTP
   200 with an empty message and `finish_reason: length`. Startup continues, but
   the warning explains why the value is risky.
-- High token or rate limits that are legal but likely to increase cost or abuse.
+- High token or rate limits that are legal but likely to increase usage or abuse.
 - No configured channels.
 
 ## OpenAI-Compatible Provider

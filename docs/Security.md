@@ -358,7 +358,7 @@ the endpoint from the host.
 For production deployments, consider:
 
 1. **Log aggregation**: Ship logs to centralized system
-2. **API usage tracking**: Monitor token usage and costs
+2. **API usage tracking**: Monitor token usage
 3. **Error alerting**: Alert on repeated API failures
 4. **Uptime monitoring**: External health checks
 
@@ -375,7 +375,7 @@ For production deployments, consider:
 
 3. **Review logs** for unauthorized usage
 
-4. **Check billing** for unexpected charges
+4. **Check provider usage** for unexpected activity
 
 ### Reporting Security Issues
 

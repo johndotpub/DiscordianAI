@@ -14,7 +14,7 @@ configured; the provider decides whether the name exists.
 - **Endpoint**: `https://ollama.com/v1/`
 - **Model**: `deepseek-v4.1-flash:1017`
 - **Reasoning effort**: `high` by default; `low`, `high`, and `max` are accepted by this
-  model, and `none` disables thinking. Reasoning tokens are billed as output.
+  model, and `none` disables thinking. Reasoning tokens count toward the output cap.
 
 ### OpenAI
 - **Endpoint**: `https://api.openai.com/v1/`
@@ -120,8 +120,8 @@ PERPLEXITY_API_KEY=your_perplexity_key_here
 
 ### Token Management
 ```ini
-# Adjust based on your needs and budget
-OUTPUT_TOKENS=4000    # Lower for cost savings
+# Adjust based on your needs and output cap
+OUTPUT_TOKENS=4000    # Lower to use fewer output tokens
 INPUT_TOKENS=60000    # Adjust based on conversation length
 ```
 
@@ -164,13 +164,13 @@ logger because the request supplies it.
 2026-11-23T17:04:06Z [info     ] OpenAI returned no response; attempting Perplexity fallback [discordianai.bot]
 ```
 
-## Cost Optimization Tips
+## Usage Optimization Tips
 
 ### Smart Usage
-1. **Use the default model** for simple queries to reduce costs
+1. **Use the default model** for simple queries to use fewer tokens
 2. **Set appropriate OUTPUT_TOKENS** limit based on your needs
 3. **Monitor token usage** in the provider's own console if needed; the bot does not log usage
-4. **Account for reasoning tokens** in the output cap; they are billed as output
+4. **Account for reasoning tokens** in the output cap; they count toward it
 
 ### Rate Limiting
 ```ini
@@ -194,14 +194,14 @@ MAX_HISTORY_PER_USER=30  # Reduce to save tokens on context
 - A non-`sk-` key is accepted for non-OpenAI providers; a warning notes the shape mismatch
 
 **"Rate limit exceeded"**:
-- Check the provider's billing and usage limits
+- Check the provider's usage limits
 - Implement appropriate rate limiting in bot configuration
 
 **"Model not found"**:
 - Verify the model name with the configured provider
 - Check that the account has access to the specified model
 
-**High costs**:
+**High usage**:
 - Lower `OUTPUT_TOKENS` setting
 - Use a smaller or non-reasoning model when the task allows
 - Reduce `MAX_HISTORY_PER_USER` to minimize context tokens
@@ -209,4 +209,4 @@ MAX_HISTORY_PER_USER=30  # Reduce to save tokens on context
 ### Getting Help
 - Check the configured provider's API documentation
 - Monitor the bot logs for specific error messages
-- Review the provider's usage records for billing information
+- Review the provider's usage records

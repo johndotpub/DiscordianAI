@@ -147,7 +147,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The response cache has one TTL, and time-sensitive wording is found anywhere.** Every
   cached answer uses the fixed `DEFAULT_CACHE_TTL` of 600 seconds; the undocumented 1,800-second
   long-response TTL never applied, so this removes a false promise rather than changing the
-  effective lifetime. An answer such as "Bitcoin is trading at $97,000 as of today" is no
+  effective lifetime. An answer such as "Bitcoin is trading at a record high as of today" is no
   longer cached just because the phrase is mid-sentence.
 - **Image attachments are understood by the chat provider.** A message may carry up to four
   PNG, JPEG, GIF, or WebP images, with or without text. The current turn is sent to the
@@ -220,9 +220,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`WEB_TOOLS`**: offer native `web_search` and `web_fetch` tools to Ollama-compatible chat
   providers; defaults to true. OpenAI endpoints never receive these tools.
 - **`REASONING_EFFORT`**: sent as `reasoning_effort` with chat requests; defaults to `high`. Valid
-  values are model-defined, and reasoning tokens are billed as output.
+  values are model-defined, and reasoning tokens count toward the output cap.
 - **Optional Clef decision-model router.** `ROUTER_MODE=clef` asks Ollama Cloud's Clef model
-  (`/v1/systemone`) one bounded yes/no question per message (~0.4 s, billed per token);
+  (`/v1/systemone`) one bounded yes/no question per message (~0.4 s, consuming tokens);
   `heuristic` remains the default. Network, timeout, HTTP, or malformed-response failures fall back
   to the deterministic gate, and a missing key selects it at startup.
 - **`VISION_ENABLED`, `VISION_MAX_IMAGES`, `VISION_MAX_BYTES`, and `VISION_TOKEN_ESTIMATE`**:
@@ -1237,7 +1237,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Linting Workflow**: Streamlined from 4 tools (isort + black + ruff + flake8) to 2 tools (black + ruff)
-- **GPT Model Default**: Changed from gpt-4o-mini to gpt-5-mini for cost-effectiveness
+- **GPT Model Default**: Changed from gpt-4o-mini to gpt-5-mini for lower token use
 - **Model Validation**: Updated to support new GPT-5 model family
 - **CI/CD Pipeline**: Enhanced GitHub Actions with multi-version testing matrix
 - **Configuration Management**: Centralized constants and improved validation

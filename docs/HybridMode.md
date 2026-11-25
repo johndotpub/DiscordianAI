@@ -252,15 +252,15 @@ Both services share the same retry policy via `retry_with_backoff`:
 - A 90s `max_elapsed` deadline stops retries even when an attempt remains
 - SDK-level `max_retries=0` prevents nested retry multiplication
 
-## Cost Considerations
+## Usage Considerations
 
-**Routing has no cost cap.** The router decides whether a message needs live data on the strength of the
-message itself — there is no budget, no per-hour search allowance and no price model in the decision. Search
-volume therefore follows what people ask, not how much you are willing to spend. If you need a ceiling, it
-belongs at the Discord or provider level, not in the router, because a router that stops searching when a
-counter runs out answers live questions from stale weights and cannot tell you it did so.
+**Routing has no usage cap.** The router decides whether a message needs live data on the strength of the
+message itself — there is no budget and no per-hour search limit in the decision. Search volume therefore
+follows what people ask, not a configured usage limit. If you need a ceiling, it belongs at the Discord or
+provider level, not in the router, because a router that stops searching when a counter runs out answers live
+questions from stale weights and cannot tell you it did so.
 
-- **Chat provider**: Higher cost per token but strong reasoning on stable knowledge and code.
+- **Chat provider**: Higher token use per request but strong reasoning on stable knowledge and code.
 - **Perplexity**: Includes citations and live web data but is reserved for messages that carry bearing
   evidence.
 - The bot chooses local answers for stable knowledge and creative work, and web answers for live facts.
