@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from src.config import EMBED_SAFE_LIMIT, MESSAGE_LIMIT
+from src.config import EMBED_SAFE_LIMIT, ERROR_MESSAGES, MESSAGE_LIMIT
 from src.discord_embeds import citation_embed_formatter
 from src.message_splitter import (
     find_optimal_split_point,
@@ -506,7 +506,7 @@ class TestMessageSplittingEdgeCases:
 
     @pytest.mark.asyncio
     async def test_empty_message(self):
-        """Test handling of empty message."""
+        """An empty body sends the fixed no-response notice, never empty content."""
         channel = create_mock_channel()
         channel.send = AsyncMock()
 
@@ -515,10 +515,9 @@ class TestMessageSplittingEdgeCases:
 
         await send_split_message(channel, message, deps)
 
-        # Should be called once with empty message
         channel.send.assert_called_once()
         sent_message = channel.send.call_args[0][0]
-        assert sent_message == ""
+        assert sent_message == ERROR_MESSAGES["no_response_generated"]
         assert find_optimal_split_point("", 0) == 0
 
     @pytest.mark.asyncio

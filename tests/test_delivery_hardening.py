@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+from src.config import ERROR_MESSAGES
 from src.conversation_manager import ThreadSafeConversationManager
 from src.message_splitter import (
     sanitize_for_discord,
@@ -211,6 +212,21 @@ async def test_a_truncated_final_chunk_closes_an_open_fence_before_the_notice() 
     assert sent.endswith(truncation_notice(len(message)))
     assert sent.count("```") == 2
     assert "```\n\n" in sent
+
+
+@pytest.mark.parametrize("answer", ["   ", "\n\t", "[](https://x)", "![](https://x.png)"])
+@pytest.mark.asyncio
+async def test_answer_with_no_deliverable_content_sends_the_no_response_notice(answer):
+    """Whitespace or an answer that sanitises away must not send empty content."""
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock()
+
+    await send_formatted_message(channel, answer, _deps())
+
+    assert channel.send.await_count == 1
+    content = channel.send.call_args.args[0]
+    assert content == ERROR_MESSAGES["no_response_generated"]
+    assert content.strip()
 
 
 @pytest.mark.asyncio

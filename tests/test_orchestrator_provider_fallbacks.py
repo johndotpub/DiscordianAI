@@ -187,3 +187,27 @@ async def test_web_route_does_not_retry_perplexity_after_both_providers_fail():
     assert response == ERROR_MESSAGES["both_services_unavailable"]
     assert calls == ["perplexity", "openai"]
     assert _history(request) == []
+
+
+@pytest.mark.asyncio
+async def test_perplexity_answer_with_no_visible_content_uses_the_no_response_notice():
+    """An answer that is only a link is no answer after sanitising."""
+    calls: list[str] = []
+    request = _request("What changed today?")
+    clients = AIClients(
+        openai=None,
+        perplexity=_perplexity_client(calls, "[](https://evil.example/x)"),
+    )
+
+    response, _suppress, embed = await get_smart_response(
+        request,
+        [],
+        clients,
+        AIConfig(),
+        {"ROUTER_MODE": "heuristic"},
+    )
+
+    assert response == ERROR_MESSAGES["no_response_generated"]
+    assert embed is None
+    assert calls == ["perplexity"]
+    assert _history(request) == []

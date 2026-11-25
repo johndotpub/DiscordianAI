@@ -109,7 +109,7 @@ async def _fetch_openai_response(
             result = await provider.complete(completion_request)
             ctx.set_result(result.raw)
 
-            if not result.text:
+            if not result.text or not result.text.strip():
                 request.logger.warning(
                     "OpenAI returned empty response content (finish_reason=%s)",
                     result.finish_reason if result.finish_reason is not None else "unknown",

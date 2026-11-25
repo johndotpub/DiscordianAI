@@ -551,9 +551,10 @@ async def _process_only_mode(
         result = await spec.invoke(routed, client, service_config, conversation_summary)
         if result:
             content, suppress, embed = spec.normalize(result)
-            _record_conversation_turn(request, content, spec.service, service_config.model)
-            request.logger.info("%s success (%d chars)", spec.label, len(content))
-            return content, suppress, embed
+            if str(content).strip():
+                _record_conversation_turn(request, content, spec.service, service_config.model)
+                request.logger.info("%s success (%d chars)", spec.label, len(content))
+                return content, suppress, embed
 
         request.logger.error("%s returned no response", spec.label)
         if spec.breaker_error is not None and get_circuit_breaker(spec.service).state == "OPEN":

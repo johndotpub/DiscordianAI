@@ -146,7 +146,7 @@ def _handle_provider_result(
     request: AIRequest,
 ) -> tuple[str, bool, dict | None] | None:
     """Format one parsed provider result for Discord."""
-    if not result.text:
+    if not result.text or not result.text.strip():
         request.logger.warning("Perplexity returned empty response content")
         return None
 
@@ -155,6 +155,9 @@ def _handle_provider_result(
         citations = CitationMap(citations)
     final_text = format_citations_for_discord(result.text, citations, linkify=False)
     final_text = sanitize_model_output(final_text, citations)
+    if not final_text.strip():
+        request.logger.warning("Perplexity returned empty response content")
+        return None
     suppress_embeds = should_suppress_embeds(final_text, threshold=LINK_THRESHOLD)
     truncated = result.finish_reason == "length"
     if truncated:

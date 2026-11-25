@@ -24,6 +24,7 @@ from .config import (
     BARE_URL_PATTERN,
     CITATION_PATTERN,
     EMBED_SAFE_LIMIT,
+    ERROR_MESSAGES,
     LINK_PATTERN,
     MAX_SPLIT_CHUNKS,
     MESSAGE_BUFFER,
@@ -749,6 +750,8 @@ async def _deliver(  # noqa: PLR0913 - one helper carries every delivery option
         kwargs["embed"] = embed
     if embed is None or suppress_embeds:
         kwargs["suppress_embeds"] = suppress_embeds
+    if not content.strip() and embed is None:
+        content = ERROR_MESSAGES["no_response_generated"]
     mentioned_users: list[Any] = []
     if original_message is not None:
         author = original_message.author
@@ -1250,6 +1253,15 @@ async def send_formatted_message(  # noqa: PLR0913, PLR0917
         citation_map = embed_data.get("citations") or {}
     message = _cap_delivery_work(message, logger)
     message = sanitize_for_discord(message, citation_map)
+    has_embed = bool(embed_data and "embed" in embed_data)
+    if not message.strip() and not has_embed:
+        logger.info("Skipping empty model answer")
+        await _deliver(
+            channel,
+            f"{mention_prefix or ''}{ERROR_MESSAGES['no_response_generated']}",
+            original_message=original_message,
+        )
+        return
     if truncated:
         message = append_truncation_notice(message)
 
