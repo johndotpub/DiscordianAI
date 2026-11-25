@@ -990,15 +990,14 @@ def _rendered_embed_length(message: str, citations: dict[str, str] | None) -> in
 
 def _rendered_embed_split_point(message: str, citations: dict[str, str]) -> int:
     """Find the longest prefix whose rendered description fits the safe limit."""
-    low = 0
-    high = len(message)
-    while low < high:
-        middle = (low + high + 1) // 2
-        if _rendered_embed_length(message[:middle], citations) <= EMBED_SAFE_LIMIT:
-            low = middle
-        else:
-            high = middle - 1
-    return low
+    first_over_limit = bisect_right(
+        range(len(message) + 1),
+        False,
+        key=lambda boundary: (
+            _rendered_embed_length(message[:boundary], citations) > EMBED_SAFE_LIMIT
+        ),
+    )
+    return first_over_limit - 1
 
 
 def _split_embed_head(
