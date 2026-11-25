@@ -190,6 +190,43 @@ async def test_web_route_does_not_retry_perplexity_after_both_providers_fail():
 
 
 @pytest.mark.asyncio
+async def test_openai_answer_with_no_visible_content_is_not_recorded_or_cached():
+    """An answer that is only a link is no answer and is never stored."""
+    calls: list[str] = []
+    request = _request("Tell me a joke")
+    clients = AIClients(
+        openai=_openai_client(calls, "[](https://evil.example/x)"),
+        perplexity=None,
+    )
+    orchestrator_config = {"ROUTER_MODE": "heuristic"}
+
+    response, _suppress, embed = await get_smart_response(
+        request,
+        [],
+        clients,
+        AIConfig(),
+        orchestrator_config,
+    )
+
+    assert response == ERROR_MESSAGES["no_response_generated"]
+    assert embed is None
+    assert calls == ["openai"]
+    assert _history(request) == []
+
+    repeat, _suppress, _embed = await get_smart_response(
+        request,
+        [],
+        clients,
+        AIConfig(),
+        orchestrator_config,
+    )
+
+    assert repeat == ERROR_MESSAGES["no_response_generated"]
+    assert calls == ["openai", "openai"]
+    assert _history(request) == []
+
+
+@pytest.mark.asyncio
 async def test_perplexity_answer_with_no_visible_content_uses_the_no_response_notice():
     """An answer that is only a link is no answer after sanitising."""
     calls: list[str] = []

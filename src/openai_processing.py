@@ -13,6 +13,7 @@ from .api_context import api_call
 from .caching import cached_response, deduplicated_request
 from .config import DEFAULT_CACHE_TTL
 from .error_handling import ProviderCallError, classify_error, retry_with_backoff
+from .message_splitter import sanitize_model_output
 from .models import AIRequest, OpenAIConfig
 from .providers.base import AssistantText
 from .providers.openai_chat import (
@@ -112,6 +113,13 @@ async def _fetch_openai_response(
             if not result.text or not result.text.strip():
                 request.logger.warning(
                     "OpenAI returned empty response content (finish_reason=%s)",
+                    result.finish_reason if result.finish_reason is not None else "unknown",
+                )
+                return None
+            if not sanitize_model_output(result.text).strip():
+                request.logger.warning(
+                    "OpenAI returned no visible response content after sanitising "
+                    "(finish_reason=%s)",
                     result.finish_reason if result.finish_reason is not None else "unknown",
                 )
                 return None
