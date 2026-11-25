@@ -283,7 +283,7 @@ class ThreadSafeLRUCache:
         """
         self.max_size = max_size
         self.default_ttl = default_ttl
-        self._clock = clock or time.time
+        self._clock = clock or time.monotonic
         self._cache: _StatsTLRUCache[str, _CacheEntry] = _StatsTLRUCache(
             max_size,
             ttu=lambda _key, entry, now: now + entry.ttl,

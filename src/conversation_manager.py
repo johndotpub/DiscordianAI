@@ -100,7 +100,7 @@ class ThreadSafeConversationManager:
         self._max_history = max_history_per_user
         self._cleanup_interval = cleanup_interval
         self._conversation_ttl = conversation_ttl_seconds
-        self._clock = clock or time.time
+        self._clock = clock or time.monotonic
 
         cache_ttl = (
             float(conversation_ttl_seconds) if conversation_ttl_seconds > 0 else float("inf")

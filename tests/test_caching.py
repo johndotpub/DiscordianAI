@@ -9,6 +9,7 @@ This test suite covers:
 
 import asyncio
 import logging
+import time
 
 import pytest
 
@@ -59,6 +60,12 @@ class TestCacheEntryExpiry:
         stats = cache.get_stats()
         assert stats["expired"] == 1
         assert stats["misses"] == 1
+
+    def test_default_clock_is_monotonic(self):
+        """A wall-clock step cannot change the default TTL behaviour."""
+        cache = ThreadSafeLRUCache(max_size=5, default_ttl=300.0)
+
+        assert cache._clock is time.monotonic
 
 
 class TestThreadSafeLRUCache:

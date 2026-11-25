@@ -3,6 +3,7 @@
 import configparser
 from pathlib import Path
 import re
+import time
 
 from src.conversation_manager import ThreadSafeConversationManager
 
@@ -28,6 +29,13 @@ def _manager(clock: FakeClock, ttl: int = 60, **kwargs) -> ThreadSafeConversatio
         clock=clock,
         **kwargs,
     )
+
+
+def test_default_conversation_clock_is_monotonic():
+    """A wall-clock step cannot change the default history TTL behaviour."""
+    manager = ThreadSafeConversationManager()
+
+    assert manager._clock is time.monotonic
 
 
 def test_idle_conversation_is_evicted_with_its_lock():

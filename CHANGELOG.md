@@ -238,6 +238,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed 🔁
 
+- **Cache and conversation TTLs use the monotonic clock by default.** A wall-clock
+  step no longer extends or shortens a cached answer or conversation lifetime. Both
+  stores still accept an injected clock for tests.
 - **Sanitiser link scans are single pass.** The trusted-link pass searched
   for a closing angle bracket from every unclosed `](<` marker, and the
   bare-URL allowlist searched a lowercased copy for every scheme. The markdown
