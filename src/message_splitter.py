@@ -1054,6 +1054,28 @@ def _rebuild_embed_head(
         embed.set_footer(text=rebuilt_head.footer.text)
 
 
+async def _deliver_continuation_embed(
+    channel: discord.TextChannel | discord.DMChannel,
+    content: str,
+    citations: dict[str, str],
+    original_message: discord.Message | None,
+) -> None:
+    """Build, sanitise, and deliver one continued-answer embed."""
+    continuation_citations = _citations_for_text(content, citations)
+    continuation_embed, _ = citation_embed_formatter.create_citation_embed(
+        content,
+        continuation_citations,
+        footer_text=_CONTINUED_FOOTER,
+    )
+    _sanitize_embed_description(continuation_embed, citations)
+    await _deliver(
+        channel,
+        "",
+        original_message=original_message,
+        embed=continuation_embed,
+    )
+
+
 async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
     channel: discord.TextChannel | discord.DMChannel,
     message: str,
@@ -1097,18 +1119,11 @@ async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
             )
             return
 
-        head_citations = _citations_for_text(head_text, citations)
-        cont_embed, _ = citation_embed_formatter.create_citation_embed(
-            head_text,
-            head_citations,
-            footer_text=_CONTINUED_FOOTER,
-        )
-        _sanitize_embed_description(cont_embed, citations)
-        await _deliver(
+        await _deliver_continuation_embed(
             channel,
-            "",
-            original_message=original_message,
-            embed=cont_embed,
+            head_text,
+            citations,
+            original_message,
         )
         sent_messages += 1
 
@@ -1136,17 +1151,11 @@ async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
                     len(message),
                 )
                 return
-            final_embed, _ = citation_embed_formatter.create_citation_embed(
-                message_part2,
-                remaining_citations,
-                footer_text=_CONTINUED_FOOTER,
-            )
-            _sanitize_embed_description(final_embed, citations)
-            await _deliver(
+            await _deliver_continuation_embed(
                 channel,
-                "",
-                original_message=original_message,
-                embed=final_embed,
+                message_part2,
+                citations,
+                original_message,
             )
             return
 
@@ -1197,17 +1206,11 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
                     original_length=len(message),
                 )
             else:
-                cont_embed, _ = citation_embed_formatter.create_citation_embed(
-                    message_part2,
-                    remaining_citations,
-                    footer_text=_CONTINUED_FOOTER,
-                )
-                _sanitize_embed_description(cont_embed, citations)
-                await _deliver(
+                await _deliver_continuation_embed(
                     channel,
-                    "",
-                    original_message=original_message,
-                    embed=cont_embed,
+                    message_part2,
+                    citations,
+                    original_message,
                 )
         else:
             await send_split_message(
