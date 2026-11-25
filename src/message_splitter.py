@@ -33,6 +33,7 @@ from .config import (
 from .discord_embeds import citation_embed_formatter, clamp_embed_description
 
 _RAW_MENTION_PATTERN = re.compile(r"<(@[!&]?|#)(\d+)>")
+_HTTP_SCHEME_PATTERN = re.compile(r"https?://", re.IGNORECASE)
 _URL_TRAILING_PUNCTUATION = ".,;:!?)]}'\""
 _CONTINUED_FOOTER = "🌐 Web search results (continued)"
 TRUNCATION_NOTICE = "✂️ The answer was cut off at the length limit."
@@ -566,15 +567,12 @@ def _allowed_bare_url_spans(text: str, allowed_urls: set[str]) -> list[_LinkSpan
     if not allowed_urls:
         return []
     spans: list[_LinkSpan] = []
-    lower = text.lower()
     position = 0
     while True:
-        http = lower.find("http://", position)
-        https = lower.find("https://", position)
-        candidates = [index for index in (http, https) if index >= 0]
-        if not candidates:
+        scheme_match = _HTTP_SCHEME_PATTERN.search(text, position)
+        if scheme_match is None:
             return spans
-        start = min(candidates)
+        start = scheme_match.start()
         end = start
         while end < len(text) and not text[end].isspace() and text[end] not in "<>":
             end += 1

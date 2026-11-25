@@ -289,6 +289,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **A dotted capital I no longer shifts trusted citation links.** The
+  bare-URL allowlist searched a lowercased copy and applied those offsets to
+  the original text, so `İ`, whose lowercase form is two code points, made an
+  exact trusted URL miss the match and lose its link. The search now matches
+  case-insensitively on the original text, so offsets stay aligned.
 - **A Discord send timeout is not retried, and the send retry is bounded.**
   A send whose outcome is unknown now gets one attempt instead of repeating a
   message that may already have arrived, and the retry sequence honours the

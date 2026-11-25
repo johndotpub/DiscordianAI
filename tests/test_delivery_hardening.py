@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+from src import message_splitter
 from src.config import ERROR_MESSAGES
 from src.conversation_manager import ThreadSafeConversationManager
 from src.message_splitter import (
@@ -79,6 +80,18 @@ def test_bare_url_and_autolink_are_neutralised_but_citation_is_not() -> None:
     assert "https://\u200bevil.example/bare" in sanitized
     assert "https://\u200bevil.example/auto" in sanitized
     assert f"[1]({TRUSTED_URL})" in sanitized
+
+
+def test_dotted_capital_i_keeps_trusted_bare_url_offsets_aligned() -> None:
+    """A case-folding expansion must not shift the trusted URL's position."""
+    trusted = "https://trusted.example/page"
+    text = f"\u0130 {trusted}"
+
+    spans = message_splitter._allowed_bare_url_spans(text, {trusted})
+    sanitized = sanitize_for_discord(text, {"1": trusted})
+
+    assert [(span.start, span.end) for span in spans] == [(2, 2 + len(trusted))]
+    assert f"\u0130 {trusted}" == sanitized
 
 
 def test_code_spans_and_fences_keep_link_like_syntax_unchanged() -> None:
