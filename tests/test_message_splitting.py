@@ -522,6 +522,25 @@ class TestMessageSplittingEdgeCases:
         assert find_optimal_split_point("", 0) == 0
 
     @pytest.mark.asyncio
+    async def test_oversized_chunk_cut_logs_counts_and_stays_within_limit(self):
+        """The hard cut is logged with the length and the limit, never the text."""
+        channel = create_mock_channel()
+        channel.send = AsyncMock()
+        logger = MagicMock()
+
+        message = "`" + ("https://a " * 220) + "`"
+
+        await send_split_message(channel, message, {"logger": logger})
+
+        logger.warning.assert_called_once()
+        format_string, length, limit = logger.warning.call_args.args
+        assert "Hard-truncated" in format_string
+        assert isinstance(length, int)
+        assert length > 2000
+        assert limit == 2000
+        assert all(len(call[0][0]) <= 2000 for call in channel.send.call_args_list)
+
+    @pytest.mark.asyncio
     async def test_exactly_limit_length(self):
         """Test message that is exactly at the limit."""
         channel = create_mock_channel()

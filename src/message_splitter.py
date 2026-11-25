@@ -996,6 +996,11 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
         if not content.strip() and message_has_content:
             continue
         if len(content) > MESSAGE_LIMIT:
+            logger.warning(
+                "Hard-truncated a chunk of length %d to the %d-character limit",
+                len(content),
+                MESSAGE_LIMIT,
+            )
             available = MESSAGE_LIMIT - 3
             content = f"{_close_open_fence(content, available)}..."
         await _deliver(
