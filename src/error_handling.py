@@ -98,6 +98,9 @@ class ProviderCallError(RuntimeError):
         super().__init__(details.message)
 
 
+DEFAULT_CIRCUIT_BREAKER_TIMEOUT = 60
+
+
 class CircuitBreaker:
     """Circuit breaker pattern implementation to prevent cascade failures.
 
@@ -110,7 +113,7 @@ class CircuitBreaker:
     def __init__(
         self,
         failure_threshold: int = 5,
-        timeout: int = 60,
+        timeout: int = DEFAULT_CIRCUIT_BREAKER_TIMEOUT,
         expected_exception: type[Exception] = Exception,
         name: str = "provider",
     ):
@@ -239,6 +242,14 @@ def get_circuit_breaker_states() -> dict[str, dict[str, Any]]:
     return {
         provider: breaker.snapshot() for provider, breaker in PROVIDER_CIRCUIT_BREAKERS.items()
     }
+
+
+def get_circuit_breaker_timeout(provider: str) -> float:
+    """Return the recovery timeout for a provider's shared breaker, in seconds."""
+    breaker = PROVIDER_CIRCUIT_BREAKERS.get(provider)
+    if breaker is None:
+        return float(DEFAULT_CIRCUIT_BREAKER_TIMEOUT)
+    return float(breaker.timeout)
 
 
 RetryPredicate = Callable[[ErrorDetails, Exception], bool]

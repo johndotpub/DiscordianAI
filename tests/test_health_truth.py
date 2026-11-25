@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -204,6 +205,32 @@ def test_open_and_half_open_breakers_still_fail_health(breaker_state, provider_s
     assert body["status"] != "healthy", body
     assert body["failing_providers"] == ["openai"], body
     assert body["providers"]["openai"]["status"] == provider_status, body
+
+
+@pytest.mark.parametrize(
+    ("failure_age", "expected_code", "expected_provider_status"),
+    [(59.0, 503, "unhealthy"), (61.0, 200, "healthy")],
+)
+def test_open_breaker_past_its_timeout_is_recovering(
+    failure_age,
+    expected_code,
+    expected_provider_status,
+):
+    """An idle open breaker is not unhealthy once its timeout has elapsed."""
+    _set_breaker(
+        "openai",
+        state="OPEN",
+        failures=5,
+        last_failure_time=100.0,
+    )
+    with patch("src.health_server.time.monotonic", return_value=100.0 + failure_age):
+        response = request_health(create_health_app(_deps()), "/health")
+
+    body = response.json()
+    assert response.status_code == expected_code, body
+    assert body["providers"]["openai"]["status"] == expected_provider_status, body
+    if expected_code == 200:
+        assert "openai" not in body["failing_providers"], body
 
 
 def test_bind_failure_disables_health_server_without_killing_bot():

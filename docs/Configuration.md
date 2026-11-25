@@ -147,17 +147,22 @@ Lightweight HTTP health checks for Docker and Kubernetes deployments.
 - **`HEALTH_PORT`**: Port for readiness/liveness probes *(default: `8080`)*
 - **`HEALTH_PROVIDER_STALE_SECONDS`**: Seconds after a provider's last success before the informational `last_success_stale` flag is set; it does not change health status *(default: `300`)*
 
-A configured provider is `unhealthy` when its breaker is open, `degraded` when it is half-open or when a
-failure happened after its last success, and `healthy` otherwise. A configuration error (401, 403,
+A configured provider is `unhealthy` when its breaker is open and its recovery timeout has not
+elapsed, `degraded` when it is half-open or when a failure happened after its last success, and
+`healthy` otherwise. An open breaker past its recovery timeout is treated as recovering: it is
+reported healthy and does not make `/health` return 503, because the breaker would admit a probe
+on the next request. A configuration error (401, 403,
 404, or a 400 whose structured error names the model: type or code `invalid_model` or
 `model_not_found`, `param` equal to `model`, or a message that combines `model` with
 `is not supported`, `not found`, or `does not exist`) counts as a failure; a user-caused
 client error does not. A provider that has never been called is healthy: silence is not a failure. The payload still reports
 `last_success_age_seconds` and `last_success_stale` for diagnostics, but neither decides health.
 
-Readiness also requires a live Discord gateway connection. The bot records disconnect and resume events,
-so `/health` and `/health/ready` return 503 during an outage even though discord.py's
-`is_ready()` remains set.
+Readiness also requires a live Discord gateway connection. The health server starts before
+Discord login, so `/health/live` answers while the connection is still being established;
+`/health/ready` returns 503 until `on_ready` reports a live gateway. The bot records disconnect
+and resume events, so `/health` and `/health/ready` return 503 during an outage even though
+discord.py's `is_ready()` remains set.
 
 > **No cost cap.** Routing carries no budget knob: the gate decides from the message alone, so spend
 > follows the message mix rather than a configured ceiling. Measured precision also falls on trap-heavy

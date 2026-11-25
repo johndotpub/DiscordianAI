@@ -5,10 +5,12 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import aiohttp
 import discord
 import pytest
 
 from src.bot_manager import DiscordBotManager
+from src.health_server import HealthServer
 
 
 class DummyBot:
@@ -29,6 +31,9 @@ class DummyBot:
 
     def is_closed(self):
         return self.closed_calls > 0
+
+    def is_ready(self):
+        return False
 
     async def close(self):
         self.closed_calls += 1
@@ -96,6 +101,30 @@ async def test_on_ready_sets_presence_and_health(monkeypatch, base_deps):
 
     assert manager.bot.presence_calls == [(("playing", "tests"), discord.Status.online)]
     assert base_deps["_health_task"] is tasks[0]
+
+
+@pytest.mark.asyncio
+async def test_health_endpoint_answers_before_on_ready(base_deps):
+    """Liveness answers before login; readiness stays 503 until on_ready."""
+    base_deps["client"] = object()
+    health_server = HealthServer(base_deps, port=0)
+    base_deps["health_server"] = health_server
+    manager = DiscordBotManager(base_deps)
+    manager.register_events()
+    try:
+        await manager.bot.event_handlers["setup_hook"]()
+
+        assert health_server._site is not None, "health server did not start before login"
+        port = health_server._site.port
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"http://127.0.0.1:{port}/health/live") as response:
+                assert response.status == 200
+                assert (await response.json())["status"] == "alive"
+            async with session.get(f"http://127.0.0.1:{port}/health/ready") as response:
+                assert response.status == 503
+                assert (await response.json())["status"] == "not_ready"
+    finally:
+        await health_server.stop()
 
 
 @pytest.mark.asyncio

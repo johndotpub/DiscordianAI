@@ -297,6 +297,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **An idle open breaker stops reporting unhealthy after its timeout.** Once the breaker's
+  recovery timeout has elapsed, `/health` reports the provider healthy and returns 200; within
+  the timeout it remains 503. The status vocabulary has no non-failing "recovering" value, so
+  the recovering state maps to healthy while the breaker state still reads `OPEN`.
+- **Liveness answers before Discord login.** The health server starts in `setup_hook`, so
+  `/health/live` returns 200 while login and the first gateway connection are in progress.
+  `/health/ready` stays 503 until `on_ready` records a connected gateway.
 - **A routing lexicon that is not UTF-8 follows the local fallback.** A decode
   error used to escape `Lexicon.load` and abort startup even though a missing or
   corrupt lexicon already produced the documented local-only router. The loader

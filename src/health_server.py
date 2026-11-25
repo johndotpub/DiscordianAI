@@ -24,7 +24,7 @@ from .config import (
     DEFAULT_HEALTH_PORT,
     DEFAULT_HEALTH_PROVIDER_STALE_SECONDS,
 )
-from .error_handling import get_circuit_breaker_states
+from .error_handling import get_circuit_breaker_states, get_circuit_breaker_timeout
 from .providers.registry import client_deps_key, provider_names
 
 DEFAULT_PROVIDER_STALE_SECONDS = float(DEFAULT_HEALTH_PROVIDER_STALE_SECONDS)
@@ -104,6 +104,17 @@ def _finite_number(value: Any, default: float = 0.0) -> float:
     return number if math.isfinite(number) else default
 
 
+def _breaker_timeout(deps: dict[str, Any], provider: str) -> float:
+    """Return the recovery timeout for a provider's wired or shared breaker."""
+    wired = deps.get("circuit_breakers")
+    if isinstance(wired, dict):
+        breaker = wired.get(provider)
+        timeout = getattr(breaker, "timeout", None)
+        if timeout is not None:
+            return _finite_number(timeout, get_circuit_breaker_timeout(provider))
+    return get_circuit_breaker_timeout(provider)
+
+
 def _timestamp_age(timestamp: float, monotonic_now: float) -> float | None:
     """Return age for monotonic or wall-clock timestamps.
 
@@ -146,11 +157,17 @@ def _provider_health(
         last_failure_time = _finite_number(snapshot.get("last_failure_time", 0.0))
         last_success_time = _finite_number(snapshot.get("last_success_time", 0.0))
         success_age = _timestamp_age(last_success_time, now)
+        failure_age = _timestamp_age(last_failure_time, now)
+        recovering = failure_age is not None and failure_age > _breaker_timeout(deps, provider)
 
         if not configured:
             status = "not_configured"
         elif state == "OPEN":
-            status = "unhealthy"
+            # The breaker's next call would be admitted as a HALF_OPEN probe.
+            # The health vocabulary has no separate "recovering" status, so an
+            # OPEN breaker past its timeout is reported healthy; within the
+            # timeout it is still unhealthy.
+            status = "healthy" if recovering else "unhealthy"
         elif state == "HALF_OPEN" or (failures > 0 and last_failure_time > last_success_time):
             status = "degraded"
         else:

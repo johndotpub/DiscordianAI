@@ -111,6 +111,12 @@ class DiscordBotManager:
         @self.bot.event
         async def setup_hook():
             self._capture_loop()
+            # Serve /health/live while login and the initial gateway
+            # connection are still in progress; /health/ready stays 503 until
+            # on_ready records a connected gateway.
+            health_server = self.deps.get("health_server")
+            if health_server:
+                await health_server.start()
 
         @self.bot.event
         async def on_ready():
@@ -146,11 +152,6 @@ class DiscordBotManager:
             )
             self._schedule_rate_limit_maintenance()
             self.logger.info("Bot ready to process messages")
-
-            # Start the health server after bot is ready
-            health_server = self.deps.get("health_server")
-            if health_server:
-                await health_server.start()
 
         @self.bot.event
         async def on_message(message: discord.Message):

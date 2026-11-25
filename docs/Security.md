@@ -339,10 +339,13 @@ The bot serves real health endpoints at `HEALTH_HOST:HEALTH_PORT` (default
 - `GET /health` returns 200 only when the bot and its configured providers are healthy,
   and 503 otherwise. A provider is degraded only when its breaker is `HALF_OPEN` or a
   failure happened after its last success; an idle provider with no traffic stays healthy.
-  An `OPEN` breaker is always unhealthy;
-- `GET /health/live` reports process liveness;
+  An `OPEN` breaker is unhealthy until its recovery timeout has elapsed; after that it is
+  reported healthy as recovering, because the breaker would admit a probe on the next call;
+- `GET /health/live` reports process liveness and answers before Discord login;
 - `GET /health/ready` reports readiness, including the Discord connection and provider
-  health.
+  health, and stays 503 until the gateway is connected.
+
+Trailing-slash variants of all three routes return the same status and body.
 
 The shipped `docker-compose.yml` and `Dockerfile` both define a `HEALTHCHECK` that calls
 `/health` with Python's standard-library `urllib.request`; the slim image has no curl.
