@@ -238,6 +238,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed 🔁
 
+- **The conversation and response caches now use `cachetools`.** The hand-rolled history and
+  bot-streak TTL maps and the response LRU cache are replaced by `TTLCache` and `TLRUCache`
+  with the same injected clock, sliding expiry, LRU eviction, and conversation-scoped keys.
+  `cachetools>=8.0.2,<9` is a runtime dependency. The fixed-window rate-limit map stays a
+  plain dict-plus-sweep because its window reset is not TTL eviction.
 - **Default capacity is right-sized for a 1M-token model.** `INPUT_TOKENS` defaults to 250,000,
   `OUTPUT_TOKENS` and `PERPLEXITY_OUTPUT_TOKENS` to 16,384, and `CONTEXT_WINDOW` to 1,000,000;
   the input-token warning threshold is now 1,000,000, and the output-cap ceiling is 128,000,

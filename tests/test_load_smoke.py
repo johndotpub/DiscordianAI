@@ -50,15 +50,15 @@ class TestConcurrentUserSmoke:
             manager.add_message(user_id, "user", f"Message from {user_id}")
 
         # Verify all users have conversations
-        assert len(manager._conversations) == num_users
+        assert manager.get_stats()["total_users"] == num_users
 
-        inactive_lock = manager._get_user_lock(999_999)
+        manager.begin_bot_turn(user_id=999_999)
         cleaned = manager.cleanup_inactive_user_locks(force=True)
 
         assert cleaned == 1
-        assert 999_999 not in manager._user_locks
-        assert inactive_lock not in manager._user_locks.values()
-        assert len(manager._conversations) == num_users
+        assert manager.get_conversation(999_999) == []
+        assert manager.get_stats()["active_locks"] == num_users
+        assert manager.get_stats()["total_users"] == num_users
 
     @pytest.mark.asyncio
     async def test_rate_limiter_concurrent_requests(self):

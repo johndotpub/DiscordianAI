@@ -319,13 +319,14 @@ class TestMemoryAndResourceManagement:
         for user_id in active_ids:
             manager.add_message(user_id, "user", "test message")
         for user_id in inactive_ids:
-            manager._get_user_lock(user_id)
+            manager.begin_bot_turn(user_id=user_id)
 
         cleaned_count = manager.cleanup_inactive_user_locks(force=True)
 
         assert cleaned_count == len(inactive_ids)
-        assert all(user_id in manager._user_locks for user_id in active_ids)
-        assert all(user_id not in manager._user_locks for user_id in inactive_ids)
+        assert manager.get_stats()["active_locks"] == len(active_ids)
+        assert all(manager.get_conversation(user_id) for user_id in active_ids)
+        assert all(manager.get_conversation(user_id) == [] for user_id in inactive_ids)
 
 
 class TestSystemIntegrationSmoke:

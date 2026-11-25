@@ -4,6 +4,7 @@ discord.py>=2.7.1
 openai>=2.41,<4
 httpx[http2]>=0.28.1
 h2>=4.3.0
+cachetools>=8.0.2,<9
 starlette>=1.2.1
 uvicorn>=0.34.0
 structlog>=25.5.0

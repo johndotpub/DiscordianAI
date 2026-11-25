@@ -275,13 +275,15 @@ OpenAI-compatible scope; the Perplexity wrapper supplies a fully scoped
 ```python
 class ThreadSafeConversationManager:
     def __init__(self):
-        self._conversations: dict[int | str, list[dict[str, str]]] = {}
+        self._conversations: TTLCache[int | str, list[dict[str, str]]] = TTLCache(...)
+        self._bot_streaks: TTLCache[int | str, int] = TTLCache(...)
         self._user_locks: dict[int | str, threading.RLock] = {}
         self._global_lock = threading.RLock()
 ```
 
 **Features:**
 - Per-user locking for fine-grained concurrency
+- Sliding TTL expiry through `cachetools.TTLCache` with an injectable clock
 - Automatic history pruning
 - Deep copy returns to prevent external modification
 

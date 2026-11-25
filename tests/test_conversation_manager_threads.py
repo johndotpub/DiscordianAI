@@ -7,6 +7,19 @@ import pytest
 from src.conversation_manager import ThreadSafeConversationManager
 
 
+class _Clock:
+    """Controllable clock for cleanup cadence tests."""
+
+    def __init__(self, now: float = 1_000.0) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
 class TestThreadSafeConversationManager:
     """Test ThreadSafeConversationManager with comprehensive thread safety coverage."""
 
@@ -29,32 +42,50 @@ class TestThreadSafeConversationManager:
         """Test initialization with default parameters."""
         manager = ThreadSafeConversationManager()
 
-        assert manager._max_history == 100
-        assert manager._cleanup_interval == 3600
-        assert len(manager._conversations) == 0
-        assert len(manager._user_locks) == 0
+        assert manager.get_stats()["total_users"] == 0
+        assert manager.get_stats()["active_locks"] == 0
+
+        for index in range(101):
+            manager.add_message(12345, "user", f"message-{index}")
+
+        assert len(manager.get_conversation(12345)) == 100
 
     def test_init_with_custom_params(self):
         """Test initialization with non-default custom parameters."""
-        manager = ThreadSafeConversationManager(max_history_per_user=7, cleanup_interval=1800)
+        clock = _Clock()
+        manager = ThreadSafeConversationManager(
+            max_history_per_user=7,
+            cleanup_interval=1800,
+            clock=clock,
+        )
 
-        assert manager._max_history == 7
-        assert manager._cleanup_interval == 1800
+        for index in range(8):
+            manager.add_message(12345, "user", f"message-{index}")
 
-    def test_get_user_lock(self):
-        """Test user lock creation and retrieval."""
+        conversation = manager.get_conversation(12345)
+        assert len(conversation) == 7
+        assert conversation[0]["content"] == "message-1"
+
+        manager.begin_bot_turn(conversation_key="dm:67890")
+        assert manager.cleanup_inactive_user_locks(force=False) == 0
+        clock.advance(1800)
+        assert manager.cleanup_inactive_user_locks(force=False) == 1
+
+    def test_concurrent_messages_reuse_one_conversation_lock(self):
+        """Concurrent writes for one conversation do not lose messages."""
         manager = ThreadSafeConversationManager()
 
-        # Get lock for user (should create new one)
-        lock1 = manager._get_user_lock(12345)
+        threads = [
+            threading.Thread(target=manager.add_message, args=(12345, "user", f"m-{index}"))
+            for index in range(10)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
 
-        # Get same lock again (should return same instance)
-        lock2 = manager._get_user_lock(12345)
-        assert lock1 is lock2
-
-        # Get lock for different user (should create different lock)
-        lock3 = manager._get_user_lock(67890)
-        assert lock3 is not lock1
+        assert len(manager.get_conversation(12345)) == 10
+        assert manager.get_stats()["active_locks"] == 1
 
     def test_get_conversation_empty(self):
         """Test getting conversation for user with no history."""
@@ -226,31 +257,28 @@ class TestThreadSafeConversationManager:
         """Test cleanup of inactive user locks."""
         manager = ThreadSafeConversationManager()
 
-        # Create locks for users
-        manager._get_user_lock(12345)
-        manager._get_user_lock(67890)
-        manager._get_user_lock(11111)
-
-        # Add conversation for only one user
         manager.add_message(12345, "user", "Hello")
+        manager.begin_bot_turn(conversation_key="dm:67890")
+        manager.begin_bot_turn(conversation_key="dm:11111")
 
-        # Force cleanup
         cleaned_count = manager.cleanup_inactive_user_locks(force=True)
 
-        # Should clean up locks for users without conversations
-        assert cleaned_count == 2  # 67890 and 11111 locks cleaned
-        assert 12345 in manager._user_locks  # Should keep active user lock
+        assert cleaned_count == 2
+        assert manager.get_stats()["active_locks"] == 1
+        assert manager.get_conversation(12345)
+        assert manager.get_conversation(conversation_key="dm:67890") == []
 
     def test_cleanup_inactive_user_locks_timing(self):
         """Test that cleanup respects timing intervals."""
-        manager = ThreadSafeConversationManager(cleanup_interval=1000)  # Long interval
+        clock = _Clock()
+        manager = ThreadSafeConversationManager(cleanup_interval=1000, clock=clock)
 
-        # Create and cleanup locks
-        manager._get_user_lock(12345)
+        manager.begin_bot_turn(conversation_key="dm:12345")
 
-        # Should not clean up if interval not reached (force=False)
-        cleaned_count = manager.cleanup_inactive_user_locks(force=False)
-        assert cleaned_count == 0  # No cleanup due to timing
+        assert manager.cleanup_inactive_user_locks(force=False) == 0
+
+        clock.advance(1000)
+        assert manager.cleanup_inactive_user_locks(force=False) == 1
 
     def test_thread_safety_concurrent_access(self):
         """Test thread safety with concurrent access."""
@@ -291,9 +319,8 @@ class TestThreadSafeConversationManager:
         # Other copy should be unaffected
         assert conv2[0]["content"] == "Hello"
 
-        # Original internal state should be unaffected
-        internal_conv = manager._conversations[12345]
-        assert internal_conv[0]["content"] == "Hello"
+        # Stored state should be unaffected
+        assert manager.get_conversation(12345)[0]["content"] == "Hello"
 
     def test_background_cleanup_failure_handling(self):
         """Test handling of background cleanup failures."""

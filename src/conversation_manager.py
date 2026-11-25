@@ -12,6 +12,8 @@ import threading
 import time
 from typing import Any
 
+from cachetools import TTLCache
+
 from .config import DEFAULT_CONVERSATION_TTL_SECONDS, DEFAULT_MAX_HISTORY_PER_USER
 
 ConversationKey = int | str
@@ -95,15 +97,27 @@ class ThreadSafeConversationManager:
         if ttl_seconds is not None:
             conversation_ttl_seconds = ttl_seconds
 
-        self._conversations: dict[ConversationKey, list[dict[str, str]]] = {}
-        self._user_locks: dict[ConversationKey, threading.RLock] = {}
-        self._last_activity: dict[ConversationKey, float] = {}
-        self._bot_streaks: dict[ConversationKey, int] = {}
-        self._global_lock = threading.RLock()
         self._max_history = max_history_per_user
         self._cleanup_interval = cleanup_interval
         self._conversation_ttl = conversation_ttl_seconds
         self._clock = clock or time.time
+
+        cache_ttl = (
+            float(conversation_ttl_seconds) if conversation_ttl_seconds > 0 else float("inf")
+        )
+        self._conversations: TTLCache[ConversationKey, list[dict[str, str]]] = TTLCache(
+            maxsize=float("inf"),
+            ttl=cache_ttl,
+            timer=self._clock,
+        )
+        self._bot_streaks: TTLCache[ConversationKey, int] = TTLCache(
+            maxsize=float("inf"),
+            ttl=cache_ttl,
+            timer=self._clock,
+        )
+        self._user_locks: dict[ConversationKey, threading.RLock] = {}
+        self._global_lock = threading.RLock()
+
         self._logger = logging.getLogger(f"{__name__}.ConversationManager")
         now = self._clock()
         self._last_cleanup = now
@@ -148,10 +162,17 @@ class ThreadSafeConversationManager:
         with self._global_lock:
             return key in self._conversations or key in self._user_locks
 
+    @staticmethod
+    def _refresh(cache: TTLCache, key: ConversationKey) -> None:
+        """Refresh one cache entry's TTL without changing its value."""
+        if key in cache:
+            cache[key] = cache[key]
+
     def _touch(self, key: ConversationKey) -> None:
         """Record that a conversation was just used."""
         with self._global_lock:
-            self._last_activity[key] = self._clock()
+            self._refresh(self._conversations, key)
+            self._refresh(self._bot_streaks, key)
 
     def _safe_cleanup(self) -> None:
         """Run due maintenance without letting cleanup failures break the caller."""
@@ -160,56 +181,33 @@ class ThreadSafeConversationManager:
         except Exception as e:  # noqa: BLE001
             self._logger.warning("Background cleanup failed: %s", e)
 
-    def _expire_stale_conversations(self, now: float) -> int:
-        """Evict conversations idle longer than the TTL and drop their locks.
-
-        The initial candidate scan takes the global lock only long enough to copy
-        timestamps. Each candidate is then checked and removed under its own lock,
-        so a large expired population does not hold up unrelated conversations.
-        """
+    def _expire_stale_conversations(self) -> int:
+        """Evict expired conversations and streaks, then drop their locks."""
         if self._conversation_ttl <= 0:
             return 0
 
-        cutoff = now - self._conversation_ttl
         with self._global_lock:
+            expired_conversations = self._conversations.expire()
+            expired_streaks = self._bot_streaks.expire()
+            expired_keys = {key for key, _ in expired_conversations}
+            expired_keys.update(key for key, _ in expired_streaks)
             candidates = [
-                (key, last_seen, self._user_locks.get(key))
-                for key, last_seen in self._last_activity.items()
-                if last_seen < cutoff and (key in self._conversations or key in self._bot_streaks)
+                (key, self._user_locks[key]) for key in expired_keys if key in self._user_locks
             ]
 
-        expired_count = 0
         removed_locks = 0
-        for key, last_seen, lock in candidates:
-            if lock is None:
-                with self._global_lock:
-                    if self._last_activity.get(key) != last_seen:
-                        continue
-                    had_conversation = self._conversations.pop(key, None) is not None
-                    had_streak = self._bot_streaks.pop(key, None) is not None
-                    if had_conversation or had_streak:
-                        self._last_activity.pop(key, None)
-                        if had_conversation:
-                            expired_count += 1
-                continue
-
+        for key, lock in candidates:
             with lock, self._global_lock:
-                if self._last_activity.get(key) != last_seen:
+                if key in self._conversations or key in self._bot_streaks:
                     continue
-                had_conversation = self._conversations.pop(key, None) is not None
-                had_streak = self._bot_streaks.pop(key, None) is not None
-                if had_conversation or had_streak:
-                    self._last_activity.pop(key, None)
-                    if had_conversation:
-                        expired_count += 1
                 if self._user_locks.get(key) is lock:
                     del self._user_locks[key]
                     removed_locks += 1
 
-        if expired_count:
+        if expired_conversations:
             self._logger.info(
                 "Expired %d idle conversations (ttl=%ss)",
-                expired_count,
+                len(expired_conversations),
                 self._conversation_ttl,
             )
 
@@ -231,7 +229,6 @@ class ThreadSafeConversationManager:
                     continue
                 if self._user_locks.get(key) is lock:
                     del self._user_locks[key]
-                    self._last_activity.pop(key, None)
                     self._bot_streaks.pop(key, None)
                     removed_count += 1
 
@@ -258,7 +255,6 @@ class ThreadSafeConversationManager:
         """
         key = self._resolve_key(user_id, conversation_key)
 
-        # Periodic cleanup of expired conversations and inactive locks.
         self._safe_cleanup()
 
         if not self._has_conversation_state(key):
@@ -266,7 +262,8 @@ class ThreadSafeConversationManager:
 
         user_lock = self._get_user_lock(key)
         with user_lock:
-            conversation = self._conversations.get(key, [])
+            with self._global_lock:
+                conversation = self._conversations.get(key, [])
             result = copy.deepcopy(conversation)
             if key in self._conversations:
                 self._touch(key)
@@ -321,22 +318,25 @@ class ThreadSafeConversationManager:
 
         user_lock = self._get_user_lock(key)
         with user_lock:
-            if key not in self._conversations:
-                self._conversations[key] = []
+            with self._global_lock:
+                conversation = self._conversations.get(key)
+            if conversation is None:
+                conversation = []
+                with self._global_lock:
+                    self._conversations[key] = conversation
 
-            # Add the new message with metadata
             message_entry = {"role": role, "content": content.strip()}
 
-            # Add metadata if provided
             if metadata:
                 message_entry["metadata"] = metadata
 
-            self._conversations[key].append(message_entry)
+            conversation.append(message_entry)
 
-            # Prune old messages if history is too long
-            if len(self._conversations[key]) > self._max_history:
-                removed_count = len(self._conversations[key]) - self._max_history
-                self._conversations[key] = self._conversations[key][-self._max_history :]
+            if len(conversation) > self._max_history:
+                removed_count = len(conversation) - self._max_history
+                conversation = conversation[-self._max_history :]
+                with self._global_lock:
+                    self._conversations[key] = conversation
                 self._logger.info(
                     "Pruned %d old messages for %s (keeping latest %d)",
                     removed_count,
@@ -345,7 +345,7 @@ class ThreadSafeConversationManager:
                 )
 
             self._touch(key)
-            message_count = len(self._conversations[key])
+            message_count = len(conversation)
             self._logger.debug(
                 "Added %s message for %s: %d chars, total history: %d messages",
                 role,
@@ -380,10 +380,11 @@ class ThreadSafeConversationManager:
         self._safe_cleanup()
         user_lock = self._get_user_lock(key)
         with user_lock:
-            streak = self._bot_streaks.get(key, 0) + 1
-            if streak > max_consecutive:
-                return False, streak
-            self._bot_streaks[key] = streak
+            with self._global_lock:
+                streak = self._bot_streaks.get(key, 0) + 1
+                if streak > max_consecutive:
+                    return False, streak
+                self._bot_streaks[key] = streak
             self._touch(key)
             return True, streak
 
@@ -428,14 +429,14 @@ class ThreadSafeConversationManager:
 
         user_lock = self._get_user_lock(key)
         with user_lock:
-            conversation = self._conversations.get(key, [])
+            with self._global_lock:
+                conversation = self._conversations.get(key, [])
 
             if lookback_messages <= 0:
                 if key in self._conversations:
                     self._touch(key)
                 return None
 
-            # Look at recent messages in reverse chronological order
             recent_messages = (
                 conversation[-lookback_messages:]
                 if len(conversation) > lookback_messages
@@ -443,7 +444,6 @@ class ThreadSafeConversationManager:
             )
 
             service = None
-            # Find the most recent assistant message with AI service metadata
             for msg in reversed(recent_messages):
                 if (
                     msg.get("role") == "assistant"
@@ -490,7 +490,8 @@ class ThreadSafeConversationManager:
 
         user_lock = self._get_user_lock(key)
         with user_lock:
-            conversation = self._conversations.get(key, [])
+            with self._global_lock:
+                conversation = self._conversations.get(key, [])
             if key in self._conversations:
                 self._touch(key)
 
@@ -526,13 +527,12 @@ class ThreadSafeConversationManager:
         """
         self._safe_cleanup()
         with self._global_lock:
+            total_users = len(self._conversations)
             total_messages = sum(len(conv) for conv in self._conversations.values())
             return {
-                "total_users": len(self._conversations),
+                "total_users": total_users,
                 "total_messages": total_messages,
-                "average_messages_per_user": (
-                    total_messages / len(self._conversations) if self._conversations else 0
-                ),
+                "average_messages_per_user": (total_messages / total_users if total_users else 0),
                 "active_locks": len(self._user_locks),
             }
 
@@ -572,7 +572,7 @@ class ThreadSafeConversationManager:
 
         removed_count = 0
         if expire_due:
-            removed_count += self._expire_stale_conversations(current_time)
+            removed_count += self._expire_stale_conversations()
         if cleanup_due:
             orphan_count = self._remove_orphan_locks()
             removed_count += orphan_count

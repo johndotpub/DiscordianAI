@@ -9,13 +9,10 @@ This test suite covers:
 
 import asyncio
 import logging
-import time
-from unittest.mock import patch
 
 import pytest
 
 from src.caching import (
-    CacheEntry,
     RequestDeduplicator,
     ResponseCache,
     ThreadSafeLRUCache,
@@ -24,27 +21,44 @@ from src.caching import (
 )
 
 
-class TestCacheEntry:
-    """Test CacheEntry dataclass."""
+class FakeClock:
+    """Controllable clock for cache TTL tests."""
 
-    def test_cache_entry_creation(self):
-        """Test creating a cache entry."""
-        entry = CacheEntry(value="test response", timestamp=time.time(), ttl=300.0)
+    def __init__(self, now: float = 100.0) -> None:
+        self.now = now
 
-        assert entry.value == "test response"
-        assert not entry.is_expired()
+    def __call__(self) -> float:
+        return self.now
 
-    def test_cache_entry_expiration(self):
-        """Test cache entry expiration."""
-        # Create expired entry
-        old_timestamp = time.time() - 400  # 400 seconds ago
-        entry = CacheEntry(
-            value="expired response",
-            timestamp=old_timestamp,
-            ttl=300.0,  # 300 second TTL
-        )
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
 
-        assert entry.is_expired()
+
+class TestCacheEntryExpiry:
+    """Test per-entry TTL expiry through the cache API."""
+
+    def test_entry_is_available_before_its_ttl(self):
+        """An entry remains readable inside its TTL."""
+        clock = FakeClock()
+        cache = ThreadSafeLRUCache(max_size=5, default_ttl=300.0, clock=clock)
+
+        cache.put("key", "value", ttl=300.0)
+        clock.advance(299)
+
+        assert cache.get("key") == "value"
+
+    def test_entry_expires_after_its_ttl(self):
+        """An entry is a miss once its TTL has elapsed."""
+        clock = FakeClock()
+        cache = ThreadSafeLRUCache(max_size=5, default_ttl=300.0, clock=clock)
+
+        cache.put("key", "value", ttl=300.0)
+        clock.advance(301)
+
+        assert cache.get("key") is None
+        stats = cache.get_stats()
+        assert stats["expired"] == 1
+        assert stats["misses"] == 1
 
 
 class TestThreadSafeLRUCache:
@@ -52,7 +66,8 @@ class TestThreadSafeLRUCache:
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.cache = ThreadSafeLRUCache(max_size=5, default_ttl=300.0)
+        self.clock = FakeClock()
+        self.cache = ThreadSafeLRUCache(max_size=5, default_ttl=300.0, clock=self.clock)
 
     def test_cache_put_and_get(self):
         """Test basic cache put and get operations."""
@@ -98,15 +113,16 @@ class TestThreadSafeLRUCache:
 
     def test_cache_ttl_expiration(self):
         """Test TTL-based expiration."""
-        with patch("src.caching.time.time", side_effect=[100.0, 100.0, 100.25]):
-            # Put entry with short TTL
-            self.cache.put("expire_key", "expire_value", ttl=0.1)
+        # Put entry with short TTL
+        self.cache.put("expire_key", "expire_value", ttl=0.1)
 
-            # Should be available immediately
-            assert self.cache.get("expire_key") == "expire_value"
+        # Should be available immediately
+        assert self.cache.get("expire_key") == "expire_value"
 
-            # Should be expired now
-            assert self.cache.get("expire_key") is None
+        self.clock.advance(0.25)
+
+        # Should be expired now
+        assert self.cache.get("expire_key") is None
 
     def test_cache_clear(self):
         """Test clearing all cache entries."""
@@ -142,7 +158,8 @@ class TestResponseCache:
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.cache = ResponseCache(max_size=100, default_ttl=300.0)
+        self.clock = FakeClock()
+        self.cache = ResponseCache(max_size=100, default_ttl=300.0, clock=self.clock)
 
     def test_cache_response_and_retrieve(self):
         """Test caching and retrieving responses."""
@@ -234,15 +251,16 @@ class TestResponseCache:
         long_response = "A sufficiently detailed answer. " * 100
         context = {"model": "gpt-5-mini", "user_id": "test-user"}
 
-        with patch("src.caching.time.time", side_effect=[100.0, 400.0, 401.0]):
-            self.cache.cache_response("test message", context, long_response, salt="test-salt")
-            assert (
-                self.cache.get_cached_response("test message", context, salt="test-salt")
-                == long_response
-            )
-            assert (
-                self.cache.get_cached_response("test message", context, salt="test-salt") is None
-            )
+        self.cache.cache_response("test message", context, long_response, salt="test-salt")
+
+        self.clock.advance(299)
+        assert (
+            self.cache.get_cached_response("test message", context, salt="test-salt")
+            == long_response
+        )
+
+        self.clock.advance(2)
+        assert self.cache.get_cached_response("test message", context, salt="test-salt") is None
 
     def test_should_not_cache_short_responses(self):
         """Test that very short responses are not cached."""

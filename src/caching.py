@@ -8,7 +8,6 @@ This module provides:
 """
 
 import asyncio
-from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
@@ -19,6 +18,8 @@ import re
 import threading
 import time
 from typing import Any
+
+from cachetools import TLRUCache
 
 from .config import DEFAULT_CACHE_TTL
 from .providers.base import object_field
@@ -235,17 +236,30 @@ def _cache_context(
     return message, context, salt
 
 
-@dataclass
-class CacheEntry:
-    """Cache entry with metadata."""
+@dataclass(frozen=True)
+class _CacheEntry:
+    """Value and time-to-live stored in the response cache."""
 
     value: Any
-    timestamp: float
-    ttl: float = DEFAULT_CACHE_TTL  # 10 minutes default
+    ttl: float
 
-    def is_expired(self) -> bool:
-        """Check if cache entry has expired."""
-        return time.time() - self.timestamp > self.ttl
+
+class _StatsTLRUCache(TLRUCache):
+    """TLRUCache that counts the entries it evicts and expires."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.evicted = 0
+        self.expired = 0
+
+    def popitem(self) -> tuple[str, _CacheEntry]:
+        self.evicted += 1
+        return super().popitem()
+
+    def expire(self, time: float | None = None) -> list[tuple[str, _CacheEntry]]:
+        expired = super().expire(time)
+        self.expired += len(expired)
+        return expired
 
 
 class ThreadSafeLRUCache:
@@ -254,16 +268,27 @@ class ThreadSafeLRUCache:
     Provides fast caching with automatic cleanup of expired entries.
     """
 
-    def __init__(self, max_size: int = 1000, default_ttl: float = DEFAULT_CACHE_TTL):
+    def __init__(
+        self,
+        max_size: int = 1000,
+        default_ttl: float = DEFAULT_CACHE_TTL,
+        clock: Callable[[], float] | None = None,
+    ):
         """Initialize cache with capacity and default TTL.
 
         Args:
             max_size: Maximum number of entries to store.
             default_ttl: Default time-to-live per entry in seconds.
+            clock: Optional time source used for TTL calculations.
         """
         self.max_size = max_size
         self.default_ttl = default_ttl
-        self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
+        self._clock = clock or time.time
+        self._cache: _StatsTLRUCache[str, _CacheEntry] = _StatsTLRUCache(
+            max_size,
+            ttu=lambda _key, entry, now: now + entry.ttl,
+            timer=self._clock,
+        )
         self._lock = threading.RLock()
         self._stats = {
             "hits": 0,
@@ -275,23 +300,13 @@ class ThreadSafeLRUCache:
     def get(self, key: str) -> Any | None:
         """Get value from cache."""
         with self._lock:
-            if key not in self._cache:
+            try:
+                entry = self._cache[key]
+            except KeyError:
                 self._stats["misses"] += 1
                 return None
 
-            entry = self._cache[key]
-
-            # Check if expired
-            if entry.is_expired():
-                del self._cache[key]
-                self._stats["expired"] += 1
-                self._stats["misses"] += 1
-                return None
-
-            # Move to end (most recently used)
-            self._cache.move_to_end(key)
             self._stats["hits"] += 1
-
             return entry.value
 
     def put(self, key: str, value: Any, ttl: float | None = None) -> None:
@@ -300,20 +315,7 @@ class ThreadSafeLRUCache:
             if ttl is None:
                 ttl = self.default_ttl
 
-            # Remove existing entry if present
-            if key in self._cache:
-                del self._cache[key]
-
-            # Add new entry
-            entry = CacheEntry(value=value, timestamp=time.time(), ttl=ttl)
-            self._cache[key] = entry
-
-            # Enforce max size
-            while len(self._cache) > self.max_size:
-                # Remove least recently used
-                oldest_key = next(iter(self._cache))
-                del self._cache[oldest_key]
-                self._stats["evictions"] += 1
+            self._cache[key] = _CacheEntry(value=value, ttl=ttl)
 
     def clear(self) -> None:
         """Clear all cache entries."""
@@ -323,11 +325,14 @@ class ThreadSafeLRUCache:
     def get_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         with self._lock:
+            size = len(self._cache)
+            self._stats["evictions"] = self._cache.evicted
+            self._stats["expired"] = self._cache.expired
             total_requests = self._stats["hits"] + self._stats["misses"]
             hit_rate = (self._stats["hits"] / total_requests * 100) if total_requests > 0 else 0
 
             return {
-                "size": len(self._cache),
+                "size": size,
                 "max_size": self.max_size,
                 "hit_rate": round(hit_rate, 2),
                 "total_requests": total_requests,
@@ -341,14 +346,20 @@ class ResponseCache:
     Caches expensive API responses with intelligent cache key generation.
     """
 
-    def __init__(self, max_size: int = 500, default_ttl: float = DEFAULT_CACHE_TTL):
+    def __init__(
+        self,
+        max_size: int = 500,
+        default_ttl: float = DEFAULT_CACHE_TTL,
+        clock: Callable[[], float] | None = None,
+    ):
         """Initialize response cache wrapper.
 
         Args:
             max_size: Maximum cache entries to store.
             default_ttl: Default TTL for cached responses (seconds).
+            clock: Optional time source used for TTL calculations.
         """
-        self.cache = ThreadSafeLRUCache(max_size, default_ttl)
+        self.cache = ThreadSafeLRUCache(max_size, default_ttl, clock)
         self.logger = logging.getLogger(__name__)
 
     def _should_cache_response(self, response: str, error: Exception | None = None) -> bool:
