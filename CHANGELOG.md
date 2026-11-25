@@ -238,6 +238,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed 🔁
 
+- **Link counting uses an indexed lookup.** `count_links()` now compares each
+  bare URL with the one link span that could contain it instead of scanning
+  every span, so an answer with thousands of links no longer spends quadratic
+  time deciding whether to suppress embeds.
 - **The fallback router cache is bounded and closed.** When no router is injected, the
   orchestrator keeps at most eight cached fallback routers, closes the oldest when a new
   entry arrives, and closes every remaining one at shutdown, so the Clef HTTP clients do

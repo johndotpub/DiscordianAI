@@ -5,6 +5,7 @@ embed suppression, sanitisation, and formatting helpers that are not already
 exercised by ``test_message_splitting.py``.
 """
 
+from src import message_splitter
 from src.message_splitter import (
     count_links,
     error_message,
@@ -204,3 +205,18 @@ def test_count_links_counts_one_masked_link_once():
 def test_count_links_ignores_filenames():
     """Python filenames are not clickable links."""
     assert count_links("Edit main.py and utils.py before running") == 0
+
+
+def test_count_links_span_lookups_stay_linear():
+    """Each bare match examines at most one indexed link span, not every span."""
+    links = " ".join(f"[label{i}](destination{i})" for i in range(3000))
+    bare = " ".join(f"https://bare{i}.example/page" for i in range(3000))
+
+    message_splitter._reset_parse_stats()
+    count = count_links(f"{links} {bare}")
+    lookups = message_splitter._parse_stats().get("count_link_span_lookups")
+
+    assert count == 6000
+    assert lookups is not None, "count_links must record its span lookups"
+    assert lookups >= 3000, f"{lookups} span lookups for 3000 bare matches"
+    assert lookups <= 2 * 3000, f"{lookups} span lookups for 3000 bare matches"

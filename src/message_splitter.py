@@ -160,13 +160,14 @@ class _LinkSpan:
 
 
 _thread_state = threading.local()
-_PARSE_STATS = {"calls": 0, "bytes": 0}
+_PARSE_STATS = {"calls": 0, "bytes": 0, "count_link_span_lookups": 0}
 
 
 def _reset_parse_stats() -> None:
     """Reset the parser work counters used by the delivery complexity test."""
     _PARSE_STATS["calls"] = 0
     _PARSE_STATS["bytes"] = 0
+    _PARSE_STATS["count_link_span_lookups"] = 0
 
 
 def _parse_stats() -> dict[str, int]:
@@ -1735,11 +1736,16 @@ def count_links(text: str) -> int:
     with ``www.``, so a filename such as ``main.py`` is not a link.
     """
     link_spans = [match.span() for match in LINK_PATTERN.finditer(text)]
+    link_starts = [span_start for span_start, _span_end in link_spans]
     count = len(link_spans)
     for match in BARE_URL_PATTERN.finditer(text):
         start = match.start()
-        if any(link_start <= start < link_end for link_start, link_end in link_spans):
-            continue
+        _PARSE_STATS["count_link_span_lookups"] += 1
+        span_index = bisect_right(link_starts, start) - 1
+        if span_index >= 0:
+            link_start, link_end = link_spans[span_index]
+            if link_start <= start < link_end:
+                continue
         token = match.group(0)
         separator_length = len("://")
         preceded_by_scheme = (
