@@ -582,6 +582,40 @@ async def test_decide_after_aclose_uses_the_gate_without_reopening(monkeypatch, 
 
 
 @pytest.mark.asyncio
+async def test_decide_sync_after_aclose_uses_the_gate_without_reopening(monkeypatch) -> None:
+    """A closed router must not build a synchronous client either."""
+    created = []
+
+    class _CountingSyncClient:
+        def __init__(self, *args, **kwargs):
+            _ = (args, kwargs)
+            created.append(self)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            _ = (exc_type, exc, tb)
+            return False
+
+        def post(self, url, *, json=None, headers=None):
+            _ = (url, json, headers)
+            return _response(0.9)
+
+    monkeypatch.setattr("src.routing.clef.httpx.Client", _CountingSyncClient)
+    router = ClefRouter(api_key="test-key")
+    request = RouterInput(text="tell me about monads")
+    await router.aclose()
+
+    decision = router.decide_sync(request)
+
+    gate = HeuristicRouter().decide_sync(request)
+    assert created == []
+    assert decision.route == gate.route
+    assert decision.reasons[0] == "clef:fallback:closed"
+
+
+@pytest.mark.asyncio
 async def test_clef_deadline_wraps_the_whole_request(monkeypatch) -> None:
     """The configured timeout is one hard deadline, not a per-phase budget."""
     recorded = {"timeout": None}

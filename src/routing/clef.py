@@ -95,6 +95,8 @@ class ClefRouter:
         if gate.deterministic_override:
             return gate
         started = perf_counter()
+        if self._closed:
+            return self._closed_fallback(request, gate, started)
         try:
             with httpx.Client(timeout=httpx.Timeout(self._timeout_s)) as client:
                 response = client.post(

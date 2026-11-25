@@ -317,6 +317,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Health probes use the configured `WEB_TOOLS` value.** The adapter built for the
   startup probe no longer ignores the setting; it inherits the same policy as the
   production client.
+- **A closed Clef router refuses synchronous decisions too.** `decide_sync` now returns
+  the deterministic fallback without building another HTTP client after `aclose()`.
 - **A blank `DISCORDIANAI_LOG_COLOR` no longer forces colour on.** The presence of the
   key used to count as an explicit choice, so a blank `[Logging]` value or environment
   variable overrode terminal detection with the default `true` and coloured redirected
