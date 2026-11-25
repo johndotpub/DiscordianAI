@@ -82,8 +82,8 @@ All project dependencies are verified to work with Python 3.12:
 
 ## Launcher Notes
 
-- The launcher resolves Python through pyenv first when pyenv is installed.
-- Cron environments must have pyenv initialized and available on PATH so the launcher can find the intended interpreter.
+- The launcher prefers the project-local `.venv` when its core dependencies are importable, then the shell-activated venv, then pyenv, then the system interpreter.
+- Cron environments that rely on pyenv must have it initialized and available on PATH so the launcher can use it when no usable project venv exists.
 
 ## Migration Guide
 

@@ -4,7 +4,7 @@
 
 ## Features
 
-- **Automatic Python resolution**: Finds the right Python interpreter via pyenv → project venv → shell venv → system path (pyenv preferred for version pinning)
+- **Automatic Python resolution**: Finds the right Python interpreter via project venv → shell venv → pyenv → system path (the project venv is preferred when its dependencies are present)
 - **Venv bootstrapping**: Creates and populates a project-local `.venv/` if one doesn't exist
 - **Correct working directory**: Always changes to the project root, so `python -m src.main --conf <file>` works regardless of where the script is invoked from (including cron's `$HOME`)
 - **Process management**: Stops previous instances before starting, with graceful shutdown and forced kill fallback
@@ -22,14 +22,14 @@
 
 The launcher resolves the Python interpreter in this priority:
 
-1. **pyenv** — Whatever `pyenv which python3` resolves for the project directory
-2. **Project-local venv** — `.venv/bin/python3` in the project directory
-3. **Shell-activated venv** — `$VIRTUAL_ENV/bin/python3` if a venv is active
+1. **Project-local venv** — `.venv/bin/python3` in the project directory, used when its core dependencies are importable
+2. **Shell-activated venv** — `$VIRTUAL_ENV/bin/python3` if a venv is active
+3. **pyenv** — Whatever `pyenv which python3` resolves for the project directory
 4. **System python3** — First `python3` on `PATH`
 
 If no venv exists, the launcher creates one automatically using the resolved Python interpreter and installs dependencies from `requirements.txt` (or `pyproject.toml` if no requirements file exists).
 
-> **Tip**: pyenv resolution is preferred because it's version-pinned and reproducible. If you use pyenv, set a project Python with `pyenv local 3.12.x` and the launcher will pick it up automatically. You can also create a project venv with `pyenv exec python -m venv .venv` to pin the interpreter.
+> **Tip**: The project venv is preferred because it is the environment this checkout was bootstrapped with. If you use pyenv, set a project Python with `pyenv local 3.12.x`; the launcher uses it when no usable project venv exists. You can also create a project venv with `pyenv exec python -m venv .venv` to pin the interpreter.
 
 ## Usage
 
@@ -199,11 +199,11 @@ rm -rf .venv
 To force a specific Python version for the venv:
 
 ```bash
-# With pyenv (preferred — version-pinned, reproducible)
+# With pyenv (optional — version-pinned, reproducible)
 pyenv install 3.12.12
 pyenv local 3.12.12
 rm -rf .venv
-./discordian.sh -c config.ini   # Will use pyenv's Python automatically
+./discordian.sh -c config.ini   # Will bootstrap the venv with pyenv's Python
 
 # Without pyenv — create venv manually
 /usr/bin/python3.12 -m venv .venv
@@ -240,7 +240,7 @@ rm -rf .venv
 
 **Wrong Python being used**
 - The launcher prints which Python it resolved at startup
-- Check the resolution order (pyenv → venv → system) and ensure your preferred Python is first
+- Check the resolution order (project venv → shell venv → pyenv → system) and ensure your preferred Python is first
 
 **systemd service won't start**
 - Check status: `systemctl --user status discordian-bot@bot`

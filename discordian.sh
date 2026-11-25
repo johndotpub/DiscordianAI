@@ -14,9 +14,9 @@
 #   ./discordian.sh --install-systemd bot.ini # install, enable, start systemd service
 #
 # Python resolution order:
-#   1. pyenv-managed python3 (preferred — version-pinned, reproducible)
-#   2. Project-local .venv/bin/python3
-#   3. Shell-activated venv ($VIRTUAL_ENV)
+#   1. Project-local .venv/bin/python3 (preferred when its dependencies are present)
+#   2. Shell-activated venv ($VIRTUAL_ENV)
+#   3. pyenv-managed python3
 #   4. System python3
 #
 # If no venv exists, one is created automatically in the project directory.
@@ -197,19 +197,15 @@ cd "${PROJECT_DIR}"
 log "Working directory: $(pwd)"
 
 # ── 2. Resolve Python interpreter ─────────────────────────────────────
-#     Priority: pyenv → project venv → shell venv → system python3
+#     Priority: project venv → shell venv → pyenv → system python3
+python_has_core_dependencies() {
+    "${1}" -c "import discord; import openai; import httpx" >/dev/null 2>&1
+}
+
 resolve_python() {
-    # pyenv first — version-pinned, reproducible
-    if command -v pyenv >/dev/null 2>&1; then
-        local pyenv_python
-        pyenv_python="$(pyenv which python3 2>/dev/null || true)"
-        if [[ -n "${pyenv_python}" && -x "${pyenv_python}" ]]; then
-            echo "${pyenv_python}"
-            return 0
-        fi
-    fi
-    # Project-local venv
-    if [[ -x "${VENV_DIR}/bin/python3" ]]; then
+    # Project-local venv first — it is the environment this checkout was
+    # bootstrapped with, as long as its dependencies are present.
+    if [[ -x "${VENV_DIR}/bin/python3" ]] && python_has_core_dependencies "${VENV_DIR}/bin/python3"; then
         echo "${VENV_DIR}/bin/python3"
         return 0
     fi
@@ -217,6 +213,15 @@ resolve_python() {
     if [[ -n "${VIRTUAL_ENV:-}" && -x "${VIRTUAL_ENV}/bin/python3" ]]; then
         echo "${VIRTUAL_ENV}/bin/python3"
         return 0
+    fi
+    # pyenv — version-pinned, reproducible when the project venv is absent
+    if command -v pyenv >/dev/null 2>&1; then
+        local pyenv_python
+        pyenv_python="$(pyenv which python3 2>/dev/null || true)"
+        if [[ -n "${pyenv_python}" && -x "${pyenv_python}" ]]; then
+            echo "${pyenv_python}"
+            return 0
+        fi
     fi
     # System python3
     local sys_python
@@ -270,7 +275,7 @@ fi
 
 # ── 5. Dependency check ───────────────────────────────────────────────
 log "Checking core dependencies..."
-if ! "${PYTHON}" -c "import discord; import openai; import httpx" 2>/dev/null; then
+if ! python_has_core_dependencies "${PYTHON}"; then
     log "ERROR: Missing core dependencies (discord.py, openai, or httpx)."
     log "Repair with: ${VENV_DIR}/bin/pip install -r requirements.txt"
     exit 1

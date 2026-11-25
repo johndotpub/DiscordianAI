@@ -238,6 +238,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed 🔁
 
+- **The launcher prefers the project venv.** `.venv/bin/python3` is tried first when its
+  core dependencies are importable, then the shell-activated venv, then pyenv, then the
+  system interpreter. The docs match the new order.
 - **CI smoke-tests every installed `src` module.** The wheel job now imports each module
   under the installed `src` package, so a broken import in the bot, health server,
   providers, or routing fails the build.

@@ -771,3 +771,60 @@ def test_install_systemd_unit_passes_the_systemd_validator_when_available(tmp_pa
     output = completed.stdout + completed.stderr
     assert completed.returncode == 0, output
     assert "fatal error" not in output.lower(), output
+
+
+def test_resolve_python_prefers_the_project_venv_over_pyenv(tmp_path):
+    """The checkout's own venv wins when its dependencies are available."""
+    project = tmp_path / "project"
+    marker = tmp_path / "launch-args.txt"
+    _write_stub_project(project)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    pyenv_python = tmp_path / "pyenv-python"
+    pyenv_python.write_text(
+        """#!/usr/bin/env bash
+if [[ "${1:-}" == "--version" ]]; then
+    echo "Python 3.12.0"
+    exit 0
+fi
+if [[ "${1:-}" == "-c" ]]; then
+    if [[ "${2:-}" == *"[0]"* ]]; then
+        echo 3
+    else
+        echo 12
+    fi
+    exit 0
+fi
+printf 'pyenv %s\n' "$@" >> "${STUB_MARKER:?}"
+exit 0
+""",
+        encoding="utf-8",
+    )
+    pyenv_python.chmod(0o755)
+    pyenv = bin_dir / "pyenv"
+    pyenv.write_text(
+        f"""#!/usr/bin/env bash
+if [[ "$1" == "which" ]]; then
+    echo "{pyenv_python}"
+    exit 0
+fi
+exit 0
+""",
+        encoding="utf-8",
+    )
+    pyenv.chmod(0o755)
+    script = f"""
+set -euo pipefail
+"{SCRIPT_PATH}" -c bot.ini -f "$1"
+"""
+    completed = _run_bash(
+        script,
+        str(project),
+        env=_launcher_env(project, marker, PATH=f"{bin_dir}:/usr/bin:/bin"),
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    launched = marker.read_text(encoding="utf-8").splitlines()
+    assert launched[:3] == ["-m", "src.main", "--conf"]
+    assert launched[3] == str(project / "bot.ini")
