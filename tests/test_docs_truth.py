@@ -46,7 +46,7 @@ NEGATED_STARTUP_CLAIM_PATTERN = re.compile(
     re.IGNORECASE,
 )
 ABORT_STARTUP_PATTERN = re.compile(
-    r"\b(?:abort|exit|stops? the process)\b",
+    r"\b(?:aborts?|exits?|stops? the process)\b",
     re.IGNORECASE,
 )
 STALE_ARCHITECTURE_PHRASES = (
