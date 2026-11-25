@@ -170,6 +170,51 @@ class TestSendFormattedMessage:
         assert not channel.send.call_args_list[1][1]["suppress_embeds"]
 
     @pytest.mark.asyncio
+    async def test_truncated_embed_failure_still_delivers_split_text(self):
+        """An embed rejection on the truncated path must fall back to text."""
+
+        class EmbedRejectingChannel:
+            def __init__(self):
+                self.text_chunks = []
+
+            async def send(self, content, **kwargs):
+                if "embed" in kwargs:
+                    response = MagicMock()
+                    response.status = 400
+                    response.reason = "Bad Request"
+                    raise discord.HTTPException(response, "embed rejected")
+                self.text_chunks.append(content)
+                return MagicMock()
+
+        channel = EmbedRejectingChannel()
+        message = "[1] " + ("A" * 4000)
+        embed = discord.Embed(description="[1] " + ("A" * 3900))
+        embed_data = {
+            "embed": embed,
+            "citations": {"1": "https://example.com/source"},
+            "clean_text": message,
+            "embed_metadata": {"was_truncated": True},
+        }
+        deps = {"logger": MagicMock()}
+
+        try:
+            await send_formatted_message(
+                channel,
+                message,
+                deps,
+                embed_data=embed_data,
+                truncated=True,
+            )
+        except discord.HTTPException as exc:
+            pytest.fail(f"truncated delivery raised instead of falling back: {exc}")
+
+        assert channel.text_chunks
+        assert all(len(chunk) <= 2000 for chunk in channel.text_chunks)
+        delivered = "".join(channel.text_chunks)
+        assert "A" * 100 in delivered
+        assert len(delivered) > 2000
+
+    @pytest.mark.asyncio
     async def test_send_formatted_message_regular_short(self):
         """Test sending regular message (no embed data) that fits in 2000 chars."""
         channel = MagicMock(spec=discord.TextChannel)

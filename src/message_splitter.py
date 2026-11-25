@@ -1263,15 +1263,27 @@ async def send_formatted_message(  # noqa: PLR0913, PLR0917
         was_truncated = metadata.get("was_truncated", False)
 
         if was_truncated or truncated:
-            await send_split_message_with_embed(
-                channel,
-                clean_text,
-                deps,
-                embed,
-                citation_map,
-                original_message,
-                mention_prefix,
-            )
+            try:
+                await send_split_message_with_embed(
+                    channel,
+                    clean_text,
+                    deps,
+                    embed,
+                    citation_map,
+                    original_message,
+                    mention_prefix,
+                )
+            except discord.HTTPException:
+                logger.exception("Failed to send truncated embed, falling back to split text")
+                await send_split_message(
+                    channel,
+                    message,
+                    deps,
+                    suppress_embeds,
+                    original_message=original_message,
+                    mention_prefix=mention_prefix,
+                    citations=citation_map,
+                )
             return
 
         _sanitize_embed_description(embed, citation_map)

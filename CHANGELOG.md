@@ -285,6 +285,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **A rejected truncated-answer embed falls back to text.** When an answer that
+  hit the provider's output limit was sent as an embed, a Discord rejection of
+  that embed left the user with the generic processing error. The truncated
+  path now delivers the split text, matching the normal embed path.
 - **The dependency gate runs before third-party imports.** A missing package now produces
   the friendly `Missing required packages` message and exit code instead of a raw
   `ImportError`, and the no-`ALLOWED_CHANNELS` warning is logged once instead of twice.
