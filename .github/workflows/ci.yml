@@ -102,6 +102,22 @@ jobs:
     - name: Check linting (ruff)
       run: ruff check . --show-fixes
 
+  # Shell script linting
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Install shellcheck
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y shellcheck
+
+    - name: Check shell scripts
+      run: shellcheck -S warning discordian.sh scripts/*.sh
+
   # Security scanning
   security:
     name: Security Scan
