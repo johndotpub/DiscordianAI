@@ -78,16 +78,19 @@ def _log_color_is_explicit(config_file: str | None, base_folder: str | None) -> 
 
     The loaded configuration always carries a value for the key, so the
     default cannot be distinguished from an explicit setting after parsing.
-    Check the environment and the config file itself instead.
+    Check the environment and the config file itself instead. A blank value
+    counts as unset, matching the config-wide blank-value rule.
 
     Args:
         config_file: Config file path that was passed to ``load_config``.
         base_folder: Optional base folder used to resolve a relative path.
 
     Returns:
-        True when the environment or the ``[Logging]`` section sets the key.
+        True when the environment or the ``[Logging]`` section sets a
+        non-blank value for the key.
     """
-    if "DISCORDIANAI_LOG_COLOR" in os.environ:
+    env_value = os.environ.get("DISCORDIANAI_LOG_COLOR")
+    if env_value is not None and env_value.strip():
         return True
     if not config_file:
         return False
@@ -103,7 +106,10 @@ def _log_color_is_explicit(config_file: str | None, base_folder: str | None) -> 
         parser.read(path, encoding="utf-8")
     except (configparser.Error, OSError):
         return False
-    return parser.has_option("Logging", "DISCORDIANAI_LOG_COLOR")
+    return bool(
+        parser.has_option("Logging", "DISCORDIANAI_LOG_COLOR")
+        and parser.get("Logging", "DISCORDIANAI_LOG_COLOR", fallback="").strip()
+    )
 
 
 def _require_existing_config_file(

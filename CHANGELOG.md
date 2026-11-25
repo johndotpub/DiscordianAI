@@ -303,6 +303,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **A blank `DISCORDIANAI_LOG_COLOR` no longer forces colour on.** The presence of the
+  key used to count as an explicit choice, so a blank `[Logging]` value or environment
+  variable overrode terminal detection with the default `true` and coloured redirected
+  logs. A blank value is now treated as unset, matching the config-wide blank-value rule;
+  `false` still forces colour off.
 - **The launcher rejects an unknown option before stopping anything.** The `--config=FILE`,
   `--folder=DIR`, and `--install-systemd=FILE` forms are accepted. Any other option prints
   the bad argument and a usage line, exits 2, and sends no signal. The run path resolves the

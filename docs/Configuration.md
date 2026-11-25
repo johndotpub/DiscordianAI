@@ -136,7 +136,7 @@ Logs are emitted to stderr as structured lines. The process supervisor or a shel
 
 - **`LOG_FILE`**: Deprecated and ignored. It is still parsed for backwards compatibility; when an operator explicitly sets it, startup logs one INFO line naming the configured value and pointing to stderr. The built-in default does not produce that line. Redirect stderr (or both streams) or configure the supervisor's output capture instead.
 - **`LOG_LEVEL`**: Logging verbosity ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL") *(default: "INFO")*
-- **`DISCORDIANAI_LOG_COLOR`**: Color is enabled only when the output stream is a terminal, unless the setting is present and forces it on with `1`/`true`/`yes` or off with `0`/`false`/`no`; it can be set in the `[Logging]` section or as an environment variable, and the environment wins.
+- **`DISCORDIANAI_LOG_COLOR`**: Color follows the output stream's terminal detection by default. Set it to `1`/`true`/`yes` to force color on or `0`/`false`/`no` to force it off; a blank value is treated as unset. It can be set in the `[Logging]` section or as an environment variable, and a non-blank environment value overrides the file.
 
 ### Health
 
