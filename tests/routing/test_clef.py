@@ -549,6 +549,39 @@ async def test_async_decisions_reuse_one_pooled_client(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_decide_after_aclose_uses_the_gate_without_reopening(monkeypatch, caplog) -> None:
+    """A closed router never builds another client; it logs once and gates."""
+    created = []
+
+    class _CountingClient(_FakeAsyncClient):
+        def __init__(self, *args, **kwargs):
+            _ = (args, kwargs)
+            super().__init__()
+            created.append(self)
+
+    monkeypatch.setattr("src.routing.clef.httpx.AsyncClient", _CountingClient)
+    router = ClefRouter(api_key="test-key")
+    request = RouterInput(text="tell me about monads")
+
+    await router.decide(request)
+    await router.aclose()
+    assert len(created) == 1
+
+    with caplog.at_level(logging.WARNING, logger="src.routing.clef"):
+        first = await router.decide(request)
+        second = await router.decide(request)
+
+    gate = HeuristicRouter().decide_sync(request)
+    assert len(created) == 1
+    assert created[0].closed == 1
+    assert first.route == gate.route
+    assert second.route == gate.route
+    assert first.reasons[0] == "clef:fallback:closed"
+    warnings = [record for record in caplog.records if "closed" in record.getMessage()]
+    assert len(warnings) == 1
+
+
+@pytest.mark.asyncio
 async def test_clef_deadline_wraps_the_whole_request(monkeypatch) -> None:
     """The configured timeout is one hard deadline, not a per-phase budget."""
     recorded = {"timeout": None}

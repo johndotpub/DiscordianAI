@@ -72,6 +72,8 @@ class ClefRouter:
         self._timeout_s = timeout_s
         self._base_url = base_url.rstrip("/")
         self._http_client = http_client
+        self._closed = False
+        self._closed_reported = False
 
     async def decide(self, request: RouterInput) -> RouteDecision:
         """Return the routing decision for ``request`` within one hard deadline."""
@@ -79,6 +81,8 @@ class ClefRouter:
         if gate.deterministic_override:
             return gate
         started = perf_counter()
+        if self._closed:
+            return self._closed_fallback(request, gate, started)
         try:
             response = await asyncio.wait_for(self._post(request), timeout=self._timeout_s)
             return self._decision(request, response, started)
@@ -103,7 +107,8 @@ class ClefRouter:
             return self._fallback(request, gate, started, exc)
 
     async def aclose(self) -> None:
-        """Close the router's pooled HTTP client."""
+        """Close the router's pooled HTTP client and refuse to reopen it."""
+        self._closed = True
         client = self._http_client
         self._http_client = None
         if client is not None:
@@ -181,10 +186,30 @@ class ClefRouter:
             "Clef routing failed (%s); using the deterministic gate",
             type(exc).__name__,
         )
+        return self._gate_result(request, gate, started, _failure_reason(exc))
+
+    def _closed_fallback(
+        self,
+        request: RouterInput,
+        gate: RouteDecision,
+        started: float,
+    ) -> RouteDecision:
+        if not self._closed_reported:
+            _LOGGER.warning("Clef router is closed; using the deterministic gate")
+            self._closed_reported = True
+        return self._gate_result(request, gate, started, "closed")
+
+    def _gate_result(
+        self,
+        request: RouterInput,
+        gate: RouteDecision,
+        started: float,
+        reason: str,
+    ) -> RouteDecision:
         latency_ms = (perf_counter() - started) * 1000.0
         return RouteDecision(
             route=gate.route,
-            reasons=(f"clef:fallback:{_failure_reason(exc)}", *gate.reasons),
+            reasons=(f"clef:fallback:{reason}", *gate.reasons),
             latency_ms=latency_ms,
             text=gate.text or request.text,
             router_id=self.router_id,

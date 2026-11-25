@@ -294,6 +294,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **A closed Clef router stays closed.** Shutdown closes the pooled HTTP client,
+  but the next decision used to build a new client that nothing closed again.
+  A closed router now logs once and answers through the deterministic gate
+  without reopening a connection.
 - **A port number or a row count is not an HTTP status.** The text fallback now
   reads a status only when the message names one (`HTTP 429`, `status 429`, or
   `error code: 429`). A connection refused on `port 443` is retried as a connection
