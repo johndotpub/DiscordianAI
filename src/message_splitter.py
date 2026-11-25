@@ -40,8 +40,15 @@ _FULL_BYTE_RANGE = Range((0, 0), (0xFFFFFFFF, 0xFFFFFFFF), 0, 0xFFFFFFFF)
 _UTF8_ONE_BYTE_LIMIT = 0x80
 _UTF8_TWO_BYTE_LIMIT = 0x800
 _UTF8_THREE_BYTE_LIMIT = 0x10000
+_UTF8_SURROGATE_FIRST = 0xD800
+_UTF8_SURROGATE_LAST = 0xDFFF
+_UTF8_REPLACEMENT_SIZE = 1
 _CLOSING_DELIMITER_COUNT = 2
 _EMPHASIS_MARKERS = frozenset("*_~|")
+# The inline grammar slows sharply on delimiter-dense text. Above this many
+# emphasis-marker characters the sanitiser skips inline parsing entirely and
+# applies the catch-all passes instead, keeping delivery bounded.
+_MAX_EMPHASIS_DELIMITERS = 2048
 _TRUNCATION_PREFIX = "\n\n[Message truncated: the original answer was "
 _TRUNCATION_SUFFIX = " characters; the bot's delivery limit was reached]"
 
@@ -172,13 +179,31 @@ def _parsers() -> tuple[Parser, Parser]:
     return _thread_state.block_parser, _thread_state.inline_parser
 
 
+def _replace_surrogate_characters(text: str) -> str:
+    """Replace lone UTF-16 surrogates so UTF-8 encoding cannot abort delivery."""
+    if not any(
+        _UTF8_SURROGATE_FIRST <= ord(character) <= _UTF8_SURROGATE_LAST for character in text
+    ):
+        return text
+    return text.encode("utf-8", errors="replace").decode("utf-8")
+
+
+def _emphasis_delimiter_count(text: str) -> int:
+    """Return how many emphasis, strikethrough, or spoiler markers ``text`` holds."""
+    return sum(text.count(marker) for marker in _EMPHASIS_MARKERS)
+
+
 def _byte_offsets(raw: bytes, text: str) -> tuple[int, ...]:
     """Map every byte boundary in ``raw`` to a character index in ``text``."""
     offsets = [0] * (len(raw) + 1)
     byte_index = 0
     for character_index, character in enumerate(text):
         code_point = ord(character)
-        if code_point < _UTF8_ONE_BYTE_LIMIT:
+        if _UTF8_SURROGATE_FIRST <= code_point <= _UTF8_SURROGATE_LAST:
+            # Encoding with errors="replace" writes a one-byte "?" for a
+            # surrogate, so the offset table must use the same width.
+            size = _UTF8_REPLACEMENT_SIZE
+        elif code_point < _UTF8_ONE_BYTE_LIMIT:
             size = 1
         elif code_point < _UTF8_TWO_BYTE_LIMIT:
             size = 2
@@ -314,9 +339,14 @@ def _inline_infos_from_node(
 
 
 def _parse_markdown(text: str, *, include_inline: bool = True) -> _MarkdownParse:
-    """Parse one text with the block grammar and, unless disabled, inline spans."""
-    raw = text.encode("utf-8")
+    """Parse one text with the block grammar and, unless disabled, inline spans.
+
+    Delimiter-dense text skips the inline grammar: the catch-all passes still
+    neutralise links, and the block grammar still finds fenced code.
+    """
+    raw = text.encode("utf-8", errors="replace")
     offsets = _byte_offsets(raw, text)
+    parse_inline = include_inline and (_emphasis_delimiter_count(text) <= _MAX_EMPHASIS_DELIMITERS)
     block_parser, inline_parser = _parsers()
     tree = block_parser.parse(raw)
     _PARSE_STATS["calls"] += 1
@@ -329,7 +359,7 @@ def _parse_markdown(text: str, *, include_inline: bool = True) -> _MarkdownParse
         node = stack.pop()
         if node.type == "fenced_code_block":
             fences.append(_fence_info_from_node(node, raw, text, offsets))
-        elif include_inline and node.type == "inline":
+        elif parse_inline and node.type == "inline":
             inline.extend(_inline_infos_from_node(node, raw, text, offsets, inline_parser))
         stack.extend(reversed(node.children))
 
@@ -1899,6 +1929,7 @@ def sanitize_model_output(text: str, citations: dict[str, str] | None = None) ->
     """
     if not text:
         return ""
+    text = _replace_surrogate_characters(text)
     if not any(marker in text for marker in ("](", "://", "<", "@")):
         return text
 

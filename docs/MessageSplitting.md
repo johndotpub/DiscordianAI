@@ -138,6 +138,10 @@ view:
   lengths or an ambiguous marker means Discord may pair the backticks elsewhere, so that
   span is dropped and its contents are sanitised as ordinary text.
 - Anything uncertain is ordinary text.
+- A message with more than 2,048 emphasis, strikethrough, or spoiler marker characters
+  skips the inline grammar entirely. The catch-all passes still neutralise every link, the
+  mention protection still runs, and the block grammar still protects a closed fence; the
+  cap only stops delimiter-dense text from spending seconds in the inline parser.
 
 Outside protected regions the sanitiser has two layers. The parser-driven layer rewrites
 links, images, and autolinks to their label text with the URL neutralised, except for a
@@ -145,7 +149,9 @@ trusted citation URL from the allowlist. The catch-all layer does not depend on 
 it breaks every `](`, inserts a zero-width space after every `://`, and separates `<` from
 a following URL scheme. Definition-shaped lines such as `[label]: destination` stay in the
 text; an invisible separator stops a CommonMark renderer from resolving them, and no line
-is ever deleted. Mentions are neutralised everywhere, including inside code.
+is ever deleted. Mentions are neutralised everywhere, including inside code. A lone UTF-16
+surrogate is replaced with `?` before parsing, because it cannot be UTF-8 encoded and would
+otherwise abort delivery of the whole answer.
 
 After splitting, every final chunk is sanitised again on its own. A URL that was inside an
 inline code span at the whole-message level is therefore neutralised when a split cuts the

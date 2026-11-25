@@ -401,6 +401,44 @@ def test_emphasis_before_an_inline_span_cannot_hide_a_link(case: str) -> None:
     _assert_no_live_link(sanitized, case, "inline emphasis")
 
 
+def test_emphasis_dense_input_skips_inline_protection() -> None:
+    """A delimiter-dense answer is sanitised without asking the inline grammar."""
+    case = ("*a " * 3_000) + " `https://evil.example/x`"
+
+    sanitized = sanitize_for_discord(case)
+
+    assert "https://evil.example" not in sanitized
+    assert "https://\u200bevil.example" in sanitized
+
+
+def test_emphasis_dense_input_keeps_a_closed_fence() -> None:
+    """Skipping inline parsing must not disable the line-level fence rule."""
+    case = ("*a " * 3_000) + "\n```\n[a](https://ok.example/x)\n```\n"
+
+    assert sanitize_for_discord(case) == case
+
+
+def test_lone_surrogate_is_replaced_without_aborting_delivery() -> None:
+    """A lone surrogate becomes a replacement character, not an encode failure."""
+    case = "hi " + chr(0xD800) + " https://evil.example/x"
+
+    try:
+        sanitized = sanitize_for_discord(case)
+    except UnicodeEncodeError:
+        pytest.fail("a lone surrogate aborted sanitising")
+
+    assert chr(0xD800) not in sanitized
+    assert "https://evil.example" not in sanitized
+    assert "https://\u200bevil.example" in sanitized
+
+
+def test_parser_offsets_stay_aligned_after_a_lone_surrogate() -> None:
+    """The replacement byte width must match the character offset table."""
+    text = "hi " + chr(0xD800) + " `code`"
+
+    assert [(region.start, region.end) for region in protected_code_regions(text)] == [(5, 11)]
+
+
 def test_citation_title_cannot_hide_a_second_link() -> None:
     """Only the citation's own destination is exempt from the catch-all passes."""
     trusted = "https://good.example/a"

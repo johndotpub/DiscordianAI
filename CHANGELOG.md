@@ -271,6 +271,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **Delimiter-dense answers cannot stall the inline parser.** Text with more than 2,048
+  emphasis, strikethrough, or spoiler marker characters skips the inline grammar. Links are
+  still neutralised by the catch-all passes, mentions are still neutralised, and a closed
+  fence still passes through.
+- **A lone UTF-16 surrogate no longer aborts delivery.** The sanitiser replaces an
+  unencodable surrogate with `?` before parsing, and the parser's byte-offset table uses
+  the same replacement width, so one bad character cannot fail the whole answer.
 - **The generated systemd unit quotes only word-list directives.**
   `--install-systemd` no longer wraps `WorkingDirectory`, `StandardOutput`, or
   `StandardError` in quotes, which systemd treated as part of the path and rejected with
