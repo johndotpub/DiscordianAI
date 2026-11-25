@@ -238,6 +238,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed 🔁
 
+- **CI smoke-tests every installed `src` module.** The wheel job now imports each module
+  under the installed `src` package, so a broken import in the bot, health server,
+  providers, or routing fails the build.
 - **Cache and conversation TTLs use the monotonic clock by default.** A wall-clock
   step no longer extends or shortens a cached answer or conversation lifetime. Both
   stores still accept an injected clock for tests.

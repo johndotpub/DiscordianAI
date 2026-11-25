@@ -95,6 +95,18 @@ def test_ci_installs_a_built_wheel_and_runs_console_script():
     )
 
 
+def test_ci_wheel_job_imports_every_installed_src_module():
+    """The wheel smoke test must import src.bot, health_server, providers, and routing."""
+    workflow = _load_yaml(CI_PATH)
+    wheel_commands = _job_commands(workflow["jobs"]["wheel"])
+
+    assert (
+        "pkgutil.walk_packages" in wheel_commands
+    ), "The wheel smoke job never imports the installed src modules"
+    assert "importlib.import_module" in wheel_commands
+    assert "sys.exit(1)" in wheel_commands
+
+
 def test_docker_workflow_has_qemu_pr_build_and_split_registry_pushes():
     workflow = _load_yaml(DOCKER_PATH)
     triggers = workflow.get("on", workflow.get(True))

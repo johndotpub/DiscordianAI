@@ -221,3 +221,26 @@ jobs:
       run: |
         cd /tmp
         /tmp/wheeltest/bin/python -m src.main --help
+
+    - name: Import every installed src module
+      run: |
+        cd /tmp
+        /tmp/wheeltest/bin/python - <<'PY'
+        import importlib
+        import pkgutil
+        import sys
+
+        import src
+
+        modules = sorted(module.name for module in pkgutil.walk_packages(src.__path__, "src."))
+        failures = []
+        for name in modules:
+            try:
+                importlib.import_module(name)
+            except Exception as exc:
+                failures.append(f"{name}: {type(exc).__name__}: {exc}")
+        if failures:
+            print("\n".join(failures), file=sys.stderr)
+            sys.exit(1)
+        print(f"Imported {len(modules)} src modules")
+        PY
