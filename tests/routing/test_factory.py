@@ -103,8 +103,8 @@ def test_retired_model_mode_keeps_its_explicit_startup_error() -> None:
 
 @pytest.mark.parametrize(
     "contents",
-    [None, b"{not valid json"],
-    ids=["missing", "corrupt"],
+    [None, b"{not valid json", b"\xff\xfe\x00"],
+    ids=["missing", "corrupt", "invalid-utf8"],
 )
 @pytest.mark.parametrize(
     "config",

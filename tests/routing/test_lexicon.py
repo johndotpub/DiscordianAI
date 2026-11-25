@@ -166,3 +166,17 @@ def test_language_mismatch_names_language(tmp_path: Path) -> None:
     message = str(excinfo.value)
     assert "language" in message
     assert "'fr'" in message
+
+
+def test_invalid_utf8_lexicon_raises_lexicon_error(tmp_path: Path) -> None:
+    """A lexicon that is not valid UTF-8 is a load error, not a decode escape."""
+    path = tmp_path / "lexicon.json"
+    path.write_bytes(b'{"version": "1", "language": "en", "classes": {"\xff": {}}}')
+
+    with pytest.raises((LexiconError, UnicodeDecodeError)) as excinfo:
+        Lexicon.load(path)
+
+    assert isinstance(
+        excinfo.value, LexiconError
+    ), f"UnicodeDecodeError escaped the lexicon loader: {excinfo.value}"
+    assert "not valid UTF-8" in str(excinfo.value)

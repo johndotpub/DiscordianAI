@@ -294,6 +294,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **A routing lexicon that is not UTF-8 follows the local fallback.** A decode
+  error used to escape `Lexicon.load` and abort startup even though a missing or
+  corrupt lexicon already produced the documented local-only router. The loader
+  now reports it as a lexicon error, so `build_router` keeps the bot answering.
 - **A closed Clef router stays closed.** Shutdown closes the pooled HTTP client,
   but the next decision used to build a new client that nothing closed again.
   A closed router now logs once and answers through the deterministic gate

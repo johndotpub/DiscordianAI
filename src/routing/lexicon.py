@@ -295,6 +295,9 @@ def _read_mapping(path: Path) -> dict[str, object]:
     except OSError as exc:
         msg = f"Could not read routing lexicon {path}: {exc}"
         raise LexiconError(msg) from exc
+    except UnicodeDecodeError as exc:
+        msg = f"Routing lexicon {path} is not valid UTF-8: {exc}"
+        raise LexiconError(msg) from exc
     except json.JSONDecodeError as exc:
         msg = f"Routing lexicon {path} is not valid JSON: {exc}"
         raise LexiconError(msg) from exc
