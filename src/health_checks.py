@@ -13,6 +13,7 @@ import logging
 import time
 from typing import Any
 
+from .config import _CONFIG_DEFAULTS
 from .connection_pool import versioned_perplexity_client
 from .error_handling import classify_error
 from .providers.base import ProbeResult
@@ -51,7 +52,7 @@ class ProviderHealthSpec:
     deprecated_model_limit: int | None = None
     versioned_client: bool = False
     kind: str = "api"
-    probe: Callable[[Any], Awaitable[ProbeResult]] | None = None
+    probe: Callable[[Any, dict[str, Any]], Awaitable[ProbeResult]] | None = None
 
 
 def _provider_health_specs() -> dict[str, ProviderHealthSpec]:
@@ -65,7 +66,10 @@ def _provider_health_specs() -> dict[str, ProviderHealthSpec]:
             display_name=spec.label,
             client_key=name,
             model_key=spec.model_key,
-            probe=lambda client, build=spec.build_adapter: build(client).probe(),
+            probe=lambda client, config, build=spec.build_adapter: build(
+                client,
+                web_tools=bool(config.get("WEB_TOOLS", _CONFIG_DEFAULTS["WEB_TOOLS"])),
+            ).probe(),
             **spec.health_metadata,
         )
     specs["discord"] = ProviderHealthSpec(
@@ -165,7 +169,7 @@ class APIHealthMonitor:
                 )
 
             model_client = versioned_perplexity_client(client) if spec.versioned_client else client
-            probe = await spec.probe(model_client)
+            probe = await spec.probe(model_client, config)
             response_time_ms = (time.time() - start_time) * 1000
 
             if not probe.ok:

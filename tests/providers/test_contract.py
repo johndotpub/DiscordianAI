@@ -532,3 +532,14 @@ def test_registry_is_the_single_source_for_provider_wiring():
     )
     pool.create_openai_client.assert_called_once_with("key", "https://example/v1", None)
     pool.create_perplexity_client.assert_called_once_with("key", "https://example/v1", None)
+
+
+def test_build_adapter_honours_the_configured_web_tools_flag():
+    """An adapter built for health checks must not silently enable web tools."""
+    client = SimpleNamespace(base_url="https://ollama.com/v1/", api_key="")
+
+    disabled = get("openai").build_adapter(client, web_tools=False)
+    enabled = get("openai").build_adapter(client, web_tools=True)
+
+    assert disabled.supports_web_tools is False
+    assert enabled.supports_web_tools is True

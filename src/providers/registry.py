@@ -62,12 +62,16 @@ class ProviderSpec:
     breaker: bool = True
     health_metadata: Mapping[str, Any] = field(default_factory=dict)
 
-    def build_adapter(self, client: Any) -> Any:
-        """Build this provider's adapter around ``client`` with default config."""
+    def build_adapter(self, client: Any, *, web_tools: bool = True) -> Any:
+        """Build this provider's adapter around ``client`` with default config.
+
+        ``web_tools`` mirrors the configured ``WEB_TOOLS`` value so a caller
+        such as the health probe does not silently use the default policy.
+        """
         if self.name == "openai":
             from .openai_chat import ChatCompletionsProvider  # noqa: PLC0415 - lazy import
 
-            return ChatCompletionsProvider(client, self.config_type())
+            return ChatCompletionsProvider(client, self.config_type(web_tools=web_tools))
         if self.name == "perplexity":
             from .perplexity import AgentResponsesProvider  # noqa: PLC0415 - lazy import
 

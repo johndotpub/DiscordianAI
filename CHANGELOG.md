@@ -314,6 +314,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A chat answer with no visible content is not stored.** An answer that sanitises to an
   empty string, such as a label-less link, now returns the existing no-response notice
   instead of being written to conversation history and the response cache.
+- **Health probes use the configured `WEB_TOOLS` value.** The adapter built for the
+  startup probe no longer ignores the setting; it inherits the same policy as the
+  production client.
 - **A blank `DISCORDIANAI_LOG_COLOR` no longer forces colour on.** The presence of the
   key used to count as an explicit choice, so a blank `[Logging]` value or environment
   variable overrode terminal detection with the default `true` and coloured redirected
