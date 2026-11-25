@@ -207,16 +207,16 @@ def test_count_links_ignores_filenames():
     assert count_links("Edit main.py and utils.py before running") == 0
 
 
-def test_count_links_span_lookups_stay_linear():
-    """Each bare match examines at most one indexed link span, not every span."""
+def test_count_links_span_comparisons_stay_linear():
+    """Each bare match compares one indexed link span, not every span."""
     links = " ".join(f"[label{i}](destination{i})" for i in range(3000))
     bare = " ".join(f"https://bare{i}.example/page" for i in range(3000))
 
     message_splitter._reset_parse_stats()
     count = count_links(f"{links} {bare}")
-    lookups = message_splitter._parse_stats().get("count_link_span_lookups")
+    comparisons = message_splitter._parse_stats().get("count_link_span_comparisons")
 
     assert count == 6000
-    assert lookups is not None, "count_links must record its span lookups"
-    assert lookups >= 3000, f"{lookups} span lookups for 3000 bare matches"
-    assert lookups <= 2 * 3000, f"{lookups} span lookups for 3000 bare matches"
+    assert comparisons is not None, "count_links must record its span comparisons"
+    assert comparisons >= 3000, f"{comparisons} span comparisons for 3000 bare matches"
+    assert comparisons <= 2 * 3000, f"{comparisons} span comparisons for 3000 bare matches"

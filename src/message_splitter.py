@@ -165,7 +165,7 @@ _thread_state = threading.local()
 _PARSE_STATS = {
     "calls": 0,
     "bytes": 0,
-    "count_link_span_lookups": 0,
+    "count_link_span_comparisons": 0,
     "markdown_angle_scan_chars": 0,
     "bare_scheme_skip_chars": 0,
 }
@@ -175,7 +175,7 @@ def _reset_parse_stats() -> None:
     """Reset the parser work counters used by the delivery complexity test."""
     _PARSE_STATS["calls"] = 0
     _PARSE_STATS["bytes"] = 0
-    _PARSE_STATS["count_link_span_lookups"] = 0
+    _PARSE_STATS["count_link_span_comparisons"] = 0
     _PARSE_STATS["markdown_angle_scan_chars"] = 0
     _PARSE_STATS["bare_scheme_skip_chars"] = 0
 
@@ -1785,10 +1785,10 @@ def count_links(text: str) -> int:
     count = len(link_spans)
     for match in BARE_URL_PATTERN.finditer(text):
         start = match.start()
-        _PARSE_STATS["count_link_span_lookups"] += 1
         span_index = bisect_right(link_starts, start) - 1
         if span_index >= 0:
             link_start, link_end = link_spans[span_index]
+            _PARSE_STATS["count_link_span_comparisons"] += 1
             if link_start <= start < link_end:
                 continue
         token = match.group(0)
