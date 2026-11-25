@@ -242,6 +242,64 @@ async def test_host_port_number_is_not_read_as_an_http_status():
 
 
 @pytest.mark.asyncio
+async def test_port_in_a_plain_connection_error_is_not_an_http_status():
+    """A port mentioned in prose does not turn a connection error into a 443 status."""
+    error = ConnectionRefusedError("connect to host port 443")
+
+    details = classify_error(error)
+    attempts, delays = await _run_raising(error)
+
+    assert details.error_type == ErrorType.NETWORK_ERROR
+    assert attempts == 2
+    assert len(delays) == 1
+
+
+@pytest.mark.asyncio
+async def test_bare_number_in_prose_is_not_a_rate_limit():
+    """A row count named 429 is not evidence of an HTTP rate limit."""
+    error = RuntimeError("processed 429 rows")
+
+    details = classify_error(error)
+    attempts, delays = await _run_raising(error)
+
+    assert details.error_type != ErrorType.API_RATE_LIMIT
+    assert attempts == 1
+    assert delays == []
+
+
+@pytest.mark.parametrize("message", ["HTTP 429", "status 429"])
+@pytest.mark.asyncio
+async def test_explicit_status_in_text_is_still_a_rate_limit(message):
+    """Text that names an HTTP status explicitly keeps its retry policy."""
+    error = RuntimeError(message)
+
+    details = classify_error(error)
+    attempts, delays = await _run_raising(error)
+
+    assert details.error_type == ErrorType.API_RATE_LIMIT
+    assert attempts == 2
+    assert len(delays) == 1
+
+
+@pytest.mark.asyncio
+async def test_structured_429_retry_after_is_capped_at_thirty_seconds():
+    """A structured status keeps the Retry-After cap even when the header is larger."""
+    config = RetryConfig(
+        max_attempts=2,
+        base_delay=2.0,
+        max_delay=10.0,
+        exponential_base=2.0,
+        jitter=False,
+    )
+    error = _api_error(openai.RateLimitError, 429, {"Retry-After": "120"})
+
+    attempts, delays = await _run_raising(error, config)
+
+    assert attempts == 2
+    assert delays == [30.0]
+
+
+@pytest.mark.asyncio
 async def test_insufficient_quota_is_not_retried():
     """A quota error keeps its auth classification and is not retried."""
     error = openai.RateLimitError(

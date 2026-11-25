@@ -294,6 +294,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **A port number or a row count is not an HTTP status.** The text fallback now
+  reads a status only when the message names one (`HTTP 429`, `status 429`, or
+  `error code: 429`). A connection refused on `port 443` is retried as a connection
+  error where no request was established, and prose such as `processed 429 rows`
+  no longer becomes a rate limit.
 - **`WEB_TOOLS=false` reaches the chat provider.** The loaded value now travels into
   the bot's dependencies, so the Ollama-compatible path omits `web_search` and
   `web_fetch` as documented; it previously always offered them because the

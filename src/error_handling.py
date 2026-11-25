@@ -392,9 +392,11 @@ _CONFIGURATION_ERROR_STATUSES = frozenset({401, 403, 404})
 _MODEL_CONFIGURATION_ERROR_MARKERS = frozenset({"invalid_model", "model_not_found"})
 
 _RATE_LIMIT_MAX_RETRY_AFTER = 30.0
-# Match a status token in prose, never the port in "host:443" or a dotted
-# version/IP fragment.
-_HTTP_4XX_IN_MESSAGE_PATTERN = re.compile(r"(?<![\d:.])(4\d{2})(?![\d:])")
+# Only prose that names an HTTP status may stand in for a structured status;
+# a bare number such as a port or a row count is not a status.
+_EXPLICIT_HTTP_STATUS_IN_MESSAGE_PATTERN = re.compile(
+    r"(?i)\b(?:http(?:\s+status)?|status|error\s+code)\s*[:=]?\s*(4\d{2})\b"
+)
 
 NETWORK_ERROR_USER_MESSAGE = "🌐 I couldn't reach the AI service. Please try again shortly."
 DISCORD_CONNECTION_USER_MESSAGE = (
@@ -447,7 +449,7 @@ def _status_code_from_exception(exception: Exception) -> int | None:
     if status_code is not None:
         return status_code
 
-    match = _HTTP_4XX_IN_MESSAGE_PATTERN.search(str(exception))
+    match = _EXPLICIT_HTTP_STATUS_IN_MESSAGE_PATTERN.search(str(exception))
     return int(match.group(1)) if match else None
 
 
@@ -881,7 +883,10 @@ def classify_error(exception: Exception) -> ErrorDetails:
         user_message = QUOTA_EXHAUSTED_USER_MESSAGE
 
     # OpenAI/API specific errors
-    elif "rate limit" in error_msg.lower() or re.search(r"\b429\b", error_msg):
+    elif (
+        "rate limit" in error_msg.lower()
+        or _status_code_from_exception(exception) == HTTP_STATUS_TOO_MANY_REQUESTS
+    ):
         error_type = ErrorType.API_RATE_LIMIT
         severity = ErrorSeverity.MEDIUM
         user_message = "⏱️ Service is busy. Please try again in a moment."
