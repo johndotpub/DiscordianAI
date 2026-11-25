@@ -970,6 +970,8 @@ def _is_retryable_discord_error(_error_details: ErrorDetails, exception: Excepti
         return False
     if isinstance(exception, discord.Forbidden):
         return False
+    if isinstance(exception, TimeoutError):
+        return False
 
     status_code = _status_code_from_exception(exception)
     if status_code is not None:
@@ -1000,7 +1002,7 @@ def _discord_retry_config(max_retries: int) -> RetryConfig:
         max_delay=float("inf"),
         exponential_base=2.0,
         jitter=False,
-        max_elapsed=None,
+        max_elapsed=DEFAULT_API_RETRY_CONFIG.max_elapsed,
         retry_if=_is_retryable_discord_error,
         delay_for=_discord_retry_delay,
     )

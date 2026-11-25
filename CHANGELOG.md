@@ -289,6 +289,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **A Discord send timeout is not retried, and the send retry is bounded.**
+  A send whose outcome is unknown now gets one attempt instead of repeating a
+  message that may already have arrived, and the retry sequence honours the
+  same 90-second deadline as provider calls. A 429 carrying `Retry-After` is
+  still retried within the existing cap.
 - **An answer with nothing left after sanitising is treated as no response.**
   Whitespace-only output and output such as `[](https://x)` were sent as empty
   content, which Discord rejects, so the user saw the generic processing error.
