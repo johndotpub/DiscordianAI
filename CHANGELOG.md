@@ -303,6 +303,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **A failed continuation no longer re-sends the whole answer.** When the head embed was
+  accepted and a later continuation failed, the delivery error triggered the text fallback
+  for the entire answer, duplicating it and repeating the mention prefix. The continuation
+  error now propagates; only a failed head embed falls back to split text, and that happens
+  before anything has been sent.
 - **A blank `DISCORDIANAI_LOG_COLOR` no longer forces colour on.** The presence of the
   key used to count as an explicit choice, so a blank `[Logging]` value or environment
   variable overrode terminal detection with the default `true` and coloured redirected

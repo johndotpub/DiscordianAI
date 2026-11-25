@@ -1202,24 +1202,42 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
     original_message: discord.Message | None = None,
     mention_prefix: str | None = None,
     _recursion_depth: int = 0,
+    *,
+    suppress_embeds: bool = False,
 ) -> None:
     """Send a long message with citation embeds, maintaining citations across parts.
 
     The provided embed is modified in place so the head chunk stays aligned with
     the adjusted text.  ``_recursion_depth`` is accepted for backwards
     compatibility and ignored; continuations are sent iteratively.
+    ``suppress_embeds`` applies to the text fallback when the head embed is
+    rejected.
     """
     message = _cap_delivery_work(message, deps["logger"])
     message = sanitize_for_discord(message, citations)
 
     head_text, after_split = _split_embed_head(message, citations)
     _rebuild_embed_head(embed, head_text, citations)
-    await _deliver(
-        channel,
-        mention_prefix or "",
-        original_message=original_message,
-        embed=embed,
-    )
+    try:
+        await _deliver(
+            channel,
+            mention_prefix or "",
+            original_message=original_message,
+            embed=embed,
+        )
+    except discord.HTTPException:
+        logger = deps["logger"]
+        logger.exception("Failed to send embed head, falling back to split text")
+        await send_split_message(
+            channel,
+            message,
+            deps,
+            suppress_embeds=suppress_embeds,
+            original_message=original_message,
+            mention_prefix=mention_prefix,
+            citations=citations,
+        )
+        return
 
     if after_split.strip():
         message_part2 = after_split.strip()
@@ -1302,27 +1320,16 @@ async def send_formatted_message(  # noqa: PLR0913, PLR0917
         was_truncated = metadata.get("was_truncated", False)
 
         if was_truncated or truncated:
-            try:
-                await send_split_message_with_embed(
-                    channel,
-                    clean_text,
-                    deps,
-                    embed,
-                    citation_map,
-                    original_message,
-                    mention_prefix,
-                )
-            except discord.HTTPException:
-                logger.exception("Failed to send truncated embed, falling back to split text")
-                await send_split_message(
-                    channel,
-                    message,
-                    deps,
-                    suppress_embeds,
-                    original_message=original_message,
-                    mention_prefix=mention_prefix,
-                    citations=citation_map,
-                )
+            await send_split_message_with_embed(
+                channel,
+                clean_text,
+                deps,
+                embed,
+                citation_map,
+                original_message,
+                mention_prefix,
+                suppress_embeds=suppress_embeds,
+            )
             return
 
         _sanitize_embed_description(embed, citation_map)

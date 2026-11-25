@@ -142,6 +142,7 @@ class TestSendFormattedMessage:
                 embed_data["citations"],
                 None,
                 None,
+                suppress_embeds=False,
             )
 
     @pytest.mark.asyncio
@@ -336,8 +337,78 @@ class TestSendFormattedMessage:
         assert channel.send.call_count == 1
 
 
+class _RecordingChannel:
+    """Record sends and fail one chosen call with a Discord HTTP error."""
+
+    def __init__(self, fail_on: int | None = None):
+        self.calls: list[tuple[str, dict]] = []
+        self.text_chunks: list[str] = []
+        self._fail_on = fail_on
+        self._send_count = 0
+
+    async def send(self, content, **kwargs):
+        self._send_count += 1
+        self.calls.append((content, kwargs))
+        if self._fail_on is not None and self._send_count == self._fail_on:
+            response = MagicMock()
+            response.status = 500
+            response.reason = "Server Error"
+            raise discord.HTTPException(response, "send failed")
+        if kwargs.get("embed") is None:
+            self.text_chunks.append(content)
+        return MagicMock()
+
+
 class TestSendSplitMessageWithEmbed:
     """Test send_split_message_with_embed function for proper citation handling."""
+
+    @pytest.mark.asyncio
+    async def test_head_embed_failure_falls_back_to_split_text_once(self):
+        """A head embed rejection falls back to text exactly once."""
+        message = "[1] " + ("A" * 5000)
+        embed = discord.Embed(description=message)
+        citations = {"1": "https://example.com/source"}
+        channel = _RecordingChannel(fail_on=1)
+        deps = {"logger": MagicMock()}
+
+        await send_split_message_with_embed(
+            channel,
+            message,
+            deps,
+            embed,
+            citations,
+        )
+
+        assert "".join(channel.text_chunks) == message
+        assert len(channel.text_chunks) == 3
+        assert all(kwargs.get("embed") is None for _content, kwargs in channel.calls[1:])
+
+    @pytest.mark.asyncio
+    async def test_continuation_failure_does_not_resend_the_whole_answer(self):
+        """A failed continuation propagates instead of re-sending the answer."""
+        message = "[1] " + ("A" * 4000)
+        embed = discord.Embed(description=message)
+        embed_data = {
+            "embed": embed,
+            "citations": {"1": "https://example.com/source"},
+            "clean_text": message,
+            "embed_metadata": {"was_truncated": True},
+        }
+        channel = _RecordingChannel(fail_on=2)
+        deps = {"logger": MagicMock()}
+
+        with pytest.raises(discord.HTTPException):
+            await send_formatted_message(
+                channel,
+                message,
+                deps,
+                embed_data=embed_data,
+                mention_prefix="<@user> ",
+            )
+
+        assert channel.calls[0][1].get("embed") is embed
+        assert channel.text_chunks == []
+        assert all(content != message for content, _kwargs in channel.calls)
 
     @pytest.mark.asyncio
     async def test_split_embed_short_content(self):
