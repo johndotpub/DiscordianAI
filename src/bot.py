@@ -121,6 +121,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
         rate_limit_period=config["RATE_LIMIT_PER"],
         gpt_model=config["GPT_MODEL"],
         reasoning_effort=config.get("REASONING_EFFORT", DEFAULT_REASONING_EFFORT),
+        web_tools=config.get("WEB_TOOLS", True),
         perplexity_model=config.get("PERPLEXITY_MODEL", DEFAULT_PERPLEXITY_MODEL),
         system_message=config["SYSTEM_MESSAGE"],
         output_tokens=config["OUTPUT_TOKENS"],

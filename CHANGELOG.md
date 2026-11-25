@@ -294,6 +294,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **`WEB_TOOLS=false` reaches the chat provider.** The loaded value now travels into
+  the bot's dependencies, so the Ollama-compatible path omits `web_search` and
+  `web_fetch` as documented; it previously always offered them because the
+  dependency kept its own `True` default.
 - **A dotted capital I no longer shifts trusted citation links.** The
   bare-URL allowlist searched a lowercased copy and applied those offsets to
   the original text, so `İ`, whose lowercase form is two code points, made an

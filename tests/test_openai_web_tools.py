@@ -1,10 +1,12 @@
 """Tests for the bounded web-tool loop on the Ollama chat path."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src import message_router
+from src.bot import initialize_bot_and_dependencies
 from src.models import OpenAIConfig
 from src.openai_processing import process_openai_message
 
@@ -177,6 +179,29 @@ async def test_tools_are_not_attached_when_disabled(make_request):
     )
 
     assert result == "Plain answer."
+    assert "tools" not in client.calls[0]
+
+
+@pytest.mark.asyncio
+async def test_production_dependencies_honour_web_tools_false(config_dict, e2e_scene):
+    """A config loaded with WEB_TOOLS=false removes the tools from the request."""
+    scene = e2e_scene("Tell me about monads.")
+    client = _ChatClient("https://ollama.com/v1/", [_response("Plain answer.")])
+    config = config_dict(
+        OPENAI_API_KEY="test-ollama-key",
+        PERPLEXITY_API_KEY=None,
+        ALLOWED_CHANNEL_IDS=[scene.channel.id],
+        WEB_TOOLS=False,
+    )
+
+    with patch("src.bot.get_connection_pool_manager") as pool_factory:
+        pool_factory.return_value.create_openai_client.return_value = client
+        deps = initialize_bot_and_dependencies(config)
+
+    assert deps.web_tools is False
+    await message_router.handle_incoming_message(scene.message, deps, scene.bot)
+
+    assert client.calls
     assert "tools" not in client.calls[0]
 
 
