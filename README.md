@@ -47,8 +47,8 @@ DiscordianAI is a Discord bot that routes each message to an OpenAI-compatible c
 5. **Run the bot**: `python -m src.main --conf config.ini` (or the installed console script: `discordianai --conf config.ini`).
 6. **Run tests** before shipping: `pytest` (coverage gate: 84% via tox/Codecov)
 
-Runtime dependencies are `discord.py`, `openai`, `httpx[http2]`, `h2`, `aiohttp`,
-`structlog`, `tree-sitter`, and `tree-sitter-markdown`; `pip install -r
+Runtime dependencies are `discord.py`, `openai`, `httpx[http2]`, `h2`, `cachetools`,
+`aiohttp`, `structlog`, `tree-sitter`, and `tree-sitter-markdown`; `pip install -r
 requirements.txt` or `pip install -e ".[dev]"` installs them. `tree-sitter` 0.27.0 and
 `tree-sitter-markdown` 0.5.4 ship prebuilt CPython 3.12-compatible wheels for manylinux
 x86_64 and aarch64; `tree-sitter-markdown` also ships musllinux x86_64 and aarch64, while
@@ -152,7 +152,7 @@ RATE_LIMIT_PER=60
 ### AI Orchestration
 - [src/smart_orchestrator.py](src/smart_orchestrator.py) asks `src/routing/` for one evidence-based decision per message, owns provider selection and fallback, and writes the successful turn to history.
 - [src/message_processor.py](src/message_processor.py) builds the per-conversation history snapshot and request, calls the orchestrator, and sends the reply.
-- [src/openai_processing.py](src/openai_processing.py) sends the model, messages, an output cap (`max_tokens` to Ollama-compatible providers, `max_completion_tokens` to `api.openai.com`), and `reasoning_effort` when non-empty to the configured OpenAI-compatible provider. [src/perplexity_processing.py](src/perplexity_processing.py) sends the model, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool to the Agent API; neither sends sampling parameters. Perplexity processing also requests native page fetching and handles citation extraction.
+- [src/openai_processing.py](src/openai_processing.py) sends the model, messages, an output cap (`max_tokens` to Ollama-compatible providers, `max_completion_tokens` to every other OpenAI-compatible host), and `reasoning_effort` when non-empty to the configured OpenAI-compatible provider. [src/perplexity_processing.py](src/perplexity_processing.py) sends the model, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool to the Agent API; neither sends sampling parameters. Perplexity processing also requests native page fetching and handles citation extraction.
 
 ### Discord User Experience
 - [src/discord_embeds.py](src/discord_embeds.py) formats Perplexity citations into embed descriptions and truncates descriptions above the 4096-character hard limit to the 3840-character safe limit.

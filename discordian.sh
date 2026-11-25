@@ -177,12 +177,12 @@ EOF
     echo ""
     echo "Service installed, enabled, and started. Manage with:"
     echo "  systemctl --user status ${UNIT_NAME}"
-    echo "  tail -f ${PROJECT_DIR}/bot.log"
+    echo "  tail -f \"${PROJECT_DIR}/bot.log\""
     echo "  journalctl --user -u ${UNIT_NAME}  # unit lifecycle only"
     echo ""
     echo "To uninstall:"
     echo "  systemctl --user disable ${UNIT_NAME}"
-    echo "  rm ${UNIT_FILE}"
+    echo "  rm \"${UNIT_FILE}\""
     echo "  systemctl --user daemon-reload"
     exit 0
 fi

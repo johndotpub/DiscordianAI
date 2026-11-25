@@ -88,13 +88,13 @@ broke it, and each break is a user-visible bug.
   the public `protected_code_regions()` wraps it for callers that need the spans. It is
   built on `tree-sitter`/`tree-sitter-markdown` and keeps only the conservative subset
   (closed exact three-backtick fence whose opener and closer Discord's sequential
-  triple-run pairing matches, with no stray triple run inside or outside it, or a closed
-  inline span whose opener and closer are not backslash-escaped, with one backtick run
-  length and the next sequential Discord pair). The splitter also keeps a split-only
-  Discord pairing (`_discord_fence_spans()`) to place chunk boundaries when the filter
-  protects no fence; those extra spans never suppress sanitisation. Outside the protected
-  regions the parser rewrite is followed by parse-independent passes that break every
-  `](`, neutralise every `://`, and separate `<` from a scheme. Every final chunk is
+  triple-run pairing matches, and the text contains no other unmatched triple-backtick
+  run, or a closed inline span whose opener and closer are not backslash-escaped, with one
+  backtick run length and the next sequential Discord pair). The splitter also keeps a
+  split-only Discord pairing (`_discord_fence_spans()`) to place chunk boundaries when the
+  filter protects no fence; those extra spans never suppress sanitisation. Outside the
+  protected regions the parser rewrite is followed by parse-independent passes that break
+  every `](`, neutralise every `://`, and separate `<` from a scheme. Every final chunk is
   sanitised again, so a split cannot turn protected text into a live link, and no line is
   ever deleted. *Why:* two hand-written code detectors disagreed and leaked links or
   froze on long backtick runs. *Consequence:* a live link, content loss, or an event-loop
@@ -163,9 +163,9 @@ diff or with the named command.
   contain legacy imports of `MESSAGE_LIMIT`; do not add more.
 - **No new wall-clock assertions.** Patch `time.monotonic` and `asyncio.sleep` (see
   `tests/test_retry_policy.py`) instead of sleeping or asserting elapsed time. The
-  subprocess shutdown test, the fast-fail breaker test, and the 64,000-character delivery
-  complexity guard are deliberate exceptions because the bound itself is the behaviour
-  under test. Do not leave unawaited tasks, and reset
+  subprocess shutdown test, the fast-fail breaker test, the over-cap delivery test, and the
+  64,000-character delivery complexity guard are deliberate exceptions because the bound
+  itself is the behaviour under test. Do not leave unawaited tasks, and reset
   shared mutable state between tests (`tests/conftest.py` resets the provider breakers).
 - **Shared fixtures live in `tests/conftest.py`.** A setup block copied three times is a
   defect. File-local fakes are fine when they are the boundary under test.

@@ -6,6 +6,8 @@ Router Factory
 
 .. autofunction:: src.routing.build_router
 
+.. autofunction:: src.routing.router_config_key
+
 Routing Contracts
 -----------------
 

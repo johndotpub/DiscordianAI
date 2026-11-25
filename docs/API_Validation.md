@@ -27,6 +27,10 @@ The live provider behaviour behind these checks is recorded in
 - A base URL that is not an absolute `http(s)` URL with a host.
 - `OUTPUT_TOKENS` or `PERPLEXITY_OUTPUT_TOKENS` that is non-positive or exceeds
   the fixed ceiling of **128,000**.
+- A prompt budget that does not fit its context window: `INPUT_TOKENS` plus
+  `OUTPUT_TOKENS` greater than `CONTEXT_WINDOW`, or the Perplexity equivalent
+  using `PERPLEXITY_INPUT_TOKENS`, `PERPLEXITY_OUTPUT_TOKENS`, and
+  `PERPLEXITY_CONTEXT_WINDOW`. The error names the keys and values.
 - Non-positive `INPUT_TOKENS`, `CONTEXT_WINDOW`, `RATE_LIMIT`, or
   `RATE_LIMIT_PER` values.
 - `INPUT_TOKENS` or `PERPLEXITY_INPUT_TOKENS` below **1,000**. A malformed

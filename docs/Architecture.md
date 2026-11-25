@@ -55,7 +55,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| **Routing Package** | `routing/` | Decides whether a message needs live web data. Evidence model: *bearing* cues (a mutable referent) may decide, *framing* cues (the shape of the request) can never decide alone. Owns the lexicon, the gate, and the cache policy. |
+| **Routing Package** | `routing/` | Decides whether a message needs live web data. Evidence model: *bearing* cues (a mutable referent) may decide, *framing* cues (the shape of the request) can never decide alone. Owns the lexicon and the gate; cache eligibility is `_cacheable()` in smart_orchestrator.py. |
 | **Smart Orchestrator** | `smart_orchestrator.py` | Executes the router's decision against the providers, applies fallbacks, and records conversation turns |
 | **OpenAI-Compatible Processing** | `openai_processing.py` | Cache/dedup wrapper around the chat adapter |
 | **Perplexity Processing** | `perplexity_processing.py` | Cache wrapper and embed construction around the Perplexity adapter |
@@ -87,6 +87,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 
 | Component | File | Purpose |
 |-----------|------|---------|
+| **Message Router** | `message_router.py` | Discord event routing and dispatch to the DM and channel processors |
 | **Discord Bot** | `discord_bot.py` | Activity status, presence management |
 | **Discord Embeds** | `discord_embeds.py` | Embed creation for citations |
 | **Citation Formatting** | `citation_formatting.py` | Renders numbered citations as markdown links for messages and embeds, and vets each URL before it can become clickable |

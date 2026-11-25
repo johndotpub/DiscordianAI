@@ -112,9 +112,9 @@ The bot handles upstream API rate limits gracefully:
    (one initial request plus one retry). The delay is full-jitter exponential
    backoff, and 429 responses honour `Retry-After` up to 30 seconds. A
    90-second deadline stops retries even when attempts remain.
-2. **Transient Failures Only**: 429, 5xx, connection errors, and connect
-   timeouts are retried. Authentication errors, read timeouts, exhausted
-   quotas, and unclassified exceptions fail immediately.
+2. **Transient Failures Only**: 429, 5xx, connection errors where no request was
+   established, and connect timeouts are retried. Authentication errors, read
+   timeouts, exhausted quotas, and unclassified exceptions fail immediately.
 3. **Circuit Breaker**: A shared per-provider breaker opens after 5 failed
    logical calls (all retries for one call count as one failure) and allows a
    single probe after 60 seconds.
@@ -141,7 +141,8 @@ RetryConfig(
   sanitiser and splitter both call the `tree-sitter-markdown` filter
   `_filtered_code_regions()`; the public `protected_code_regions()` is its wrapper. It
   protects only a closed fence opened and closed by exactly three backticks when Discord
-  would also end that fence at the same place, or a closed inline code span whose opener
+  would also end that fence at the same place and the text contains no other unmatched
+  triple-backtick run, or a closed inline code span whose opener
   and closer are not backslash-escaped when the text uses one backtick run length and the
   span carries no emphasis, strikethrough, spoiler, or scheme-qualified link syntax. A stray
   triple-backtick run between a fence's opener and closer, or any pairing mismatch, makes
@@ -186,7 +187,9 @@ Not every invalid configuration prevents startup. Fatal errors are logged and
 abort startup with a non-zero exit: missing Discord credentials, a missing key
 for a configured provider, invalid Perplexity key formats, malformed or
 non-absolute base URLs, non-positive rate/input/context limits,
-`INPUT_TOKENS` or `PERPLEXITY_INPUT_TOKENS` below 1,000, output-token caps outside
+`INPUT_TOKENS` or `PERPLEXITY_INPUT_TOKENS` below 1,000, a prompt budget that
+does not fit its context window (`INPUT_TOKENS + OUTPUT_TOKENS > CONTEXT_WINDOW`,
+or the Perplexity trio), output-token caps outside
 1..128,000 (a fixed ceiling independent of the context window), an unknown
 `ROUTER_MODE` (only `heuristic` and `clef` are accepted), and invalid presence or
 activity values. A malformed integer in the file or environment is reported with

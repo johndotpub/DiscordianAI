@@ -238,6 +238,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed 🔁
 
+- **The fallback router cache is bounded and closed.** When no router is injected, the
+  orchestrator keeps at most eight cached fallback routers, closes the oldest when a new
+  entry arrives, and closes every remaining one at shutdown, so the Clef HTTP clients do
+  not leak.
 - **The health endpoint is served by aiohttp.** `HealthServer` and `create_health_app()`
   keep the same `/health`, `/health/live`, and `/health/ready` routes and JSON bodies, but
   the `starlette` and `uvicorn` runtime dependencies are gone; `aiohttp>=3.10,<4` is
@@ -281,6 +285,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **The dependency gate runs before third-party imports.** A missing package now produces
+  the friendly `Missing required packages` message and exit code instead of a raw
+  `ImportError`, and the no-`ALLOWED_CHANNELS` warning is logged once instead of twice.
 - **An embed description cannot exceed Discord's 4096-character limit.** Sanitising can
   insert zero-width spaces and make a description longer than the text that built it, so
   every description is clamped after sanitising with the existing `...` marker.
@@ -305,13 +312,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `[title](url)` once instead of also counting its destination, and it ignores filenames
   such as `main.py` and `utils.py`. A single masked link therefore stays below the
   two-link embed-suppression threshold.
-- **Delivery splitting is linear and the fence pairing runs once.** The split-only
-  Discord backtick pairing built each span with a copy of the remaining text, so doubling
-  an answer of triple-backtick runs multiplied delivery time by four to six. The pairing
-  is now a single forward pass with equal-length runs kept outermost first, which preserves
-  the `a-fence-nested-looking` golden boundary. Fence spans are planned once, and every
-  later chunk walks an offset into the original text instead of slicing and reparsing the
-  remainder, so the whole delivery is linear in the input size.
+- **Delivery splitting is linear and the fence pairing runs once.** Each chunk used to
+  slice off the remaining text and rescan it for code fences, so doubling an answer of
+  triple-backtick runs multiplied delivery time by four to six. The split-only Discord
+  pairing is now a single forward pass with equal-length runs kept outermost first, which
+  preserves the `a-fence-nested-looking` golden boundary. Fence spans are planned once, and
+  every later chunk walks an offset into the original text instead of slicing and
+  reparsing the remainder, so the whole delivery is linear in the input size.
 - **User-caused client errors no longer open the provider breaker.** A deterministic 4xx
   caused by the request itself (400, 409, 413, 422, and other client errors except 401, 403,
   404, 408, and 429) means the provider answered and rejected the request, so it does not
@@ -440,12 +447,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and fails when doubling the input more than triples the best of three runs. A separate
   check delivers 128,000- and 256,000-character answers, confirms the work cap truncates
   them, and asserts each arrives in under a second.
-- **The code-region contract is checked with two independent parsers.** A fixed-seed corpus
+- **The code-region contract is checked with markdown-it-py on every case, plus the
+  Discord parser on the corpus it can parse (crashes bounded at 5 %).** A fixed-seed corpus
   of one thousand adversarial cases, the reported bypasses, and each delivered chunk are
-  rendered with markdown-it-py and parsed with discord-markdown-ast-parser; the complexity
-  guard sanitises and delivers 64,000-character adversarial shapes five times under a
-  generous two-second bound. The mutation checker now kills a removed `](` pass, a removed
-  `://` pass, and a delivery path that skips the per-chunk sanitiser.
+  rendered with markdown-it-py; the Discord-markdown-ast-parser oracle runs on the cases it
+  can parse, and its crash share is capped at 5 %. The complexity guard sanitises and
+  delivers 64,000-character adversarial shapes in three runs under a generous two-second
+  bound. The mutation checker now kills a removed `](` pass, a removed `://` pass, a
+  delivery path that skips the per-chunk sanitiser, and three parser-backed mutations
+  (protect-misaligned-inline-span, protect-unclosed-fence, protect-fence-with-inner-run)
+  that protect a misaligned inline span, an unclosed fence, or a fence with an inner run.
 - **The mutation checker works on a scratch copy.** `scripts/mutation_check.py` copies
   the checkout (minus VCS state, caches, logs, local `*.ini`, and `.env`) into a temporary
   directory before applying mutations, so an interrupted run cannot corrupt the working
@@ -559,6 +570,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The launcher PID file is per config.** An existing `.bot.pid` is honoured only when its
   process runs the same config, then removed; new runs write
   `.bot-<stem>-<hash>.pid`.
+- **A configuration that was legal on 0.4.0 can now fail to start.** `INPUT_TOKENS` plus
+  `OUTPUT_TOKENS` must fit `CONTEXT_WINDOW`, and `PERPLEXITY_INPUT_TOKENS` plus
+  `PERPLEXITY_OUTPUT_TOKENS` must fit `PERPLEXITY_CONTEXT_WINDOW`. A config that exceeds
+  either window aborts at startup with an ERROR naming the keys; lower the budget or raise
+  the window before upgrading.
+- **Retries are narrower than before.** `ConnectionResetError`, `BrokenPipeError`, and
+  `ConnectionAbortedError` are no longer retried, an exception the policy cannot classify
+  is refused instead of treated as transient, and a `Retry-After` header of `nan` or `inf`
+  no longer turns into a sleep. Retries still cover requests that provably never left the
+  bot, 429 responses with a usable `Retry-After`, and 5xx responses.
 
 ## [0.4.0] - 2026-10-28
 

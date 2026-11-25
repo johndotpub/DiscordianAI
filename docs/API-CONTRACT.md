@@ -21,7 +21,7 @@ is not a contract.
 | Endpoint used | `POST /v1/chat/completions` | `src/providers/openai_chat.py` |
 | Base URL sent | whatever `OPENAI_API_URL` says; the shipped default is `https://ollama.com/v1/` | `config.ini.example` |
 | Model sent | whatever `GPT_MODEL` says; the shipped default is `deepseek-v4.1-flash:1017` | `config.ini.example` |
-| Output cap parameter | `max_tokens` on Ollama-compatible hosts (`ollama.com`, `localhost`, `127.0.0.1`); `max_completion_tokens` on `api.openai.com` | `src/providers/openai_chat.py` |
+| Output cap parameter | `max_tokens` on Ollama-compatible hosts (`ollama.com`, `localhost`, `127.0.0.1`); `max_completion_tokens` on every other OpenAI-compatible host, including `api.openai.com` | `src/providers/openai_chat.py` |
 | What the output cap covers | **visible output plus reasoning tokens.** A cap consumed by reasoning returns HTTP 200 with `finish_reason: length` and `content: ""` | OpenAI-measured (2026-10-28) |
 | `reasoning_effort` | sent from `REASONING_EFFORT` only when non-empty (default `high`). It is a reasoning-model parameter; whether a model accepts it is provider-defined. `low`, `high`, and `max` are accepted by the shipped model, and `none` disables thinking | provider reference; the exact Ollama Cloud tag is UNVERIFIED |
 | Cloud-model features | structured outputs, log probabilities, and `tool_choice` are not supported by cloud models and the bot does not send them | provider reference; not re-probed on Ollama Cloud |

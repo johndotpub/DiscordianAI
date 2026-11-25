@@ -58,8 +58,9 @@ GPT_MODEL=<your-openai-model>
 ### Provider Notes
 The bot uses standard Chat Completions parameters: `model`, `messages`, an output cap, and
 optionally `reasoning_effort`. The cap is `max_tokens` on Ollama-compatible hosts
-(`ollama.com`, `localhost`, `127.0.0.1`) and `max_completion_tokens` on `api.openai.com`. It
-does not send sampling parameters such as `temperature`. Ollama-compatible hosts also
+(`ollama.com`, `localhost`, `127.0.0.1`) and `max_completion_tokens` on every other
+OpenAI-compatible host, including `api.openai.com`. It does not send sampling parameters
+such as `temperature`. Ollama-compatible hosts also
 receive `web_search` and `web_fetch` function tools when `WEB_TOOLS` is true; OpenAI endpoints
 receive no tools. Cloud models generally do not support structured outputs, log
 probabilities, or `tool_choice`; the bot does not request them.
@@ -131,7 +132,8 @@ INPUT_TOKENS=60000    # Adjust based on conversation length
 
 ### Parameter support
 - `max_tokens` caps visible output plus reasoning tokens on Ollama-compatible hosts;
-  `max_completion_tokens` does the same on `api.openai.com`.
+  `max_completion_tokens` does the same on every other OpenAI-compatible host, not only
+  `api.openai.com`.
 - `reasoning_effort` is sent from `REASONING_EFFORT` only when non-empty; valid values are
   model-defined.
 - `verbosity` and sampling overrides are not sent. Function tools are offered only on Ollama-compatible hosts when `WEB_TOOLS` is true.
@@ -141,19 +143,19 @@ INPUT_TOKENS=60000    # Adjust based on conversation length
 The console format is `<iso timestamp> [level    ] <event> [<logger>] [field=value ...]`;
 `channel_id`, `guild_id`, and `user_id` follow the logger when the message logger supplied
 them. Grep for the event text. Module loggers render as `[src.<module>]`; the top-level bot
-logger is `[discordianai.bot]`. The provider request lines below come from the adapter
-modules.
+logger is `[discordianai.bot]`. The provider request and routing lines below use that bot
+logger because the request supplies it.
 
 ### Response Logs
 ```
-2026-11-23T17:04:06Z [info     ] OpenAI response generated successfully: 245 characters, finish_reason: stop [src.providers.openai_chat]
-2026-11-23T17:04:06Z [warning  ] OpenAI returned empty response content (finish_reason=length) [src.providers.openai_chat]
+2026-11-23T17:04:06Z [info     ] OpenAI response generated successfully: 245 characters, finish_reason: stop [discordianai.bot] channel_id=123456789012345678
+2026-11-23T17:04:06Z [warning  ] OpenAI returned empty response content (finish_reason=length) [discordianai.bot] channel_id=123456789012345678
 ```
 
 ### Service Selection Logs
 ```
-2026-11-23T17:04:06Z [info     ] Routing decision: {'route': 'local', 'service': 'openai', ...} [src.smart_orchestrator]
-2026-11-23T17:04:06Z [info     ] Routing to OpenAI [src.smart_orchestrator]
+2026-11-23T17:04:06Z [info     ] Routing decision: {'route': 'local', 'service': 'openai', ...} [discordianai.bot] channel_id=123456789012345678
+2026-11-23T17:04:06Z [info     ] Routing to OpenAI [discordianai.bot] channel_id=123456789012345678
 ```
 
 ### Error Logs

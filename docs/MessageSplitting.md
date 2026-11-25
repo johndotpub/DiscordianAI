@@ -126,11 +126,11 @@ Sanitisation and splitting both call the conservative `_filtered_code_regions()`
 view:
 
 - A fenced block is protected only when its opener and closer are exactly three backticks,
-  Discord's sequential pairing of triple-backtick runs pairs those two markers, and no other
-  triple-backtick run appears outside it. A stray triple-backtick run between the opener and
-  closer, including a run inside the content, makes the whole text ordinary. Tilde fences,
-  four-or-more-backtick fences, indented code blocks, unclosed fences, and a text with any
-  stray triple run protect nothing.
+  Discord's sequential pairing of triple-backtick runs pairs those two markers, and the
+  text contains no other unmatched triple-backtick run. A stray triple-backtick run between
+  the opener and closer, including a run inside the content, makes the whole text ordinary.
+  Tilde fences, four-or-more-backtick fences, indented code blocks, unclosed fences, and a
+  text with any stray triple run protect nothing.
 - An inline code span is protected only when it is closed, its opener and closer are the next
   sequential backtick pair Discord would use, neither its opener nor its closer is
   backslash-escaped, the text uses a single backtick run length, and its content carries no
@@ -225,9 +225,9 @@ await send_split_message_with_embed(
 def find_optimal_split_point(message: str, target_index: int) -> int:
     """Find the best place to split a message near the target index."""
     
-    # Search window around target (±50 characters)
-    search_start = max(0, target_index - 50)
-    search_end = min(len(message), target_index + 50)
+    # Search window around target (±100 characters)
+    search_start = max(0, target_index - 100)
+    search_end = min(len(message), target_index + 100)
     search_area = message[search_start:search_end]
     
     # Priority 1: Newline boundaries
@@ -289,7 +289,7 @@ def find_optimal_split_point(message: str, target_index: int) -> int:
 **Splitting stops at the chunk cap**:
 - Check the maximum chunk count (50)
 - Ensure the upstream provider is not returning far more text than its output budget allows
-- Only the chunk cap truncates content; a single line wider than the limit is hard-wrapped, not dropped
+- Only the work cap (100,000 characters) and the chunk cap truncate content; a single line wider than the limit is hard-wrapped, not dropped
 - The notice reports the original answer length and says the bot's delivery limit was reached
 
 ### Performance Considerations

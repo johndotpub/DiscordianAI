@@ -164,8 +164,10 @@ short hash comes from the resolved absolute config path. Two configs that share 
 basename in different directories therefore keep separate files. The launcher uses
 the file for clean shutdown:
 
-1. If the instance's PID file exists, it sends `SIGTERM` and waits up to 10 seconds
-   (override with `DISCORDIANAI_STOP_TIMEOUT`)
+1. If the instance's PID file exists and its process still runs the same config, it
+   sends `SIGTERM` and waits up to 10 seconds (override with
+   `DISCORDIANAI_STOP_TIMEOUT`). A PID file whose process now runs a different config
+   is removed without a signal.
 2. If the process doesn't stop, it sends `SIGKILL`
 3. It removes the PID file, including when the recorded process had already exited
 4. It scans for stray processes started with the same resolved config file

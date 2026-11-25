@@ -243,8 +243,8 @@ The hybrid orchestrator (`smart_orchestrator.py`) provides bounded fallback betw
 
 Both services share the same retry policy via `retry_with_backoff`:
 
-- 2 attempts max (1 initial + 1 retry) for transient errors (network/connection errors, connect timeouts,
-  429, 5xx)
+- 2 attempts max (1 initial + 1 retry) for transient errors (connection errors where no request
+  was established, connect timeouts, 429, 5xx)
 - `insufficient_quota`, authentication errors, and read timeouts bail immediately
 - The single retry waits a random 0-1s (full jitter over the base delay); a 429 can instead honour
   `Retry-After` up to 30s
