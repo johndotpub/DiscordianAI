@@ -312,7 +312,8 @@ splitter both call the conservative filter `_filtered_code_regions()`; the publi
 markers whose opener and closer are the next sequential Discord triple-run pair, with no
 stray triple run inside or outside it, or a closed inline span whose opener and closer are
 not backslash-escaped in a text that uses one backtick run length and the next sequential
-Discord pair, is protected. Sanitisation then rewrites parser spans outside those regions
+Discord pair and whose content has no emphasis, strikethrough, spoiler, or scheme-qualified
+link syntax, is protected. Sanitisation then rewrites parser spans outside those regions
 and applies parse-independent catch-all passes; splitting closes and reopens a fence and
 sanitises every final chunk again. The splitter also keeps a split-only Discord pairing
 (`_discord_fence_spans()`) to place chunk boundaries when the filter protects no fence;

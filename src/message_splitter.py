@@ -41,6 +41,7 @@ _UTF8_ONE_BYTE_LIMIT = 0x80
 _UTF8_TWO_BYTE_LIMIT = 0x800
 _UTF8_THREE_BYTE_LIMIT = 0x10000
 _CLOSING_DELIMITER_COUNT = 2
+_EMPHASIS_MARKERS = frozenset("*_~|")
 _TRUNCATION_PREFIX = "\n\n[Message truncated: the original answer was "
 _TRUNCATION_SUFFIX = " characters; the bot's delivery limit was reached]"
 
@@ -359,6 +360,49 @@ def _backtick_runs(text: str) -> list[tuple[int, int]]:
     return runs
 
 
+def _inline_span_content_is_ambiguous(content: str) -> bool:
+    """Return True when an inline span's content can change delimiter pairing.
+
+    An emphasis, strikethrough, or spoiler marker before the closing backtick
+    changes which backtick Discord pairs with the opener, so CommonMark's span
+    is not necessarily a Discord code span. A scheme-qualified markdown link
+    inside the span is also treated as untrusted: the conservative rule keeps
+    a span verbatim only when nothing inside it can turn into live markup.
+    """
+    if any(marker in content for marker in _EMPHASIS_MARKERS):
+        return True
+    return "](" in content and "://" in content
+
+
+def _protected_inline_span(
+    parse: _MarkdownParse,
+    span: _InlineInfo,
+    runs: list[tuple[int, int]],
+    run_index_by_start: dict[int, int],
+    run_index_by_end: dict[int, int],
+) -> _CodeRegion | None:
+    """Return the protected region for one inline span, or None when uncertain."""
+    if span.kind != "code":
+        return None
+    opener_index = run_index_by_start.get(span.start)
+    closer_index = run_index_by_end.get(span.end)
+    # A backslash-escaped closer does not close the span Discord renders, so
+    # the parsed end is not trustworthy and the span protects nothing.
+    if (
+        opener_index is None
+        or closer_index is None
+        or opener_index % 2
+        or closer_index != opener_index + 1
+        or _is_escaped(parse.text, span.start)
+        or _is_escaped(parse.text, span.end - 1)
+    ):
+        return None
+    content = parse.text[runs[opener_index][1] : runs[closer_index][0]]
+    if _inline_span_content_is_ambiguous(content):
+        return None
+    return _CodeRegion(start=span.start, end=span.end, kind="inline")
+
+
 def _filtered_code_regions(parse: _MarkdownParse) -> list[_CodeRegion]:
     """Return the code regions the conservative protection rule accepts.
 
@@ -370,8 +414,9 @@ def _filtered_code_regions(parse: _MarkdownParse) -> list[_CodeRegion]:
     nothing. Indented blocks are never protected because Discord has no
     indented code. Inline spans are skipped when the text mixes backtick run
     lengths; otherwise a span is protected only when neither the opener nor
-    the closer is backslash-escaped and its markers are the next sequential
-    pair, because Discord would end the code elsewhere.
+    the closer is backslash-escaped, its markers are the next sequential pair,
+    and its content carries no emphasis or link syntax that could change the
+    pairing, because Discord would then end the code elsewhere.
     """
     runs = _backtick_runs(parse.text)
     accepted = [fence for fence in parse.fences if fence.marker == "```" and fence.closed]
@@ -408,21 +453,15 @@ def _filtered_code_regions(parse: _MarkdownParse) -> list[_CodeRegion]:
         run_index_by_start = {start: index for index, (start, _end) in enumerate(runs)}
         run_index_by_end = {end: index for index, (_start, end) in enumerate(runs)}
         for span in parse.inline:
-            if span.kind != "code":
-                continue
-            opener_index = run_index_by_start.get(span.start)
-            closer_index = run_index_by_end.get(span.end)
-            if opener_index is None or closer_index is None:
-                continue
-            if opener_index % 2 or closer_index != opener_index + 1:
-                continue
-            if _is_escaped(parse.text, span.start):
-                continue
-            if _is_escaped(parse.text, span.end - 1):
-                # A backslash-escaped closing backtick does not close the span
-                # Discord renders, so the parsed end is not trustworthy.
-                continue
-            regions.append(_CodeRegion(start=span.start, end=span.end, kind="inline"))
+            region = _protected_inline_span(
+                parse,
+                span,
+                runs,
+                run_index_by_start,
+                run_index_by_end,
+            )
+            if region is not None:
+                regions.append(region)
     regions.sort(key=lambda region: region.start)
     return regions
 
@@ -519,8 +558,10 @@ def _allowed_markdown_link_spans(text: str, allowed_urls: set[str]) -> list[_Lin
     Discord embed citation links use a doubled bracket (``[[1]](url)``).
     CommonMark treats the inner brackets as a nested link and does not report
     the outer span, so the allowlist is checked directly for an exact
-    destination. Only the closing bracket and destination are exempt; the
-    label before it is still scanned by the catch-all passes.
+    destination. Only that citation's own ``](`` and destination are exempt;
+    the label before it, any title text after the destination, and the closing
+    parenthesis stay ordinary text for the catch-all passes, so an injected
+    ``](`` cannot hide inside the citation.
     """
     if not allowed_urls:
         return []
@@ -539,7 +580,7 @@ def _allowed_markdown_link_spans(text: str, allowed_urls: set[str]) -> list[_Lin
                 position = marker + 2
                 continue
             destination = text[destination_start + 1 : destination_end]
-            close_start = destination_end + 1
+            span_end = destination_end + 1
         else:
             destination_end = destination_start
             while (
@@ -549,11 +590,10 @@ def _allowed_markdown_link_spans(text: str, allowed_urls: set[str]) -> list[_Lin
             ):
                 destination_end += 1
             destination = text[destination_start:destination_end]
-            close_start = destination_end
-        closing = text.find(")", close_start)
-        if destination in allowed_urls and closing >= 0:
-            spans.append(_LinkSpan(start=marker, end=closing + 1, kind="trusted_link"))
-            position = closing + 1
+            span_end = destination_end
+        if destination in allowed_urls:
+            spans.append(_LinkSpan(start=marker, end=span_end, kind="trusted_link"))
+            position = span_end
         else:
             position = marker + 2
 

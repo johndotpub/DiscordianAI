@@ -84,6 +84,14 @@ INLINE_DIVERGENCE_CASES = [
     ("different-run-length", "``a` [x](https://evil.example/e) b``"),
 ]
 
+INLINE_EMPHASIS_CASES = [
+    "**x `a** [l](https://evil.example/bc) b` y",
+    "single *x `a* [l](https://evil.example/bc) b` y",
+    "~~x `a~~ [l](https://evil.example/bc) b` y",
+    "__x `a__ [l](https://evil.example/bc) b` y",
+    "spoiler ||x `a|| [l](https://evil.example/bc) b` y",
+]
+
 FRAGMENTS = [
     "`",
     "``",
@@ -380,6 +388,32 @@ def test_inline_span_that_discord_ends_elsewhere_is_not_protected(
     assert "https://\u200bevil.example" in sanitized
     assert protected_code_regions(case) == []
     _assert_no_live_link(sanitized, case, name)
+
+
+@pytest.mark.parametrize("case", INLINE_EMPHASIS_CASES)
+def test_emphasis_before_an_inline_span_cannot_hide_a_link(case: str) -> None:
+    """A marker inside the span makes Discord pair the backticks elsewhere."""
+    sanitized = sanitize_for_discord(case)
+
+    assert "[l](https://evil.example/bc)" not in sanitized
+    assert "](https://evil.example" not in sanitized
+    assert "](http" not in sanitized
+    _assert_no_live_link(sanitized, case, "inline emphasis")
+
+
+def test_citation_title_cannot_hide_a_second_link() -> None:
+    """Only the citation's own destination is exempt from the catch-all passes."""
+    trusted = "https://good.example/a"
+    attack = f'[x]({trusted} "foo" ](https://evil.example/t)'
+    clean = f'[x]({trusted} "a good source")'
+
+    sanitized_attack = sanitize_for_discord(attack, {"1": trusted})
+    sanitized_clean = sanitize_for_discord(clean, {"1": trusted})
+
+    assert "](https://evil.example" not in sanitized_attack
+    assert "]" + ZERO_WIDTH_SPACE + "(https://" in sanitized_attack
+    assert f"[x]({trusted} " in sanitized_clean
+    assert f'href="{trusted}"' in MARKDOWN.render(sanitized_clean)
 
 
 @pytest.mark.asyncio

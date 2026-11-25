@@ -133,8 +133,10 @@ view:
   stray triple run protect nothing.
 - An inline code span is protected only when it is closed, its opener and closer are the next
   sequential backtick pair Discord would use, neither its opener nor its closer is
-  backslash-escaped, and the text uses a single backtick run length. Mixing run lengths is
-  ambiguous, so inline protection is dropped for that text.
+  backslash-escaped, the text uses a single backtick run length, and its content carries no
+  emphasis, strikethrough, or spoiler marker and no scheme-qualified link syntax. Mixing run
+  lengths or an ambiguous marker means Discord may pair the backticks elsewhere, so that
+  span is dropped and its contents are sanitised as ordinary text.
 - Anything uncertain is ordinary text.
 
 Outside protected regions the sanitiser has two layers. The parser-driven layer rewrites

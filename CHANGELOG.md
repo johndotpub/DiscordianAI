@@ -368,6 +368,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security 🛡️
 
+- **An inline code span with markup inside no longer hides a link.** A span whose content
+  holds an emphasis, strikethrough, or spoiler marker, or a markdown link with an
+  `http(s)` destination, is now sanitised as ordinary text. Discord may pair the backticks
+  differently from CommonMark, so copying the span verbatim could deliver a clickable
+  attacker URL.
+- **A trusted citation exempts only its own destination.** Title text between the
+  destination and the closing parenthesis, and any second `](` after it, now go through the
+  catch-all passes. An allowlisted first link can no longer carry a second attacker URL
+  through the exemption.
 - **A malformed config file cannot leak its contents into the fatal log.** The startup
   error names the file, the exception class, and any source line numbers without quoting
   the offending line, and the parser exception is no longer chained. A token on a broken
