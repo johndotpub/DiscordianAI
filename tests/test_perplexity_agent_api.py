@@ -400,19 +400,15 @@ def test_real_sdk_400_body_shapes_decide_provider_health(body, counts_as_failure
     """The SDK exposes the inner error object; model faults must count."""
     import asyncio
 
-    from starlette.testclient import TestClient
-
     from src.health_server import create_health_app
-    from tests.helpers import health_deps
+    from tests.helpers import health_deps, request_health
 
     error = asyncio.run(_raise_recorded_bad_request(body))
     if body is RECORDED_INVALID_MODEL_BODY:
         assert "error" not in error.body
         assert error.body["code"] == 400
 
-    app = create_health_app(health_deps())
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(health_deps()), "/health")
 
     payload = response.json()
     provider = payload["providers"]["perplexity"]

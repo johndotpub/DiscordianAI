@@ -6,10 +6,13 @@ multiple test files to eliminate duplication and maintain DRY principles.
 """
 
 import ast
+import asyncio
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import aiohttp.test_utils
 import discord
 
 
@@ -175,6 +178,85 @@ class FakeBreaker:
             "last_failure_time": 0.0,
             "last_success_time": self._last_success_time,
         }
+
+
+class HealthTestResponse:
+    """Response double exposing the attributes health tests assert on."""
+
+    def __init__(self, status_code: int, text: str) -> None:
+        self.status_code = status_code
+        self.text = text
+
+    def json(self):
+        """Decode and return the JSON body."""
+        return json.loads(self.text)
+
+
+def request_health(app, path: str) -> HealthTestResponse:
+    """GET a health path through aiohttp's in-process test server."""
+
+    async def _request() -> HealthTestResponse:
+        async with aiohttp.test_utils.TestClient(
+            aiohttp.test_utils.TestServer(app),
+        ) as client:
+            response = await client.get(path)
+            return HealthTestResponse(response.status, await response.text())
+
+    return asyncio.run(_request())
+
+
+class FakeAppRunner:
+    """Minimal aiohttp AppRunner double with injectable failures."""
+
+    def __init__(self, *_args, **_kwargs) -> None:
+        self.setup_calls = 0
+        self.cleanup_calls = 0
+        self.setup_error: BaseException | None = None
+        self.cleanup_error: Exception | None = None
+        self._addresses: list[tuple[str, int]] = [("127.0.0.1", 0)]
+
+    @property
+    def addresses(self) -> list[tuple[str, int]]:
+        """Return the listening addresses, empty when no site bound."""
+        return list(self._addresses)
+
+    def report_no_listener(self) -> None:
+        """Pretend no site ever bound a listening socket."""
+        self._addresses = []
+
+    async def setup(self) -> None:
+        """Register the runner, or raise the configured startup failure."""
+        self.setup_calls += 1
+        if self.setup_error is not None:
+            raise self.setup_error
+
+    async def cleanup(self) -> None:
+        """Release the runner, or raise the configured shutdown failure."""
+        self.cleanup_calls += 1
+        if self.cleanup_error is not None:
+            raise self.cleanup_error
+
+
+class FakeSite:
+    """Minimal aiohttp TCPSite double with injectable failures."""
+
+    def __init__(self, *_args, **_kwargs) -> None:
+        self.start_calls = 0
+        self.stop_calls = 0
+        self.start_error: BaseException | None = None
+        self.stop_error: Exception | None = None
+
+    async def start(self) -> None:
+        """Bind the site, or raise the configured startup failure."""
+        self.start_calls += 1
+        if self.start_error is not None:
+            raise self.start_error
+
+    async def stop(self) -> None:
+        """Unbind the site, or raise the configured shutdown failure."""
+        self.stop_calls += 1
+        if self.stop_error is not None:
+            raise self.stop_error
 
 
 def health_deps(  # noqa: PLR0913 - one keyword per health fixture knob

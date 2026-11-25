@@ -8,11 +8,9 @@ the past may be negative. Zero is the only value that means "never".
 import logging
 from unittest.mock import patch
 
-from starlette.testclient import TestClient
-
 from src.health_server import create_health_app
 from src.rate_limits import RateLimiter
-from tests.helpers import FakeBreaker, health_deps
+from tests.helpers import FakeBreaker, health_deps, request_health
 
 _Breaker = FakeBreaker
 
@@ -51,8 +49,7 @@ def test_first_request_on_young_clock_starts_the_window():
 def test_stale_success_on_young_clock_is_reported_but_healthy():
     """A success 3600 seconds ago is aged correctly but is not a failure."""
     with patch("src.health_server.time.monotonic", return_value=30.0):
-        with TestClient(_health_app(-3570.0, 30.0)) as client:
-            response = client.get("/health")
+        response = request_health(_health_app(-3570.0, 30.0), "/health")
 
     body = response.json()
     assert response.status_code == 200, body
@@ -65,8 +62,7 @@ def test_stale_success_on_young_clock_is_reported_but_healthy():
 def test_never_succeeded_on_young_clock_is_not_stale():
     """Zero means never succeeded; it must not look like a stale success."""
     with patch("src.health_server.time.monotonic", return_value=30.0):
-        with TestClient(_health_app(0.0, 0.0)) as client:
-            response = client.get("/health")
+        response = request_health(_health_app(0.0, 0.0), "/health")
 
     body = response.json()
     assert response.status_code == 200, body

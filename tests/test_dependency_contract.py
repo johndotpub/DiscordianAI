@@ -79,11 +79,12 @@ def test_every_declared_runtime_dependency_is_installed_and_compatible() -> None
     assert not failures, "\n".join(failures)
 
 
-def test_websockets_and_aiohttp_are_indirect_and_all_src_modules_import() -> None:
-    """Transitive-only packages are not direct dependencies, and src still imports."""
+def test_websockets_is_indirect_aiohttp_is_direct_and_all_src_modules_import() -> None:
+    """The gateway-only package stays transitive; aiohttp serves health directly."""
     declared = _read_pyproject_dependencies()
     assert "websockets" not in declared
-    assert "aiohttp" not in declared
+    aiohttp_specifiers = {str(specifier) for specifier in declared["aiohttp"].specifier}
+    assert aiohttp_specifiers == {">=3.10", "<4"}
 
     failures: list[str] = []
     for path in sorted(SRC_DIR.glob("*.py")):

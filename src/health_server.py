@@ -1,8 +1,8 @@
 """HTTP health endpoint for DiscordianAI.
 
 Provides liveness and readiness probes compatible with Kubernetes,
-Docker, and load balancer health checks via a lightweight Starlette
-ASGI server.
+Docker, and load balancer health checks via a lightweight aiohttp
+server.
 
 Routes:
     GET /health       - Full health summary (bot + API + pool metrics)
@@ -17,9 +17,7 @@ import math
 import time
 from typing import Any
 
-from starlette.applications import Starlette
-from starlette.responses import JSONResponse
-from starlette.routing import Route
+from aiohttp import web
 
 from .config import (
     DEFAULT_HEALTH_HOST,
@@ -34,43 +32,41 @@ PROVIDER_NAMES = provider_names()
 WALL_CLOCK_EPOCH_SECONDS = 1_000_000_000
 
 logger = logging.getLogger(__name__)
+_DEPS_KEY = web.AppKey("deps", dict)
 
 
-async def _health_handler(request: Any) -> JSONResponse:
+async def _health_handler(request: web.Request) -> web.Response:
     """Return full health summary including bot, API, and pool status."""
-    app = request.app
-    health_data = await _collect_health_data(app)
+    health_data = await _collect_health_data(request.app[_DEPS_KEY])
     status_code = 200 if health_data.get("status") == "healthy" else 503
-    return JSONResponse(health_data, status_code=status_code)
+    return web.json_response(health_data, status=status_code)
 
 
-async def _liveness_handler(_request: Any) -> JSONResponse:
+async def _liveness_handler(_request: web.Request) -> web.Response:
     """Liveness probe - returns 200 as long as the process is alive."""
-    return JSONResponse({"status": "alive"})
+    return web.json_response({"status": "alive"})
 
 
-async def _readiness_handler(request: Any) -> JSONResponse:
+async def _readiness_handler(request: web.Request) -> web.Response:
     """Readiness probe - returns 200 only when the bot can serve requests."""
-    app = request.app
-    bot = app.state.deps.get("bot")
-    health_data = await _collect_health_data(app)
+    deps = request.app[_DEPS_KEY]
+    bot = deps.get("bot")
+    health_data = await _collect_health_data(deps)
 
-    has_api_client = any(
-        app.state.deps.get(client_deps_key(name)) is not None for name in PROVIDER_NAMES
-    )
+    has_api_client = any(deps.get(client_deps_key(name)) is not None for name in PROVIDER_NAMES)
     ready = _bot_connected(bot) and has_api_client and health_data.get("status") == "healthy"
 
     if ready:
-        return JSONResponse({"status": "ready"})
+        return web.json_response({"status": "ready"})
 
-    return JSONResponse(
+    return web.json_response(
         {
             "status": "not_ready",
             "health_status": health_data.get("status"),
             "failing_providers": health_data.get("failing_providers", []),
             "providers": health_data.get("providers", {}),
         },
-        status_code=503,
+        status=503,
     )
 
 
@@ -213,16 +209,16 @@ def _sanitize_json(value: Any) -> Any:
     return value
 
 
-async def _collect_health_data(app: Starlette) -> dict[str, Any]:
+async def _collect_health_data(deps: dict[str, Any]) -> dict[str, Any]:
     """Gather health information from all subsystems."""
-    bot = app.state.deps.get("bot")
-    config = app.state.deps.get("config", {})
+    bot = deps.get("bot")
+    config = deps.get("config", {})
 
     services: dict[str, Any] = {}
     overall = "healthy"
 
-    openai_client = app.state.deps.get("client")
-    perplexity_client = app.state.deps.get("perplexity_client")
+    openai_client = deps.get("client")
+    perplexity_client = deps.get("perplexity_client")
 
     services["openai"] = "configured" if openai_client else "not_configured"
     services["perplexity"] = "configured" if perplexity_client else "not_configured"
@@ -237,7 +233,7 @@ async def _collect_health_data(app: Starlette) -> dict[str, Any]:
         services["discord"] = "disconnected"
         overall = "unhealthy"
 
-    pool_manager = app.state.deps.get("connection_pool_manager")
+    pool_manager = deps.get("connection_pool_manager")
     if pool_manager and hasattr(pool_manager, "get_pool_metrics"):
         services["pool"] = pool_manager.get_pool_metrics()
     elif pool_manager and hasattr(pool_manager, "check_pool_health"):
@@ -246,8 +242,8 @@ async def _collect_health_data(app: Starlette) -> dict[str, Any]:
     if not openai_client and not perplexity_client:
         overall = "unhealthy"
 
-    breaker_states = _collect_breaker_states(app.state.deps)
-    provider_health = _provider_health(app.state.deps, breaker_states, config)
+    breaker_states = _collect_breaker_states(deps)
+    provider_health = _provider_health(deps, breaker_states, config)
     failing_providers = [
         provider
         for provider, details in provider_health.items()
@@ -295,30 +291,27 @@ def _detect_mode(config: dict[str, Any]) -> str:
     return "none"
 
 
-def create_health_app(deps: dict[str, Any]) -> Starlette:
-    """Create a Starlette application with health check routes.
+def create_health_app(deps: dict[str, Any]) -> web.Application:
+    """Create an aiohttp application with health check routes.
 
     Args:
         deps: The bot dependency container.
 
     Returns:
-        Starlette: Configured ASGI application.
+        aiohttp.web.Application: Configured web application.
     """
-    app = Starlette(
-        routes=[
-            Route("/health", _health_handler),
-            Route("/health/live", _liveness_handler),
-            Route("/health/ready", _readiness_handler),
-        ],
-    )
-    app.state.deps = deps
+    app = web.Application()
+    app[_DEPS_KEY] = deps
+    app.router.add_get("/health", _health_handler)
+    app.router.add_get("/health/live", _liveness_handler)
+    app.router.add_get("/health/ready", _readiness_handler)
     return app
 
 
 class HealthServer:
     """Manages the lifecycle of the health check HTTP server.
 
-    Runs as a lightweight ASGI server alongside the Discord bot.
+    Runs as a lightweight aiohttp server alongside the Discord bot.
     Binds to 127.0.0.1 by default (not externally accessible).
     """
 
@@ -333,8 +326,11 @@ class HealthServer:
         self._host = host
         self._port = port
         self._app = create_health_app(deps)
-        self._server: Any | None = None
+        self._server: web.AppRunner | None = None
+        self._site: web.TCPSite | None = None
         self._task: asyncio.Task | None = None
+        self._stop_event = asyncio.Event()
+        self._cleanup_done = False
         self._disabled_reason: str | None = None
 
     def _disable(self, reason: str) -> None:
@@ -343,6 +339,7 @@ class HealthServer:
             return
         self._disabled_reason = reason
         self._server = None
+        self._site = None
         self._task = None
         logger.error("health server disabled: %s", reason)
 
@@ -357,7 +354,7 @@ class HealthServer:
         await self._start_server()
 
     async def _start_server(self) -> None:
-        """Create, start, and own the configured uvicorn server."""
+        """Create, start, and own the configured aiohttp server."""
         config = self._deps.get("config", {})
         enabled = config.get("HEALTH_ENABLED", True)
         if isinstance(enabled, str):
@@ -370,68 +367,73 @@ class HealthServer:
             return
 
         try:
-            import uvicorn  # noqa: PLC0415 — lazy import; only needed when start() is called
+            import aiohttp  # noqa: PLC0415 — lazy import; only needed when start() is called
         except ImportError:
-            self._disable("uvicorn is not installed")
+            self._disable("aiohttp is not installed")
             return
 
         logger.info("Health server starting on %s:%s", self._host, self._port)
-        server = uvicorn.Server(
-            uvicorn.Config(
-                self._app,
-                host=self._host,
-                port=self._port,
-                log_level="warning",
-                access_log=False,
-            )
-        )
-        self._server = server
+        self._stop_event = asyncio.Event()
+        self._cleanup_done = False
+        runner = aiohttp.web.AppRunner(self._app, access_log=None)
+        self._server = runner
 
         try:
-            if isinstance(server.config, uvicorn.Config):
-                load_result = server.config.load()
-                if asyncio.iscoroutine(load_result):
-                    await load_result
-                server.lifespan = server.config.lifespan_class(server.config)
-            await server.startup()
+            await runner.setup()
+            site = aiohttp.web.TCPSite(runner, self._host, self._port)
+            await site.start()
         except SystemExit as exc:
-            self._disable(f"uvicorn startup exited with status {exc.code}")
+            await self._cleanup_failed_start(runner)
+            self._disable(f"aiohttp startup exited with status {exc.code}")
             return
         except OSError as exc:
+            await self._cleanup_failed_start(runner)
             self._disable(str(exc) or type(exc).__name__)
             return
         except Exception as exc:  # noqa: BLE001 — a failed endpoint must not stop the bot
+            await self._cleanup_failed_start(runner)
             self._disable(str(exc) or type(exc).__name__)
             return
 
-        if not getattr(server, "started", False):
-            self._disable("uvicorn did not report a started server")
+        if not runner.addresses:
+            await self._cleanup_failed_start(runner)
+            self._disable("aiohttp did not report a started server")
             return
 
-        self._task = asyncio.create_task(self._run_server(server))
+        self._site = site
+        self._task = asyncio.create_task(self._run_server(runner))
 
-    async def _run_server(self, server: Any) -> None:
-        """Run the server loop and always shut the owned server down."""
+    async def _cleanup_failed_start(self, runner: web.AppRunner) -> None:
+        """Release a runner whose startup failed without raising."""
+        with contextlib.suppress(Exception):
+            await runner.cleanup()
+
+    async def _release_runner(self, runner: web.AppRunner) -> None:
+        """Clean up the owned runner once, logging any shutdown failure."""
+        if self._cleanup_done:
+            return
+        self._cleanup_done = True
         try:
-            if not server.should_exit:
-                await server.main_loop()
+            await runner.cleanup()
+        except Exception:
+            logger.exception("Health server shutdown failed")
+
+    async def _run_server(self, runner: web.AppRunner) -> None:
+        """Wait for the stop signal and always clean up the owned runner."""
+        try:
+            await self._stop_event.wait()
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("Health server stopped unexpectedly")
         finally:
-            if getattr(server, "started", False):
-                try:
-                    await server.shutdown()
-                except Exception:
-                    logger.exception("Health server shutdown failed")
+            await self._release_runner(runner)
 
     async def stop(self) -> None:
         """Stop the health server."""
         task = self._task
-        server = self._server
-        if server is not None:
-            server.should_exit = True
+        runner = self._server
+        self._stop_event.set()
 
         if task is not None:
             if not task.done():
@@ -440,5 +442,9 @@ class HealthServer:
                 await task
             logger.info("Health server stopped")
 
+        if runner is not None:
+            await self._release_runner(runner)
+
         self._task = None
         self._server = None
+        self._site = None

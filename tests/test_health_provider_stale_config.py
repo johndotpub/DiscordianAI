@@ -2,11 +2,9 @@
 
 from unittest.mock import patch
 
-from starlette.testclient import TestClient
-
 from src.config import load_config
 from src.health_server import create_health_app
-from tests.helpers import FakeBreaker, health_deps
+from tests.helpers import FakeBreaker, health_deps, request_health
 
 _Breaker = FakeBreaker
 
@@ -36,8 +34,7 @@ def test_provider_stale_seconds_from_config_sets_informational_flag(tmp_path, mo
     )
 
     with patch("src.health_server.time.monotonic", return_value=10_000.0):
-        with TestClient(create_health_app(deps)) as client:
-            response = client.get("/health")
+        response = request_health(create_health_app(deps), "/health")
 
     body = response.json()
     assert response.status_code == 200, body

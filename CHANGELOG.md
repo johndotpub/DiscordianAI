@@ -238,6 +238,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed 🔁
 
+- **The health endpoint is served by aiohttp.** `HealthServer` and `create_health_app()`
+  keep the same `/health`, `/health/live`, and `/health/ready` routes and JSON bodies, but
+  the `starlette` and `uvicorn` runtime dependencies are gone; `aiohttp>=3.10,<4` is
+  declared instead. A bind or startup failure still disables the endpoint without stopping
+  the bot.
 - **The conversation and response caches now use `cachetools`.** The hand-rolled history and
   bot-streak TTL maps and the response LRU cache are replaced by `TTLCache` and `TLRUCache`
   with the same injected clock, sliding expiry, LRU eviction, and conversation-scoped keys.

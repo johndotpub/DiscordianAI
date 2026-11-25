@@ -10,12 +10,11 @@ import time
 from types import SimpleNamespace
 
 import pytest
-from starlette.testclient import TestClient
 
 from src.connection_pool import ConnectionPoolManager
 from src.error_handling import get_circuit_breaker
 from src.health_server import create_health_app
-from tests.helpers import health_deps
+from tests.helpers import health_deps, request_health
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -108,10 +107,7 @@ def _open_provider_breakers():
 def test_health_reports_failing_providers_instead_of_healthy():
     """/health must not claim healthy while provider breakers are open."""
     _open_provider_breakers()
-    app = create_health_app(_deps())
-
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(_deps()), "/health")
 
     body = response.json()
     assert response.status_code == 503, body
@@ -124,10 +120,7 @@ def test_health_reports_failing_providers_instead_of_healthy():
 def test_readiness_reports_not_ready_when_providers_are_failing():
     """/health/ready must reflect provider failures, not just client identity."""
     _open_provider_breakers()
-    app = create_health_app(_deps())
-
-    with TestClient(app) as client:
-        response = client.get("/health/ready")
+    response = request_health(create_health_app(_deps()), "/health/ready")
 
     body = response.json()
     assert response.status_code == 503, body
@@ -145,10 +138,7 @@ def test_readiness_reports_not_ready_when_providers_are_failing():
 def test_old_success_without_failures_is_healthy():
     """A closed breaker with an old success and no failures is healthy."""
     _set_breaker("openai", last_success_time=time.monotonic() - 3600)
-    app = create_health_app(_deps())
-
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(_deps()), "/health")
 
     body = response.json()
     assert response.status_code == 200, body
@@ -171,10 +161,7 @@ def test_failure_after_success_is_degraded():
         last_success_time=now - 3600,
         last_failure_time=now,
     )
-    app = create_health_app(_deps())
-
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(_deps()), "/health")
 
     body = response.json()
     assert response.status_code == 503, body
@@ -186,10 +173,7 @@ def test_failure_after_success_is_degraded():
 def test_never_called_provider_is_healthy_and_not_failing():
     """A provider that has never been called is idle, not broken."""
     _set_breaker("openai")
-    app = create_health_app(_deps())
-
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(_deps()), "/health")
 
     body = response.json()
     assert response.status_code == 200, body
@@ -213,10 +197,7 @@ def test_open_and_half_open_breakers_still_fail_health(breaker_state, provider_s
         failures=5,
         last_failure_time=time.monotonic(),
     )
-    app = create_health_app(_deps())
-
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(_deps()), "/health")
 
     body = response.json()
     assert response.status_code == 503, body
@@ -257,9 +238,7 @@ def test_http2_enabled_reflects_the_client_configuration():
     manager = ConnectionPoolManager()
     manager.create_http_client("openai")
     try:
-        app = create_health_app(_deps(pool_manager=manager))
-        with TestClient(app) as client:
-            response = client.get("/health")
+        response = request_health(create_health_app(_deps(pool_manager=manager)), "/health")
 
         body = response.json()
         assert body["services"]["pool"]["openai"]["http2_enabled"] is True, body
@@ -270,10 +249,7 @@ def test_http2_enabled_reflects_the_client_configuration():
 @pytest.mark.parametrize("latency", [float("nan"), float("inf"), 0.0])
 def test_non_finite_or_zero_latency_does_not_cause_500(latency):
     """Invalid latency values are reported as null rather than crashing JSON."""
-    app = create_health_app(_deps(latency=latency))
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(_deps(latency=latency)), "/health")
 
     assert response.status_code != 500, response.text
     body = response.json()
@@ -282,10 +258,7 @@ def test_non_finite_or_zero_latency_does_not_cause_500(latency):
 
 def test_health_json_keeps_every_documented_key():
     """New truthfulness fields must not remove the existing contract."""
-    app = create_health_app(_deps(pool_manager=_FakePoolManager()))
-
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(_deps(pool_manager=_FakePoolManager())), "/health")
 
     body = response.json()
     assert {
@@ -331,10 +304,7 @@ def test_client_errors_keep_provider_health_healthy():
                 await breaker.call(rejected)
 
     asyncio.run(exercise_breaker())
-    app = create_health_app(_deps())
-
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(_deps()), "/health")
 
     body = response.json()
     assert response.status_code == 200, body
@@ -371,10 +341,7 @@ def test_invalid_model_400_makes_provider_health_degraded():
             await breaker.call(rejected)
 
     asyncio.run(exercise_breaker())
-    app = create_health_app(_deps())
-
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(_deps()), "/health")
 
     body = response.json()
     assert response.status_code == 503, body
@@ -416,10 +383,7 @@ def test_configuration_errors_make_provider_health_degraded(error_type, status_c
             await breaker.call(rejected)
 
     asyncio.run(exercise_breaker())
-    app = create_health_app(_deps())
-
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(_deps()), "/health")
 
     body = response.json()
     assert response.status_code == 503, body
@@ -432,11 +396,8 @@ def test_gateway_disconnect_is_not_ready_even_when_is_ready_stays_true():
     """A gateway outage must be reported even though discord.py is_ready sticks."""
     deps = _deps(connected=True)
     deps["bot"].discordian_gateway_connected = False
-    app = create_health_app(deps)
-
-    with TestClient(app) as client:
-        health = client.get("/health")
-        ready = client.get("/health/ready")
+    health = request_health(create_health_app(deps), "/health")
+    ready = request_health(create_health_app(deps), "/health/ready")
 
     health_body = health.json()
     assert health.status_code == 503, health_body
