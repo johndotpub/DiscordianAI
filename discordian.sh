@@ -295,11 +295,12 @@ stop_legacy_pid_file_instance "${LEGACY_PID_FILE}" "${CONFIG_PATH}"
 stop_pid_file_instance "${PID_FILE}" "${CONFIG_PATH}"
 
 # Stragglers for this config only (but not ourselves). A different config's
-# instance is a different managed service and must keep running.
+# instance is a different managed service and must keep running. Each straggler
+# gets the same bounded wait as the PID-file path before a new bot starts.
 for pid in $(straggler_pids "${CONFIG_PATH}"); do
     if [[ "${pid}" != "${my_pid}" ]]; then
         log "Killing stray process ${pid} for ${CONFIG_PATH}"
-        kill "${pid}" 2>/dev/null || true
+        terminate_process "${pid}"
     fi
 done
 

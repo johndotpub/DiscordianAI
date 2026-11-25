@@ -144,6 +144,45 @@ def _start_graceful_bot(config_arg: str, cwd: Path) -> subprocess.Popen[bytes]:
     raise AssertionError(msg)
 
 
+def _start_delayed_exit_bot(
+    config_arg: str, cwd: Path, delay: float = 2.0
+) -> subprocess.Popen[bytes]:
+    """Start a bot-shaped process that exits only after a SIGTERM delay."""
+    code = (
+        "import signal, sys, time\n"
+        "def stop(*_):\n"
+        f"    time.sleep({delay!r})\n"
+        "    sys.exit(0)\n"
+        "signal.signal(signal.SIGTERM, stop)\n"
+        "while True: time.sleep(0.05)\n"
+    )
+    process = subprocess.Popen(  # noqa: S603 - fixed bash and Python executables
+        [
+            BASH_PATH,
+            "-c",
+            'exec -a "$1" "$2" -c "$3" "$4" "$5"',
+            "fake-bot",
+            f"python -m src.main --conf {config_arg}",
+            sys.executable,
+            code,
+            "python -m src.main",
+            "--conf",
+            config_arg,
+        ],
+        cwd=cwd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    for _ in range(500):
+        if "src.main" in _process_args(process.pid):
+            return process
+        os.sched_yield()
+    process.kill()
+    process.wait(timeout=5)
+    msg = "delayed-exit fake bot process did not exec"
+    raise AssertionError(msg)
+
+
 def _write_stub_project(project: Path) -> Path:
     """Create a project directory whose venv Python records its launch."""
     project.mkdir(parents=True)
@@ -771,6 +810,33 @@ def test_install_systemd_unit_passes_the_systemd_validator_when_available(tmp_pa
     output = completed.stdout + completed.stderr
     assert completed.returncode == 0, output
     assert "fatal error" not in output.lower(), output
+
+
+def test_launcher_waits_for_a_straggler_to_exit_before_starting(tmp_path):
+    """A straggler gets the same bounded wait as the PID-file path."""
+    project = tmp_path / "project"
+    marker = tmp_path / "launch-args.txt"
+    _write_stub_project(project)
+    bot = _start_delayed_exit_bot("bot.ini", project, delay=2.0)
+    try:
+        script = f"""
+set -euo pipefail
+"{SCRIPT_PATH}" -c bot.ini -f "$1"
+"""
+        completed = _run_bash(
+            script,
+            str(project),
+            env=_launcher_env(project, marker),
+            cwd=tmp_path,
+        )
+
+        assert completed.returncode == 0, completed.stderr
+        assert bot.poll() is not None, "a new instance started before the straggler exited"
+        assert marker.is_file(), completed.stderr
+    finally:
+        if bot.poll() is None:
+            bot.kill()
+            bot.wait(timeout=5)
 
 
 def test_resolve_python_prefers_the_project_venv_over_pyenv(tmp_path):

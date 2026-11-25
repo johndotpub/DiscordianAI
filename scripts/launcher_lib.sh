@@ -143,6 +143,19 @@ wait_for_exit() {
     done
 }
 
+# Signal one process, wait the bounded timeout, and force-kill it only when it
+# is still alive. PID-file cleanup and the straggler scan share this policy.
+terminate_process() {
+    local pid="$1"
+
+    kill "${pid}" 2>/dev/null || true
+    wait_for_exit "${pid}" "$(launcher_stop_timeout)"
+    if process_is_running "${pid}"; then
+        log "Force-killing unresponsive process ${pid}"
+        kill -9 "${pid}" 2>/dev/null || true
+    fi
+}
+
 # Stop the instance recorded in a PID file, then always remove the file. The
 # PID is signalled only when its command line runs this same config; a stale
 # file left after a reboot may name an unrelated process.
@@ -161,12 +174,7 @@ stop_pid_file_instance() {
             log "PID file records another process (PID ${old_pid}); not signalling it"
         else
             log "Stopping previous instance (PID ${old_pid})"
-            kill "${old_pid}" 2>/dev/null || true
-            wait_for_exit "${old_pid}" "$(launcher_stop_timeout)"
-            if process_is_running "${old_pid}"; then
-                log "Force-killing unresponsive process ${old_pid}"
-                kill -9 "${old_pid}" 2>/dev/null || true
-            fi
+            terminate_process "${old_pid}"
         fi
     fi
     rm -f "${pid_file}"
@@ -191,12 +199,7 @@ stop_legacy_pid_file_instance() {
 
     if process_uses_config "${old_pid}" "${expected_config}"; then
         log "Stopping legacy PID file instance (PID ${old_pid})"
-        kill "${old_pid}" 2>/dev/null || true
-        wait_for_exit "${old_pid}" "$(launcher_stop_timeout)"
-        if process_is_running "${old_pid}"; then
-            log "Force-killing unresponsive process ${old_pid}"
-            kill -9 "${old_pid}" 2>/dev/null || true
-        fi
+        terminate_process "${old_pid}"
         rm -f "${pid_file}"
     else
         log "Leaving legacy PID file for another config (PID ${old_pid})"

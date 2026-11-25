@@ -303,6 +303,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **The launcher waits for a straggler to exit.** The PID-file path and the straggler scan
+  share one bounded signal/wait/force-kill helper, so a new instance starts only after the
+  old process for the same config is gone.
 - **Trailing-slash health probes work again.** `GET /health/`, `/health/live/`, and
   `/health/ready/` return the same status and JSON body as the slash-less routes.
 - **An idle open breaker stops reporting unhealthy after its timeout.** Once the breaker's
