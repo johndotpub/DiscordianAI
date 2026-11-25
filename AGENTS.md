@@ -163,9 +163,8 @@ diff or with the named command.
   contain legacy imports of `MESSAGE_LIMIT`; do not add more.
 - **No new wall-clock assertions.** Patch `time.monotonic` and `asyncio.sleep` (see
   `tests/test_retry_policy.py`) instead of sleeping or asserting elapsed time. The
-  subprocess shutdown test, the fast-fail breaker test, the over-cap delivery test, and the
-  64,000-character delivery complexity guard are deliberate exceptions because the bound
-  itself is the behaviour under test. Do not leave unawaited tasks, and reset
+  subprocess shutdown test, the fast-fail breaker test, and the over-cap delivery test are
+  deliberate exceptions because the bound itself is the behaviour under test. Do not leave unawaited tasks, and reset
   shared mutable state between tests (`tests/conftest.py` resets the provider breakers).
 - **Shared fixtures live in `tests/conftest.py`.** A setup block copied three times is a
   defect. File-local fakes are fine when they are the boundary under test.
