@@ -61,6 +61,17 @@ def test_health_endpoint_full():
     assert data["services"]["discord"] == "connected"
 
 
+@pytest.mark.parametrize("route", ["/health", "/health/live", "/health/ready"])
+def test_trailing_slash_route_matches_the_base_route(route):
+    """Probes with a trailing slash keep the same status and body."""
+    with patch("src.health_server.time.monotonic", return_value=1000.0):
+        base = request_health(create_health_app(_mock_deps(connected=True)), route)
+        slash = request_health(create_health_app(_mock_deps(connected=True)), route + "/")
+
+    assert slash.status_code == base.status_code, slash.text
+    assert slash.json() == base.json()
+
+
 def test_health_endpoint_no_clients():
     """Health endpoint returns unhealthy when no API clients configured."""
     deps = _mock_deps(connected=True, has_openai=False, has_perplexity=False)

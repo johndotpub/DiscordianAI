@@ -297,6 +297,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **Trailing-slash health probes work again.** `GET /health/`, `/health/live/`, and
+  `/health/ready/` return the same status and JSON body as the slash-less routes.
 - **An idle open breaker stops reporting unhealthy after its timeout.** Once the breaker's
   recovery timeout has elapsed, `/health` reports the provider healthy and returns 200; within
   the timeout it remains 503. The status vocabulary has no non-failing "recovering" value, so

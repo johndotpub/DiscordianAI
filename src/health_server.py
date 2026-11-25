@@ -319,9 +319,15 @@ def create_health_app(deps: dict[str, Any]) -> web.Application:
     """
     app = web.Application()
     app[_DEPS_KEY] = deps
-    app.router.add_get("/health", _health_handler)
-    app.router.add_get("/health/live", _liveness_handler)
-    app.router.add_get("/health/ready", _readiness_handler)
+    routes = (
+        ("/health", _health_handler),
+        ("/health/live", _liveness_handler),
+        ("/health/ready", _readiness_handler),
+    )
+    for route, handler in routes:
+        app.router.add_get(route, handler)
+        # Probes that use a trailing slash keep the same status and body.
+        app.router.add_get(f"{route}/", handler)
     return app
 
 
