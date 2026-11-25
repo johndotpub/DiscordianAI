@@ -58,7 +58,7 @@ DiscordianAI validates API key formats before use:
 | OpenAI-compatible | `sk-` is OpenAI's shape; any non-empty key is accepted, and a non-`sk-` key logs a warning | `sk-abc123...` or an Ollama Cloud key |
 | Perplexity | `pplx-` + at least 20 letters, digits, `-` or `_` | `pplx-xyz789...` |
 
-A blank key disables that provider, and a whitespace-only value counts as blank. Startup fails only when no provider remains configured. A non-empty OpenAI-compatible key that is not `sk-`-shaped is accepted because Ollama Cloud and local gateways use their own formats.
+A blank key disables that provider, and a whitespace-only value counts as blank. A provider counts as configured when its key is non-empty, or when its base URL or model is set in the file or environment. A configured provider without a key stops startup even when the other provider has a key; to run only one provider, leave the other provider at its defaults or set its key blank. A non-empty OpenAI-compatible key that is not `sk-`-shaped is accepted because Ollama Cloud and local gateways use their own formats.
 
 ### Key Rotation
 

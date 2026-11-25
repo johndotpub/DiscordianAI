@@ -631,6 +631,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation 📝
 
+- **Provider validation prose states the startup rule that ships.** `docs/Security.md`
+  now explains that a provider selected by a key, base URL, or model without a key stops
+  startup, even when the other provider has a key.
 - **Delivery and security docs state the code-protection rule that ships.** The shared
   region function, the two neutralisation layers, per-chunk sanitising, the no-deletion
   rule, and the new runtime dependencies are recorded in `docs/MessageSplitting.md`,
