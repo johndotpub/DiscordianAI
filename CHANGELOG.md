@@ -545,6 +545,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Link-count work is measured in span comparisons.** The helper test now counts each
   examined link span, so a reintroduced linear scan fails the 3,000-match bound instead of
   passing on one lookup per match.
+- **Startup-claim docs check matches whole words.** "exit" inside "perplexity" no longer
+  satisfies the abort-wording requirement, and negated claims such as "does not prevent
+  startup" are excluded.
 - **Delivery complexity is guarded by scaling, not a single timing.** The guard builds
   every adversarial shape, including triple-backtick runs and mixed mid-line fences, at
   32,000 and 64,000 characters, then compares work counters rather than elapsed time. It

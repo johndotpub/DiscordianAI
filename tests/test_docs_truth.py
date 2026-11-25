@@ -38,6 +38,17 @@ MEMORY_FIGURE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 STARTUP_CLAIM_PATTERN = re.compile(r"\bprevents?\s+startup\b", re.IGNORECASE)
+NEGATED_STARTUP_CLAIM_PATTERN = re.compile(
+    r"\bnot\s+prevents?\s+startup\b"
+    r"|\bnever\s+prevents?\s+startup\b"
+    r"|n't\s+prevents?\s+startup\b"
+    r"|\bnot\s+every\b[^.]{0,80}\bprevents?\s+startup\b",
+    re.IGNORECASE,
+)
+ABORT_STARTUP_PATTERN = re.compile(
+    r"\b(?:abort|exit|stops? the process)\b",
+    re.IGNORECASE,
+)
 STALE_ARCHITECTURE_PHRASES = (
     re.compile(r"\bThread-safe per-user transcripts\b", re.IGNORECASE),
     re.compile(r"\bSeparate file and console handlers\b", re.IGNORECASE),
@@ -699,13 +710,13 @@ def test_b10_startup_claims_name_the_abort_split() -> None:
         text = path.read_text(encoding="utf-8")
         paragraphs = re.split(r"\n\s*\n", text)
         for index, paragraph in enumerate(paragraphs):
-            if not STARTUP_CLAIM_PATTERN.search(paragraph):
+            claim = " ".join(paragraph.split())
+            if not STARTUP_CLAIM_PATTERN.search(claim):
                 continue
-            window = " ".join(paragraphs[max(0, index - 1) : index + 2]).lower()
-            has_abort = any(
-                phrase in window
-                for phrase in ("abort", "exit", "stop the process", "stops the process")
-            )
+            if NEGATED_STARTUP_CLAIM_PATTERN.search(claim):
+                continue
+            window = " ".join(" ".join(paragraphs[max(0, index - 1) : index + 2]).split()).lower()
+            has_abort = bool(ABORT_STARTUP_PATTERN.search(window))
             if not (has_abort and "warning" in window):
                 failures.append(
                     f"{path.relative_to(ROOT)}: 'prevents startup' is not adjacent to "
