@@ -8,10 +8,11 @@ import subprocess
 import sys
 import time
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.bot_manager import DiscordBotManager
 from src.connection_pool import ConnectionPoolManager
 from src.error_handling import get_circuit_breaker
 from src.health_server import create_health_app
@@ -417,6 +418,21 @@ def test_configuration_errors_make_provider_health_degraded(error_type, status_c
     assert body["failing_providers"] == ["openai"], body
     assert body["providers"]["openai"]["status"] == "degraded", body
     assert body["providers"]["openai"]["consecutive_failures"] == 1, body
+
+
+def test_readiness_is_not_ready_before_on_ready_even_when_is_ready_is_true():
+    """discord.py sets is_ready before on_ready; readiness must still wait."""
+    deps = _deps(connected=True)
+    deps["logger"] = MagicMock()
+    DiscordBotManager(deps)
+
+    assert deps["bot"].discordian_gateway_connected is False
+
+    response = request_health(create_health_app(deps), "/health/ready")
+
+    body = response.json()
+    assert response.status_code == 503, body
+    assert body["status"] == "not_ready", body
 
 
 def test_gateway_disconnect_is_not_ready_even_when_is_ready_stays_true():

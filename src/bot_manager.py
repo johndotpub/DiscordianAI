@@ -31,6 +31,7 @@ class DiscordBotManager:
         self._running = False
         self._accepting_messages = True
         self._bot_loop: asyncio.AbstractEventLoop | None = None
+        self.bot.discordian_gateway_connected = False
 
     def _rate_limit_window_seconds(self) -> int:
         """Return the configured rate-limit window, falling back to 60 seconds."""

@@ -319,6 +319,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   production client.
 - **A closed Clef router refuses synchronous decisions too.** `decide_sync` now returns
   the deterministic fallback without building another HTTP client after `aclose()`.
+- **Readiness waits for `on_ready`.** The manager marks the gateway disconnected before
+  login, so `/health/ready` is 503 while discord.py already reports `is_ready()` true but
+  the gateway handler has not run.
 - **A blank `DISCORDIANAI_LOG_COLOR` no longer forces colour on.** The presence of the
   key used to count as an explicit choice, so a blank `[Logging]` value or environment
   variable overrode terminal detection with the default `true` and coloured redirected
