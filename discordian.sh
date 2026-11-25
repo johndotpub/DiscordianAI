@@ -109,6 +109,7 @@ if [[ -n "${INSTALL_SYSTEMD}" ]]; then
         value="${value//\\/\\\\}"
         value="${value//\"/\\\"}"
         value="${value//%/%%}"
+        value="${value//\$/\$\$}"
         printf '%s' "${value}"
     }
     systemd_path() {

@@ -615,6 +615,21 @@ def _expand_systemd_percent(value: str) -> str:
     return "".join(result)
 
 
+def _expand_systemd_dollar(value: str) -> str:
+    """Decode ``$$`` and reject an unescaped environment expansion."""
+    result: list[str] = []
+    index = 0
+    while index < len(value):
+        if value[index] != "$":
+            result.append(value[index])
+            index += 1
+            continue
+        assert value[index + 1 : index + 2] == "$", f"unescaped dollar in {value!r}"
+        result.append("$")
+        index += 2
+    return "".join(result)
+
+
 def _split_systemd_words(value: str) -> list[str]:
     """Split a systemd word list with double quotes and C-style escapes."""
     words: list[str] = []
@@ -635,7 +650,8 @@ def _split_systemd_words(value: str) -> list[str]:
             continue
         if character.isspace() and not quoted:
             if current:
-                words.append(_expand_systemd_percent("".join(current)))
+                expanded = _expand_systemd_percent("".join(current))
+                words.append(_expand_systemd_dollar(expanded))
                 current = []
             index += 1
             continue
@@ -643,7 +659,8 @@ def _split_systemd_words(value: str) -> list[str]:
         index += 1
     assert not quoted, f"unterminated quote in {value!r}"
     if current:
-        words.append(_expand_systemd_percent("".join(current)))
+        expanded = _expand_systemd_percent("".join(current))
+        words.append(_expand_systemd_dollar(expanded))
     return words
 
 
@@ -823,6 +840,20 @@ def test_install_systemd_unit_passes_the_systemd_validator_when_available(tmp_pa
     output = completed.stdout + completed.stderr
     assert completed.returncode == 0, output
     assert "fatal error" not in output.lower(), output
+
+
+def test_install_systemd_escapes_dollar_in_exec_start(tmp_path):
+    """A dollar in the project path must survive systemd as a literal dollar."""
+    project = tmp_path / "price$home"
+    home = tmp_path / "home"
+    _write_stub_project(project)
+    unit, _invocations = _generate_systemd_unit(tmp_path, project, home)
+
+    text = unit.read_text(encoding="utf-8")
+    exec_start = _parse_systemd_unit(text)["ExecStart"][0]
+    assert "price$$home" in exec_start, exec_start
+    assert "price$home" not in exec_start, exec_start
+    _assert_unit_directives(text, project, home)
 
 
 def test_install_systemd_accepts_an_absolute_config_path(tmp_path):
