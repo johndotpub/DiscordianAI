@@ -1265,7 +1265,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Linting Workflow**: Streamlined from 4 tools (isort + black + ruff + flake8) to 2 tools (black + ruff)
-- **GPT Model Default**: Changed from gpt-4o-mini to gpt-5-mini for lower token use
+- **GPT Model Default**: Changed from gpt-4o-mini to gpt-5-mini for cost-effectiveness
 - **Model Validation**: Updated to support new GPT-5 model family
 - **CI/CD Pipeline**: Enhanced GitHub Actions with multi-version testing matrix
 - **Configuration Management**: Centralized constants and improved validation
