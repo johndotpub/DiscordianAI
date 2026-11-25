@@ -162,7 +162,13 @@ class _LinkSpan:
 
 
 _thread_state = threading.local()
-_PARSE_STATS = {"calls": 0, "bytes": 0, "count_link_span_lookups": 0}
+_PARSE_STATS = {
+    "calls": 0,
+    "bytes": 0,
+    "count_link_span_lookups": 0,
+    "markdown_angle_scan_chars": 0,
+    "bare_scheme_skip_chars": 0,
+}
 
 
 def _reset_parse_stats() -> None:
@@ -170,6 +176,8 @@ def _reset_parse_stats() -> None:
     _PARSE_STATS["calls"] = 0
     _PARSE_STATS["bytes"] = 0
     _PARSE_STATS["count_link_span_lookups"] = 0
+    _PARSE_STATS["markdown_angle_scan_chars"] = 0
+    _PARSE_STATS["bare_scheme_skip_chars"] = 0
 
 
 def _parse_stats() -> dict[str, int]:
@@ -571,8 +579,10 @@ def _allowed_bare_url_spans(text: str, allowed_urls: set[str]) -> list[_LinkSpan
     while True:
         scheme_match = _HTTP_SCHEME_PATTERN.search(text, position)
         if scheme_match is None:
+            _PARSE_STATS["bare_scheme_skip_chars"] += max(0, len(text) - position)
             return spans
         start = scheme_match.start()
+        _PARSE_STATS["bare_scheme_skip_chars"] += max(0, start - position)
         end = start
         while end < len(text) and not text[end].isspace() and text[end] not in "<>":
             end += 1
@@ -600,6 +610,8 @@ def _allowed_markdown_link_spans(text: str, allowed_urls: set[str]) -> list[_Lin
         return []
     spans: list[_LinkSpan] = []
     position = 0
+    next_close = -1
+    have_next_close = False
     while True:
         marker = text.find("](", position)
         if marker < 0:
@@ -608,7 +620,17 @@ def _allowed_markdown_link_spans(text: str, allowed_urls: set[str]) -> list[_Lin
         while destination_start < len(text) and text[destination_start] in " \t":
             destination_start += 1
         if destination_start < len(text) and text[destination_start] == "<":
-            destination_end = text.find(">", destination_start + 1)
+            search_start = destination_start + 1
+            if not have_next_close:
+                next_close = text.find(">", search_start)
+                have_next_close = True
+                scanned_end = next_close if next_close >= 0 else len(text)
+                _PARSE_STATS["markdown_angle_scan_chars"] += max(0, scanned_end - search_start)
+            elif next_close >= 0 and next_close < search_start:
+                next_close = text.find(">", search_start)
+                scanned_end = next_close if next_close >= 0 else len(text)
+                _PARSE_STATS["markdown_angle_scan_chars"] += max(0, scanned_end - search_start)
+            destination_end = next_close
             if destination_end < 0:
                 position = marker + 2
                 continue

@@ -674,3 +674,32 @@ def test_escaped_inline_closer_is_not_a_protected_region() -> None:
     text = "`a\\` [x](https://evil.example/e)`"
 
     assert protected_code_regions(text) == []
+
+
+def test_markdown_angle_scan_is_linear_for_unclosed_destinations() -> None:
+    """Many "](" followed by "<" and no ">" scan the text once, not per marker."""
+    text = "](<" * 3000
+
+    message_splitter._reset_parse_stats()
+    spans = message_splitter._allowed_markdown_link_spans(text, {"https://example.com"})
+    stats = message_splitter._parse_stats()
+    scanned = stats.get("markdown_angle_scan_chars")
+
+    assert spans == []
+    assert scanned is not None, "the angle scan must record its work"
+    assert scanned <= 2 * len(text), f"{scanned} characters scanned for {len(text)}"
+
+
+def test_bare_url_scheme_scan_is_linear() -> None:
+    """The trusted-URL allowlist finds each scheme in one forward pass."""
+    urls = [f"https://host{index}.example/page" for index in range(3000)]
+    text = " ".join(urls)
+
+    message_splitter._reset_parse_stats()
+    spans = message_splitter._allowed_bare_url_spans(text, set(urls))
+    stats = message_splitter._parse_stats()
+    skipped = stats.get("bare_scheme_skip_chars")
+
+    assert len(spans) == len(urls)
+    assert skipped is not None, "the scheme scan must record its work"
+    assert skipped <= 2 * len(text), f"{skipped} characters skipped for {len(text)}"

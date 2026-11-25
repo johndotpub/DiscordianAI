@@ -238,6 +238,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed 🔁
 
+- **Sanitiser link scans are single pass.** The trusted-link pass searched
+  for a closing angle bracket from every unclosed `](<` marker, and the
+  bare-URL allowlist searched a lowercased copy for every scheme. The markdown
+  pass now caches the next `>` (including "none"), and the scheme search runs
+  on the original text, so both scans are linear in the answer length.
 - **Link counting uses an indexed lookup.** `count_links()` now compares each
   bare URL with the one link span that could contain it instead of scanning
   every span, so an answer with thousands of links no longer spends quadratic
