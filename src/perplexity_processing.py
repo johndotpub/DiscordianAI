@@ -15,7 +15,7 @@ from .api_context import api_call
 from .caching import cached_response, conversation_digest
 from .citation_formatting import _format_unlinked_citations, format_citations
 from .config import DEFAULT_CACHE_TTL
-from .discord_embeds import citation_embed_formatter
+from .discord_embeds import citation_embed_formatter, clamp_embed_description
 from .error_handling import ProviderCallError, classify_error
 from .message_splitter import CitationMap, sanitize_model_output, should_suppress_embeds
 from .models import AIRequest, PerplexityConfig
@@ -166,7 +166,9 @@ def _handle_provider_result(
     if citations:
         embed, meta = citation_embed_formatter.create_citation_embed(final_text, citations)
         if embed.description:
-            embed.description = sanitize_model_output(embed.description, citations)
+            embed.description = clamp_embed_description(
+                sanitize_model_output(embed.description, citations)
+            )
         embed_data = {
             "embed": embed,
             "citations": citations,

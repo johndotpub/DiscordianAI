@@ -271,6 +271,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **An embed description cannot exceed Discord's 4096-character limit.** Sanitising can
+  insert zero-width spaces and make a description longer than the text that built it, so
+  every description is clamped after sanitising with the existing `...` marker.
 - **Deeply nested link labels no longer raise `RecursionError`.** The sanitiser renders
   nested labels only 100 levels deep; beyond that the label is sanitised as ordinary text,
   so an adversarial nesting answer still produces a deliverable string.

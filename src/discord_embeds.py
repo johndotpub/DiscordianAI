@@ -15,6 +15,25 @@ from .config import (
 )
 from .truncation import truncate_with_notice
 
+_EMBED_TRUNCATION_MARKER = "..."
+
+
+def clamp_embed_description(text: str, limit: int = EMBED_LIMIT) -> str:
+    """Clamp an embed description to Discord's hard character limit.
+
+    Args:
+        text: Rendered embed description.
+        limit: Maximum number of characters allowed; defaults to ``EMBED_LIMIT``.
+
+    Returns:
+        The original text when it fits, otherwise a prefix ending with the
+        existing ellipsis marker.
+    """
+    if len(text) <= limit:
+        return text
+    available = max(0, limit - len(_EMBED_TRUNCATION_MARKER))
+    return truncate_with_notice(text, available, _EMBED_TRUNCATION_MARKER)[0]
+
 
 class CitationEmbedFormatter:
     """Formats Perplexity responses with citations into Discord embeds.
@@ -73,7 +92,7 @@ class CitationEmbedFormatter:
                 EMBED_SAFE_LIMIT,
             )
 
-        embed.description = formatted_content
+        embed.description = clamp_embed_description(formatted_content)
 
         # Add footer if provided
         if footer_text:

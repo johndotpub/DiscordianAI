@@ -165,7 +165,7 @@ an offset into that plan instead of reparsing the remaining text.
 
 ## Citation-Aware Splitting
 
-For Perplexity responses with citations, the splitting algorithm ensures citations remain functional. An embed head is also snapped so a split never falls inside a `[n]` citation marker or inside a code fence: a marker that would be cut moves whole into the next embed, and a long fence is closed and reopened with the same language tag.
+For Perplexity responses with citations, the splitting algorithm ensures citations remain functional. An embed head is also snapped so a split never falls inside a `[n]` citation marker or inside a code fence: a marker that would be cut moves whole into the next embed, and a long fence is closed and reopened with the same language tag. Every embed description is clamped to Discord's 4096-character hard limit after sanitisation, with the existing `...` marker when text is cut.
 
 ```mermaid
 flowchart TD

@@ -29,7 +29,7 @@ from .config import (
     MESSAGE_BUFFER,
     MESSAGE_LIMIT,
 )
-from .discord_embeds import citation_embed_formatter
+from .discord_embeds import citation_embed_formatter, clamp_embed_description
 
 _RAW_MENTION_PATTERN = re.compile(r"<(@[!&]?|#)(\d+)>")
 _URL_TRAILING_PUNCTUATION = ".,;:!?)]}'\""
@@ -96,7 +96,7 @@ def _sanitize_embed_description(
     """Sanitise an embed description in place when it is a real string."""
     description = getattr(embed, "description", None)
     if isinstance(description, str) and description:
-        embed.description = sanitize_for_discord(description, citations)
+        embed.description = clamp_embed_description(sanitize_for_discord(description, citations))
 
 
 @dataclass(frozen=True)
