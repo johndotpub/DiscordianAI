@@ -39,12 +39,24 @@ while [[ "$#" -gt 0 ]]; do
         -c|--config)
             [[ -n "${2:-}" && ! "$2" =~ ^- ]] || { echo "ERROR: -c requires a config file argument" >&2; exit 1; }
             CONFIG_FILE="$2"; shift 2 ;;
+        --config=*)
+            CONFIG_FILE="${1#--config=}"
+            [[ -n "${CONFIG_FILE}" ]] || { echo "ERROR: --config requires a config file argument" >&2; exit 1; }
+            shift ;;
         -f|--folder)
             [[ -n "${2:-}" && ! "$2" =~ ^- ]] || { echo "ERROR: -f requires a directory argument" >&2; exit 1; }
             PROJECT_DIR="$(realpath "$2")"; shift 2 ;;
+        --folder=*)
+            PROJECT_DIR="${1#--folder=}"
+            [[ -n "${PROJECT_DIR}" ]] || { echo "ERROR: --folder requires a directory argument" >&2; exit 1; }
+            PROJECT_DIR="$(realpath "${PROJECT_DIR}")"; shift ;;
         --install-systemd)
             [[ -n "${2:-}" && ! "$2" =~ ^- ]] || { echo "ERROR: --install-systemd requires a config file argument" >&2; exit 1; }
             INSTALL_SYSTEMD="$2"; shift 2 ;;
+        --install-systemd=*)
+            INSTALL_SYSTEMD="${1#--install-systemd=}"
+            [[ -n "${INSTALL_SYSTEMD}" ]] || { echo "ERROR: --install-systemd requires a config file argument" >&2; exit 1; }
+            shift ;;
         -h|--help)
             echo "Usage: $0 [-d] [-c config.ini] [-f /path/to/project]"
             echo "       $0 --install-systemd config.ini"
@@ -55,8 +67,14 @@ while [[ "$#" -gt 0 ]]; do
             echo "      --install-systemd   Generate, install, enable, and start a systemd"
             echo "                          user service for the given config file, then exit"
             echo "  -h, --help              Show this help message"
+            echo ""
+            echo "  --config=FILE, --folder=DIR, and --install-systemd=FILE are also accepted."
             exit 0 ;;
-        *) shift ;;
+        *)
+            echo "ERROR: unknown argument: $1" >&2
+            echo "Usage: $0 [-d] [-c config.ini] [-f /path/to/project]" >&2
+            echo "       $0 --install-systemd config.ini" >&2
+            exit 2 ;;
     esac
 done
 
@@ -191,6 +209,9 @@ fi
 # ── Logging ───────────────────────────────────────────────────────────
 log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1"; }
 
+# Refuse a missing config before any running instance is signalled.
+CONFIG_PATH="$(require_config_file "${PROJECT_DIR}" "${CONFIG_FILE}")" || exit 1
+
 # ── 1. Change to project directory ────────────────────────────────────
 #     Cron runs from $HOME — Python needs CWD inside the project to
 #     find the `src` package via `-m src.main`.
@@ -286,7 +307,6 @@ log "✓ All core dependencies available"
 # ── 6. Kill existing instances (cron restart) ──────────────────────────
 log "Stopping any existing instances..."
 my_pid="$$"
-CONFIG_PATH="$(resolve_config_path "${PROJECT_DIR}" "${CONFIG_FILE}")"
 
 # The legacy shared file is used only when it records this same config.
 stop_legacy_pid_file_instance "${LEGACY_PID_FILE}" "${CONFIG_PATH}"

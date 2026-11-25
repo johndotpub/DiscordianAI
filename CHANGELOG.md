@@ -303,6 +303,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **The launcher rejects an unknown option before stopping anything.** The `--config=FILE`,
+  `--folder=DIR`, and `--install-systemd=FILE` forms are accepted. Any other option prints
+  the bad argument and a usage line, exits 2, and sends no signal. The run path resolves the
+  config file before the stop step, so `--config=prod.ini` with a missing file cannot stop a
+  healthy `bot.ini` instance.
 - **A dollar sign survives systemd unit generation.** `ExecStart` escapes `$` as `$$`, so a
   project path such as `price$home` is not treated as a variable name.
 - **`--install-systemd` accepts an absolute config path and restarts an active unit.** The

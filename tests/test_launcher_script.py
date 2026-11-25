@@ -842,6 +842,87 @@ def test_install_systemd_unit_passes_the_systemd_validator_when_available(tmp_pa
     assert "fatal error" not in output.lower(), output
 
 
+def test_unknown_argument_exits_nonzero_without_stopping_the_running_instance(tmp_path):
+    """A typo must not shift away and restart the default config's instance."""
+    project = tmp_path / "project"
+    marker = tmp_path / "launch-args.txt"
+    _write_stub_project(project)
+    bot = _start_fake_bot("bot.ini", project)
+    try:
+        script = f"""
+set -euo pipefail
+"{SCRIPT_PATH}" -c bot.ini -f "$1" --not-a-real-option
+"""
+        completed = _run_bash(
+            script,
+            str(project),
+            env=_launcher_env(project, marker),
+            cwd=tmp_path,
+        )
+
+        assert completed.returncode == 2, completed.stderr
+        assert "not-a-real-option" in completed.stderr
+        assert (
+            bot.poll() is None
+        ), "the launcher signalled the instance after rejecting an argument"
+        assert not marker.exists(), "the launcher started the bot after rejecting an argument"
+    finally:
+        if bot.poll() is None:
+            bot.kill()
+            bot.wait(timeout=5)
+
+
+def test_equals_config_with_a_missing_file_exits_before_stopping(tmp_path):
+    """--config=FILE must be parsed before the running instance is signalled."""
+    project = tmp_path / "project"
+    marker = tmp_path / "launch-args.txt"
+    _write_stub_project(project)
+    bot = _start_fake_bot("bot.ini", project)
+    try:
+        script = f"""
+set -euo pipefail
+"{SCRIPT_PATH}" --config=prod.ini -f "$1"
+"""
+        completed = _run_bash(
+            script,
+            str(project),
+            env=_launcher_env(project, marker),
+            cwd=tmp_path,
+        )
+
+        assert completed.returncode != 0, completed.stderr
+        assert "prod.ini" in completed.stderr
+        assert bot.poll() is None, "a missing config stopped the running bot.ini instance"
+        assert not marker.exists()
+    finally:
+        if bot.poll() is None:
+            bot.kill()
+            bot.wait(timeout=5)
+
+
+def test_equals_config_selects_the_requested_file(tmp_path):
+    """--config=FILE is accepted instead of being silently discarded."""
+    project = tmp_path / "project"
+    marker = tmp_path / "launch-args.txt"
+    _write_stub_project(project)
+    (project / "prod.ini").write_text("", encoding="utf-8")
+    script = f"""
+set -euo pipefail
+"{SCRIPT_PATH}" --config=prod.ini -f "$1"
+"""
+    completed = _run_bash(
+        script,
+        str(project),
+        env=_launcher_env(project, marker),
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    launched = marker.read_text(encoding="utf-8").splitlines()
+    assert launched[:3] == ["-m", "src.main", "--conf"]
+    assert launched[3] == str(project / "prod.ini")
+
+
 def test_install_systemd_escapes_dollar_in_exec_start(tmp_path):
     """A dollar in the project path must survive systemd as a literal dollar."""
     project = tmp_path / "price$home"
