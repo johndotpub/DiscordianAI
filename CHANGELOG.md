@@ -307,7 +307,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **An answer with nothing left after sanitising is treated as no response.**
   Whitespace-only output and output such as `[](https://x)` were sent as empty
   content, which Discord rejects, so the user saw the generic processing error.
-  The delivery helper now sends the fixed no-response notice instead, and the
+  The answer path now sends the fixed no-response notice instead, and the
   Perplexity wrapper drops an answer that sanitises away before it is cached or
   recorded in history.
 - **A rejected truncated-answer embed falls back to text.** When an answer that

@@ -770,8 +770,6 @@ async def _deliver(  # noqa: PLR0913 - one helper carries every delivery option
         kwargs["embed"] = embed
     if embed is None or suppress_embeds:
         kwargs["suppress_embeds"] = suppress_embeds
-    if not content.strip() and embed is None:
-        content = ERROR_MESSAGES["no_response_generated"]
     mentioned_users: list[Any] = []
     if original_message is not None:
         author = original_message.author
@@ -971,6 +969,7 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
     logger = deps["logger"]
     message = _cap_delivery_work(message, logger)
     message = sanitize_for_discord(message, citations)
+    message_has_content = bool(message.strip())
     prefix_text = mention_prefix or ""
     prefix_length = len(prefix_text)
 
@@ -994,6 +993,8 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
     for index, chunk in enumerate(chunks):
         chunk_text = sanitize_for_discord(chunk, citations)
         content = f"{prefix_text}{chunk_text}" if index == 0 and prefix_text else chunk_text
+        if not content.strip() and message_has_content:
+            continue
         if len(content) > MESSAGE_LIMIT:
             available = MESSAGE_LIMIT - 3
             content = f"{_close_open_fence(content, available)}..."
