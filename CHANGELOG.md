@@ -308,6 +308,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for the entire answer, duplicating it and repeating the mention prefix. The continuation
   error now propagates; only a failed head embed falls back to split text, and that happens
   before anything has been sent.
+- **`--conf=VALUE` is matched by the launcher.** Stop and the straggler scan now read both
+  `--conf VALUE` and `--conf=VALUE`, so a bot started in the joined form cannot be missed
+  and left running beside a new instance on the same token.
 - **A blank `DISCORDIANAI_LOG_COLOR` no longer forces colour on.** The presence of the
   key used to count as an explicit choice, so a blank `[Logging]` value or environment
   variable overrode terminal detection with the default `true` and coloured redirected

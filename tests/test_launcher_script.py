@@ -64,6 +64,33 @@ def _start_fake_bot(config_arg: str, cwd: Path) -> subprocess.Popen[bytes]:
     raise AssertionError(msg)
 
 
+def _start_fake_bot_with_equals(config_arg: str, cwd: Path) -> subprocess.Popen[bytes]:
+    """Start a sleeping process that uses the --conf=VALUE argument form."""
+    process = subprocess.Popen(  # noqa: S603 - fixed bash and Python executables
+        [
+            BASH_PATH,
+            "-c",
+            'exec -a "$1" "$2" -c "import time; time.sleep(30)" "$3" "$4"',
+            "fake-bot",
+            f"python -m src.main --conf={config_arg}",
+            sys.executable,
+            "python -m src.main",
+            f"--conf={config_arg}",
+        ],
+        cwd=cwd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    for _ in range(500):
+        if "src.main" in _process_args(process.pid):
+            return process
+        os.sched_yield()
+    process.kill()
+    process.wait(timeout=5)
+    msg = "fake --conf= bot process did not exec"
+    raise AssertionError(msg)
+
+
 def _process_args(pid: int) -> str:
     try:
         raw = Path(f"/proc/{pid}/cmdline").read_bytes()
@@ -344,6 +371,52 @@ straggler_pids "bot.ini"
             if process.poll() is None:
                 process.kill()
                 process.wait(timeout=5)
+
+
+def test_conf_equals_form_is_recognised(tmp_path):
+    """--conf=VALUE must yield the same config argument as --conf VALUE."""
+    project = tmp_path / "project"
+    project.mkdir()
+    config = project / "bot.ini"
+    config.write_text("", encoding="utf-8")
+    bot = _start_fake_bot_with_equals(str(config), project)
+    try:
+        script = """
+set -euo pipefail
+source "$LAUNCHER_LIB"
+process_conf_argument "$1"
+"""
+        completed = _run_bash(script, str(bot.pid))
+
+        assert completed.returncode == 0, completed.stderr
+        assert completed.stdout.strip() == str(config)
+    finally:
+        if bot.poll() is None:
+            bot.kill()
+            bot.wait(timeout=5)
+
+
+def test_straggler_lookup_matches_the_conf_equals_form(tmp_path):
+    """A bot started with --conf=VALUE must still be found by the straggler scan."""
+    project = tmp_path / "project"
+    project.mkdir()
+    config = project / "bot.ini"
+    config.write_text("", encoding="utf-8")
+    bot = _start_fake_bot_with_equals(str(config), project)
+    try:
+        script = """
+set -euo pipefail
+source "$LAUNCHER_LIB"
+straggler_pids "$1"
+"""
+        completed = _run_bash(script, str(config))
+
+        assert completed.returncode == 0, completed.stderr
+        assert completed.stdout.split() == [str(bot.pid)]
+    finally:
+        if bot.poll() is None:
+            bot.kill()
+            bot.wait(timeout=5)
 
 
 def test_legacy_pid_file_is_used_for_the_same_config(tmp_path):

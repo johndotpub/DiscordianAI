@@ -77,8 +77,9 @@ process_working_directory() {
     fi
 }
 
-# The argument that follows --conf, preserving spaces. /proc keeps arguments
-# NUL-separated, so a path such as "/srv/my bot/bot.ini" stays one argument.
+# The config argument, in either --conf VALUE or --conf=VALUE form, preserving
+# spaces. /proc keeps arguments NUL-separated, so a path such as
+# "/srv/my bot/bot.ini" stays one argument.
 process_conf_argument() {
     local pid="$1"
     local previous="" argument cmdline
@@ -89,13 +90,20 @@ process_conf_argument() {
                 printf '%s\n' "${argument}"
                 return 0
             fi
+            if [[ "${argument}" == --conf=* ]]; then
+                printf '%s\n' "${argument#--conf=}"
+                return 0
+            fi
             previous="${argument}"
         done < <(tr '\0' '\n' < "/proc/${pid}/cmdline" 2>/dev/null || true)
     fi
 
     cmdline="$(process_command_line "${pid}")"
     [[ -n "${cmdline}" ]] || return 1
-    printf '%s\n' "${cmdline}" | sed -n 's/.*--conf[[:space:]][[:space:]]*\([^[:space:]]*\).*/\1/p' | head -n 1
+    printf '%s\n' "${cmdline}" \
+        | sed -n -e 's/.*--conf=\([^[:space:]]*\).*/\1/p' \
+                 -e 's/.*--conf[[:space:]][[:space:]]*\([^[:space:]]*\).*/\1/p' \
+        | head -n 1
 }
 
 # True when the process was started with this exact config file. A relative
