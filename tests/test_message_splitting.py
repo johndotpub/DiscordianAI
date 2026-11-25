@@ -628,7 +628,7 @@ class TestMessageSplittingEdgeCases:
         assert split_point > 0
         assert split_point < len(long_unicode_message)
 
-        part1, part2 = split_fence_aware(long_unicode_message, MESSAGE_LIMIT, split_point)
+        part1, part2 = split_fence_aware(long_unicode_message, 2000, split_point)
         assert len(part1) <= MESSAGE_LIMIT
         # Unicode characters should be preserved
         assert "测试" in part1 or "测试" in part2
@@ -642,7 +642,7 @@ class TestMessageSplittingEdgeCases:
         long_mixed_message = mixed_message * 150
 
         split_point = find_optimal_split_point(long_mixed_message, MESSAGE_LIMIT)
-        part1, part2 = split_fence_aware(long_mixed_message, MESSAGE_LIMIT, split_point)
+        part1, part2 = split_fence_aware(long_mixed_message, 2000, split_point)
 
         assert len(part1) <= MESSAGE_LIMIT
         # Should preserve all content types
@@ -659,7 +659,7 @@ More text here."""
 
         long_code = code_with_emoji * 50
         split_point = find_optimal_split_point(long_code, MESSAGE_LIMIT)
-        part1, part2 = split_fence_aware(long_code, MESSAGE_LIMIT, split_point)
+        part1, part2 = split_fence_aware(long_code, 2000, split_point)
 
         # Code blocks should not be broken
         assert "```" in part1 or "```" in part2
@@ -677,7 +677,7 @@ End of code."""
 
         long_code = code_with_unicode * 50
         split_point = find_optimal_split_point(long_code, MESSAGE_LIMIT)
-        part1, part2 = split_fence_aware(long_code, MESSAGE_LIMIT, split_point)
+        part1, part2 = split_fence_aware(long_code, 2000, split_point)
 
         # Unicode in code should be preserved
         assert "测试" in part1 or "测试" in part2
@@ -688,7 +688,7 @@ End of code."""
         long_sequence = emoji_sequence * 200
 
         split_point = find_optimal_split_point(long_sequence, MESSAGE_LIMIT)
-        part1, part2 = split_fence_aware(long_sequence, MESSAGE_LIMIT, split_point)
+        part1, part2 = split_fence_aware(long_sequence, 2000, split_point)
 
         # Emoji sequences should be preserved
         assert len(part1) + len(part2) == len(long_sequence)
@@ -699,7 +699,7 @@ End of code."""
         long_mixed = mixed * 150
 
         split_point = find_optimal_split_point(long_mixed, MESSAGE_LIMIT)
-        part1, part2 = split_fence_aware(long_mixed, MESSAGE_LIMIT, split_point)
+        part1, part2 = split_fence_aware(long_mixed, 2000, split_point)
 
         # Both should be preserved
         assert "👋" in part1 or "👋" in part2

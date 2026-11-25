@@ -497,16 +497,12 @@ class TestEmbedCharacterLimits:
         long_message = "A" * 2001
         deps = {"logger": MagicMock()}
 
-        with patch("src.message_splitter.send_split_message") as mock_split:
-            await send_formatted_message(channel, long_message, deps)
+        await send_formatted_message(channel, long_message, deps)
 
-            # Should trigger splitting for > 2000 chars
-            mock_split.assert_called_once()
-            args, _kwargs = mock_split.call_args
-            assert args[0] is channel
-            assert args[1] == long_message
-            assert args[2] == deps
-            assert args[3] is False
+        assert channel.send.call_count >= 2
+        chunks = [call.args[0] for call in channel.send.call_args_list]
+        assert all(len(chunk) <= 2000 for chunk in chunks)
+        assert "".join(chunks) == long_message
 
 
 @pytest.mark.asyncio

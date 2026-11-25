@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import time
 from types import SimpleNamespace
 
 import pytest
@@ -109,21 +108,32 @@ async def test_concurrent_identical_requests_share_one_api_call():
 
 
 @pytest.mark.asyncio
-async def test_different_identities_run_in_parallel():
+async def test_different_identities_run_in_parallel(monkeypatch):
     delay = 0.4
     client = FakeOpenAIClient(delay=delay)
     history = [{"role": "user", "content": "shared context"}]
+    real_sleep = asyncio.sleep
+    active = 0
+    max_active = 0
 
-    started = time.monotonic()
+    async def fake_sleep(seconds):
+        nonlocal active, max_active
+        assert seconds == delay
+        active += 1
+        max_active = max(max_active, active)
+        try:
+            await real_sleep(0)
+        finally:
+            active -= 1
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
     await asyncio.gather(
         _fetch_openai_response(make_request("same question", 11), history, client, CONFIG),
         _fetch_openai_response(make_request("same question", 22), history, client, CONFIG),
     )
-    elapsed = time.monotonic() - started
 
     assert len(client.calls) == 2
-    assert elapsed < delay * 1.5
-    assert elapsed < (delay * 2) * 0.75
+    assert max_active == 2
 
 
 @pytest.mark.asyncio

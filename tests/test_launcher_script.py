@@ -111,10 +111,12 @@ stop_pid_file_instance "$(instance_pid_file "$1" "$2")" "$(resolve_config_path "
 
 
 def _start_graceful_bot(config_arg: str, cwd: Path) -> subprocess.Popen[bytes]:
-    """Start a sleeping process that exits cleanly when it receives SIGTERM."""
+    """Start a process that records readiness, then exits cleanly on SIGTERM."""
+    ready_marker = cwd / ".graceful-bot-ready"
     code = (
         "import signal, sys, time\n"
         "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))\n"
+        f"open({str(ready_marker)!r}, 'w', encoding='utf-8').close()\n"
         "time.sleep(30)\n"
     )
     process = subprocess.Popen(  # noqa: S603 - fixed bash and Python executables
@@ -134,13 +136,13 @@ def _start_graceful_bot(config_arg: str, cwd: Path) -> subprocess.Popen[bytes]:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    for _ in range(500):
-        if "src.main" in _process_args(process.pid):
+    for _ in range(5000):
+        if "src.main" in _process_args(process.pid) and ready_marker.is_file():
             return process
         os.sched_yield()
     process.kill()
     process.wait(timeout=5)
-    msg = "graceful fake bot process did not exec"
+    msg = "graceful fake bot process did not become ready"
     raise AssertionError(msg)
 
 
@@ -552,7 +554,12 @@ source "$LAUNCHER_LIB"
 log() { printf '%s\n' "$1" >&2; }
 stop_pid_file_instance "$(instance_pid_file "$1" "$2")" "$(resolve_config_path "$1" "$2")"
 """
-        completed = _run_bash(script, str(project), "bot.ini")
+        completed = _run_bash(
+            script,
+            str(project),
+            "bot.ini",
+            env={"DISCORDIANAI_STOP_TIMEOUT": "5"},
+        )
 
         assert completed.returncode == 0, completed.stderr
         assert "Stopping previous instance" in completed.stderr
