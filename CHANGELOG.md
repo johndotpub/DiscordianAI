@@ -303,6 +303,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **`--install-systemd` accepts an absolute config path and restarts an active unit.** The
+  install path uses the same config resolver as the run path. Re-installing a running unit
+  issues `systemctl --user restart` instead of a no-op `start`.
 - **The launcher waits for a straggler to exit.** The PID-file path and the straggler scan
   share one bounded signal/wait/force-kill helper, so a new instance starts only after the
   old process for the same config is gone.

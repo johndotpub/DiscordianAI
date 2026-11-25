@@ -77,12 +77,8 @@ if [[ -n "${INSTALL_SYSTEMD}" ]]; then
     UNIT_DIR="${HOME}/.config/systemd/user"
     UNIT_FILE="${UNIT_DIR}/${UNIT_NAME}"
 
-    # Verify config exists
-    CONFIG_PATH="${PROJECT_DIR}/${CONFIG_FILE}"
-    if [[ ! -f "${CONFIG_PATH}" ]]; then
-        echo "ERROR: Config file not found: ${CONFIG_PATH}" >&2
-        exit 1
-    fi
+    # Verify config exists using the same resolver as the run path.
+    CONFIG_PATH="$(require_config_file "${PROJECT_DIR}" "${CONFIG_FILE}")" || exit 1
 
     # Build PATH env for the systemd unit — detect pyenv and homebrew dynamically
     UNIT_PATH=""
@@ -173,9 +169,13 @@ EOF
     echo "Generated: ${UNIT_FILE}"
     systemctl --user daemon-reload
     systemctl --user enable "${UNIT_NAME}"
-    systemctl --user start "${UNIT_NAME}"
+    if systemctl --user is-active --quiet "${UNIT_NAME}"; then
+        systemctl --user restart "${UNIT_NAME}"
+    else
+        systemctl --user start "${UNIT_NAME}"
+    fi
     echo ""
-    echo "Service installed, enabled, and started. Manage with:"
+    echo "Service installed, enabled, and started (restarted when already active). Manage with:"
     echo "  systemctl --user status ${UNIT_NAME}"
     echo "  tail -f \"${PROJECT_DIR}/bot.log\""
     echo "  journalctl --user -u ${UNIT_NAME}  # unit lifecycle only"

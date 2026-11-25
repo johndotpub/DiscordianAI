@@ -23,6 +23,22 @@ resolve_config_path() {
     realpath -m -- "${candidate}" 2>/dev/null || realpath -- "${candidate}" 2>/dev/null || printf '%s\n' "${candidate}"
 }
 
+# Print the absolute path of a config file, or explain why it is unusable.
+# Callers run this before signalling any instance so a typo cannot stop a
+# healthy bot.
+require_config_file() {
+    local project_dir="$1"
+    local config_file="$2"
+    local config_path
+
+    config_path="$(resolve_config_path "${project_dir}" "${config_file}")"
+    if [[ ! -f "${config_path}" ]]; then
+        printf 'ERROR: Config file not found: %s\n' "${config_path}" >&2
+        return 1
+    fi
+    printf '%s\n' "${config_path}"
+}
+
 # PID file for one config, derived from its file stem and the resolved
 # absolute config path. The hash separates two configs that share a basename
 # but live in different directories.

@@ -665,7 +665,13 @@ def _escaped_systemd_path(path: str) -> str:
     return path.replace("%", "%%")
 
 
-def _generate_systemd_unit(tmp_path: Path, project: Path, home: Path) -> tuple[Path, list[str]]:
+def _generate_systemd_unit(
+    tmp_path: Path,
+    project: Path,
+    home: Path,
+    *,
+    config_arg: str = "bot.ini",
+) -> tuple[Path, list[str]]:
     """Run the real launcher with a stub systemctl and return its unit and calls."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -674,6 +680,10 @@ def _generate_systemd_unit(tmp_path: Path, project: Path, home: Path) -> tuple[P
     systemctl.write_text(
         """#!/usr/bin/env bash
 printf '%s\n' "$*" >> "${SYSTEMCTL_CALLS:?}"
+if [[ "$1" == "--user" && "$2" == "is-active" ]]; then
+    echo inactive
+    exit 3
+fi
 exit 0
 """,
         encoding="utf-8",
@@ -681,11 +691,12 @@ exit 0
     systemctl.chmod(0o755)
     script = f"""
 set -euo pipefail
-"{SCRIPT_PATH}" --install-systemd bot.ini -f "$1"
+"{SCRIPT_PATH}" --install-systemd "$2" -f "$1"
 """
     completed = _run_bash(
         script,
         str(project),
+        config_arg,
         env={
             "PATH": f"{bin_dir}:/usr/bin:/bin",
             "HOME": str(home),
@@ -695,7 +706,8 @@ set -euo pipefail
     )
 
     assert completed.returncode == 0, completed.stderr
-    unit = home / ".config" / "systemd" / "user" / "discordian-bot@bot.service"
+    instance = Path(config_arg).name.removesuffix(".ini")
+    unit = home / ".config" / "systemd" / "user" / f"discordian-bot@{instance}.service"
     return unit, calls.read_text(encoding="utf-8").splitlines()
 
 
@@ -759,6 +771,7 @@ def test_install_systemd_quotes_only_word_lists_and_starts_the_unit(tmp_path):
     assert invocations == [
         "--user daemon-reload",
         "--user enable discordian-bot@bot.service",
+        "--user is-active --quiet discordian-bot@bot.service",
         "--user start discordian-bot@bot.service",
     ]
 
@@ -810,6 +823,77 @@ def test_install_systemd_unit_passes_the_systemd_validator_when_available(tmp_pa
     output = completed.stdout + completed.stderr
     assert completed.returncode == 0, output
     assert "fatal error" not in output.lower(), output
+
+
+def test_install_systemd_accepts_an_absolute_config_path(tmp_path):
+    """The install path uses the same config resolver as the run path."""
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    _write_stub_project(project)
+    config = project / "bot.ini"
+    unit, _invocations = _generate_systemd_unit(
+        tmp_path,
+        project,
+        home,
+        config_arg=str(config),
+    )
+
+    assert unit.is_file()
+    exec_start = _parse_systemd_unit(unit.read_text(encoding="utf-8"))["ExecStart"][0]
+    words = _split_systemd_words(exec_start)
+    assert words == [str(SCRIPT_PATH), "-c", str(config), "-f", str(project)]
+    assert Path(words[2]).is_absolute()
+
+
+def test_install_systemd_restarts_an_active_unit(tmp_path):
+    """Re-installing a running unit must restart it instead of doing nothing."""
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    _write_stub_project(project)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "systemctl-calls.txt"
+    active_marker = tmp_path / "unit-active"
+    systemctl = bin_dir / "systemctl"
+    systemctl.write_text(
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${SYSTEMCTL_CALLS:?}"
+if [[ "$1" == "--user" && "$2" == "is-active" ]]; then
+    if [[ -f "${UNIT_ACTIVE_MARKER:?}" ]]; then
+        echo active
+        exit 0
+    fi
+    echo inactive
+    exit 3
+fi
+exit 0
+""",
+        encoding="utf-8",
+    )
+    systemctl.chmod(0o755)
+    script = f"""
+set -euo pipefail
+"{SCRIPT_PATH}" --install-systemd bot.ini -f "$1"
+"""
+    env = {
+        "PATH": f"{bin_dir}:/usr/bin:/bin",
+        "HOME": str(home),
+        "SYSTEMCTL_CALLS": str(calls),
+        "UNIT_ACTIVE_MARKER": str(active_marker),
+    }
+
+    first = _run_bash(script, str(project), env=env, cwd=tmp_path)
+    assert first.returncode == 0, first.stderr
+    active_marker.write_text("", encoding="utf-8")
+    second = _run_bash(script, str(project), env=env, cwd=tmp_path)
+    assert second.returncode == 0, second.stderr
+
+    invocations = calls.read_text(encoding="utf-8").splitlines()
+    assert "--user start discordian-bot@bot.service" in invocations
+    assert invocations[-2:] == [
+        "--user is-active --quiet discordian-bot@bot.service",
+        "--user restart discordian-bot@bot.service",
+    ]
 
 
 def test_launcher_waits_for_a_straggler_to_exit_before_starting(tmp_path):
