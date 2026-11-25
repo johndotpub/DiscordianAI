@@ -266,10 +266,10 @@ MUTATIONS = [
         path="src/message_splitter.py",
         test="tests/test_code_protection.py",
         old=(
-            "            if opener_index % 2 or closer_index != opener_index + 1:\n"
-            "                continue\n"
+            "        or opener_index % 2\n"
+            "        or closer_index != opener_index + 1\n"
         ),
-        new="            if False:\n                continue\n",
+        new="",
     ),
     Mutation(
         name="protect-unclosed-fence",
