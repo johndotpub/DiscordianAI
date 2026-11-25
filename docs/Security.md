@@ -155,8 +155,10 @@ RetryConfig(
   it are scanned as ordinary text. Mentions are neutralised everywhere, including inside
   code. A message with more than 2,048 emphasis, strikethrough, or spoiler marker characters
   skips the inline grammar and is sanitised by the catch-all passes, which keeps a
-  delimiter-dense answer from stalling delivery. A lone UTF-16 surrogate is replaced with
-  `?` before parsing so an unencodable character cannot abort the whole answer. The splitter additionally
+  delimiter-dense answer from stalling delivery. Nested link labels are rendered only 100
+  levels deep; deeper labels become ordinary text instead of raising `RecursionError`. A
+  lone UTF-16 surrogate is replaced with `?` before parsing so an unencodable character
+  cannot abort the whole answer. The splitter additionally
   keeps a split-only Discord pairing for chunk boundaries when the filter protects no
   fence; those spans never suppress sanitisation. These controls apply to outbound text
   only.

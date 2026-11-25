@@ -142,6 +142,8 @@ view:
   skips the inline grammar entirely. The catch-all passes still neutralise every link, the
   mention protection still runs, and the block grammar still protects a closed fence; the
   cap only stops delimiter-dense text from spending seconds in the inline parser.
+- Nested link labels are rendered only 100 levels deep. Beyond that the remaining label is
+  ordinary text, so adversarial nesting cannot exhaust the Python stack.
 
 Outside protected regions the sanitiser has two layers. The parser-driven layer rewrites
 links, images, and autolinks to their label text with the URL neutralised, except for a

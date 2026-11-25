@@ -316,8 +316,9 @@ Discord pair and whose content has no emphasis, strikethrough, spoiler, or schem
 link syntax, is protected. Delimiter-dense text skips the inline grammar and relies on the
 catch-all passes. Sanitisation then rewrites parser spans outside those regions and applies
 parse-independent catch-all passes; splitting closes and reopens a fence and sanitises
-every final chunk again. A lone UTF-16 surrogate is replaced before parsing so it cannot
-abort an encode. The splitter also keeps a split-only Discord pairing
+every final chunk again. Nested link labels render only 100 levels deep and then become
+ordinary text, so adversarial nesting cannot exhaust the stack. A lone UTF-16 surrogate is
+replaced before parsing so it cannot abort an encode. The splitter also keeps a split-only Discord pairing
 (`_discord_fence_spans()`) to place chunk boundaries when the filter protects no fence;
 those extra spans never suppress sanitisation. The routing package keeps a separate masker
 because its contract is to remove code-shaped cues before a route decision.

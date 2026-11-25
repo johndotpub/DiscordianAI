@@ -271,6 +271,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **Deeply nested link labels no longer raise `RecursionError`.** The sanitiser renders
+  nested labels only 100 levels deep; beyond that the label is sanitised as ordinary text,
+  so an adversarial nesting answer still produces a deliverable string.
 - **Delimiter-dense answers cannot stall the inline parser.** Text with more than 2,048
   emphasis, strikethrough, or spoiler marker characters skips the inline grammar. Links are
   still neutralised by the catch-all passes, mentions are still neutralised, and a closed

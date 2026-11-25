@@ -49,6 +49,9 @@ _EMPHASIS_MARKERS = frozenset("*_~|")
 # emphasis-marker characters the sanitiser skips inline parsing entirely and
 # applies the catch-all passes instead, keeping delivery bounded.
 _MAX_EMPHASIS_DELIMITERS = 2048
+# Nested link labels are rendered recursively. Past this depth the remaining
+# label is ordinary text, so adversarial nesting cannot exhaust the stack.
+_MAX_INLINE_RENDER_DEPTH = 100
 _TRUNCATION_PREFIX = "\n\n[Message truncated: the original answer was "
 _TRUNCATION_SUFFIX = " characters; the bot's delivery limit was reached]"
 
@@ -1797,7 +1800,7 @@ def _links_outside_regions(
     return filtered
 
 
-def _link_output(text: str, link: _LinkSpan, render: Any) -> str:
+def _link_output(text: str, link: _LinkSpan, render: Any, depth: int) -> str:
     """Return the sanitised replacement for one parser-reported link span."""
     if link.allowed or link.kind in {"bare", "trusted_link"}:
         return text[link.start : link.end]
@@ -1805,7 +1808,7 @@ def _link_output(text: str, link: _LinkSpan, render: Any) -> str:
         return _neutralize_address(link.destination)
     if link.kind == "uri_autolink":
         return _neutralize_url(link.destination)
-    return render(link.label_start, link.label_end)
+    return render(link.label_start, link.label_end, depth + 1)
 
 
 @dataclass(frozen=True)
@@ -1860,7 +1863,9 @@ def _render_sanitized(
         link_starts=[link.start for link in filtered_links],
     )
 
-    def render(start: int, end: int) -> str:
+    def render(start: int, end: int, depth: int = 0) -> str:
+        if depth >= _MAX_INLINE_RENDER_DEPTH:
+            return _neutralize_plain(text[start:end])
         pieces: list[str] = []
         position = start
         while position < end:
@@ -1886,7 +1891,7 @@ def _render_sanitized(
                 continue
             if is_link:
                 link = filtered_links[link_index]
-                pieces.append(_link_output(text, link, render))
+                pieces.append(_link_output(text, link, render, depth))
                 position = link.end
                 continue
             region = regions[region_index]

@@ -439,6 +439,22 @@ def test_parser_offsets_stay_aligned_after_a_lone_surrogate() -> None:
     assert [(region.start, region.end) for region in protected_code_regions(text)] == [(5, 11)]
 
 
+def test_deeply_nested_images_degrade_instead_of_recursing() -> None:
+    """Adversarial nesting becomes ordinary text rather than a stack failure."""
+    depth = 2_500
+    case = ("![" * depth) + "x" + ("](https://evil.example/x)" * depth)
+
+    try:
+        sanitized = sanitize_for_discord(case)
+        bare_brackets = sanitize_for_discord("![" * depth)
+    except RecursionError:
+        pytest.fail("deeply nested images raised RecursionError")
+
+    assert isinstance(sanitized, str)
+    assert isinstance(bare_brackets, str)
+    assert "](https://evil.example" not in sanitized
+
+
 def test_citation_title_cannot_hide_a_second_link() -> None:
     """Only the citation's own destination is exempt from the catch-all passes."""
     trusted = "https://good.example/a"
