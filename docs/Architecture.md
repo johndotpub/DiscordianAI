@@ -330,7 +330,7 @@ because its contract is to remove code-shaped cues before a route decision.
 
 ### API Key Handling
 - Keys loaded from config files or environment variables
-- Empty keys are rejected; OpenAI key shape is advisory (`sk-` is OpenAI-specific), Perplexity uses `pplx-*`
+- Blank keys disable their provider; OpenAI key shape is advisory (`sk-` is OpenAI-specific), Perplexity uses `pplx-*`
 - Never logged or exposed in error messages
 
 ### Input Validation

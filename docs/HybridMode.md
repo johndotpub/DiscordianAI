@@ -39,8 +39,9 @@ Two rules keep the model honest:
   `code.shape` and traceback cues are detected from the original text so a pasted artifact still marks the
   request as code-shaped, but those are framing cues and cannot decide a route on their own.
 
-There is no threshold, no confidence score, and no per-channel tuning: either the message carries
-live-data evidence or it does not.
+The heuristic gate has no threshold, no confidence score, and no per-channel tuning: either
+the message carries live-data evidence or it does not. The optional Clef router instead
+routes to the web at or above `ROUTER_CLEF_THRESHOLD`.
 
 The bundled English lexicon supplies topic terms; structural shapes supply status, change, release,
 version, money, time, code, and URL cues. Adding a term is a lexicon data change, not a code change.
@@ -169,7 +170,7 @@ LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 | `ROUTER_CLEF_THRESHOLD` | 0.5 | Probability at or above which Clef routes to the web. |
 | `ROUTER_CLEF_TIMEOUT_MS` | 2000 | Clef request timeout before falling back to the deterministic gate. |
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | 6 | How many recent messages a follow-up may inspect; `0` disables the lookup. |
-| `MAX_HISTORY_PER_USER` | 100 | Maximum conversation entries stored per user. |
+| `MAX_HISTORY_PER_USER` | 100 | Maximum conversation entries stored per conversation key. The name is legacy: the cap is not per user. |
 | `USER_LOCK_CLEANUP_INTERVAL` | 3600 | How often to clean up inactive user locks, in seconds. |
 
 The Clef key is scoped to the Clef endpoint. A key issued by another chat provider is never sent to

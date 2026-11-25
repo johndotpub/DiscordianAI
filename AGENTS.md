@@ -336,10 +336,12 @@ tox -e py312
   `.bot-<stem>-<hash>.pid` and stops only that instance, so a second config in the same
   checkout keeps running. The straggler scan resolves each process's `--conf` against its working
   directory and matches this instance's absolute config path; a legacy `.bot.pid` is used
-  only when its process runs the same config. A Discord token still cannot have two live
-  gateway sessions without duplicate replies: one instance per token remains the
-  operator's rule, and containers, systemd, and other supervisors that bypass the launcher
-  must enforce it externally. The Python process itself does not lock the token.
+  only when its process runs the same config. The launcher prevents two launches of the same
+  config file, but it does not compare tokens and does not detect two configs that share a
+  Discord token. Each token must appear in at most one running config; that is the operator's
+  responsibility, and containers, systemd, and other supervisors that bypass the launcher
+  must enforce the same rule externally. Two live gateway sessions for one token duplicate
+  every reply. The Python process itself does not lock the token.
 - **Log rotation uses the shipped fragment.** `contrib/logrotate/discordianai` rotates a
   supervisor-owned `bot.log` with `copytruncate`, because the bot does not reopen a log file
   it never opened. Install it and replace the placeholder path and the `su USER GROUP`

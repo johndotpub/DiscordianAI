@@ -120,7 +120,7 @@ Advanced configuration for intelligent AI service routing.
 
 - **`LOOKBACK_MESSAGES_FOR_CONSISTENCY`**: Messages to check for follow-up consistency; `0` or a negative value disables the lookup *(default: 6)*
   
-- **`MAX_HISTORY_PER_USER`**: Maximum conversation history per user *(default: 100)*
+- **`MAX_HISTORY_PER_USER`**: Maximum conversation entries kept per conversation key *(default: 100)*. The name is legacy: the cap is applied to a `g:<guild>:c:<channel>` or `dm:<user>` conversation, not to a user across conversations.
 - **`CONVERSATION_TTL_SECONDS`**: Idle seconds before a conversation and its lock are evicted *(default: 7200)*
 - **`USER_LOCK_CLEANUP_INTERVAL`**: Memory cleanup interval in seconds *(default: 3600)*
 - **`ENTITY_DETECTION_MIN_WORDS`**: Minimum message length intended for entity detection *(default: 10)*. Note: this setting is parsed into config but not yet wired into the current routing implementation; changing it has no runtime effect in this release.
@@ -254,8 +254,6 @@ VISION_MAX_IMAGES=4
 VISION_MAX_BYTES=5242880
 VISION_TOKEN_ESTIMATE=1000
 
-# No chat-provider-specific sampling parameters are supported by the public API; do not configure
-
 [Limits]
 # Rate limiting to prevent spam
 RATE_LIMIT=10
@@ -273,7 +271,8 @@ PERPLEXITY_MAX_KEEPALIVE=10
 # How many recent messages to check for AI service consistency (0 disables)
 LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 
-# Maximum conversation entries per user before pruning
+# Maximum conversation entries per conversation before pruning
+# (the key name is legacy; the cap is not per user)
 MAX_HISTORY_PER_USER=100
 
 # How long a conversation may sit idle before its history and lock are dropped
@@ -436,10 +435,10 @@ model does not select that provider. Three settings keep an explicit empty meani
 
 ### Error Examples
 ```
-CRITICAL: No API keys provided! Bot cannot function without either an OpenAI-compatible provider or Perplexity API access.
-WARNING: RATE_LIMIT very high (101). Consider lower value to prevent abuse.
-ERROR: Invalid log level 'VERBOSE', defaulting to INFO  
-INFO: Configuration validation passed - all critical settings are valid
+ERROR: No API keys provided! Bot cannot function without either OpenAI or Perplexity API access. Please provide either OPENAI_API_KEY (for OpenAI) or PERPLEXITY_API_KEY (for Perplexity) or both.
+WARNING: Config validation: RATE_LIMIT very high (101). Consider lower value to prevent abuse.
+WARNING: Invalid log level 'VERBOSE', defaulting to INFO
+INFO: Configuration validation passed successfully
 ```
 
 ## Production Deployment Considerations

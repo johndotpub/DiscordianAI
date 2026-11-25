@@ -114,7 +114,8 @@ PERPLEXITY_MAX_KEEPALIVE=10
 LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 
 
-# Maximum conversation entries per user before pruning
+# Maximum conversation entries per conversation before pruning
+# (the key name is legacy; the cap is not per user)
 MAX_HISTORY_PER_USER=100
 
 # How long a conversation may sit idle before its history and lock are dropped

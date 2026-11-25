@@ -179,11 +179,12 @@ second checkout that also uses `bot.ini` is not mistaken for this one. On upgrad
 legacy `.bot.pid` is honoured only when its process runs the same config; a legacy PID
 belonging to another config is left in place.
 
-One instance per config is enforced for launches the launcher owns. One instance per
-Discord token is still the operator's rule: the Python process does not lock the token,
-so containers, systemd, or other supervisors that bypass the launcher must enforce it
-externally. Running two configs that use the same token would give it two gateway
-sessions and duplicate replies.
+The launcher prevents two launches of the same config file, but it does not compare tokens,
+so two configs that carry the same `DISCORD_TOKEN` are both started. Each token must appear in
+at most one running config; that is the operator's responsibility. Containers, systemd, or
+other supervisors that bypass the launcher must enforce the same rule externally. The Python
+process does not lock the token. Running two configs that use the same token would give it
+two gateway sessions and duplicate replies.
 
 ## Venv Details
 

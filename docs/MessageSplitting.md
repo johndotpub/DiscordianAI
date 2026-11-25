@@ -221,37 +221,14 @@ await send_split_message_with_embed(
 
 ### Finding Optimal Boundaries
 
-```python
-def find_optimal_split_point(message: str, target_index: int) -> int:
-    """Find the best place to split a message near the target index."""
-    
-    # Search window around target (±100 characters)
-    search_start = max(0, target_index - 100)
-    search_end = min(len(message), target_index + 100)
-    search_area = message[search_start:search_end]
-    
-    # Priority 1: Newline boundaries
-    newlines = [i for i, char in enumerate(search_area) if char == '\n']
-    if newlines:
-        return search_start + max(newlines) + 1
-    
-    # Priority 2: Sentence endings
-    sentences = []
-    for i, char in enumerate(search_area):
-        if char in '.!?' and i < len(search_area) - 1:
-            if search_area[i + 1] == ' ':
-                sentences.append(i + 1)
-    if sentences:
-        return search_start + max(sentences)
-    
-    # Priority 3: Word boundaries
-    words = [i for i, char in enumerate(search_area) if char == ' ']
-    if words:
-        return search_start + max(words)
-    
-    # Fallback: Use target index
-    return target_index
-```
+`find_optimal_split_point(message, target_index)` searches from 100 characters before the
+target to 100 characters after it. It prefers the last newline in that window and returns
+the position just after it. Without a newline it picks the sentence ending (`.`, `!`, or `?`
+followed by whitespace) nearest the target, which may lie on either side. If neither exists
+it backs up to the last space before the target and returns the position just after it;
+failing that, it returns the target itself. The function only chooses the boundary;
+`split_fence_aware` then applies the code-fence rules and every final chunk is sanitised
+again before delivery. See `find_optimal_split_point` in `src/message_splitter.py`.
 
 ## Best Practices
 

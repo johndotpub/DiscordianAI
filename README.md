@@ -24,7 +24,7 @@ DiscordianAI is a Discord bot that routes each message to an OpenAI-compatible c
 
 ## What Makes It Different
 
-- **Deterministic hybrid routing**: a gate decides each message from explicit overrides and bearing cues (things whose value can change); there are no scores, weights, or thresholds. The OpenAI-compatible provider (Ollama Cloud by default) handles stable knowledge, reasoning, and creative prompts; Perplexity's Agent API handles live facts and returns citations. See [docs/routing/DESIGN.md](docs/routing/DESIGN.md).
+- **Deterministic hybrid routing**: the default heuristic gate decides each message from explicit overrides and bearing cues (things whose value can change); it uses no scores, weights, or thresholds. The OpenAI-compatible provider (Ollama Cloud by default) handles stable knowledge, reasoning, and creative prompts; Perplexity's Agent API handles live facts and returns citations. See [docs/routing/DESIGN.md](docs/routing/DESIGN.md).
 - **Conversation history**: History is keyed by guild channel (`g:<guild>:c:<channel>`) or DM (`dm:<user>`) and is sent to both providers. A thread keeps its own history, separate from its parent. A follow-up is routed to the provider that answered the previous turn when one is recorded.
 - **Discord-native output**: Citation embeds, message splitting at Discord's 2000-character limit, and Perplexity link-preview suppression when a response contains two or more links. The OpenAI-compatible path does not suppress previews.
 - **Operations**: Per-provider HTTP/2 connection pooling with HTTP/1.1 fallback, per-provider circuit breakers, and health checks after login plus HTTP endpoints that report observed provider and breaker state.

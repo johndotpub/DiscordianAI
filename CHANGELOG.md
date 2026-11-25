@@ -518,19 +518,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests ✅
 
-- **Delivery complexity is guarded by scaling, not a single timing.** The guard now builds
+- **Delivery complexity is guarded by scaling, not a single timing.** The guard builds
   every adversarial shape, including triple-backtick runs and mixed mid-line fences, at
-  32,000 and 64,000 characters, asserts the 64,000-character run stays under two seconds,
-  and fails when doubling the input more than triples the best of three runs. A separate
-  check delivers 128,000- and 256,000-character answers, confirms the work cap truncates
-  them, and asserts each arrives in under a second.
+  32,000 and 64,000 characters, then compares work counters rather than elapsed time. It
+  fails when the 64,000-character run uses more than 2.5 times the bytes passed to
+  `Parser.parse` (plus 4,096) or more than three times the parse calls (plus two) of the
+  32,000-character run. A separate check delivers 128,000- and 256,000-character answers,
+  confirms the work cap truncates them, and asserts each arrives in under a second.
 - **The code-region contract is checked with markdown-it-py on every case, plus the
   Discord parser on the corpus it can parse (crashes bounded at 5 %).** A fixed-seed corpus
   of one thousand adversarial cases, the reported bypasses, and each delivered chunk are
   rendered with markdown-it-py; the Discord-markdown-ast-parser oracle runs on the cases it
   can parse, and its crash share is capped at 5 %. The complexity guard sanitises and
-  delivers 64,000-character adversarial shapes in three runs under a generous two-second
-  bound. The mutation checker now kills a removed `](` pass, a removed `://` pass, a
+  delivers each 32,000- and 64,000-character adversarial shape once and compares the
+  parser work counters. The mutation checker now kills a removed `](` pass, a removed `://` pass, a
   delivery path that skips the per-chunk sanitiser, and three parser-backed mutations
   (protect-misaligned-inline-span, protect-unclosed-fence, protect-fence-with-inner-run)
   that protect a misaligned inline span, an unclosed fence, or a fence with an inner run.
