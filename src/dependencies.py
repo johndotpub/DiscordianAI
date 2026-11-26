@@ -1,8 +1,8 @@
 """Formal dependency injection container for DiscordianAI.
 
-Replaces the ad-hoc ``deps`` dictionary with a typed, frozen dataclass that
-makes the bot's service graph explicit, prevents typos in key names, and
-enables IDE autocompletion across the codebase.
+Replaces the ad-hoc ``deps`` dictionary with a typed dataclass that makes the
+bot's service graph explicit, prevents typos in key names, and enables IDE
+autocompletion across the codebase.
 
 Usage::
 
@@ -78,7 +78,7 @@ class BotDependencies:
         context_window: Total model context window in tokens.
         reasoning_effort: Reasoning effort sent with OpenAI-compatible requests.
         web_tools: Whether to offer native web tools to Ollama-compatible providers.
-        health_task: Asyncio task for the health server (set at runtime).
+        health_task: Asyncio task for the startup provider probes (set at runtime).
     """
 
     # Service objects

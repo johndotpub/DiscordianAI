@@ -632,8 +632,8 @@ async def get_smart_response(  # noqa: PLR0913 - the injected router
         `None` when not applicable.
 
     Raises:
-        NotImplementedError: If ``ROUTER_MODE=model`` selects the unimplemented
-            model router. The message names ``docs/routing/DESIGN.md``.
+        NotImplementedError: If ``ROUTER_MODE=model`` selects the retired model
+            router. The message points at ``ROUTER_MODE=clef``.
         ValueError: If ``ROUTER_MODE`` is not a recognised mode.
     """
     try:

@@ -1,10 +1,15 @@
 """Structured logging configuration using structlog.
 
 Configures structlog with a hybrid renderer that outputs human-readable
-logs to the console (for development) and JSON-structured logs when
-environment variable ``DISCORDIANAI_LOG_JSON=1`` is set (for production
-observability). Console color output follows TTY detection by default,
-but can be forced on or off with ``DISCORDIANAI_LOG_COLOR``.
+logs to the console (for development) and JSON-structured logs for
+production observability. Console color output follows TTY detection by
+default.
+
+The ``DISCORDIANAI_LOG_JSON``, ``DISCORDIANAI_LOG_LEVEL``, and
+``DISCORDIANAI_LOG_COLOR`` environment variables are fallbacks used when a
+direct caller omits the corresponding :func:`configure_structlog` argument.
+The bot entry point always passes ``json_logs`` and ``log_level`` explicitly,
+so those two variables apply only to direct callers of the function.
 
 All existing ``logging.getLogger()`` calls are automatically enriched
 with structlog processors via the stdlib integration layer. No changes
@@ -116,9 +121,10 @@ def configure_structlog(
     Args:
         json_logs: Force JSON output. If ``None``, reads the
             ``DISCORDIANAI_LOG_JSON`` environment variable (defaults to
-            ``False``).
+            ``False``). The bot entry point always passes a value.
         log_level: Set the root logger level. If ``None``, reads
-            ``DISCORDIANAI_LOG_LEVEL`` (defaults to ``INFO``).
+            ``DISCORDIANAI_LOG_LEVEL`` (defaults to ``INFO``). The bot entry
+            point always passes a value.
         log_colors: Force console colors on or off. If ``None``, reads the
             ``DISCORDIANAI_LOG_COLOR`` environment variable and otherwise
             enables colors only when ``stream`` is a TTY.

@@ -350,7 +350,7 @@ def parse_arguments() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(description="GPT-based Discord bot.")
     parser.add_argument("--conf", help="Configuration file path")
-    parser.add_argument("--folder", help="Base folder for config and logs")
+    parser.add_argument("--folder", help="Base folder for the configuration file")
     return parser.parse_args()
 
 
