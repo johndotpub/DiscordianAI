@@ -148,12 +148,14 @@ view:
 Outside protected regions the sanitiser has two layers. The parser-driven layer rewrites
 links, images, and autolinks to their label text with the URL neutralised, except for a
 trusted citation URL from the allowlist. The catch-all layer does not depend on a parse:
-it breaks every `](`, inserts a zero-width space after every `://`, and separates `<` from
-a following URL scheme. Definition-shaped lines such as `[label]: destination` stay in the
-text; an invisible separator stops a CommonMark renderer from resolving them, and no line
-is ever deleted. Mentions are neutralised everywhere, including inside code. A lone UTF-16
-surrogate is replaced with `?` before parsing, because it cannot be UTF-8 encoded and would
-otherwise abort delivery of the whole answer.
+it breaks every `](`, inserts a zero-width space after every `://` whatever the scheme and
+after a leading `www.` in a web address, and separates `<` from a following URL scheme; a
+bare domain without `www.` and without a scheme is left as it is. Definition-shaped lines
+such as `[label]: destination` stay in the text; an invisible separator stops a CommonMark
+renderer from resolving them, and no line is ever deleted. Mentions are neutralised
+everywhere, including inside code. A lone UTF-16 surrogate is replaced with `?` before
+parsing, because it cannot be UTF-8 encoded and would otherwise abort delivery of the whole
+answer.
 
 After splitting, every final chunk is sanitised again on its own. A URL that was inside an
 inline code span at the whole-message level is therefore neutralised when a split cuts the

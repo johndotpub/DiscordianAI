@@ -209,6 +209,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   URLs in one whitespace-free run are all neutralised, and nesting depth no longer limits
   the rewrite. Mention neutralisation (`@everyone`, `@here`, raw user/role/channel mentions)
   still applies everywhere, including inside code.
+- **Bare `www.` addresses in answers are broken like links.** Model text such as
+  `www.example.com/login` now receives a zero-width space after `www.` so Discord cannot
+  turn it into a clickable link. A `www.` inside a longer word, protected inline code, a
+  fenced block, or a trusted citation URL is unchanged. Bare domains without `www.` and
+  without a scheme, such as `example.com` or `main.py`, are left readable because Discord
+  decides those.
 
 ### Added ✨
 

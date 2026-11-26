@@ -688,6 +688,31 @@ def _break_reference_definitions(text: str) -> str:
         position = cursor
 
 
+def _neutralize_www(text: str) -> str:
+    """Break a bare ``www.`` web address while leaving longer words intact.
+
+    The break is added only when ``www.`` starts a web address: the preceding
+    character is not a letter, digit, dot, hyphen, or an existing zero-width
+    break, and a letter or digit follows the dot.
+    """
+    pieces: list[str] = []
+    position = 0
+    lowered = text.lower()
+    while True:
+        start = lowered.find("www.", position)
+        if start < 0:
+            pieces.append(text[position:])
+            return "".join(pieces)
+        host_start = start + len("www.")
+        previous = text[start - 1 : start]
+        begins_address = not (previous.isalnum() or previous in {".", "-", _ZERO_WIDTH_SPACE})
+        has_host = host_start < len(text) and text[host_start].isalnum()
+        pieces.append(text[position:host_start])
+        if begins_address and has_host:
+            pieces.append(_ZERO_WIDTH_SPACE)
+        position = host_start
+
+
 def _neutralize_plain(text: str) -> str:
     """Apply the parse-independent catch-all passes to ordinary text."""
     text = text.replace("](", f"]{_ZERO_WIDTH_SPACE}(")
@@ -706,6 +731,7 @@ def _neutralize_plain(text: str) -> str:
             pieces.append(_ZERO_WIDTH_SPACE)
         position = scheme_end
     text = "".join(pieces)
+    text = _neutralize_www(text)
 
     pieces = []
     last = 0
@@ -2002,7 +2028,9 @@ def sanitize_model_output(text: str, citations: dict[str, str] | None = None) ->
     if not text:
         return ""
     text = _replace_surrogate_characters(text)
-    if not any(marker in text for marker in ("](", "://", "<", "@")):
+    if not any(marker in text for marker in ("](", "://", "<", "@")) and (
+        "www." not in text.lower()
+    ):
         return text
 
     allowed_urls = {

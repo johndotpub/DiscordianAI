@@ -345,6 +345,49 @@ def test_https_angle_bracket_link_keeps_todays_output() -> None:
     )
 
 
+def test_bare_www_address_is_neutralised() -> None:
+    """A bare www address in model text gets a zero-width space after www."""
+    sanitized = sanitize_for_discord("visit www.example.com now")
+
+    assert "www." + ZERO_WIDTH_SPACE + "example.com" in sanitized
+    assert "www.example.com" not in sanitized
+
+
+def test_bare_www_inside_trusted_citation_is_unchanged() -> None:
+    """A trusted citation URL is exempt from www neutralisation."""
+    url = "https://www.example.com"
+
+    assert sanitize_for_discord(url, {"1": url}) == url
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["awww.example", "foo.www.example.com", "x-www.example.com", "1www.example.com"],
+)
+def test_www_part_of_a_longer_word_is_unchanged(source: str) -> None:
+    """A www run inside a longer word is not a web address."""
+    assert sanitize_for_discord(source) == source
+
+
+def test_www_inside_inline_code_is_unchanged() -> None:
+    """A protected inline code span keeps its www text exactly."""
+    assert sanitize_for_discord("`www.example.com`") == "`www.example.com`"
+
+
+def test_bare_domains_without_www_are_unchanged() -> None:
+    """Discord decides bare domains and filenames, so they stay readable."""
+    case = "example.com and main.py"
+
+    assert sanitize_for_discord(case) == case
+
+
+def test_scheme_url_with_www_keeps_todays_scheme_break() -> None:
+    """A scheme-qualified URL keeps the one break after its scheme."""
+    assert sanitize_for_discord("https://www.example.com") == (
+        "https://" + ZERO_WIDTH_SPACE + "www.example.com"
+    )
+
+
 @pytest.mark.parametrize(
     ("name", "case"),
     FENCE_INNER_RUN_CASES,
