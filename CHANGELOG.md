@@ -716,6 +716,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Perplexity 400 test builds its HTTP stub with whichever HTTPX class the installed openai
   SDK accepts. The formatter test already runs without the optional Rich package. The full
   suite now passes against every declared minimum runtime version.
+- **The dependency gate is checked against a hand-written set.** The test no longer
+  reimplements the gate's own import walker, so a wrong algorithm cannot agree with
+  itself. A second test maps every declared runtime distribution through the gate's alias
+  table to the expected import names, with `h2` allowed because it is declared for httpx's
+  HTTP/2 extra but never imported by `src`.
 
 ### Documentation 📝
 
