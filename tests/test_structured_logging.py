@@ -1,5 +1,6 @@
 """Tests for structured logging configuration."""
 
+import importlib
 from io import StringIO
 import logging
 import os
@@ -38,15 +39,32 @@ def test_configure_structlog_defaults():
     )
 
 
-def test_configure_structlog_explicit_log_colors_pass_through_to_renderer():
-    """An explicit log_colors argument is handed to the console renderer."""
-    with patch("structlog.dev.ConsoleRenderer") as mock_renderer:
+@pytest.mark.parametrize("rich_available", [False, True])
+def test_configure_structlog_explicit_log_colors_pass_through_to_renderer(rich_available):
+    """An explicit log_colors argument picks the safe formatter for either environment."""
+    real_import_module = importlib.import_module
+
+    def _import_module(name, package=None):
+        if name == "rich":
+            if not rich_available:
+                raise ImportError(name)
+            return SimpleNamespace()
+        return real_import_module(name, package)
+
+    with (
+        patch("src.structured_logging.importlib.import_module", _import_module),
+        patch("structlog.dev.ConsoleRenderer") as mock_renderer,
+    ):
         configure_structlog(log_colors=True)
 
     kwargs = mock_renderer.call_args.kwargs
+    formatter = kwargs["exception_formatter"]
     assert kwargs["colors"] is True
     assert kwargs["pad_event_to"] == 0
-    assert kwargs["exception_formatter"].show_locals is False
+    if rich_available:
+        assert formatter.show_locals is False
+    else:
+        assert formatter is structlog.dev.plain_traceback
 
 
 def test_configure_structlog_json_mode():
