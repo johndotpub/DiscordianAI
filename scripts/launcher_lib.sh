@@ -140,12 +140,16 @@ launcher_stop_timeout() {
 }
 
 # True while the process is alive. A zombie has exited for our purposes even
-# though kill -0 still succeeds until its parent reaps it.
+# though kill -0 still succeeds until its parent reaps it. A live process we do
+# not own makes kill -0 fail with EPERM, so fall back to its /proc entry rather
+# than treating an unsignalable instance as gone.
 process_is_running() {
     local pid="$1"
     local state=""
 
-    kill -0 "${pid}" 2>/dev/null || return 1
+    if ! kill -0 "${pid}" 2>/dev/null; then
+        [[ -d "/proc/${pid}" ]] || return 1
+    fi
     if [[ -r "/proc/${pid}/stat" ]]; then
         state="$(sed -n 's/^[^)]*) \([A-Za-z]\).*/\1/p' "/proc/${pid}/stat" 2>/dev/null || true)"
         [[ "${state}" != "Z" ]] || return 1
@@ -169,6 +173,8 @@ wait_for_exit() {
 
 # Signal one process, wait the bounded timeout, and force-kill it only when it
 # is still alive. PID-file cleanup and the straggler scan share this policy.
+# A process that survives the final signal is reported and the caller must not
+# start a second instance for the same token.
 terminate_process() {
     local pid="$1"
 
@@ -177,12 +183,18 @@ terminate_process() {
     if process_is_running "${pid}"; then
         log "Force-killing unresponsive process ${pid}"
         kill -9 "${pid}" 2>/dev/null || true
+        wait_for_exit "${pid}" 1
+    fi
+    if process_is_running "${pid}"; then
+        log "ERROR: Process ${pid} is still running after the final signal; refusing to start another instance"
+        return 1
     fi
 }
 
-# Stop the instance recorded in a PID file, then always remove the file. The
-# PID is signalled only when its command line runs this same config; a stale
-# file left after a reboot may name an unrelated process.
+# Stop the instance recorded in a PID file, then remove the file when the
+# process is gone. The PID is signalled only when its command line runs this
+# same config; a stale file left after a reboot may name an unrelated process.
+# The file survives a failed stop so the next attempt still knows the PID.
 stop_pid_file_instance() {
     local pid_file="$1"
     local expected_config="${2:-}"
@@ -198,7 +210,9 @@ stop_pid_file_instance() {
             log "PID file records another process (PID ${old_pid}); not signalling it"
         else
             log "Stopping previous instance (PID ${old_pid})"
-            terminate_process "${old_pid}"
+            if ! terminate_process "${old_pid}"; then
+                return 1
+            fi
         fi
     fi
     rm -f "${pid_file}"
@@ -223,7 +237,9 @@ stop_legacy_pid_file_instance() {
 
     if process_uses_config "${old_pid}" "${expected_config}"; then
         log "Stopping legacy PID file instance (PID ${old_pid})"
-        terminate_process "${old_pid}"
+        if ! terminate_process "${old_pid}"; then
+            return 1
+        fi
         rm -f "${pid_file}"
     else
         log "Leaving legacy PID file for another config (PID ${old_pid})"

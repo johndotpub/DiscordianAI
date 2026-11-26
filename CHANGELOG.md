@@ -309,6 +309,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **A failed stop refuses to start a second instance.** When the old process survived the
+  final signal, the launcher still started a new bot, giving two gateway sessions on one
+  token. The stop helper now waits briefly after `SIGKILL`, reports the surviving PID as
+  an ERROR, and returns failure; the launcher exits non-zero without starting and leaves
+  the PID file so the next attempt retries. A process that `kill -0` cannot probe is still
+  recognised from its `/proc` entry instead of being treated as gone.
+  `tests/test_launcher_script.py` stubs an unsignalable process and checks both the helper
+  and the PID-file wrapper.
 - **The launcher checks every runtime dependency before stopping the bot.** The pre-start
   check imported only `discord`, `openai`, and `httpx`, while the source also needs
   `aiohttp`, `cachetools`, `structlog`, `tree-sitter`, and `tree-sitter-markdown`. After a

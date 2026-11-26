@@ -309,11 +309,11 @@ log "Stopping any existing instances..."
 my_pid="$$"
 
 # The legacy shared file is used only when it records this same config.
-stop_legacy_pid_file_instance "${LEGACY_PID_FILE}" "${CONFIG_PATH}"
+stop_legacy_pid_file_instance "${LEGACY_PID_FILE}" "${CONFIG_PATH}" || exit 1
 
 # By this config's PID file. The helper removes the file even when the process
 # already died.
-stop_pid_file_instance "${PID_FILE}" "${CONFIG_PATH}"
+stop_pid_file_instance "${PID_FILE}" "${CONFIG_PATH}" || exit 1
 
 # Stragglers for this config only (but not ourselves). A different config's
 # instance is a different managed service and must keep running. Each straggler
@@ -321,7 +321,7 @@ stop_pid_file_instance "${PID_FILE}" "${CONFIG_PATH}"
 for pid in $(straggler_pids "${CONFIG_PATH}"); do
     if [[ "${pid}" != "${my_pid}" ]]; then
         log "Killing stray process ${pid} for ${CONFIG_PATH}"
-        terminate_process "${pid}"
+        terminate_process "${pid}" || exit 1
     fi
 done
 

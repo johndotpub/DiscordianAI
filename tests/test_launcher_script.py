@@ -666,6 +666,57 @@ stop_pid_file_instance "$(instance_pid_file "$1" "$2")" "$(resolve_config_path "
             bot.wait(timeout=5)
 
 
+def test_terminate_process_refuses_a_process_it_cannot_signal():
+    """An unsignalable old instance must report failure, not look stopped."""
+    script = """
+set -uo pipefail
+source "$LAUNCHER_LIB"
+log() { printf '%s\\n' "$1" >&2; }
+/bin/sleep 30 >/dev/null 2>&1 &
+target=$!
+kill() { return 1; }
+terminate_process "$target"
+status=$?
+builtin kill -9 "$target" 2>/dev/null || true
+wait "$target" 2>/dev/null || true
+printf 'status=%s\\n' "$status"
+[[ "$status" -ne 0 ]]
+"""
+    completed = _run_bash(script)
+
+    assert completed.returncode == 0, completed.stderr
+    assert "ERROR:" in completed.stderr
+    assert "still running after the final signal" in completed.stderr
+    assert "status=1" in completed.stdout
+
+
+def test_stop_pid_file_instance_keeps_the_file_when_the_stop_fails(tmp_path):
+    """A failed stop must leave the PID recorded so the next attempt retries."""
+    pid_file = tmp_path / ".bot.pid"
+    script = """
+set -uo pipefail
+source "$LAUNCHER_LIB"
+log() { printf '%s\\n' "$1" >&2; }
+pid_file="$1"
+/bin/sleep 30 >/dev/null 2>&1 &
+target=$!
+echo "$target" > "$pid_file"
+kill() { return 1; }
+stop_pid_file_instance "$pid_file"
+status=$?
+builtin kill -9 "$target" 2>/dev/null || true
+wait "$target" 2>/dev/null || true
+printf 'status=%s\\n' "$status"
+[[ "$status" -ne 0 ]]
+"""
+    completed = _run_bash(script, str(pid_file))
+
+    assert completed.returncode == 0, completed.stderr
+    assert "status=1" in completed.stdout
+    assert pid_file.is_file(), "a failed stop removed the PID file"
+    assert pid_file.read_text(encoding="utf-8").strip().isdigit()
+
+
 def test_stale_pid_file_for_an_unrelated_process_is_removed_without_a_signal(tmp_path):
     """A reboot can leave an unrelated PID in the file; it must keep running."""
     project = tmp_path / "project"
