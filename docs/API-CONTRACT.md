@@ -120,6 +120,6 @@ The bot uses the current Agent API, not Sonar Chat Completions. The OpenAI SDK's
 ```
 
 The probe prints status codes, header names, response key shapes and token counts. It
-never prints credentials. It makes eleven calls: six successful (small, cheap) and five
+never prints credentials. It makes eleven calls: six successful (small) and five
 deliberate error probes, including the Agent API, its alias, the unversioned path, and an
 invalid model. Run it after any provider upgrade, model change, or SDK bump.

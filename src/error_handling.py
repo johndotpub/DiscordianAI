@@ -887,7 +887,7 @@ def classify_error(exception: Exception) -> ErrorDetails:
     user_message = "An unexpected error occurred. Please try again."
     retry_after = None
 
-    # Permanent billing/quota exhaustion — not a transient rate limit
+    # Permanent quota exhaustion — not a transient rate limit
     if any(marker in error_msg.lower() for marker in _QUOTA_EXHAUSTED_MARKERS):
         error_type = ErrorType.API_AUTH_ERROR
         severity = ErrorSeverity.HIGH

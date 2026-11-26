@@ -222,7 +222,7 @@ def _output_token_issues(config: dict, key: str, *, reasoning_model: bool) -> li
         )
     elif tokens > MAX_OUTPUT_TOKENS_COST_WARNING:
         issues.append(
-            f"WARNING: {key} very high ({tokens}). Consider lower limit for cost control.",
+            f"WARNING: {key} very high ({tokens}). Consider a lower limit to reduce token use.",
         )
 
     return issues
