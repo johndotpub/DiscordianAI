@@ -7,6 +7,7 @@ import argparse
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -81,6 +82,22 @@ class Result:
     status: str
     duration: float
     detail: str = ""
+
+
+@dataclass(frozen=True)
+class TestRun:
+    """Outcome of one pytest invocation."""
+
+    returncode: int | None
+    detail: str
+    output: str = ""
+
+
+class BaselineFailure(RuntimeError):
+    """The unmutated copy did not pass the selected tests."""
+
+
+_FAILED_TEST = re.compile(r"\b[1-9]\d* failed\b")
 
 
 MUTATIONS = [
@@ -401,7 +418,7 @@ def _restore(root: Path, mutation: Mutation, backup: Path, original: bytes) -> N
         raise RuntimeError(message)
 
 
-def _run_test(root: Path, test_path: str, timeout: float) -> tuple[bool, str]:
+def _run_test(root: Path, test_paths: list[str], timeout: float) -> TestRun:
     environment = dict(os.environ)
     environment["PYTHONPATH"] = os.pathsep.join(
         part for part in (str(root), environment.get("PYTHONPATH", "")) if part
@@ -412,7 +429,7 @@ def _run_test(root: Path, test_path: str, timeout: float) -> tuple[bool, str]:
                 sys.executable,
                 "-m",
                 "pytest",
-                test_path,
+                *test_paths,
                 "-q",
                 "-x",
                 "-p",
@@ -426,10 +443,75 @@ def _run_test(root: Path, test_path: str, timeout: float) -> tuple[bool, str]:
             env=environment,
         )
     except subprocess.TimeoutExpired:
-        return True, "test run timed out"
-    output = (completed.stdout + completed.stderr).strip().splitlines()
-    detail = output[-1] if output else ""
-    return completed.returncode != 0, detail
+        return TestRun(None, "test run timed out")
+    output = (completed.stdout + completed.stderr).strip()
+    lines = output.splitlines()
+    detail = lines[-1] if lines else ""
+    return TestRun(completed.returncode, detail, output)
+
+
+def _classify_mutant(run: TestRun) -> tuple[str, str]:
+    """Classify one mutant run as KILLED, SURVIVED, or INCONCLUSIVE."""
+    if run.returncode == 1 and _FAILED_TEST.search(run.output):
+        return "KILLED", run.detail
+    if run.returncode == 0:
+        return "SURVIVED", run.detail
+    if run.returncode is None:
+        return "INCONCLUSIVE", "test run timed out"
+    if run.returncode == 5:
+        return "INCONCLUSIVE", f"no tests collected: {run.detail}"
+    return "INCONCLUSIVE", f"pytest exit {run.returncode}: {run.detail}"
+
+
+def _failure_exit_code(results: list[Result]) -> int:
+    """Return the process status for a completed run."""
+    return 0 if all(result.status == "KILLED" for result in results) else 1
+
+
+def _run_selected(
+    workspace: Path,
+    selected: list[Mutation],
+    timeout: float,
+    run_test,
+) -> list[Result]:
+    """Run the selected tests unmutated, then each mutation against them."""
+    baseline = run_test(workspace, sorted({mutation.test for mutation in selected}), timeout)
+    if baseline.returncode != 0:
+        message = baseline.detail or "baseline tests failed"
+        raise BaselineFailure(message)
+
+    backup_dir = workspace.parent / "backups"
+    backup_dir.mkdir(exist_ok=True)
+    results: list[Result] = []
+    for index, mutation in enumerate(selected, start=1):
+        print(f"[{index}/{len(selected)}] {mutation.name} ... ", end="", flush=True)
+        target = workspace / mutation.path
+        original = target.read_bytes()
+        backup = backup_dir / f"{index:02d}-{target.name}.bak"
+        backup.write_bytes(original)
+        text = original.decode("utf-8")
+        old, new, occurrences = _match_snippet(text, mutation.old, mutation.new)
+
+        if occurrences != 1:
+            detail = f"expected one match in {mutation.path}, found {occurrences}"
+            result = Result(mutation, "INVALID", 0.0, detail)
+            results.append(result)
+            print(f"INVALID ({detail})")
+            continue
+
+        mutation_started = time.perf_counter()
+        status = "ERROR"
+        detail = ""
+        try:
+            target.write_bytes(text.replace(old, new, 1).encode("utf-8"))
+            status, detail = _classify_mutant(run_test(workspace, [mutation.test], timeout))
+        finally:
+            _restore(workspace, mutation, backup, original)
+        duration = time.perf_counter() - mutation_started
+        results.append(Result(mutation, status, duration, detail))
+        print(f"{status} ({duration:.2f}s)")
+
+    return results
 
 
 def _print_table(results: list[Result], total_duration: float) -> None:
@@ -492,36 +574,12 @@ def main(argv: list[str] | None = None) -> int:
     with tempfile.TemporaryDirectory(prefix="mutation-check-") as temp_dir:
         workspace = Path(temp_dir) / "workspace"
         _copy_workspace(ROOT, workspace)
-        backup_dir = Path(temp_dir) / "backups"
-        backup_dir.mkdir()
-        for index, mutation in enumerate(selected, start=1):
-            print(f"[{index}/{len(selected)}] {mutation.name} ... ", end="", flush=True)
-            target = workspace / mutation.path
-            original = target.read_bytes()
-            backup = backup_dir / f"{index:02d}-{target.name}.bak"
-            backup.write_bytes(original)
-            text = original.decode("utf-8")
-            old, new, occurrences = _match_snippet(text, mutation.old, mutation.new)
-
-            if occurrences != 1:
-                detail = f"expected one match in {mutation.path}, found {occurrences}"
-                result = Result(mutation, "INVALID", 0.0, detail)
-                results.append(result)
-                print(f"INVALID ({detail})")
-                continue
-
-            mutation_started = time.perf_counter()
-            status = "ERROR"
-            detail = ""
-            try:
-                target.write_bytes(text.replace(old, new, 1).encode("utf-8"))
-                killed, detail = _run_test(workspace, mutation.test, args.timeout)
-                status = "KILLED" if killed else "SURVIVED"
-            finally:
-                _restore(workspace, mutation, backup, original)
-            duration = time.perf_counter() - mutation_started
-            results.append(Result(mutation, status, duration, detail))
-            print(f"{status} ({duration:.2f}s)")
+        try:
+            results = _run_selected(workspace, selected, args.timeout, _run_test)
+        except BaselineFailure as exc:
+            print("Baseline tests do not pass on the unmutated copy.", file=sys.stderr)
+            print(f"  {exc}", file=sys.stderr)
+            return 2
 
     total_duration = time.perf_counter() - started
     _print_table(results, total_duration)
@@ -533,8 +591,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{result.status}: {result.mutation.name} ({result.mutation.test})")
             if result.detail:
                 print(f"  {result.detail}")
-        return 1
-    return 0
+        return _failure_exit_code(results)
+    return _failure_exit_code(results)
 
 
 if __name__ == "__main__":

@@ -721,6 +721,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   itself. A second test maps every declared runtime distribution through the gate's alias
   table to the expected import names, with `h2` allowed because it is declared for httpx's
   HTTP/2 extra but never imported by `src`.
+- **The mutation checker distinguishes a killed mutant from a broken run.** The selected
+  tests now run once on the unmutated copy and abort the check if that baseline is not
+  green. A mutant is KILLED only on pytest exit 1 with at least one failed test; exit 0
+  is SURVIVED, and exit codes 2-5, a timeout, or no collected tests are INCONCLUSIVE and
+  fail the check by name. Fake-runner tests cover the failing baseline, exit 2, exit 1,
+  and exit 0.
 
 ### Documentation 📝
 
