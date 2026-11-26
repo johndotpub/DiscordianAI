@@ -317,6 +317,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declared floors, then runs the suite. The ordinary test job still follows the latest
   allowed releases, so a floor-only failure now fails the build instead of reaching an
   operator.
+- **Docker publishing waits for CI and cannot be cancelled mid-push.** The Docker
+  workflow polls the CI run for the same commit and publishes only after it succeeds.
+  The `latest` tag now moves only for `main` or a version tag, and concurrency cancels
+  superseded pull-request builds but not a publish run between the GHCR and Docker Hub
+  pushes.
 
 ### Fixed 🔧
 

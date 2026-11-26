@@ -167,6 +167,61 @@ def test_docker_workflow_has_qemu_pr_build_and_split_registry_pushes():
     assert pushed_registries == {"ghcr", "dockerhub"}
 
 
+def test_docker_publish_waits_for_a_successful_ci_run():
+    """The publish job may not start until CI has passed for this commit."""
+    workflow = _load_yaml(DOCKER_PATH)
+    jobs = workflow["jobs"]
+    gate = jobs["wait-for-ci"]
+    publish = jobs["publish"]
+
+    assert publish.get("needs") == "wait-for-ci"
+    assert gate.get("timeout-minutes") == 45
+    permissions = gate.get("permissions", {}) or {}
+    assert permissions.get("actions") == "read"
+    assert permissions.get("contents") == "read"
+    assert gate.get("env", {}).get("GH_TOKEN") == "${{ github.token }}"
+    assert "!= 'pull_request'" in str(gate.get("if", ""))
+
+    commands = _job_commands(gate)
+    assert "gh run list" in commands
+    assert "--workflow ci.yml" in commands
+    assert '--commit "$GITHUB_SHA"' in commands
+    assert "--json status,conclusion" in commands
+    assert "--limit 5" in commands
+    assert "sleep 30" in commands
+    assert "conclusion" in commands
+    assert "within 10 minutes" in commands
+
+
+def test_docker_latest_tag_is_limited_to_main_and_version_tags():
+    """A dispatch from a feature branch must not overwrite the latest tag."""
+    workflow = _load_yaml(DOCKER_PATH)
+    publish = workflow["jobs"]["publish"]
+    metadata_steps = [
+        step
+        for step in publish.get("steps", []) or []
+        if _action(step).startswith("docker/metadata-action")
+    ]
+    assert metadata_steps
+
+    for step in metadata_steps:
+        tags = str((step.get("with", {}) or {}).get("tags", ""))
+        latest_lines = [line for line in tags.splitlines() if "value=latest" in line]
+        assert len(latest_lines) == 1, tags
+        latest = latest_lines[0]
+        assert "enable=" in latest, latest
+        assert "refs/heads/main" in latest, latest
+        assert "refs/tags/" in latest, latest
+
+
+def test_docker_publish_is_not_cancelled_mid_run():
+    """A newer push may cancel a pull-request build, not a publish run."""
+    workflow = _load_yaml(DOCKER_PATH)
+    concurrency = workflow.get("concurrency", {}) or {}
+
+    assert "github.event_name == 'pull_request'" in str(concurrency.get("cancel-in-progress", ""))
+
+
 def test_dockerhub_credentials_are_lifted_to_job_env_and_gate_the_step():
     workflow = _load_yaml(DOCKER_PATH)
     publish = workflow["jobs"]["publish"]
