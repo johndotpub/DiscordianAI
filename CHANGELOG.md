@@ -560,6 +560,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   OpenAI and Perplexity wrapper failure lines, and the API-call failure line now log the
   exception class, HTTP status code when present, and classified error type instead of the
   exception text. A provider body can no longer reach a log record through these paths.
+- **A local Docker build cannot copy an environment file.** `.dockerignore` now excludes
+  every env-file pattern `.gitignore` ignores, plus `.env.*` and `*.env`, while keeping
+  `.env.example`. A file such as `.env.production.local` or `deploy.env` no longer enters
+  the build context or an image layer through `COPY . .`.
 
 ### Operations ⚙️
 

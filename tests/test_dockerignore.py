@@ -62,6 +62,44 @@ def test_dockerignore_excludes_local_config_and_caches():
         assert _is_excluded(path, patterns), f"{path} must not enter the build context"
 
 
+def test_dockerignore_excludes_every_env_file_pattern():
+    """Local env files stay out, while the shipped template remains."""
+    patterns = _patterns()
+
+    for pattern in (
+        ".env",
+        ".env.local",
+        ".env.development.local",
+        ".env.test.local",
+        ".env.production.local",
+        ".env.schema.json",
+        ".env.*.json",
+        ".env.*",
+        "*.env",
+        "*.env.docker",
+        "*.dockerenv",
+        "!.env.example",
+    ):
+        assert pattern in patterns, f"{pattern} is missing from .dockerignore"
+
+    for path in (
+        ".env",
+        ".env.local",
+        ".env.development.local",
+        ".env.test.local",
+        ".env.production.local",
+        ".env.schema.json",
+        ".env.custom.json",
+        ".env.staging",
+        "deploy.env",
+        "config.env.docker",
+        "local.dockerenv",
+    ):
+        assert _is_excluded(path, patterns), f"{path} must not enter the build context"
+
+    assert not _is_excluded(".env.example", patterns), ".env.example must remain available"
+
+
 def test_dockerignore_keeps_build_inputs():
     """The package source and packaging metadata remain in the build context."""
     patterns = _patterns()
