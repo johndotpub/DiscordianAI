@@ -228,7 +228,7 @@ One decision is built per message before any provider call:
 
 ### Model Selection
 - Use **perplexity/sonar**, the current Agent API Sonar model, for web search
-- Consider token use when setting OUTPUT_TOKENS; the provider's `usage` block
+- Consider token use when setting PERPLEXITY_OUTPUT_TOKENS; the provider's `usage` block
   reports its own breakdown for each response
 
 ### Integration Tips
@@ -254,7 +254,7 @@ One decision is built per message before any provider call:
 - Check if you have access to the specified model
 
 **Citations not formatting properly**:
-- Ensure OUTPUT_TOKENS is sufficient (recommended: 16000+)
+- Ensure PERPLEXITY_OUTPUT_TOKENS is sufficient (recommended: 16000+)
 - Check that citation extraction patterns are working
 - Verify Discord message length limits aren't truncating citations
 
@@ -265,7 +265,7 @@ One decision is built per message before any provider call:
 
 ### Performance Optimization
 
-- **Adjust OUTPUT_TOKENS**: Higher values allow for more complete responses with citations
+- **Adjust PERPLEXITY_OUTPUT_TOKENS**: Higher values allow for more complete responses with citations
 - **Monitor API usage**: The bot does not log usage; tune limits for your use case
 
 ## Environment Variables

@@ -8,6 +8,13 @@ Complete setup guide for DiscordianAI with advanced AI orchestration and convers
 - **Discord bot token** from Discord Developer Portal
 - **At least one AI service API key** (an OpenAI-compatible chat provider and/or Perplexity)
 
+## Get the Code
+
+```bash
+git clone https://github.com/johndotpub/DiscordianAI.git
+cd DiscordianAI
+```
+
 ## Step 1: Discord Bot Creation
 
 Create and configure your Discord bot:
@@ -104,9 +111,17 @@ Choose **either** the OpenAI-compatible chat provider only **or** Perplexity onl
 
 ## Step 4: Install Dependencies
 
+Create and activate a virtual environment, then install the runtime dependencies:
+
 ```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+The `discordian.sh` launcher also creates and populates `.venv/` on first run when no
+usable virtual environment exists, so this manual step is optional if you start the bot
+through the launcher.
 
 **Note**: This includes `httpx[http2]` for HTTP/2 connection pooling support. If HTTP/2 dependencies fail to install, the bot will gracefully fall back to HTTP/1.1. It also installs `tree-sitter` and `tree-sitter-markdown` for the shared output-sanitisation parser. `tree-sitter` 0.27.0 ships CPython 3.12 wheels for manylinux x86_64 and aarch64 and for musllinux x86_64, but not musllinux aarch64; `tree-sitter-markdown` 0.5.4 ships wheels for all four. The manylinux-based `python:3.12-slim-bookworm` image needs no compiler; a musllinux aarch64 image would need one for `tree-sitter`.
 
@@ -142,13 +157,15 @@ The included `discordian.sh` script provides additional process management:
 ## Step 6: Testing Your Setup
 
 ### Test Basic Functionality
-Send these messages to your bot to verify it's working:
+In a server channel, mention the bot in every test message (`@YourBot Hello!`); guild
+messages without a mention are ignored. Direct messages need no mention. Send these
+messages to verify the bot is working:
 
-1. **General Response**: `Hello!` (should use the chat provider/conversational AI)
-2. **Web Search**: `What's the latest AI news?` (should use Perplexity if available)
-3. **Follow-up Consistency**: 
-   - First: `What's the weather today?` (→ Perplexity)
-   - Then: `Tell me more` (→ Should stay with Perplexity)
+1. **General Response**: `@YourBot Hello!` (should use the chat provider/conversational AI)
+2. **Web Search**: `@YourBot What's the latest AI news?` (should use Perplexity if available)
+3. **Follow-up Consistency**:
+   - First: `@YourBot What's the weather today?` (→ Perplexity)
+   - Then: `@YourBot Tell me more` (→ Should stay with Perplexity)
 
 ### Check Logs
 
@@ -169,8 +186,8 @@ fields include `channel_id`, `guild_id`, and `user_id` when the message logger
 supplied that context. For example:
 
 ```
-2026-11-23T17:04:06Z [info     ] Bot logged in as YourBotName (ID: 123456789012345678) [discordianai.bot]
 2026-11-23T17:04:06Z [info     ] Running in hybrid mode (OpenAI + Perplexity); smart orchestration enabled [discordianai.bot]
+2026-11-23T17:04:06Z [info     ] Bot logged in as YourBotName (ID: 123456789012345678) [discordianai.bot]
 2026-11-23T17:04:06Z [info     ] Processing message (ID: 123456789012345678, length: 42) [discordianai.bot] channel_id=123456789012345678 guild_id=123456789012345679 user_id=987654321098765432
 2026-11-23T17:04:06Z [info     ] Routing decision: {'route': 'web', 'service': 'perplexity', ...} [discordianai.bot]
 ```

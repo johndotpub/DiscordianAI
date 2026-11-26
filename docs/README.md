@@ -13,11 +13,14 @@ Welcome to the DiscordianAI documentation! This guide covers everything you need
 - **[OpenAI-Compatible Integration](OpenAI.md)** - Ollama Cloud by default; OpenAI remains supported
 - **[Perplexity Integration](Perplexity.md)** - Web search, citations, and Sonar models
 - **[Smart Orchestration](HybridMode.md)** - How the bot chooses between AI services
+- **[Routing Design](routing/DESIGN.md)** - Evidence model, gate rules, and invariants
+- **[API Contract](API-CONTRACT.md)** - Request and response shapes for both providers
 - **[Web Access](WebScraping.md)** – provider-side search and page fetch
 
 ### 💬 Message Handling
 - **[Message Splitting](MessageSplitting.md)** - How long messages are handled
 - **[Embed Limits](EmbedLimits.md)** - Discord embed size limits and strategies
+- **[Image Attachments](Vision.md)** - Vision support, limits, and privacy
 - **Conversational UX**
     - Bot shows typing indicators while AI responses are being generated
     - All replies are threaded (reply-to) and start with the requesting human's mention for clarity; bot authors are answered without a mention prefix
@@ -32,6 +35,7 @@ Welcome to the DiscordianAI documentation! This guide covers everything you need
 
 ### 🛡️ Security & Development
 - **[Security](Security.md)** - API key management, rate limiting, hardening
+- **[API Parameter Validation](API_Validation.md)** - Startup checks for tokens, URLs, and keys
 - **[Development Guide](Development.md)** - Modern workflow with black + ruff
 
 ### 📖 API Reference

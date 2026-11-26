@@ -25,6 +25,9 @@ because it cannot read the config file.
 
 The shipped `docker-compose.yml`:
 
+- pulls the published image `ghcr.io/johndotpub/discordianai:latest`; the local `build: .`
+  line is commented out, so `docker compose up` does not include changes in your checkout.
+  Uncomment `build: .` or build and tag the image yourself when testing local changes;
 - injects `.env` into the container with `env_file: [.env]`, so secrets stay out of the
   compose file;
 - mounts `./config.ini` read-only at `/app/config.ini`;
@@ -62,6 +65,8 @@ container does not write to `./logs` or `./data`.
 
 ```bash
 docker build . -t discordianai:latest
+cp .env.example .env
+# Edit .env and set DISCORD_TOKEN plus the provider keys you use.
 cp config.ini.example config.ini
 docker run --restart always \
   --log-opt max-size=10m \
@@ -75,6 +80,9 @@ docker run --restart always \
 
 Replace the placeholder values in the copied `config.ini` with real tokens, keys, and
 channel names before starting the container; the example file is a template.
+
+The `--env-file .env` flag reads the file created above; keep it out of version control and
+restrict its permissions. The bot does not read Docker secret files.
 
 The image defines the same `/health` `HEALTHCHECK` as the compose file, so `docker ps`
 reports the container as unhealthy when the bot or its providers stop responding.

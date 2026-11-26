@@ -85,7 +85,7 @@ PERPLEXITY_API_KEY=your_perplexity_key_here
 
 ### Conversation Consistency
 - **Metadata Tracking**: Each chat response includes model and service information
-- **Follow-up Routing**: Follow-up questions automatically route to the chat provider if the previous response came from it
+- **Follow-up Routing**: A short anaphoric or continuation follow-up inherits the previous route (including the chat provider) when the gate records one; other messages are decided from their own cues
 - **Context Preservation**: Maintains conversation context across multiple exchanges
 
 ### Thread-Safe Architecture

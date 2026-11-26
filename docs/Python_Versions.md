@@ -35,7 +35,7 @@ def get_user_data(user_id: int | None) -> dict[str, Any] | None:
     pass
 ```
 
-### F-String Debugging (Python 3.12)
+### F-String Debugging (Python 3.8+)
 ```python
 # Cleaner debug f-strings
 print(f"{user_id=}")
@@ -67,18 +67,21 @@ Our GitHub Actions workflow automatically tests:
 - **Python version** (3.12 required)
 - **Linting and formatting** with black + ruff
 - **Unit tests** with pytest
-- **Full tox suite** for comprehensive validation
+
+Plain `tox` runs the whole environment list (`py312`, `py313`, `lint`, `format`, `audit`,
+`docs`). Use `tox -e py312` for the test run; `py313` needs a Python 3.13 interpreter, and
+the `format` environment rewrites files with `black .` and `ruff check --fix .`. CI runs
+`tox -e py312` plus separate lint, audit, and wheel-install jobs.
 
 ## Dependency Compatibility
 
 All project dependencies are verified to work with Python 3.12:
 
-- **discord.py**: ✅ Python 3.8+
-- **openai** (OpenAI-compatible client): ✅ Python 3.7+
-- **websockets**: ✅ Python 3.7+
-- **pytest**: ✅ Python 3.8+
-- **ruff**: ✅ Python 3.7+
-- **black**: ✅ Python 3.7+
+- **discord.py**: ✅
+- **openai** (OpenAI-compatible client): ✅
+- **pytest**: ✅
+- **ruff**: ✅
+- **black**: ✅
 
 ## Launcher Notes
 

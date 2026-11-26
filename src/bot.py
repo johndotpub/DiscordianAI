@@ -1,11 +1,10 @@
-"""Discord bot core module with event handling and message processing.
+"""Discord bot startup wiring.
 
-This module provides the main Discord bot implementation including:
-- Bot initialization and dependency injection
-- Event handlers for Discord messages
-- Message splitting for long responses
-- Graceful shutdown with signal handlers
-- Integration with AI services (OpenAI, Perplexity)
+This module holds ``initialize_bot_and_dependencies`` (builds the Discord
+client, provider clients, router, and shared services) and ``run_bot`` (starts
+the manager). Event handlers and graceful shutdown live in ``bot_manager.py``,
+mention and DM routing live in ``message_router.py``, and message splitting and
+delivery live in ``message_splitter.py``.
 
 The bot uses a ``BotDependencies`` dataclass for typed dependency injection,
 replacing the previous untyped ``deps`` dict pattern.

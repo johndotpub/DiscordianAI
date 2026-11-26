@@ -28,7 +28,7 @@ Each message is classified once by `src/routing/` before any provider is called,
    turn's route, unless a bearing cue appears or the topic shifts.
 4. **Otherwise local.** Framing — question shape, imperatives, register, proper names — never decides.
 
-Two rules keep the model honest:
+Three rules keep the model honest:
 
 - **No bearing cue means no web route.** A question mark or a proper name is not enough. *"What is the
   capital of France?"* stays local because the answer does not change.
@@ -60,7 +60,7 @@ version, money, time, code, and URL cues. Adding a term is a lexicon data change
 ### Follow-up inheritance
 
 A follow-up is a short message (at most six tokens) that is an anaphor, a bare continuation, or begins with
-a coordinator, and it must have an assistant turn at gap <= 1 in the same conversation. The previous route
+a coordinator, and it must have an assistant turn at gap <= 1 in the same conversation. The new message
 then inherits the previous route outright. A bearing cue in the new message wins, and a topic shift cancels inheritance.
 
 A word such as "also" or "more" inside a fresh question does not turn that question into an early return.
@@ -238,7 +238,8 @@ The hybrid orchestrator (`smart_orchestrator.py`) provides bounded fallback betw
 - **Web-inability reroute**: If the chat provider makes a first-person admission that it cannot browse the
   web, and Perplexity has not been tried in this request, the orchestrator reroutes once. General statements,
   quoted text, and creative or narrative output do not trigger this reroute. If Perplexity already failed,
-  the local answer is returned with a warning instead of a second Perplexity call.
+  the local answer is returned and the skipped reroute is logged at INFO instead of making a second
+  Perplexity call.
 - **Both unavailable**: Returns the `both_services_unavailable` message
   (`"🔧 All AI services are temporarily unavailable. Please try again later."`).
 

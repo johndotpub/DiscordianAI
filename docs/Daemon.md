@@ -91,6 +91,14 @@ This command:
 
 The config file name (without `.ini`) becomes the systemd instance name. `--install-systemd bot.ini` creates `discordian-bot@bot.service`, `--install-systemd production.ini` creates `discordian-bot@production.service`.
 
+A systemd **user** service stops when your last session ends and does not start at boot unless lingering is enabled. Enable it once for the account that owns the service:
+
+```bash
+loginctl enable-linger "$USER"
+```
+
+Use `loginctl disable-linger "$USER"` to undo it.
+
 ### Manual setup
 
 A template unit file is included in `contrib/systemd/discordian-bot@.service`. To install manually:

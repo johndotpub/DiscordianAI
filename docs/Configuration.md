@@ -37,7 +37,7 @@ OpenAI remains supported by setting all three of `OPENAI_API_URL`, `GPT_MODEL`, 
 
 #### Token Limits
 - **`INPUT_TOKENS`**: Maximum input context tokens *(default: 250000)*
-- **`OUTPUT_TOKENS`**: Maximum chat output tokens per response, sent as `max_tokens` to Ollama-compatible providers and `max_completion_tokens` to `api.openai.com` *(default: 16384)*
+- **`OUTPUT_TOKENS`**: Maximum chat output tokens per response, sent as `max_tokens` on Ollama-compatible hosts (`ollama.com`, `*.ollama.com`, `localhost`, `127.0.0.1`) and as `max_completion_tokens` on every other OpenAI-compatible host, including `api.openai.com` *(default: 16384)*
 - **`PERPLEXITY_OUTPUT_TOKENS`**: Maximum Perplexity output tokens per response, sent as `max_output_tokens` to the Agent API *(default: the value of `OUTPUT_TOKENS`)*
 - **`PERPLEXITY_INPUT_TOKENS`**: Prompt budget for the Perplexity Sonar path only *(default: 111000)*. It leaves room for `PERPLEXITY_OUTPUT_TOKENS` and the fixed `fetch_url` instruction suffix inside the Sonar context window.
 - **`CONTEXT_WINDOW`**: Total chat-provider context window size *(default: 1000000)*. The default chat model's window is 1,000,000 tokens, so this value may be set that high; it feeds the prompt budget and truncation, not an API usage limit.
@@ -159,8 +159,8 @@ client error does not. A provider that has never been called is healthy: silence
 `last_success_age_seconds` and `last_success_stale` for diagnostics, but neither decides health.
 
 Readiness also requires a live Discord gateway connection. The health server starts before
-Discord login, so `/health/live` answers while the connection is still being established;
-`/health/ready` returns 503 until `on_ready` reports a live gateway. The bot records disconnect
+the gateway connects, so `/health/live` answers while the connection is still being
+established; `/health/ready` returns 503 until `on_ready` reports a live gateway. The bot records disconnect
 and resume events, so `/health` and `/health/ready` return 503 during an outage even though
 discord.py's `is_ready()` remains set.
 
@@ -407,13 +407,15 @@ interpolation marker, so write `SYSTEM_MESSAGE=I am 100% sure` without escaping 
 `%%` is kept as two characters rather than collapsed to one. Duplicate keys are not
 merged.
 
-A file passed with `--conf` must exist. A missing file, an unreadable file, a permission
-error, a duplicated key, or a malformed section stops startup with an error that names the
-file, the error class, and any source line
-numbers. It does not reproduce the offending line or the parser's message, because that
-text can contain a token or another secret. Files are read as UTF-8; a decode error is
-fatal. The bot never continues with built-in defaults after a config file fails to load;
-omit `--conf` to run from environment variables and defaults.
+A file passed with `--conf` must exist. A missing file, or a path that is not a regular
+file, stops startup with `Configuration file <path> is missing or not a regular file;
+create it before starting` and exit code 1. If the file exists but cannot be used, an
+unreadable file, permission error, duplicate key, malformed section, or decode error stops
+startup with an error that names the file and the error class plus any source line numbers.
+That error does not reproduce the offending line or the parser's message, because the text
+can contain a token or another secret. Files are read as UTF-8; a decode error is fatal.
+The bot never continues with built-in defaults after a config file fails to load; omit
+`--conf` to run from environment variables and defaults.
 
 An empty value means the setting is not set, so its documented default applies. This
 applies to config-file values and environment overrides alike: a blank provider URL or
@@ -428,8 +430,9 @@ model does not select that provider. Three settings keep an explicit empty meani
 - **Value Validation**: Checks integer fields, validates rate limits, and ensures proper data types
 
 ### Runtime Error Handling
-- **Global Exception Handler**: Catches and logs all unhandled exceptions with full stack traces
-- **Graceful Fallbacks**: Continues operation with sensible defaults when possible
+- **Global Exception Handler**: `sys.excepthook` in `src/main.py` logs an unhandled exception with a full stack trace; the process still exits.
+- **Provider Failures**: The orchestrator applies its bounded fallbacks between providers.
+- **Unhandled Errors**: An error outside the orchestrator's fallback path is not swallowed and ends the process.
 - **Production Logging**: Comprehensive logging for debugging and monitoring
 - **Memory Management**: Automatic cleanup and resource management
 

@@ -25,7 +25,7 @@ DiscordianAI is a Discord bot that routes each message to an OpenAI-compatible c
 ## What Makes It Different
 
 - **Deterministic hybrid routing**: the default heuristic gate decides each message from explicit overrides and bearing cues (things whose value can change); it uses no scores, weights, or thresholds. The OpenAI-compatible provider (Ollama Cloud by default) handles stable knowledge, reasoning, and creative prompts; Perplexity's Agent API handles live facts and returns citations. See [docs/routing/DESIGN.md](docs/routing/DESIGN.md).
-- **Conversation history**: History is keyed by guild channel (`g:<guild>:c:<channel>`) or DM (`dm:<user>`) and is sent to both providers. A thread keeps its own history, separate from its parent. A follow-up is routed to the provider that answered the previous turn when one is recorded.
+- **Conversation history**: History is keyed by guild channel (`g:<guild>:c:<channel>`) or DM (`dm:<user>`) and is sent to both providers. A thread keeps its own history, separate from its parent. A short anaphoric or continuation follow-up inherits the previous turn's provider when one is recorded; other messages are decided from their own cues.
 - **Discord-native output**: Citation embeds, message splitting at Discord's 2000-character limit, and Perplexity link-preview suppression when a response contains two or more links. The OpenAI-compatible path does not suppress previews.
 - **Operations**: Per-provider HTTP/2 connection pooling with HTTP/1.1 fallback, per-provider circuit breakers, and health checks after login plus HTTP endpoints that report observed provider and breaker state.
 - **Single-source configuration**: `config.ini` or environment variables drive every mode. Startup validation stops on missing credentials, malformed URLs, and invalid limits; provider model ids are not gated.
@@ -40,11 +40,20 @@ DiscordianAI is a Discord bot that routes each message to an OpenAI-compatible c
 
 ## Quick Start
 
-1. **Install Python 3.12 or newer** and create a virtual environment.
-2. **Clone & install**: `pip install -e ".[dev]"`
+1. **Install Python 3.12 or newer.**
+2. **Clone & install**:
+   ```bash
+   git clone https://github.com/johndotpub/DiscordianAI.git
+   cd DiscordianAI
+   python3.12 -m venv .venv
+   source .venv/bin/activate
+   pip install -e ".[dev]"
+   ```
+   The `discordian.sh` launcher creates and populates `.venv/` on first run if you
+   prefer not to do this manually.
 3. **Copy config**: `cp config.ini.example config.ini`
 4. **Set tokens** in `config.ini` (Discord, chat provider, Perplexity as needed).
-5. **Run the bot**: `python -m src.main --conf config.ini` (or the installed console script: `discordianai --conf config.ini`).
+5. **Run the bot**: `python -m src.main --conf config.ini` (or the installed console script: `discordianai --conf config.ini`). In a server channel, mention the bot; guild messages without a mention are ignored. DMs need no mention.
 6. **Run tests** before shipping: `pytest` (coverage gate: 84% via tox/Codecov)
 
 Runtime dependencies are `discord.py`, `openai`, `httpx[http2]`, `h2`, `cachetools`,
@@ -100,7 +109,7 @@ The launcher resolves Python in this order: project-local `.venv` (when its depe
 | `DISCORD_TOKEN` | Bot authentication token from the Discord Developer Portal.
 | `GPT_MODEL` | OpenAI-compatible model name sent as configured. Default `deepseek-v4.1-flash:1017`; any non-empty model identifier is accepted.
 | `PERPLEXITY_MODEL` | Perplexity model name. Default `perplexity/sonar`, the current Agent API Sonar model. Legacy Sonar names still answer on Chat Completions but are not used by this bot.
-| `INPUT_TOKENS` / `OUTPUT_TOKENS` | Prompt budget and chat completion cap. `OUTPUT_TOKENS` is sent as `max_tokens` and includes reasoning tokens.
+| `INPUT_TOKENS` / `OUTPUT_TOKENS` | Prompt budget and chat completion cap. `OUTPUT_TOKENS` is sent as `max_tokens` on Ollama-compatible hosts (`ollama.com`, `*.ollama.com`, `localhost`, `127.0.0.1`) and as `max_completion_tokens` on every other OpenAI-compatible host, including `api.openai.com`; the cap includes reasoning tokens.
 | `PERPLEXITY_OUTPUT_TOKENS` | Perplexity completion cap, sent as `max_output_tokens` to the Agent API (output only). Defaults to `OUTPUT_TOKENS`.
 | `PERPLEXITY_INPUT_TOKENS` | Prompt budget for the Perplexity web path (default 111000). History is trimmed to it after the fixed `fetch_url` instructions are reserved.
 | `CONTEXT_WINDOW` | Chat-provider context window (default 1000000). The default chat model's window is 1,000,000 tokens; the value feeds the prompt budget and truncation, not an API usage limit.
@@ -202,7 +211,11 @@ pytest tests/test_smart_orchestrator_coverage.py
 
 Run the full local gate with [scripts/preflight.sh](scripts/preflight.sh): `bash scripts/preflight.sh`. It runs Black, Ruff, pytest, the Sphinx build, and a wheel build.
 
-Use `tox` for the CI matrix (`tox`, `tox -e py312`, `tox --parallel auto`, `tox -e audit`). CI runs Ruff, Black, pytest with coverage, pip-audit, and a wheel install smoke test; locally run `tox -e audit` to scan runtime + dev deps.
+Use `tox -e py312` for the canonical test run. Plain `tox` runs the whole environment
+list (`py312`, `py313`, `lint`, `format`, `audit`, `docs`); `py313` needs a Python 3.13
+interpreter, and the `format` environment rewrites files with `black .` and
+`ruff check --fix .`. CI runs `tox -e py312` plus separate lint, audit, and wheel-install
+jobs; locally run `tox -e audit` to scan runtime + dev deps.
 
 ## Security Checklist
 

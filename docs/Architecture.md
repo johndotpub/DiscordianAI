@@ -48,7 +48,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 | Component | File | Purpose |
 |-----------|------|---------|
 | **Main** | `main.py` | Application entry point, startup sequence, logging setup |
-| **Bot** | `bot.py` | Discord client initialization, event handlers, graceful shutdown |
+| **Bot** | `bot.py` | Dependency wiring and bot startup; event handlers and shutdown live in `bot_manager.py` |
 | **Bot Manager** | `bot_manager.py` | Client lifecycle, signal handling, health-monitor scheduling, and shutdown |
 
 ### Core Processing
@@ -87,7 +87,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| **Message Router** | `message_router.py` | Discord event routing and dispatch to the DM and channel processors |
+| **Message Router** | `message_router.py` | Mention and DM detection, channel and thread authorisation, and dispatch to the DM and channel processors |
 | **Discord Bot** | `discord_bot.py` | Activity status, presence management |
 | **Discord Embeds** | `discord_embeds.py` | Embed creation for citations |
 | **Citation Formatting** | `citation_formatting.py` | Renders numbered citations as markdown links for messages and embeds, and vets each URL before it can become clickable |
@@ -101,11 +101,11 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 - **Rate Limiting** (`rate_limits.py`): Per-user buckets enforce `[Limits]` from config.ini so spam never overwhelms upstream APIs.
 - **Conversation History** (`conversation_manager.py`): Thread-safe per-conversation transcripts preserve context while pruning automatically. A conversation key is `g:<guild>:c:<channel>` for a guild channel or thread, or `dm:<user>` for a direct message; a thread uses its own channel id, so it never shares history with its parent.
 - **Activity & Presence** (`discord_bot.py` + config): Status text, presence state, and activity type are configurable at runtime.
-- **Direct Messages** (`bot.py`): DM sessions bypass mention requirements but still honour rate limits, and follow-ups inherit the previous service through the router.
+- **Direct Messages** (`message_router.py` + `message_processor.py`): DM sessions bypass mention requirements but still honour rate limits, and short anaphoric follow-ups inherit the previous route through the router.
 - **Channel Targeting** (`message_router.py`): `ALLOWED_CHANNELS` gating ensures the bot only replies where it is expected.
 - **Smart Message Splitting** (`message_splitter.py`): Discord-safe splitting protects code blocks, embeds, and citations from truncation.
 - **Delivery Policy** (`message_splitter.py`): One helper sends every answer with `channel.send`, builds the reply reference with `fail_if_not_exists=False`, and owns the allowed-mentions policy (`everyone=False`, `roles=[]`).
-- **Global Exception Handling** (`error_handling.py` + `bot.py`): Centralized logging and graceful fallbacks keep the process alive after faults.
+- **Global Exception Handling** (`main.py`): `sys.excepthook` logs an unhandled exception with a traceback, and the process still exits. Provider failures fall back inside the orchestrator; an unhandled error outside that path ends the process.
 - **Shutdown Order** (`bot_manager.py`): Message intake stops first, then provider connection pools and the router's HTTP client close, and Discord closes last. Closing Discord first lets `Client.run` finish and cancel the remaining shutdown work.
 - **Health Server** (`health_server.py`): Lightweight HTTP endpoint for liveness/readiness probes, compatible with Kubernetes and load balancers.
 
@@ -115,7 +115,8 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 sequenceDiagram
     participant U as User
     participant D as Discord
-    participant B as Bot (bot.py)
+    participant BM as Bot Manager (bot_manager.py)
+    participant R as Message Router (message_router.py)
     participant MP as Message Processor
     participant O as Orchestrator
     participant AI as AI Service
@@ -123,8 +124,9 @@ sequenceDiagram
     participant CM as Conversation Manager
 
     U->>D: Send message
-    D->>B: on_message event
-    B->>MP: Normalize message + log context
+    D->>BM: on_message event
+    BM->>R: handle_incoming_message
+    R->>MP: Mention/DM routing; normalize message + log context
     MP->>MP: Rate limit & guardrail checks
     MP->>CM: Fetch conversation history
     MP->>O: Route message
@@ -149,8 +151,7 @@ sequenceDiagram
     O-->>MP: Response payload
     O->>CM: Update conversation history
     MP->>MP: Split/format output
-    MP-->>B: Final payload
-    B->>D: Send response
+    MP->>D: Send response via message_splitter
     D-->>U: Display message
 ```
 
@@ -334,9 +335,9 @@ because its contract is to remove code-shaped cues before a route decision.
 - Never logged or exposed in error messages
 
 ### Input Validation
-- Message content sanitization
-- URL validation patterns
-- Rate limiting per user
+- Inbound text is not sanitised; prompts are bounded by token budgets and per-user rate limits
+- No local URL validation or fetching; user URLs are opened by the provider's tools
+- Outbound model text is sanitised before it reaches Discord
 
 ### Pre-commit Hooks
 - `detect-secrets` prevents accidental key commits

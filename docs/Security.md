@@ -34,20 +34,18 @@ This document outlines security considerations and best practices for deploying 
    chmod 600 config.ini
    ```
 
-3. **Docker Secrets** (optional hardening; not enabled in the shipped compose file)
-   ```yaml
-   # Optional hardening only; not enabled in the shipped docker-compose.yml.
-   services:
-     discordianai:
-       secrets:
-         - discord_token
-         - openai_key
-   secrets:
-     discord_token:
-       file: ./secrets/discord_token.txt
-     openai_key:
-       file: ./secrets/openai_key.txt
+3. **Environment file for containers** (recommended for production)
+   The shipped `docker-compose.yml` loads credentials from `.env` with
+   `env_file: [.env]`. Create that file from the tracked template, keep it out of
+   version control, and restrict its permissions:
+   ```bash
+   cp .env.example .env
+   chmod 600 .env
+   # Edit .env and set DISCORD_TOKEN plus the provider keys you use.
    ```
+   The bot does not read Docker secret files, mounted secret paths, or any other
+   secret-file mechanism. Credentials come only from `config.ini` and environment
+   variables.
 
 ### Key Format Validation
 
@@ -58,7 +56,7 @@ DiscordianAI validates API key formats before use:
 | OpenAI-compatible | `sk-` is OpenAI's shape; any non-empty key is accepted, and a non-`sk-` key logs a warning | `sk-abc123...` or an Ollama Cloud key |
 | Perplexity | `pplx-` + at least 20 letters, digits, `-` or `_` | `pplx-xyz789...` |
 
-A blank key disables that provider, and a whitespace-only value counts as blank. A provider counts as configured when its key is non-empty, or when its base URL or model is set in the file or environment. A configured provider without a key stops startup even when the other provider has a key; to run only one provider, leave the other provider at its defaults or set its key blank. A non-empty OpenAI-compatible key that is not `sk-`-shaped is accepted because Ollama Cloud and local gateways use their own formats.
+A blank key disables that provider, and a whitespace-only value counts as blank in both the config file and the environment. A provider counts as configured when its key is non-empty, or when its base URL or model is set in the file or environment. A configured provider without a key stops startup even when the other provider has a key; to run only one provider, leave the other provider at its defaults or set its key blank. A non-empty OpenAI-compatible key that is not `sk-`-shaped is accepted because Ollama Cloud and local gateways use their own formats.
 
 ### Key Rotation
 
@@ -135,7 +133,7 @@ RetryConfig(
 
 ### Message Handling
 
-- **Inbound text is not sanitized.** The message body is sent to the configured provider unchanged; the bot does not strip instructions, links, or markdown before the request.
+- **Inbound text is mostly not sanitized.** For guild messages the bot removes mention tokens (`<@id>`, `<@!id>`, `<@&id>`) from the message body and trims the result before the request; DMs are left unchanged. The bot does not strip instructions, links, or markdown.
 - **Outbound text is neutralised.** Messages longer than Discord's 2000-character limit are
   split, and every final chunk is sanitised for mentions and links after splitting. The
   sanitiser and splitter both call the `tree-sitter-markdown` filter
@@ -341,7 +339,7 @@ The bot serves real health endpoints at `HEALTH_HOST:HEALTH_PORT` (default
   failure happened after its last success; an idle provider with no traffic stays healthy.
   An `OPEN` breaker is unhealthy until its recovery timeout has elapsed; after that it is
   reported healthy as recovering, because the breaker would admit a probe on the next call;
-- `GET /health/live` reports process liveness and answers before Discord login;
+- `GET /health/live` reports process liveness and answers before the gateway connects;
 - `GET /health/ready` reports readiness, including the Discord connection and provider
   health, and stays 503 until the gateway is connected.
 

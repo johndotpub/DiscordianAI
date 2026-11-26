@@ -22,8 +22,10 @@ The live provider behaviour behind these checks is recorded in
 - A missing `DISCORD_TOKEN`.
 - A provider selected by its settings but missing its API key
   (`OPENAI_API_KEY` or `PERPLEXITY_API_KEY`).
-- An API key that is empty or whitespace-only for a configured provider, or a
-  Perplexity key that does not match the `pplx-` shape.
+- A configured provider whose key is missing (for example, its base URL or
+  model was supplied without a key), or a Perplexity key that does not match the
+  `pplx-` shape. A blank or whitespace-only key disables that provider; whitespace
+  is stripped in both the config file and the environment.
 - A base URL that is not an absolute `http(s)` URL with a host.
 - `OUTPUT_TOKENS` or `PERPLEXITY_OUTPUT_TOKENS` that is non-positive or exceeds
   the fixed ceiling of **128,000**.
@@ -31,8 +33,9 @@ The live provider behaviour behind these checks is recorded in
   `OUTPUT_TOKENS` greater than `CONTEXT_WINDOW`, or the Perplexity equivalent
   using `PERPLEXITY_INPUT_TOKENS`, `PERPLEXITY_OUTPUT_TOKENS`, and
   `PERPLEXITY_CONTEXT_WINDOW`. The error names the keys and values.
-- Non-positive `INPUT_TOKENS`, `CONTEXT_WINDOW`, `RATE_LIMIT`, or
-  `RATE_LIMIT_PER` values.
+- Non-positive `INPUT_TOKENS`, `PERPLEXITY_INPUT_TOKENS`, `CONTEXT_WINDOW`,
+  `PERPLEXITY_CONTEXT_WINDOW`, `RATE_LIMIT`, or `RATE_LIMIT_PER` values, and
+  non-positive `OPENAI_MAX_CONNECTIONS` or `PERPLEXITY_MAX_CONNECTIONS` values.
 - `INPUT_TOKENS` or `PERPLEXITY_INPUT_TOKENS` below **1,000**. A malformed
   integer in `config.ini` or the environment is reported with a warning and its
   default applies instead; it does not abort startup.
@@ -58,7 +61,9 @@ The live provider behaviour behind these checks is recorded in
 
 ## OpenAI-Compatible Provider
 
-- The output cap is sent as `max_tokens`.
+- The output cap is sent as `max_tokens` on Ollama-compatible hosts (`ollama.com`,
+  `*.ollama.com`, `localhost`, `127.0.0.1`) and as `max_completion_tokens` on every
+  other OpenAI-compatible host, including `api.openai.com`.
 - `reasoning_effort` is sent from `REASONING_EFFORT` and is not validated
   against a local enum; valid values are model-defined.
 - That cap covers **visible output plus reasoning tokens**.

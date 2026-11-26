@@ -103,7 +103,8 @@ Enable debug logging to see connection pool metrics:
 LOG_LEVEL=DEBUG
 ```
 
-This will show connection pool creation and usage statistics in the logs.
+This shows connection-pool creation (`max_connections`, `max_keepalive_connections`). Usage
+statistics are reported by the `/health` endpoint under `services.pool`, not by the debug log.
 
 ## HTTP/2 Support
 

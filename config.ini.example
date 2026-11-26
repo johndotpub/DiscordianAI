@@ -55,8 +55,10 @@ PERPLEXITY_MODEL=perplexity/sonar
 # === TOKEN LIMITS ===
 # INPUT_TOKENS is the enforced prompt budget (oldest history is trimmed first).
 # INPUT_TOKENS and PERPLEXITY_INPUT_TOKENS must be at least 1000.
-# OUTPUT_TOKENS caps chat completions (max_tokens) and includes reasoning
-# tokens as well as visible output.
+# OUTPUT_TOKENS caps chat completions: max_tokens on Ollama-compatible hosts
+# (ollama.com, *.ollama.com, localhost, 127.0.0.1) and max_completion_tokens on
+# every other OpenAI-compatible host, including api.openai.com. It includes
+# reasoning tokens as well as visible output.
 # PERPLEXITY_OUTPUT_TOKENS caps Perplexity completions (max_output_tokens),
 # which are output only. Omit it to use the same value as OUTPUT_TOKENS.
 # PERPLEXITY_INPUT_TOKENS and PERPLEXITY_CONTEXT_WINDOW apply only to the
