@@ -319,6 +319,32 @@ def test_several_urls_in_one_run_are_all_neutralised() -> None:
         assert "https://evil.example" not in sanitized
 
 
+@pytest.mark.parametrize("source", ["<steam://run/123>", "<ftp://h/x>"])
+def test_angle_bracket_link_with_another_scheme_is_neutralised(source: str) -> None:
+    """An autolink with a non-HTTP scheme gets the same zero-width break."""
+    sanitized = sanitize_for_discord(source)
+    scheme_end = source.index("://") + len("://")
+    scheme = source[1:scheme_end]
+
+    assert scheme + ZERO_WIDTH_SPACE in sanitized
+    assert scheme + source[scheme_end] not in sanitized
+
+
+def test_plain_text_link_with_another_scheme_is_neutralised() -> None:
+    """A non-HTTP scheme in ordinary text is still broken by the catch-all pass."""
+    sanitized = sanitize_for_discord("steam://run/123")
+
+    assert "steam://" + ZERO_WIDTH_SPACE in sanitized
+    assert "steam://run" not in sanitized
+
+
+def test_https_angle_bracket_link_keeps_todays_output() -> None:
+    """The existing http and https autolink output is unchanged."""
+    assert sanitize_for_discord("<https://a.example>") == (
+        "https://" + ZERO_WIDTH_SPACE + "a.example"
+    )
+
+
 @pytest.mark.parametrize(
     ("name", "case"),
     FENCE_INNER_RUN_CASES,

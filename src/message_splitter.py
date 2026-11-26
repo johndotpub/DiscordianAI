@@ -1818,15 +1818,17 @@ def _split_url_trailing_punctuation(url: str) -> tuple[str, str]:
 def _neutralize_url(url: str) -> str:
     """Make a URL non-clickable while keeping it readable.
 
-    Discord autolinks bare ``http(s)://`` text. Inserting a zero-width space
-    after the scheme terminator keeps the URL legible but stops Discord from
-    recognising it as a link.
+    Discord autolinks bare scheme-qualified text. Inserting a zero-width space
+    after the first scheme terminator keeps the URL legible but stops Discord
+    from recognising it as a link, whatever the scheme is.
     """
-    lower = url.lower()
-    for scheme in ("https://", "http://"):
-        if lower.startswith(scheme):
-            return f"{url[: len(scheme)]}\u200b{url[len(scheme) :]}"
-    return url
+    separator = url.find("://")
+    if separator < 0:
+        return url
+    insert_at = separator + len("://")
+    if url.startswith(_ZERO_WIDTH_SPACE, insert_at):
+        return url
+    return f"{url[:insert_at]}{_ZERO_WIDTH_SPACE}{url[insert_at:]}"
 
 
 def _is_escaped(text: str, position: int) -> bool:

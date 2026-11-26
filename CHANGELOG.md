@@ -579,6 +579,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   at a backslash-escaped backtick, Discord does not close the span there, so the parsed end
   is not trustworthy. The span is treated as ordinary text and any link inside it is
   neutralised instead of being delivered live.
+- **An angle-bracket link is neutralised whatever its scheme.** A parser-reported autolink
+  such as `<steam://run/123>` or `<ftp://host/x>` now receives the same zero-width break
+  after `://` as `http` and `https` text. Previously only those two schemes were broken, so
+  another scheme could survive as clickable text.
 
 ### Tests ✅
 
