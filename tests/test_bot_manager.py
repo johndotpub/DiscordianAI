@@ -10,6 +10,7 @@ import discord
 import pytest
 
 from src.bot_manager import DiscordBotManager
+from src.dependencies import BotDependencies
 from src.health_server import HealthServer
 
 
@@ -284,6 +285,103 @@ def test_run_disables_discord_default_logging(base_deps):
     manager.run()
 
     assert base_deps["bot"].run_calls == [("token", {"log_handler": None})]
+
+
+@pytest.mark.asyncio
+async def test_shutdown_with_unset_health_task_closes_everything_in_order(monkeypatch):
+    """A stop before on_ready must not crash into the hard-exit path."""
+    order = []
+
+    class OrderedBot(DummyBot):
+        async def close(self):
+            order.append("discord")
+            await super().close()
+
+    async def stop_health_server():
+        order.append("health-server")
+
+    async def close_pools():
+        order.append("pools")
+
+    async def close_router():
+        order.append("router")
+
+    async def close_cached_routers():
+        order.append("cached-routers")
+
+    monkeypatch.setattr("src.smart_orchestrator.close_default_routers", close_cached_routers)
+    logger = logging.getLogger("bot-manager-shutdown-order")
+    logger.addHandler(logging.NullHandler())
+    deps = BotDependencies(
+        bot=OrderedBot(),
+        logger=logger,
+        config={},
+        health_server=SimpleNamespace(stop=stop_health_server),
+        connection_pool_manager=SimpleNamespace(close_all=close_pools),
+        router=SimpleNamespace(aclose=close_router),
+    )
+    assert deps.get("_health_task") is None
+
+    manager = DiscordBotManager(deps)
+    manager._rate_limit_maintenance_handle = SimpleNamespace(
+        cancel=lambda: order.append("rate-limit-timer")
+    )
+    exits = []
+    monkeypatch.setattr("src.bot_manager.os._exit", exits.append)
+
+    await manager._shutdown_with_timeout()
+
+    assert exits == [], "shutdown took the hard-exit path with an unset health task"
+    assert order == [
+        "rate-limit-timer",
+        "health-server",
+        "pools",
+        "router",
+        "cached-routers",
+        "discord",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_pool_close_failure_does_not_skip_later_closers(monkeypatch, caplog):
+    """One failing pool close must not leak the router client or the gateway."""
+    order = []
+
+    class OrderedBot(DummyBot):
+        async def close(self):
+            order.append("discord")
+            await super().close()
+
+    async def failing_pools():
+        order.append("pools")
+        message = "pool close failed"
+        raise RuntimeError(message)
+
+    async def close_router():
+        order.append("router")
+
+    async def close_cached_routers():
+        order.append("cached-routers")
+
+    monkeypatch.setattr("src.smart_orchestrator.close_default_routers", close_cached_routers)
+    logger = logging.getLogger("bot-manager-pool-failure")
+    logger.addHandler(logging.NullHandler())
+    deps = BotDependencies(
+        bot=OrderedBot(),
+        logger=logger,
+        config={},
+        connection_pool_manager=SimpleNamespace(close_all=failing_pools),
+        router=SimpleNamespace(aclose=close_router),
+    )
+
+    manager = DiscordBotManager(deps)
+    with caplog.at_level(logging.ERROR, logger="bot-manager-pool-failure"):
+        await manager.graceful_shutdown()
+
+    assert order == ["pools", "router", "cached-routers", "discord"]
+    assert any(
+        "RuntimeError" in record.getMessage() for record in caplog.records
+    ), "the pool close failure was not logged by exception class"
 
 
 @pytest.mark.asyncio

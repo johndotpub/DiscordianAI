@@ -1,6 +1,7 @@
 """Discord bot manager class for handling bot lifecycle and events."""
 
 import asyncio
+import logging
 import os
 import signal
 import sys
@@ -97,10 +98,20 @@ class DiscordBotManager:
                 self.graceful_shutdown(),
                 timeout=self.SHUTDOWN_TIMEOUT,
             )
-        except Exception:
-            self.logger.exception(
-                "Graceful shutdown timed out or failed within %s seconds; forcing process exit",
+        except TimeoutError:
+            self.logger.log(
+                logging.ERROR,
+                "Graceful shutdown timed out after %s seconds; forcing process exit",
                 self.SHUTDOWN_TIMEOUT,
+            )
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os._exit(0)
+        except Exception as exc:  # noqa: BLE001 - any shutdown failure must end in a clean exit
+            self.logger.log(
+                logging.ERROR,
+                "Graceful shutdown failed (%s); forcing process exit",
+                type(exc).__name__,
             )
             sys.stdout.flush()
             sys.stderr.flush()
@@ -185,6 +196,42 @@ class DiscordBotManager:
         except Exception:
             self.logger.exception("Cached fallback router close failed")
 
+    async def _stop_health_task(self) -> None:
+        """Cancel and await the health-monitor task when on_ready created one."""
+        health_task = self.deps.get("_health_task")
+        if health_task is None:
+            return
+        if not health_task.done():
+            health_task.cancel()
+
+        try:
+            await health_task
+        except asyncio.CancelledError:
+            self.logger.info("Health monitoring task cancelled")
+        except Exception:
+            self.logger.exception("Health monitoring task raised during shutdown")
+        else:
+            self.logger.info("Health monitoring task completed")
+
+    async def _close_connection_pools(self) -> None:
+        """Close provider pools; one failure must not skip the later closers."""
+        if "connection_pool_manager" not in self.deps:
+            return
+        pool_manager = self.deps["connection_pool_manager"]
+        if not hasattr(pool_manager, "close_all"):
+            return
+
+        try:
+            await pool_manager.close_all()
+        except Exception as exc:  # noqa: BLE001 - the remaining closers must still run
+            self.logger.log(
+                logging.ERROR,
+                "Connection pool close failed (%s); continuing shutdown",
+                type(exc).__name__,
+            )
+        else:
+            self.logger.info("Connection pools closed")
+
     async def graceful_shutdown(self):
         """Perform graceful shutdown of the bot and cleanup resources.
 
@@ -204,25 +251,8 @@ class DiscordBotManager:
         if health_server:
             await health_server.stop()
 
-        if "_health_task" in self.deps:
-            health_task = self.deps["_health_task"]
-            if not health_task.done():
-                health_task.cancel()
-
-            try:
-                await health_task
-            except asyncio.CancelledError:
-                self.logger.info("Health monitoring task cancelled")
-            except Exception:
-                self.logger.exception("Health monitoring task raised during shutdown")
-            else:
-                self.logger.info("Health monitoring task completed")
-
-        if "connection_pool_manager" in self.deps:
-            pool_manager = self.deps["connection_pool_manager"]
-            if hasattr(pool_manager, "close_all"):
-                await pool_manager.close_all()
-                self.logger.info("Connection pools closed")
+        await self._stop_health_task()
+        await self._close_connection_pools()
 
         router = self.deps.get("router")
         if router is not None and hasattr(router, "aclose"):

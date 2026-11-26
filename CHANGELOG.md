@@ -303,6 +303,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **A stop before `on_ready` no longer skips graceful shutdown.** The dependency
+  container always exposed the `_health_task` key with a `None` value, so a stop
+  before the health monitor existed raised `AttributeError`; the guard logged a
+  timeout and called a hard exit, leaving provider pools and the Discord
+  connection open. Shutdown now skips an unset task, contains a failing pool
+  close so the router and gateway still close, and logs a timeout and any other
+  failure as separate messages. `tests/test_bot_manager.py` covers both paths.
 - **A failed continuation no longer re-sends the whole answer.** When the head embed was
   accepted and a later continuation failed, the delivery error triggered the text fallback
   for the entire answer, duplicating it and repeating the mention prefix. The continuation
