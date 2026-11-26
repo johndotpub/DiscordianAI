@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Behaviour changes
 
+- **Non-positive connection limits stop startup.** `OPENAI_MAX_CONNECTIONS` or
+  `PERPLEXITY_MAX_CONNECTIONS` set to 0 or a negative value now fails validation with an
+  ERROR naming the key, because every request would otherwise wait out the pool timeout.
+  Non-positive `MAX_HISTORY_PER_USER`, `CONVERSATION_TTL_SECONDS`, and
+  `USER_LOCK_CLEANUP_INTERVAL` keep their existing runtime behaviour and log one warning
+  each instead of aborting.
 - **Prompt estimates follow the script.** ASCII prose and code keep the historical
   one-quarter token per character. Characters from U+0080-U+07FF cost one-half token,
   U+0800-U+FFFF cost 0.8, and astral-plane characters (most emoji) cost 1.7, all before

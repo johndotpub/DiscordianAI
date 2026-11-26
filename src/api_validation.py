@@ -45,6 +45,8 @@ __all__ = [
     "VALID_OPENAI_URL_PATTERN",
     "VALID_PERPLEXITY_URL_PATTERN",
     "log_validation_results",
+    "validate_connection_pool_config",
+    "validate_conversation_lifecycle_config",
     "validate_discord_config",
     "validate_full_config",
     "validate_openai_api_key_format",
@@ -418,6 +420,57 @@ def _perplexity_prompt_limit_issues(config: dict) -> list[str]:
     ]
 
 
+def validate_connection_pool_config(config: dict) -> list[str]:
+    """Validate the provider connection-pool sizes.
+
+    A pool with no connections makes every request wait out the pool timeout
+    before failing, so a non-positive limit stops startup.
+
+    Args:
+        config: Configuration dictionary.
+
+    Returns:
+        List[str]: Validation errors prefixed with ``ERROR:``.
+    """
+    return [
+        *_positive_limit_issues(config, "OPENAI_MAX_CONNECTIONS"),
+        *_positive_limit_issues(config, "PERPLEXITY_MAX_CONNECTIONS"),
+    ]
+
+
+_CONVERSATION_LIMIT_EFFECTS = {
+    "MAX_HISTORY_PER_USER": "0 keeps all history and disables pruning",
+    "CONVERSATION_TTL_SECONDS": "0 or a negative value disables expiry",
+    "USER_LOCK_CLEANUP_INTERVAL": "0 or a negative value sweeps on every call",
+}
+
+
+def validate_conversation_lifecycle_config(config: dict) -> list[str]:
+    """Warn about non-positive conversation limits that change runtime behaviour.
+
+    These keys already accept non-positive values at runtime, so they warn
+    instead of stopping startup.
+
+    Args:
+        config: Configuration dictionary.
+
+    Returns:
+        List[str]: Validation warnings prefixed with ``WARNING:``.
+    """
+    issues = []
+    for key, effect in _CONVERSATION_LIMIT_EFFECTS.items():
+        value = config.get(key)
+        if value is None:
+            continue
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            continue
+        if parsed <= 0:
+            issues.append(f"WARNING: {key} is {parsed}; {effect}.")
+    return issues
+
+
 def validate_openai_config(config: dict) -> list[str]:
     """Validate OpenAI API configuration parameters.
 
@@ -657,9 +710,18 @@ def validate_full_config(config: dict) -> tuple[list[str], list[str]]:
     perplexity_issues = validate_perplexity_config(config)
     discord_issues = validate_discord_config(config)
     rate_limit_issues = validate_rate_limiting_config(config)
+    connection_issues = validate_connection_pool_config(config)
+    conversation_issues = validate_conversation_lifecycle_config(config)
 
     # Categorize issues
-    all_issues = openai_issues + perplexity_issues + discord_issues + rate_limit_issues
+    all_issues = (
+        openai_issues
+        + perplexity_issues
+        + discord_issues
+        + rate_limit_issues
+        + connection_issues
+        + conversation_issues
+    )
 
     for issue in all_issues:
         if issue.startswith("ERROR:"):

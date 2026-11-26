@@ -5,6 +5,8 @@ import pytest
 from src.api_validation import (
     VALID_OPENAI_URL_PATTERN,
     VALID_PERPLEXITY_URL_PATTERN,
+    validate_connection_pool_config,
+    validate_conversation_lifecycle_config,
     validate_full_config,
     validate_openai_api_key_format,
     validate_openai_config,
@@ -318,6 +320,71 @@ class TestFullConfigValidation:
         warnings, errors = validate_full_config(config)
         assert len(errors) == 0
         assert len(warnings) > 0
+
+
+@pytest.mark.parametrize("key", ["OPENAI_MAX_CONNECTIONS", "PERPLEXITY_MAX_CONNECTIONS"])
+@pytest.mark.parametrize("value", [0, -1])
+def test_non_positive_connection_limit_is_a_startup_error(key, value):
+    """A pool with no connections waits out every request and then fails."""
+    issues = validate_connection_pool_config({key: value})
+
+    assert any(
+        issue.startswith("ERROR:") and key in issue and "positive" in issue for issue in issues
+    )
+
+
+def test_non_positive_connection_limit_reaches_full_validation():
+    """The pool check is part of the startup gate, not just a unit helper."""
+    config = {
+        "DISCORD_TOKEN": "test_token",
+        "OPENAI_API_KEY": "sk-" + "a" * 32,
+        "ALLOWED_CHANNELS": ["general"],
+        "OPENAI_MAX_CONNECTIONS": 0,
+    }
+
+    _, errors = validate_full_config(config)
+
+    assert any("OPENAI_MAX_CONNECTIONS" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("key", "effect"),
+    [
+        ("MAX_HISTORY_PER_USER", "0 keeps all history"),
+        ("CONVERSATION_TTL_SECONDS", "disables expiry"),
+        ("USER_LOCK_CLEANUP_INTERVAL", "every call"),
+    ],
+)
+@pytest.mark.parametrize("value", [0, -1])
+def test_non_positive_conversation_limits_warn_without_stopping(key, effect, value):
+    """These already accept non-positive values, so they warn instead of aborting."""
+    config = {
+        "DISCORD_TOKEN": "test_token",
+        "OPENAI_API_KEY": "sk-" + "a" * 32,
+        "ALLOWED_CHANNELS": ["general"],
+        key: value,
+    }
+
+    warnings, errors = validate_full_config(config)
+
+    assert not any(key in error for error in errors)
+    matching = [warning for warning in warnings if key in warning]
+    assert len(matching) == 1
+    assert matching[0].startswith("WARNING:")
+    assert effect in matching[0]
+
+
+def test_conversation_lifecycle_helper_reports_positive_values_as_clean():
+    """The warning helper stays silent for the documented defaults."""
+    issues = validate_conversation_lifecycle_config(
+        {
+            "MAX_HISTORY_PER_USER": 100,
+            "CONVERSATION_TTL_SECONDS": 7200,
+            "USER_LOCK_CLEANUP_INTERVAL": 3600,
+        }
+    )
+
+    assert issues == []
 
 
 class TestURLPatternValidation:
