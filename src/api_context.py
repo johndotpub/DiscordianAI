@@ -18,7 +18,7 @@ import logging
 import time
 from typing import Any
 
-from .error_handling import classify_error, error_tracker
+from .error_handling import classify_error, error_tracker, provider_error_summary
 from .models import AIRequest
 
 
@@ -81,11 +81,10 @@ async def api_call(
         )
         logger.log(
             _severity_to_log_level(error_details.severity),
-            "api_call: %s failed after %.3fs — %s (type=%s, severity=%s)",
+            "api_call: %s failed after %.3fs — %s (severity=%s)",
             service,
             elapsed,
-            error_details.message[:200],
-            error_details.error_type.value,
+            provider_error_summary(exc),
             error_details.severity.value,
         )
         raise

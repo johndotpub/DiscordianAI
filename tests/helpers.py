@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp.test_utils
 import discord
+import openai
 
 
 class FakeTyping:
@@ -539,3 +540,25 @@ TEST_RESPONSES = {
     "perplexity": "This is a test response from Perplexity [1]",
     "hybrid": "This is a hybrid response combining both sources",
 }
+
+PROVIDER_BODY_MARKER = "BODY-MARKER-XYZ"
+
+
+def provider_status_error(body_marker: str = PROVIDER_BODY_MARKER):
+    """Build an SDK status error whose message carries a fake response body."""
+    response = SimpleNamespace(status_code=500, headers={}, request=SimpleNamespace())
+    return openai.InternalServerError(
+        body_marker,
+        response=response,
+        body={"error": {"message": body_marker}},
+    )
+
+
+def assert_no_provider_body_in_logs(caplog, marker: str = PROVIDER_BODY_MARKER) -> None:
+    """Assert no captured record carries ``marker`` in message, args, or traceback."""
+    leaked = []
+    for record in caplog.records:
+        payloads = (record.getMessage(), repr(record.args), record.exc_text or "")
+        if any(marker in payload for payload in payloads):
+            leaked.append(payloads)
+    assert not leaked, f"provider body leaked into log records: {leaked}"

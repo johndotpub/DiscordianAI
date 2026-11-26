@@ -16,7 +16,7 @@ from .caching import cached_response, conversation_digest
 from .citation_formatting import _format_unlinked_citations, format_citations
 from .config import DEFAULT_CACHE_TTL
 from .discord_embeds import citation_embed_formatter, clamp_embed_description
-from .error_handling import ProviderCallError, classify_error
+from .error_handling import ProviderCallError, classify_error, provider_error_summary
 from .message_splitter import CitationMap, sanitize_model_output, should_suppress_embeds
 from .models import AIRequest, PerplexityConfig
 from .providers.base import AssistantText, ProviderResult, object_field
@@ -213,9 +213,14 @@ async def _fetch_perplexity_response(
             ctx.set_result(result.raw)
             return _handle_provider_result(result, request)
     except Exception as exc:
-        request.logger.exception("Perplexity API call failed for user %s", request.user.id)
+        error_details = classify_error(exc)
+        request.logger.error(  # noqa: TRY400 - a traceback would print the provider body
+            "Perplexity API call failed for user %s: %s",
+            request.user.id,
+            provider_error_summary(exc),
+        )
         if raise_on_failure:
-            raise ProviderCallError(classify_error(exc), provider="perplexity") from exc
+            raise ProviderCallError(error_details, provider="perplexity") from exc
         return None
 
 

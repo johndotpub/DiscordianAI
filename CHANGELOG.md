@@ -527,6 +527,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   structlog's Rich formatter only when Rich is importable and otherwise fall back to the
   plain structlog traceback renderer, so a pip install or the container image no longer
   prints `--- Logging error --- NameError: Console`. Neither formatter prints frame locals.
+- **Provider failures no longer put response bodies in the logs.** The retry warning, the
+  OpenAI and Perplexity wrapper failure lines, and the API-call failure line now log the
+  exception class, HTTP status code when present, and classified error type instead of the
+  exception text. A provider body can no longer reach a log record through these paths.
 
 ### Operations ⚙️
 

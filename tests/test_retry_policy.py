@@ -1,5 +1,6 @@
 """Regression tests for retry policy decisions."""
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -15,6 +16,10 @@ from src.error_handling import (
     classify_error,
     retry_after_seconds,
     retry_with_backoff,
+)
+from tests.helpers import (
+    assert_no_provider_body_in_logs,
+    provider_status_error,
 )
 
 
@@ -113,6 +118,30 @@ async def test_connection_error_is_retried():
 
     assert attempts == 2
     assert len(delays) == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_warning_does_not_log_provider_body(caplog):
+    """The retry warning names the failure without the provider body text."""
+    error = provider_status_error()
+    logger = logging.getLogger("test_retry_provider_body")
+
+    async def failing_call():
+        raise error
+
+    with patch("src.error_handling.asyncio.sleep", AsyncMock()):
+        with caplog.at_level(logging.WARNING):
+            with pytest.raises(type(error)):
+                await retry_with_backoff(failing_call, DEFAULT_API_RETRY_CONFIG, logger)
+
+    assert_no_provider_body_in_logs(caplog)
+    warnings = [
+        record.getMessage() for record in caplog.records if record.levelno == logging.WARNING
+    ]
+    assert warnings
+    assert "InternalServerError" in warnings[0]
+    assert "500" in warnings[0]
+    assert "api_server_error" in warnings[0]
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,6 @@
 """Tests for OpenAI message processing functionality."""
 
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from src.conversation_manager import ThreadSafeConversationManager
 from src.models import OpenAIConfig
 from src.openai_processing import process_openai_message
+from tests.helpers import assert_no_provider_body_in_logs, provider_status_error
 
 
 def _config(model="gpt-5", system_message="Test"):
@@ -114,7 +116,33 @@ class TestProcessOpenAIMessageBasic:
         assert result is None
         openai_client.chat.completions.create.assert_awaited_once()
         sleep.assert_not_awaited()
-        logger.exception.assert_called()
+        logger.error.assert_called()
+        conversation_manager.add_message.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_failure_logs_do_not_include_provider_body(self, make_request, caplog):
+        """A provider failure is logged by class, status, and type, never by body."""
+        conversation_manager = MagicMock(spec=ThreadSafeConversationManager)
+        openai_client = MagicMock()
+        openai_client.chat.completions.create = AsyncMock(side_effect=provider_status_error())
+        logger = logging.getLogger("test_openai_provider_body")
+
+        with patch("src.error_handling.asyncio.sleep"):
+            with caplog.at_level(logging.DEBUG):
+                result = await process_openai_message(
+                    request=make_request(
+                        "Test",
+                        conversation_manager=conversation_manager,
+                        logger=logger,
+                    ),
+                    conversation_summary=[],
+                    openai_client=openai_client,
+                    config=_config(),
+                )
+
+        assert result is None
+        assert_no_provider_body_in_logs(caplog)
+        assert any("InternalServerError" in record.getMessage() for record in caplog.records)
         conversation_manager.add_message.assert_not_called()
 
     @pytest.mark.asyncio
@@ -139,7 +167,7 @@ class TestProcessOpenAIMessageBasic:
         assert result is None
         assert openai_client.chat.completions.create.await_count == 1
         sleep.assert_not_awaited()
-        logger.exception.assert_called()
+        logger.error.assert_called()
         conversation_manager.add_message.assert_not_called()
 
 

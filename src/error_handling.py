@@ -373,7 +373,7 @@ async def retry_with_backoff(
                 attempt + 1,
                 retry_config.max_attempts,
                 _callable_name(func),
-                e,
+                provider_error_summary(e),
                 delay,
             )
             await asyncio.sleep(delay)
@@ -944,6 +944,22 @@ def classify_error(exception: Exception) -> ErrorDetails:
         user_message = "⚙️ Configuration issue. Please contact administrator."
 
     return _error_details(error_type, severity, exception, user_message, retry_after)
+
+
+def provider_error_summary(exception: Exception) -> str:
+    """Describe a provider failure without its request or response body.
+
+    Args:
+        exception: The provider exception about to be logged.
+
+    Returns:
+        The exception class name, its HTTP status code when one is available,
+        and the classified error type.
+    """
+    details = classify_error(exception)
+    status_code = _status_code_from_exception(exception)
+    status = str(status_code) if status_code is not None else "none"
+    return f"{type(exception).__name__} (status={status}, type={details.error_type.value})"
 
 
 class ErrorTracker:

@@ -12,7 +12,12 @@ from typing import Any
 from .api_context import api_call
 from .caching import cached_response, deduplicated_request
 from .config import DEFAULT_CACHE_TTL
-from .error_handling import ProviderCallError, classify_error, retry_with_backoff
+from .error_handling import (
+    ProviderCallError,
+    classify_error,
+    provider_error_summary,
+    retry_with_backoff,
+)
 from .message_splitter import sanitize_model_output
 from .models import AIRequest, OpenAIConfig
 from .providers.base import AssistantText
@@ -137,9 +142,13 @@ async def _fetch_openai_response(
 
             return AssistantText(result.text, truncated=truncated)
     except Exception as exc:
-        request.logger.exception("OpenAI API call failed after retries")
+        error_details = classify_error(exc)
+        request.logger.error(  # noqa: TRY400 - a traceback would print the provider body
+            "OpenAI API call failed after retries: %s",
+            provider_error_summary(exc),
+        )
         if raise_on_failure:
-            raise ProviderCallError(classify_error(exc), provider="openai") from exc
+            raise ProviderCallError(error_details, provider="openai") from exc
         return None
 
 

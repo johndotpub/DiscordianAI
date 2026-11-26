@@ -1,5 +1,6 @@
 """Tests for Perplexity API processing and citation handling."""
 
+import logging
 import re
 from unittest.mock import AsyncMock, MagicMock
 
@@ -12,7 +13,12 @@ from src.perplexity_processing import (
     process_perplexity_message,
     should_suppress_embeds,
 )
-from tests.helpers import FakePerplexityClient, FakeResponse
+from tests.helpers import (
+    FakePerplexityClient,
+    FakeResponse,
+    assert_no_provider_body_in_logs,
+    provider_status_error,
+)
 
 
 def test_extract_citations_from_response():
@@ -125,7 +131,32 @@ async def test_process_perplexity_message_timeout():
 
     result = await process_perplexity_message(request, mock_client, PerplexityConfig())
     assert result is None
-    logger.exception.assert_called()
+    logger.error.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_process_perplexity_message_logs_no_provider_body(caplog):
+    """A Perplexity failure is logged without the provider response body."""
+    mock_user = MagicMock()
+    mock_user.id = 999
+    logger = logging.getLogger("test_perplexity_provider_body")
+
+    mock_client = MagicMock()
+    mock_client.responses.create = AsyncMock(side_effect=provider_status_error())
+
+    request = AIRequest(
+        message="Query",
+        user=mock_user,
+        conversation_manager=MagicMock(),
+        logger=logger,
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        result = await process_perplexity_message(request, mock_client, PerplexityConfig())
+
+    assert result is None
+    assert_no_provider_body_in_logs(caplog)
+    assert any("InternalServerError" in record.getMessage() for record in caplog.records)
 
 
 @pytest.mark.asyncio

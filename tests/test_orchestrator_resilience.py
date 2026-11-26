@@ -368,8 +368,8 @@ async def test_openai_only_mode_reports_the_classified_outage_not_a_rephrase_hin
 
 
 @pytest.mark.asyncio
-async def test_single_provider_outage_logs_one_traceback(caplog):
-    """One failed provider call produces one traceback, not one per layer."""
+async def test_single_provider_outage_logs_no_traceback(caplog):
+    """A provider outage is logged by class, status, and type without a traceback."""
     import openai
 
     from src.error_handling import classify_error
@@ -397,7 +397,11 @@ async def test_single_provider_outage_logs_one_traceback(caplog):
 
     assert response == classify_error(error).user_message
     tracebacks = [record for record in caplog.records if record.exc_info]
-    assert len(tracebacks) == 1
+    assert tracebacks == []
+    assert any(
+        "InternalServerError" in record.getMessage() and "status=500" in record.getMessage()
+        for record in caplog.records
+    )
 
 
 @pytest.mark.asyncio
