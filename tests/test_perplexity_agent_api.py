@@ -295,21 +295,37 @@ RECORDED_INVALID_MODEL_BODY = {
 }
 
 
-async def _raise_recorded_bad_request(body: dict) -> openai.BadRequestError:
-    """Send one real SDK request through a mocked HTTP response."""
+async def _sdk_client_with_http_stub(body: dict):
+    """Build an SDK client with whichever HTTPX class the installed openai accepts."""
+    import httpx
     import httpx2
 
+    last_error: TypeError | None = None
+    for http_module in (httpx2, httpx):
+
+        async def handler(_request, module=http_module):
+            return module.Response(400, json=body)
+
+        http_client = http_module.AsyncClient(transport=http_module.MockTransport(handler))
+        try:
+            sdk_client = openai.AsyncOpenAI(
+                api_key="test-key",
+                base_url="https://api.perplexity.ai/v1",
+                http_client=http_client,
+            )
+        except TypeError as exc:
+            last_error = exc
+            await http_client.aclose()
+            continue
+        return sdk_client, http_client
+    raise last_error or TypeError("the installed openai accepted no HTTPX client")
+
+
+async def _raise_recorded_bad_request(body: dict) -> openai.BadRequestError:
+    """Send one real SDK request through a mocked HTTP response."""
     from src.providers.perplexity import AgentResponsesProvider
 
-    async def handler(_request):
-        return httpx2.Response(400, json=body)
-
-    http_client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
-    sdk_client = openai.AsyncOpenAI(
-        api_key="test-key",
-        base_url="https://api.perplexity.ai/v1",
-        http_client=http_client,
-    )
+    sdk_client, http_client = await _sdk_client_with_http_stub(body)
     provider = AgentResponsesProvider(
         sdk_client,
         PerplexityConfig(

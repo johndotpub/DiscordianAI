@@ -7,7 +7,13 @@ import aiohttp
 import pytest
 
 from src.health_server import HealthServer, _detect_mode, create_health_app
-from tests.helpers import FakeAppRunner, FakeSite, health_deps, request_health
+from tests.helpers import (
+    FakeAppRunner,
+    FakeSite,
+    health_deps,
+    health_server_port,
+    request_health,
+)
 
 _mock_deps = health_deps
 
@@ -222,7 +228,8 @@ async def test_health_server_start_stop():
     assert server._disabled_reason is None
 
     async with aiohttp.ClientSession() as session:
-        async with session.get(f"http://127.0.0.1:{site.port}/health/live") as response:
+        port = health_server_port(server)
+        async with session.get(f"http://127.0.0.1:{port}/health/live") as response:
             assert response.status == 200
             assert response.content_type == "application/json"
             body = await response.json()

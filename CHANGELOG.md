@@ -706,6 +706,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   first-chunk mention limit, the chunk-cap notice's original length, citation-marker and
   fence safety in embed heads, and code-preserving sanitisation while mentions stay
   neutralised.
+- **The floor-version suite can run its own tests.** The health tests read the bound port
+  through the runner's address list instead of a newer `TCPSite` attribute, and the recorded
+  Perplexity 400 test builds its HTTP stub with whichever HTTPX class the installed openai
+  SDK accepts. The formatter test already runs without the optional Rich package. The full
+  suite now passes against every declared minimum runtime version.
 
 ### Documentation 📝
 

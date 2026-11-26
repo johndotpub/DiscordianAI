@@ -193,6 +193,13 @@ class HealthTestResponse:
         return json.loads(self.text)
 
 
+def health_server_port(server) -> int:
+    """Return the port a started HealthServer reports through its runner."""
+    addresses = server._server.addresses
+    assert addresses, "health server runner reported no bound address"
+    return int(addresses[0][1])
+
+
 def request_health(app, path: str) -> HealthTestResponse:
     """GET a health path through aiohttp's in-process test server."""
 

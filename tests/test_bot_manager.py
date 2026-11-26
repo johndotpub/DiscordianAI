@@ -12,6 +12,7 @@ import pytest
 from src.bot_manager import DiscordBotManager
 from src.dependencies import BotDependencies
 from src.health_server import HealthServer
+from tests.helpers import health_server_port
 
 
 class DummyBot:
@@ -116,7 +117,7 @@ async def test_health_endpoint_answers_before_on_ready(base_deps):
         await manager.bot.event_handlers["setup_hook"]()
 
         assert health_server._site is not None, "health server did not start before login"
-        port = health_server._site.port
+        port = health_server_port(health_server)
         async with aiohttp.ClientSession() as session:
             async with session.get(f"http://127.0.0.1:{port}/health/live") as response:
                 assert response.status == 200
