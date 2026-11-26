@@ -321,7 +321,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workflow polls the CI run for the same commit and publishes only after it succeeds.
   The `latest` tag now moves only for `main` or a version tag, and concurrency cancels
   superseded pull-request builds but not a publish run between the GHCR and Docker Hub
-  pushes.
+  pushes. The gate queries the repository from the workflow context and, once a CI run
+  exists, waits for it to finish instead of failing after ten minutes.
 
 ### Fixed 🔧
 

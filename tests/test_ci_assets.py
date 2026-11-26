@@ -180,6 +180,7 @@ def test_docker_publish_waits_for_a_successful_ci_run():
     assert permissions.get("actions") == "read"
     assert permissions.get("contents") == "read"
     assert gate.get("env", {}).get("GH_TOKEN") == "${{ github.token }}"
+    assert gate.get("env", {}).get("GH_REPO") == "${{ github.repository }}"
     assert "!= 'pull_request'" in str(gate.get("if", ""))
 
     commands = _job_commands(gate)
@@ -191,6 +192,30 @@ def test_docker_publish_waits_for_a_successful_ci_run():
     assert "sleep 30" in commands
     assert "conclusion" in commands
     assert "within 10 minutes" in commands
+
+
+def test_docker_wait_for_ci_distinguishes_no_run_from_a_long_run():
+    """Only a missing CI run has a ten-minute deadline; a started run may finish."""
+    workflow = _load_yaml(DOCKER_PATH)
+    commands = _job_commands(workflow["jobs"]["wait-for-ci"])
+
+    assert (
+        "no_run_deadline=$((SECONDS + 600))" in commands
+    ), "wait-for-ci has no ten-minute deadline for a commit with no CI run"
+
+    no_run = commands.split('if [[ -z "$run" ]]; then', 1)
+    assert len(no_run) == 2, "wait-for-ci has no branch for a missing CI run"
+    branches = no_run[1].split('elif [[ "$status" != "completed" ]]; then', 1)
+    assert (
+        len(branches) == 2
+    ), "wait-for-ci has no distinct branch for a run that exists but has not completed"
+    assert (
+        "no_run_deadline" in branches[0]
+    ), "the missing-run branch does not enforce the ten-minute deadline"
+
+    pending = branches[1].split("elif ", 1)[0]
+    assert "600" not in pending, "the in-progress branch still applies the no-run deadline"
+    assert "deadline" not in pending, "the in-progress branch still applies the no-run deadline"
 
 
 def test_docker_latest_tag_is_limited_to_main_and_version_tags():
