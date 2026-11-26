@@ -312,6 +312,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `safe_discord_send()`, which delegates to the same helper. The source guard now detects
   qualified, unqualified, and aliased construction calls, and an end-to-end test checks that
   model-output mentions are neutralised in the text actually sent.
+- **CI tests the declared minimum dependency versions.** A `min-versions` job installs
+  runtime requirements with `--resolution lowest-direct` and the test tools at their
+  declared floors, then runs the suite. The ordinary test job still follows the latest
+  allowed releases, so a floor-only failure now fails the build instead of reaching an
+  operator.
 
 ### Fixed 🔧
 

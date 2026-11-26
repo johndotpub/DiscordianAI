@@ -95,6 +95,18 @@ def test_ci_installs_a_built_wheel_and_runs_console_script():
     )
 
 
+def test_ci_runs_the_suite_against_declared_minimum_dependency_versions():
+    """A CI job installs lowest-direct runtime deps and runs the suite."""
+    workflow = _load_yaml(CI_PATH)
+    job = workflow["jobs"]["min-versions"]
+    commands = _job_commands(job)
+
+    assert "--resolution lowest-direct" in commands
+    assert "-r requirements.txt" in commands
+    assert "pytest" in commands
+    assert "--timeout=120" in commands
+
+
 def test_ci_wheel_job_imports_every_installed_src_module():
     """The wheel smoke test must import src.bot, health_server, providers, and routing."""
     workflow = _load_yaml(CI_PATH)

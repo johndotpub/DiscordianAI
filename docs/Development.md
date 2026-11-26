@@ -20,6 +20,8 @@ We use `tox` to run the canonical CI/test suite. Run Python 3.12 locally (the ca
 tox -e py312
 ```
 
+CI also runs the tests against the minimum supported version of each runtime dependency.
+
 ## Modern Development Workflow
 
 - Canonical test/lint/audit suite (run in a terminal): `tox -e py312`, `black --check .`, `ruff check .`, `tox -e audit`.
