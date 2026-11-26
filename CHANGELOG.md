@@ -303,6 +303,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **A blank list override leaves the config-file list alone.** `ALLOWED_CHANNELS`,
+  `ALLOWED_GUILDS`, `ALLOWED_CHANNEL_IDS`, and `ALLOWED_GUILD_IDS` set to an empty or
+  whitespace-only environment value used to replace the file's list with `[]`, and an
+  empty guild list dropped the guild scope. A blank value now means "not set" for these
+  keys as it already did for scalar settings; a non-blank value still overrides.
+  `tests/test_config_robustness.py` covers all four keys.
 - **A stop before `on_ready` no longer skips graceful shutdown.** The dependency
   container always exposed the `_health_task` key with a `None` value, so a stop
   before the health monitor existed raised `AttributeError`; the guard logged a

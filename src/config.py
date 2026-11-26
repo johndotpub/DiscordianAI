@@ -659,16 +659,12 @@ def _apply_single_env_override(
     config_data: dict[str, Any], key: str, value: str, logger: logging.Logger
 ) -> None:
     """Apply a single environment variable override."""
+    if not value.strip() and key not in _EXPLICIT_EMPTY_KEYS and key != "REASONING_EFFORT":
+        return
     if key in _ENV_LIST_KEYS:
-        config_data[key] = (
-            [c.strip().lstrip("#").strip() for c in value.split(",") if c.strip()]
-            if value.strip()
-            else []
-        )
+        config_data[key] = [c.strip().lstrip("#").strip() for c in value.split(",") if c.strip()]
     elif key in _ENV_ID_LIST_KEYS:
         config_data[key] = _parse_channel_ids(value, logger, source=key)
-    elif not value.strip() and key not in _EXPLICIT_EMPTY_KEYS and key != "REASONING_EFFORT":
-        return
     elif key in _ENV_INT_KEYS:
         _apply_env_int(config_data, key, value, logger)
     elif key in _ENV_FLOAT_KEYS:

@@ -42,6 +42,52 @@ def _minimal_config() -> dict:
     }
 
 
+_LIST_OVERRIDE_CASES = [
+    ("ALLOWED_CHANNELS", ["general"], "other", ["other"]),
+    ("ALLOWED_GUILDS", ["home"], "other", ["other"]),
+    ("ALLOWED_CHANNEL_IDS", [111], "222", [222]),
+    ("ALLOWED_GUILD_IDS", [333], "444", [444]),
+]
+
+
+def _write_list_config(tmp_path: Path) -> str:
+    return _write_config(
+        tmp_path,
+        "[Discord]\n"
+        "ALLOWED_CHANNELS=general\n"
+        "ALLOWED_CHANNEL_IDS=111\n"
+        "ALLOWED_GUILDS=home\n"
+        "ALLOWED_GUILD_IDS=333\n",
+    )
+
+
+@pytest.mark.parametrize(("key", "file_value", "_override", "_parsed"), _LIST_OVERRIDE_CASES)
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_blank_list_environment_value_keeps_the_file_value(
+    monkeypatch, tmp_path, key, file_value, _override, _parsed, blank
+):
+    """A blank environment value means "not set" for list keys too."""
+    config_path = _write_list_config(tmp_path)
+    monkeypatch.setenv(key, blank)
+
+    config = load_config(config_path)
+
+    assert config[key] == file_value
+
+
+@pytest.mark.parametrize(("key", "_file_value", "override", "parsed"), _LIST_OVERRIDE_CASES)
+def test_non_blank_list_environment_value_overrides_the_file(
+    monkeypatch, tmp_path, key, _file_value, override, parsed
+):
+    """A non-blank value still replaces the config-file list."""
+    config_path = _write_list_config(tmp_path)
+    monkeypatch.setenv(key, override)
+
+    config = load_config(config_path)
+
+    assert config[key] == parsed
+
+
 def test_malformed_health_enabled_warns_with_key_and_section(tmp_path, caplog):
     config_path = _write_config(tmp_path, "[Health]\nHEALTH_ENABLED=yes please\n")
 
