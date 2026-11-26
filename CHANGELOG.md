@@ -303,6 +303,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **String environment overrides are trimmed.** A key pasted or mounted from a file with
+  a trailing newline or space is now stored without that whitespace for
+  `OPENAI_API_KEY`, `BOT_PRESENCE`, `GPT_MODEL`, and every other string override,
+  matching the config-file path. The two API keys and `REASONING_EFFORT` keep their
+  explicit-empty meaning. `tests/test_config_robustness.py` covers a key with a newline
+  and a presence with a trailing space.
 - **A blank list override leaves the config-file list alone.** `ALLOWED_CHANNELS`,
   `ALLOWED_GUILDS`, `ALLOWED_CHANNEL_IDS`, and `ALLOWED_GUILD_IDS` set to an empty or
   whitespace-only environment value used to replace the file's list with `[]`, and an

@@ -671,10 +671,8 @@ def _apply_single_env_override(
         _apply_env_float(config_data, key, value, logger)
     elif key in _ENV_BOOL_KEYS:
         _apply_env_bool(config_data, key, value, logger)
-    elif key == "REASONING_EFFORT":
-        config_data[key] = value.strip()
     else:
-        config_data[key] = value
+        config_data[key] = value.strip()
 
 
 def _apply_config_defaults(config_data: dict[str, Any]) -> None:

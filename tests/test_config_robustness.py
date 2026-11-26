@@ -88,6 +88,18 @@ def test_non_blank_list_environment_value_overrides_the_file(
     assert config[key] == parsed
 
 
+def test_string_environment_values_are_stripped(monkeypatch, tmp_path):
+    """A key pasted or mounted with surrounding whitespace must be trimmed."""
+    config_path = _write_config(tmp_path, "[Default]\n")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test\n")
+    monkeypatch.setenv("BOT_PRESENCE", "online ")
+
+    config = load_config(config_path)
+
+    assert config["OPENAI_API_KEY"] == "sk-test"
+    assert config["BOT_PRESENCE"] == "online"
+
+
 def test_malformed_health_enabled_warns_with_key_and_section(tmp_path, caplog):
     config_path = _write_config(tmp_path, "[Health]\nHEALTH_ENABLED=yes please\n")
 
