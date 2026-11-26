@@ -321,6 +321,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   counts as explicit; unset, blank, or invalid values fall back to terminal detection,
   and `config.ini.example` leaves the key commented out. `tests/test_log_colour.py`
   covers the invalid, true, and false cases.
+- **Output-token warnings and fatal bot errors are logged once.** The startup check and
+  the full API validation both logged the same output-cap warning, and `bot.run_bot` and
+  `main.main` both logged a fatal run error with a traceback. The startup check now leaves
+  warnings to the full validation, and the entry point logs the fatal error once.
+  `tests/test_validation_honesty.py` and `tests/test_main.py` count one record each.
 - **A port or size is no longer mistaken for a year.** A question such as "what port
   does postgres listen on, 5432?" went to web search because any four-digit number
   from last year upward counted as a current-year cue. The year cue now covers last

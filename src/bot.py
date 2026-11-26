@@ -11,7 +11,6 @@ replacing the previous untyped ``deps`` dict pattern.
 """
 
 import logging
-import sys
 from typing import Any
 
 import discord
@@ -147,17 +146,12 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
 
 
 def run_bot(config: dict[str, Any]) -> None:
-    """Initialize and run the Discord bot using DiscordBotManager."""
-    deps: BotDependencies | None = None
-    try:
-        deps = initialize_bot_and_dependencies(config)
-        deps.logger.info("Starting Discord bot manager")
-        manager = DiscordBotManager(deps)
-        manager.run()
-    except Exception as e:
-        # Fatal startup error
-        if deps is not None:
-            deps.logger.critical("Fatal error starting bot: %s", e, exc_info=True)
-        else:
-            sys.stderr.write(f"CRITICAL: Fatal error starting bot: {e}\n")
-        raise
+    """Initialize and run the Discord bot using DiscordBotManager.
+
+    A fatal startup or run-loop error propagates to the caller. The command-line
+    entry point logs it once, with a traceback, before exiting.
+    """
+    deps = initialize_bot_and_dependencies(config)
+    deps.logger.info("Starting Discord bot manager")
+    manager = DiscordBotManager(deps)
+    manager.run()

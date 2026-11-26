@@ -236,7 +236,6 @@ def validate_critical_config(config: dict, logger: logging.Logger) -> None:
     from .api_validation import validate_output_token_limits  # noqa: PLC0415
 
     errors = _credential_errors(config)
-    warnings = []
 
     # Validate rate limiting settings
     try:
@@ -247,12 +246,12 @@ def validate_critical_config(config: dict, logger: logging.Logger) -> None:
     except (ValueError, TypeError):
         errors.append("RATE_LIMIT and RATE_LIMIT_PER must be valid integers")
 
-    # Validate the separate OpenAI and Perplexity output-token caps.
+    # Validate the separate OpenAI and Perplexity output-token caps. Only the
+    # errors are collected here; the warnings are logged once by the full API
+    # validation that runs after this check.
     for issue in validate_output_token_limits(config):
         if issue.startswith("ERROR:"):
             errors.append(issue.removeprefix("ERROR:").strip())
-        else:
-            warnings.append(issue.removeprefix("WARNING:").strip())
 
     # Validate Discord presence and activity types against discord.py's enums.
     # These are operator typos: reject them now instead of failing inside on_ready.
@@ -286,10 +285,6 @@ def validate_critical_config(config: dict, logger: logging.Logger) -> None:
 
     # The full API validation in ``log_validation_results`` owns the
     # no-channels warning, so it is logged once rather than twice.
-
-    # Log warnings
-    for warning in warnings:
-        logger.warning("Configuration warning: %s", warning)
 
     # Raise error if critical issues found
     if errors:
