@@ -15,14 +15,6 @@ from src.config import (
     load_config,
 )
 from src.openai_processing import _build_openai_api_params
-from tests.helpers import config_env_keys
-
-
-@pytest.fixture(autouse=True)
-def isolate_config_environment(monkeypatch):
-    """Keep host environment variables from replacing file values under test."""
-    for key in config_env_keys():
-        monkeypatch.delenv(key, raising=False)
 
 
 def _write_config(tmp_path: Path, contents: str) -> Path:

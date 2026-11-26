@@ -6,23 +6,6 @@ import pytest
 
 from src.config import load_config
 
-_ENV_KEYS = (
-    "DISCORDIANAI_LOG_COLOR",
-    "HEALTH_ENABLED",
-    "OUTPUT_TOKENS",
-    "PERPLEXITY_API_KEY",
-    "PERPLEXITY_API_URL",
-    "PERPLEXITY_MODEL",
-    "PERPLEXITY_OUTPUT_TOKENS",
-)
-
-
-@pytest.fixture(autouse=True)
-def isolate_config_environment(monkeypatch):
-    """Keep host environment variables from leaking into these tests."""
-    for key in _ENV_KEYS:
-        monkeypatch.delenv(key, raising=False)
-
 
 def _write_config(tmp_path, contents: str) -> str:
     config_path = tmp_path / "config.ini"

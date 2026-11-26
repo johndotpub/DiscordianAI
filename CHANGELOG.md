@@ -727,6 +727,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is SURVIVED, and exit codes 2-5, a timeout, or no collected tests are INCONCLUSIVE and
   fail the check by name. Fake-runner tests cover the failing baseline, exit 2, exit 1,
   and exit 0.
+- **The shared environment scrub covers every config-loader key.** The autouse fixture now
+  removes the keys `src/config.py` itself reads, derived from the loader instead of a
+  hand-written prefix list. The hermeticity test seeds several of those keys before the
+  fixture runs and fails if any survive; four per-file copies of the same scrubber are
+  gone. The retry tests that waited on real 0.1-second sleeps now patch
+  `asyncio.sleep` and assert the requested backoff, and a new Perplexity breaker test
+  proves its retry sequence counts as one logical failure, matching the OpenAI test.
 
 ### Documentation 📝
 

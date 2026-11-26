@@ -6,14 +6,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.config import ConfigFileError, get_error_messages, load_config, parse_arguments
-from tests.helpers import config_env_keys
-
-
-@pytest.fixture(autouse=True)
-def isolate_config_env(monkeypatch):
-    """Scrub env vars that load_config reads so the host env never leaks into tests."""
-    for key in config_env_keys():
-        monkeypatch.delenv(key, raising=False)
 
 
 class TestParseArguments:

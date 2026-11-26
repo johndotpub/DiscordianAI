@@ -10,16 +10,8 @@ from src.api_validation import validate_discord_config
 from src.config import _apply_config_defaults, load_config
 from src.dependencies import BotDependencies
 from src.main import validate_critical_config
-from tests.helpers import config_env_keys
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-
-
-@pytest.fixture(autouse=True)
-def isolate_config_environment(monkeypatch):
-    """Keep host environment variables from leaking into these tests."""
-    for key in config_env_keys():
-        monkeypatch.delenv(key, raising=False)
 
 
 def _write_config(tmp_path: Path, contents: str) -> str:

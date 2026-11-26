@@ -31,6 +31,11 @@ from src.error_handling import (
 )
 
 
+def _patch_retry_sleep():
+    """Record retry backoff delays instead of waiting on the clock."""
+    return patch("src.error_handling.asyncio.sleep", new_callable=AsyncMock)
+
+
 class TestEnums:
     """Test error handling enums."""
 
@@ -314,9 +319,12 @@ class TestRetryWithBackoff:
         mock_logger = Mock()
         config = RetryConfig(max_attempts=3, base_delay=0.1, jitter=False)
 
-        result = await retry_with_backoff(test_func, config, mock_logger)
+        with _patch_retry_sleep() as mock_sleep:
+            result = await retry_with_backoff(test_func, config, mock_logger)
+
         assert result == "success"
         assert call_count == 3
+        assert [call.args[0] for call in mock_sleep.await_args_list] == [0.1, 0.2]
 
     async def test_retry_exhausted(self):
         """Test retry exhaustion raises last exception."""
@@ -331,9 +339,12 @@ class TestRetryWithBackoff:
         mock_logger = Mock()
         config = RetryConfig(max_attempts=2, base_delay=0.1, jitter=False)
 
-        with pytest.raises(ConnectionError, match="Failure 2"):
-            await retry_with_backoff(test_func, config, mock_logger)
+        with _patch_retry_sleep() as mock_sleep:
+            with pytest.raises(ConnectionError, match="Failure 2"):
+                await retry_with_backoff(test_func, config, mock_logger)
+
         assert call_count == 2
+        assert [call.args[0] for call in mock_sleep.await_args_list] == [0.1]
 
     async def test_retry_with_logger(self):
         """Test retry logging functionality."""
@@ -350,11 +361,14 @@ class TestRetryWithBackoff:
         mock_logger = Mock()
         config = RetryConfig(max_attempts=3, base_delay=0.1, jitter=False)
 
-        result = await retry_with_backoff(test_func, config, mock_logger)
+        with _patch_retry_sleep() as mock_sleep:
+            result = await retry_with_backoff(test_func, config, mock_logger)
+
         assert result == "success"
 
         # Should have logged retry attempts
         assert mock_logger.warning.call_count == 2  # Two retry warnings
+        assert [call.args[0] for call in mock_sleep.await_args_list] == [0.1, 0.2]
 
     async def test_retry_non_retryable_error(self):
         """Test that certain errors are not retried."""
@@ -810,14 +824,16 @@ class TestRetryLogicScenarios:
                 raise ConnectionError(msg)
             return "success"
 
-        retry_config = RetryConfig(max_attempts=3, base_delay=0.1)
+        retry_config = RetryConfig(max_attempts=3, base_delay=0.1, jitter=False)
         logger = Mock()
 
-        result = await retry_with_backoff(flaky_function, retry_config, logger)
+        with _patch_retry_sleep() as mock_sleep:
+            result = await retry_with_backoff(flaky_function, retry_config, logger)
 
         assert result == "success"
         assert attempt_count == 2
         assert logger.warning.called
+        assert [call.args[0] for call in mock_sleep.await_args_list] == [0.1]
 
     @pytest.mark.asyncio
     async def test_retry_exhausts_all_attempts(self):
@@ -830,14 +846,16 @@ class TestRetryLogicScenarios:
             msg = f"Failure {attempt_count}"
             raise ConnectionError(msg)
 
-        retry_config = RetryConfig(max_attempts=3, base_delay=0.1)
+        retry_config = RetryConfig(max_attempts=3, base_delay=0.1, jitter=False)
         logger = Mock()
 
-        with pytest.raises(ConnectionError, match="Failure 3"):
-            await retry_with_backoff(always_failing_function, retry_config, logger)
+        with _patch_retry_sleep() as mock_sleep:
+            with pytest.raises(ConnectionError, match="Failure 3"):
+                await retry_with_backoff(always_failing_function, retry_config, logger)
 
         assert attempt_count == 3
         assert logger.warning.call_count == 2  # Warnings for first 2 failures
+        assert [call.args[0] for call in mock_sleep.await_args_list] == [0.1, 0.2]
 
     @pytest.mark.asyncio
     async def test_retry_skips_non_retryable_errors(self):

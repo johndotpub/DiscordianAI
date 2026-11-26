@@ -48,11 +48,21 @@ def _reset_provider_circuit_breakers() -> None:
                 setattr(module, attribute, old_to_new[id(value)])
 
 
+@pytest.fixture
+def seeded_environment():
+    """Extension point for a test that must seed variables before the scrub."""
+    return
+
+
 @pytest.fixture(autouse=True)
-def hermetic_provider_environment(monkeypatch):
-    """Remove provider and router variables inherited from the host shell."""
+def hermetic_provider_environment(monkeypatch, seeded_environment):
+    """Remove every variable the config loader or provider routing reads."""
+    from tests.helpers import config_env_keys
+
+    del seeded_environment
+    config_keys = config_env_keys()
     for name in list(os.environ):
-        if name.startswith(_HOST_PROVIDER_PREFIXES) or name == "DISCORD_TOKEN":
+        if name.startswith(_HOST_PROVIDER_PREFIXES) or name in config_keys:
             monkeypatch.delenv(name, raising=False)
 
 

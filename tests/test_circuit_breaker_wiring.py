@@ -25,8 +25,9 @@ from src.error_handling import (
     get_circuit_breaker_states,
     retry_with_backoff,
 )
-from src.models import AIClients, AIConfig, AIRequest, OpenAIConfig
+from src.models import AIClients, AIConfig, AIRequest, OpenAIConfig, PerplexityConfig
 from src.openai_processing import process_openai_message
+from src.perplexity_processing import process_perplexity_message
 from src.smart_orchestrator import _process_hybrid_mode, _process_openai_only_mode
 
 
@@ -60,6 +61,12 @@ def _server_error() -> openai.InternalServerError:
 def _failing_client() -> MagicMock:
     client = MagicMock()
     client.chat.completions.create = AsyncMock(side_effect=_server_error())
+    return client
+
+
+def _failing_perplexity_client() -> MagicMock:
+    client = MagicMock()
+    client.responses.create = AsyncMock(side_effect=_server_error())
     return client
 
 
@@ -155,6 +162,25 @@ async def test_provider_call_counts_one_failure_after_an_internal_retry():
 
     assert result is None
     assert client.chat.completions.create.await_count == 2
+    assert breaker.failure_count == 1
+    assert breaker.state == "CLOSED"
+
+
+@pytest.mark.asyncio
+async def test_perplexity_call_counts_one_failure_after_an_internal_retry():
+    """The Perplexity adapter wraps its retry sequence in one breaker call."""
+    breaker = get_circuit_breaker("perplexity")
+    client = _failing_perplexity_client()
+
+    with patch("src.error_handling.asyncio.sleep", new=AsyncMock()):
+        result = await process_perplexity_message(
+            _request("one logical perplexity call with a retry"),
+            client,
+            PerplexityConfig(),
+        )
+
+    assert result is None
+    assert client.responses.create.await_count == 2
     assert breaker.failure_count == 1
     assert breaker.state == "CLOSED"
 
