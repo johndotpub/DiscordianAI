@@ -221,7 +221,7 @@ log "Working directory: $(pwd)"
 # ── 2. Resolve Python interpreter ─────────────────────────────────────
 #     Priority: project venv → shell venv → pyenv → system python3
 python_has_core_dependencies() {
-    "${1}" -c "import discord; import openai; import httpx" >/dev/null 2>&1
+    "${1}" -I -B "${PROJECT_DIR}/src/dependency_check.py" >/dev/null 2>&1
 }
 
 resolve_python() {
@@ -298,8 +298,8 @@ fi
 # ── 5. Dependency check ───────────────────────────────────────────────
 log "Checking core dependencies..."
 if ! python_has_core_dependencies "${PYTHON}"; then
-    log "ERROR: Missing core dependencies (discord.py, openai, or httpx)."
-    log "Repair with: ${VENV_DIR}/bin/pip install -r requirements.txt"
+    log "ERROR: Missing core dependencies:"
+    "${PYTHON}" -I -B "${PROJECT_DIR}/src/dependency_check.py" || true
     exit 1
 fi
 log "✓ All core dependencies available"

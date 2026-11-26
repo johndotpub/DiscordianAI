@@ -309,6 +309,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **The launcher checks every runtime dependency before stopping the bot.** The pre-start
+  check imported only `discord`, `openai`, and `httpx`, while the source also needs
+  `aiohttp`, `cachetools`, `structlog`, `tree-sitter`, and `tree-sitter-markdown`. After a
+  pull that added a package, the launcher could stop a healthy instance and then fail to
+  start the new one. It now runs `src/dependency_check.py` in isolated mode, so the exact
+  runtime set is checked before any stop, and a failure prints the missing packages and
+  the install hint. `tests/test_launcher_script.py` covers the failing and passing check.
 - **String environment overrides are trimmed.** A key pasted or mounted from a file with
   a trailing newline or space is now stored without that whitespace for
   `OPENAI_API_KEY`, `BOT_PRESENCE`, `GPT_MODEL`, and every other string override,

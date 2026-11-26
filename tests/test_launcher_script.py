@@ -234,7 +234,28 @@ if [[ "${1:-}" == "-c" ]]; then
     fi
     exit 0
 fi
-printf '%s\n' "$@" > "${STUB_MARKER:?}"
+if [[ "${1:-}" == "-I" && "${2:-}" == "-B" ]]; then
+    if [[ -n "${STUB_DEPENDENCY_LOG:-}" ]]; then
+        printf '%s\\n' "$*" >> "${STUB_DEPENDENCY_LOG}"
+    fi
+    count_file="${STUB_DEPENDENCY_COUNT:-}"
+    count=0
+    if [[ -n "${count_file}" && -f "${count_file}" ]]; then
+        count="$(cat "${count_file}")"
+    fi
+    count=$((count + 1))
+    if [[ -n "${count_file}" ]]; then
+        printf '%s\\n' "${count}" > "${count_file}"
+    fi
+    if [[ "${STUB_DEPENDENCY_CHECK:-pass}" == "fail" && "${count}" -ge 2 ]]; then
+        echo "ERROR: Missing required packages: aiohttp" >&2
+        echo "Please install dependencies with:" >&2
+        echo "  pip install -r requirements.txt" >&2
+        exit 1
+    fi
+    exit 0
+fi
+printf '%s\\n' "$@" > "${STUB_MARKER:?}"
 exit 0
 """,
         encoding="utf-8",
@@ -1113,6 +1134,63 @@ set -euo pipefail
         if bot.poll() is None:
             bot.kill()
             bot.wait(timeout=5)
+
+
+def test_missing_dependencies_exit_before_stopping_the_instance(tmp_path):
+    """A pull that adds a dependency must not stop the healthy old bot."""
+    project = tmp_path / "project"
+    marker = tmp_path / "launch-args.txt"
+    count = tmp_path / "dependency-count.txt"
+    _write_stub_project(project)
+    bot = _start_fake_bot("bot.ini", project)
+    try:
+        script = f"""
+set -euo pipefail
+"{SCRIPT_PATH}" -c bot.ini -f "$1"
+"""
+        completed = _run_bash(
+            script,
+            str(project),
+            env=_launcher_env(
+                project,
+                marker,
+                STUB_DEPENDENCY_CHECK="fail",
+                STUB_DEPENDENCY_COUNT=str(count),
+            ),
+            cwd=tmp_path,
+        )
+
+        assert completed.returncode != 0, completed.stderr
+        assert "Missing required packages: aiohttp" in completed.stderr
+        assert bot.poll() is None, "the launcher stopped the instance before its dependency check"
+        assert not marker.exists(), "the launcher started after a failed dependency check"
+    finally:
+        if bot.poll() is None:
+            bot.kill()
+            bot.wait(timeout=5)
+
+
+def test_dependency_check_runs_isolated_before_launch(tmp_path):
+    """The check runs the project's own script with local imports disabled."""
+    project = tmp_path / "project"
+    marker = tmp_path / "launch-args.txt"
+    check_log = tmp_path / "dependency-check.log"
+    _write_stub_project(project)
+    script = f"""
+set -euo pipefail
+"{SCRIPT_PATH}" -c bot.ini -f "$1"
+"""
+    completed = _run_bash(
+        script,
+        str(project),
+        env=_launcher_env(project, marker, STUB_DEPENDENCY_LOG=str(check_log)),
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert marker.is_file(), completed.stderr
+    invoked = check_log.read_text(encoding="utf-8").splitlines()
+    assert f"-I -B {project}/src/dependency_check.py" in invoked
 
 
 def test_resolve_python_prefers_the_project_venv_over_pyenv(tmp_path):
