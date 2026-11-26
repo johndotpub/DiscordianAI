@@ -28,6 +28,7 @@ from .config import (
     DEFAULT_RATE_LIMIT,
     DEFAULT_RATE_LIMIT_PER,
     DEFAULT_ROUTER_MODE,
+    _parse_bool,
     load_config,
     parse_arguments,
 )
@@ -78,8 +79,8 @@ def _log_color_is_explicit(config_file: str | None, base_folder: str | None) -> 
 
     The loaded configuration always carries a value for the key, so the
     default cannot be distinguished from an explicit setting after parsing.
-    Check the environment and the config file itself instead. A blank value
-    counts as unset, matching the config-wide blank-value rule.
+    Check the environment and the config file itself instead. A blank or
+    unrecognised value counts as unset, so terminal detection applies.
 
     Args:
         config_file: Config file path that was passed to ``load_config``.
@@ -87,10 +88,10 @@ def _log_color_is_explicit(config_file: str | None, base_folder: str | None) -> 
 
     Returns:
         True when the environment or the ``[Logging]`` section sets a
-        non-blank value for the key.
+        recognised boolean value for the key.
     """
     env_value = os.environ.get("DISCORDIANAI_LOG_COLOR")
-    if env_value is not None and env_value.strip():
+    if env_value is not None and _parse_bool(env_value) is not None:
         return True
     if not config_file:
         return False
@@ -106,10 +107,9 @@ def _log_color_is_explicit(config_file: str | None, base_folder: str | None) -> 
         parser.read(path, encoding="utf-8")
     except (configparser.Error, OSError):
         return False
-    return bool(
-        parser.has_option("Logging", "DISCORDIANAI_LOG_COLOR")
-        and parser.get("Logging", "DISCORDIANAI_LOG_COLOR", fallback="").strip()
-    )
+    if not parser.has_option("Logging", "DISCORDIANAI_LOG_COLOR"):
+        return False
+    return _parse_bool(parser.get("Logging", "DISCORDIANAI_LOG_COLOR", fallback="")) is not None
 
 
 def _require_existing_config_file(

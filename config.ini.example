@@ -144,9 +144,11 @@ ROUTER_CLEF_TIMEOUT_MS=2000
 
 [Logging]
 LOG_LEVEL=INFO
-# Console colors for logs are opted into. Set this to true (or 1/yes) to enable
-# them; false keeps redirected logs plain. Also settable via the env var.
-DISCORDIANAI_LOG_COLOR=false
+# Unset or blank means "detect the terminal" (colour on a TTY, plain when
+# redirected). Set it to true (or 1/yes/on) to force colour, or to
+# false (or 0/no/off) to force it off; any other value is treated as unset.
+# Also settable via the environment variable.
+# DISCORDIANAI_LOG_COLOR=
 
 [Health]
 # HTTP health endpoint for Kubernetes / load balancer probes

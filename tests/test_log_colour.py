@@ -117,6 +117,57 @@ def test_blank_config_value_leaves_colour_to_tty_detection(tmp_path, monkeypatch
     assert _log_color_is_explicit(str(config_file), None) is False
 
 
+def test_invalid_setting_is_not_explicit_and_leaves_colour_to_tty_detection(tmp_path, monkeypatch):
+    """An unrecognised value is treated as unset in the environment and the file."""
+    from src import main
+
+    monkeypatch.setenv("DISCORDIANAI_LOG_COLOR", "maybe")
+    assert main._log_color_is_explicit(None, None) is False
+
+    monkeypatch.delenv("DISCORDIANAI_LOG_COLOR")
+    config_file = tmp_path / "config.ini"
+    config_file.write_text("[Logging]\nDISCORDIANAI_LOG_COLOR=maybe\n", encoding="utf-8")
+
+    explicit = main._log_color_is_explicit(str(config_file), None)
+    assert explicit is False
+
+    captured = {}
+    monkeypatch.setattr(main, "configure_structlog", lambda **kwargs: captured.update(kwargs))
+    main.setup_production_logging(
+        {
+            "LOG_LEVEL": "INFO",
+            "DISCORDIANAI_LOG_COLOR": True,
+            "_LOG_COLOR_EXPLICIT": explicit,
+        },
+        logging.getLogger("test.log_colour"),
+    )
+
+    assert captured["log_colors"] is None
+
+
+def test_true_setting_counts_as_explicit_and_enables_colour(monkeypatch):
+    """An explicit true value forces colour on."""
+    from src import main
+
+    captured = {}
+    monkeypatch.setattr(main, "configure_structlog", lambda **kwargs: captured.update(kwargs))
+    monkeypatch.setenv("DISCORDIANAI_LOG_COLOR", "true")
+
+    explicit = main._log_color_is_explicit(None, None)
+    assert explicit is True
+
+    main.setup_production_logging(
+        {
+            "LOG_LEVEL": "INFO",
+            "DISCORDIANAI_LOG_COLOR": True,
+            "_LOG_COLOR_EXPLICIT": explicit,
+        },
+        logging.getLogger("test.log_colour"),
+    )
+
+    assert captured["log_colors"] is True
+
+
 def test_false_setting_counts_as_explicit_and_disables_colour(monkeypatch):
     """An explicit false value still forces colour off."""
     from src import main

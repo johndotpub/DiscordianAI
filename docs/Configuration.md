@@ -136,7 +136,7 @@ Logs are emitted to stderr as structured lines. The process supervisor or a shel
 
 - **`LOG_FILE`**: Deprecated and ignored. It is still parsed for backwards compatibility; when an operator explicitly sets it, startup logs one INFO line naming the configured value and pointing to stderr. The built-in default does not produce that line. Redirect stderr (or both streams) or configure the supervisor's output capture instead.
 - **`LOG_LEVEL`**: Logging verbosity ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL") *(default: "INFO")*
-- **`DISCORDIANAI_LOG_COLOR`**: Color follows the output stream's terminal detection by default. Set it to `1`/`true`/`yes` to force color on or `0`/`false`/`no` to force it off; a blank value is treated as unset. It can be set in the `[Logging]` section or as an environment variable, and a non-blank environment value overrides the file.
+- **`DISCORDIANAI_LOG_COLOR`**: Color follows the output stream's terminal detection when the key is unset or blank. Set it to `1`/`true`/`yes`/`on` to force color on or `0`/`false`/`no`/`off` to force it off; any other value is treated as unset. It can be set in the `[Logging]` section or as an environment variable, and a non-blank environment value overrides the file.
 
 ### Health
 
@@ -293,7 +293,8 @@ ROUTER_CLEF_TIMEOUT_MS=2000
 
 [Logging]
 LOG_LEVEL=INFO
-DISCORDIANAI_LOG_COLOR=false
+# Unset or blank means "detect the terminal"; true/false force colour on/off.
+# DISCORDIANAI_LOG_COLOR=false
 
 [Health]
 # HTTP health endpoint for Kubernetes / load balancer probes

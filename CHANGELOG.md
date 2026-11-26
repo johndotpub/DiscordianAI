@@ -315,6 +315,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **An invalid log-colour value no longer forces colour on.** `DISCORDIANAI_LOG_COLOR=maybe`
+  used to count as an explicit choice and turn colour on, and the copied example set
+  `false`, which turned colour off even on a terminal. Only a recognised boolean now
+  counts as explicit; unset, blank, or invalid values fall back to terminal detection,
+  and `config.ini.example` leaves the key commented out. `tests/test_log_colour.py`
+  covers the invalid, true, and false cases.
 - **A port or size is no longer mistaken for a year.** A question such as "what port
   does postgres listen on, 5432?" went to web search because any four-digit number
   from last year upward counted as a current-year cue. The year cue now covers last

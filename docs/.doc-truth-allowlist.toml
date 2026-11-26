@@ -20,6 +20,16 @@ reason = "WEB_TOOLS defaults to true; the example documents the switch in a comm
 
 [[exception]]
 check = "B1"
+target = "DISCORDIANAI_LOG_COLOR@config.ini.example"
+reason = "Colour follows terminal detection when the key is unset; the example documents the switch in a comment instead of shipping an active value that would override detection."
+
+[[exception]]
+check = "B1"
+target = "DISCORDIANAI_LOG_COLOR@complete-example"
+reason = "The complete example keeps the colour key commented out for the same reason: an active value would override terminal detection."
+
+[[exception]]
+check = "B1"
 target = "OLLAMA_API_KEY@not-in-loader"
 reason = "OLLAMA_API_KEY is an environment-only fallback read directly by the routing credential resolver, not a config.ini key; it is documented in .env.example and the environment-variable section of docs/Configuration.md."
 follow_up = "Move the fallback into the central loader only if it becomes a supported config.ini key."
