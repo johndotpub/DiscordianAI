@@ -765,7 +765,8 @@ def extract_cues(
     current_year = (clock or date.today)().year
     for match in _YEAR_PATTERN.finditer(folded):
         _DECISION_STATS["clauses"] += 1
-        if int(match.group()) >= current_year - 1:
+        number = int(match.group())
+        if current_year - 1 <= number <= current_year + 1:
             add("time.year", "bearing", match.span(), match.group())
 
     if tokens and (tokens[0][0] in _QUESTION_WORDS or tokens[0][0] in _AUXILIARIES):

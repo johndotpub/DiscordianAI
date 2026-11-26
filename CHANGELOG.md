@@ -315,6 +315,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed 🔧
 
+- **A port or size is no longer mistaken for a year.** A question such as "what port
+  does postgres listen on, 5432?" went to web search because any four-digit number
+  from last year upward counted as a current-year cue. The year cue now covers last
+  year, this year, and next year only, so a port or size no longer decides the route.
+  `tests/routing/test_features.py` covers the window and the rejected numbers.
 - **A failed stop refuses to start a second instance.** When the old process survived the
   final signal, the launcher still started a new bot, giving two gateway sessions on one
   token. The stop helper now waits briefly after `SIGKILL`, reports the surviving PID as
