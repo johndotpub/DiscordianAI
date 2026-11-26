@@ -320,6 +320,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from last year upward counted as a current-year cue. The year cue now covers last
   year, this year, and next year only, so a port or size no longer decides the route.
   `tests/routing/test_features.py` covers the window and the rejected numbers.
+- **A local-only instruction needs whole words.** An override phrase such as
+  "no web" matched inside "casino website" and "piano webinar", so the bot
+  answered locally with no web access. Every override phrase now has a word
+  boundary where it starts or ends with a letter, while "no web please",
+  "do not search", and "answer from memory" still match. The same change
+  covers the web-instruction phrases, so "research the web app" and "recheck
+  online" no longer count as explicit search requests.
+  `tests/routing/test_lexicon.py` covers both override groups.
 - **A failed stop refuses to start a second instance.** When the old process survived the
   final signal, the launcher still started a new bot, giving two gateway sessions on one
   token. The stop helper now waits briefly after `SIGKILL`, reports the surviving PID as

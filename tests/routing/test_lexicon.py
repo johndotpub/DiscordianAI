@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from src.routing.features import extract_overrides, views
 from src.routing.lexicon import Lexicon, LexiconError
 
 STARTER_CLASS_COUNT = 12
@@ -180,3 +181,36 @@ def test_invalid_utf8_lexicon_raises_lexicon_error(tmp_path: Path) -> None:
         excinfo.value, LexiconError
     ), f"UnicodeDecodeError escaped the lexicon loader: {excinfo.value}"
     assert "not valid UTF-8" in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["casino website", "piano webinar", "a pronoun, web search tips"],
+)
+def test_local_instruction_does_not_match_inside_a_longer_word(text: str) -> None:
+    """A local-only instruction needs whole words, not a substring."""
+    cues = extract_overrides(views(text), Lexicon.load())
+
+    assert not any(cue.signal == "override.local_instruction" for cue in cues)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["we should research the web app", "please recheck online later", "outlook it up online"],
+)
+def test_web_instruction_does_not_match_inside_a_longer_word(text: str) -> None:
+    """A web instruction needs whole words, not a substring."""
+    cues = extract_overrides(views(text), Lexicon.load())
+
+    assert not any(cue.signal == "override.web_instruction" for cue in cues)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["no web please", "do not search", "don't search", "answer from memory"],
+)
+def test_override_phrases_still_match_as_whole_phrases(text: str) -> None:
+    """Whole-word boundaries do not reword or drop an existing phrase."""
+    cues = extract_overrides(views(text), Lexicon.load())
+
+    assert any(cue.signal == "override.local_instruction" for cue in cues)

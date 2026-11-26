@@ -149,9 +149,7 @@ def _clock_june_2026() -> date:
 
 
 @pytest.mark.parametrize("year", ["2025", "2026", "2027"])
-def test_time_year_accepts_the_window_around_the_current_year(
-    lexicon: Lexicon, year: str
-) -> None:
+def test_time_year_accepts_the_window_around_the_current_year(lexicon: Lexicon, year: str) -> None:
     """Last year, this year, and next year are time cues with a number span."""
     text = f"the {year} report"
     cues = extract_cues(views(text), lexicon, clock=_clock_june_2026)
@@ -163,9 +161,7 @@ def test_time_year_accepts_the_window_around_the_current_year(
 
 
 @pytest.mark.parametrize("number", ["2028", "2048", "4096", "5432", "8080", "1999"])
-def test_time_year_rejects_numbers_outside_the_window(
-    lexicon: Lexicon, number: str
-) -> None:
+def test_time_year_rejects_numbers_outside_the_window(lexicon: Lexicon, number: str) -> None:
     """A port or size is not a year even when it is four digits."""
     cues = extract_cues(views(f"the port is {number}"), lexicon, clock=_clock_june_2026)
 

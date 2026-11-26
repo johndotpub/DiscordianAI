@@ -214,11 +214,16 @@
   },
   "overrides": {
     "web_instruction": [
-      "search the (web|internet|online)",
-      "look (it )?up online",
-      "browse the web",
-      "check online"
+      "\\bsearch the (web|internet|online)",
+      "\\blook (it )?up online\\b",
+      "\\bbrowse the web\\b",
+      "\\bcheck online\\b"
     ],
-    "local_instruction": ["from memory", "do not search", "don't search", "no web"]
+    "local_instruction": [
+      "\\bfrom memory\\b",
+      "\\bdo not search\\b",
+      "\\bdon't search\\b",
+      "\\bno web\\b"
+    ]
   }
 }
