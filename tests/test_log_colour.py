@@ -4,8 +4,6 @@ from io import StringIO
 import logging
 import re
 
-import pytest
-
 from src.structured_logging import configure_structlog
 
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
@@ -16,19 +14,6 @@ class _TTYStream(StringIO):
 
     def isatty(self) -> bool:
         return True
-
-
-@pytest.fixture(autouse=True)
-def _restore_root_logger():
-    """Keep the globally configured root logger isolated between tests."""
-    root = logging.getLogger()
-    original_handlers = list(root.handlers)
-    original_level = root.level
-    try:
-        yield
-    finally:
-        root.handlers[:] = original_handlers
-        root.setLevel(original_level)
 
 
 def _render(monkeypatch, stream, setting=None):
@@ -96,6 +81,114 @@ def test_setting_counts_as_explicit_only_when_environment_or_file_sets_it(tmp_pa
     config_file.write_text("[Logging]\nDISCORDIANAI_LOG_COLOR=0\n", encoding="utf-8")
     assert _log_color_is_explicit(str(config_file), None) is True
     assert _log_color_is_explicit(str(tmp_path / "missing.ini"), None) is False
+
+
+def test_blank_environment_value_leaves_colour_to_tty_detection(monkeypatch):
+    """A blank environment value is unset, so the stream decides the colour."""
+    from src import main
+
+    captured = {}
+    monkeypatch.setattr(main, "configure_structlog", lambda **kwargs: captured.update(kwargs))
+    monkeypatch.setenv("DISCORDIANAI_LOG_COLOR", "   ")
+
+    explicit = main._log_color_is_explicit(None, None)
+    assert explicit is False
+
+    main.setup_production_logging(
+        {
+            "LOG_LEVEL": "INFO",
+            "DISCORDIANAI_LOG_COLOR": True,
+            "_LOG_COLOR_EXPLICIT": explicit,
+        },
+        logging.getLogger("test.log_colour"),
+    )
+
+    assert captured["log_colors"] is None
+
+
+def test_blank_config_value_leaves_colour_to_tty_detection(tmp_path, monkeypatch):
+    """A blank [Logging] value is unset even though the option is present."""
+    from src.main import _log_color_is_explicit
+
+    monkeypatch.delenv("DISCORDIANAI_LOG_COLOR", raising=False)
+    config_file = tmp_path / "config.ini"
+    config_file.write_text("[Logging]\nDISCORDIANAI_LOG_COLOR=   \n", encoding="utf-8")
+
+    assert _log_color_is_explicit(str(config_file), None) is False
+
+
+def test_invalid_setting_is_not_explicit_and_leaves_colour_to_tty_detection(tmp_path, monkeypatch):
+    """An unrecognised value is treated as unset in the environment and the file."""
+    from src import main
+
+    monkeypatch.setenv("DISCORDIANAI_LOG_COLOR", "maybe")
+    assert main._log_color_is_explicit(None, None) is False
+
+    monkeypatch.delenv("DISCORDIANAI_LOG_COLOR")
+    config_file = tmp_path / "config.ini"
+    config_file.write_text("[Logging]\nDISCORDIANAI_LOG_COLOR=maybe\n", encoding="utf-8")
+
+    explicit = main._log_color_is_explicit(str(config_file), None)
+    assert explicit is False
+
+    captured = {}
+    monkeypatch.setattr(main, "configure_structlog", lambda **kwargs: captured.update(kwargs))
+    main.setup_production_logging(
+        {
+            "LOG_LEVEL": "INFO",
+            "DISCORDIANAI_LOG_COLOR": True,
+            "_LOG_COLOR_EXPLICIT": explicit,
+        },
+        logging.getLogger("test.log_colour"),
+    )
+
+    assert captured["log_colors"] is None
+
+
+def test_true_setting_counts_as_explicit_and_enables_colour(monkeypatch):
+    """An explicit true value forces colour on."""
+    from src import main
+
+    captured = {}
+    monkeypatch.setattr(main, "configure_structlog", lambda **kwargs: captured.update(kwargs))
+    monkeypatch.setenv("DISCORDIANAI_LOG_COLOR", "true")
+
+    explicit = main._log_color_is_explicit(None, None)
+    assert explicit is True
+
+    main.setup_production_logging(
+        {
+            "LOG_LEVEL": "INFO",
+            "DISCORDIANAI_LOG_COLOR": True,
+            "_LOG_COLOR_EXPLICIT": explicit,
+        },
+        logging.getLogger("test.log_colour"),
+    )
+
+    assert captured["log_colors"] is True
+
+
+def test_false_setting_counts_as_explicit_and_disables_colour(monkeypatch):
+    """An explicit false value still forces colour off."""
+    from src import main
+
+    captured = {}
+    monkeypatch.setattr(main, "configure_structlog", lambda **kwargs: captured.update(kwargs))
+    monkeypatch.setenv("DISCORDIANAI_LOG_COLOR", "false")
+
+    explicit = main._log_color_is_explicit(None, None)
+    assert explicit is True
+
+    main.setup_production_logging(
+        {
+            "LOG_LEVEL": "INFO",
+            "DISCORDIANAI_LOG_COLOR": False,
+            "_LOG_COLOR_EXPLICIT": explicit,
+        },
+        logging.getLogger("test.log_colour"),
+    )
+
+    assert captured["log_colors"] is False
 
 
 def test_production_logging_leaves_an_absent_setting_to_tty_detection(monkeypatch):

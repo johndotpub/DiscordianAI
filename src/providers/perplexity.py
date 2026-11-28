@@ -5,16 +5,14 @@ and parses answer text plus citation metadata. Discord-specific formatting and
 embed construction stay in :mod:`src.perplexity_processing`.
 """
 
-import asyncio
 import logging
 import re
-import time
 from typing import Any
 
 from src.config import (
     CITATION_PATTERN,
-    DEFAULT_CONTEXT_WINDOW,
-    DEFAULT_INPUT_TOKENS,
+    DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
+    DEFAULT_PERPLEXITY_INPUT_TOKENS,
     URL_PATTERN,
 )
 from src.error_handling import (
@@ -22,11 +20,21 @@ from src.error_handling import (
     get_circuit_breaker,
     retry_with_backoff,
 )
-from src.message_builder import build_messages, resolve_completion_budget
+from src.message_builder import (
+    build_messages,
+    estimate_text_tokens,
+    resolve_completion_budget,
+)
 from src.message_splitter import CitationMap
 from src.models import PerplexityConfig
 
-from .base import CompletionRequest, ProbeResult, ProviderResult
+from .base import (
+    CompletionRequest,
+    ProbeResult,
+    ProviderResult,
+    object_field,
+    probe_models,
+)
 
 perplexity_circuit_breaker = get_circuit_breaker("perplexity")
 
@@ -38,6 +46,7 @@ FETCH_URL_INSTRUCTIONS = (
     "search results, clearly labelled as such."
 )
 WEB_TOOLS = [{"type": "web_search"}, {"type": "fetch_url"}]
+FETCH_URL_SUFFIX_TOKENS = estimate_text_tokens(FETCH_URL_INSTRUCTIONS)
 DEFAULT_MAX_STEPS = 4
 _DEFAULT_PROBE_TIMEOUT = 10.0
 
@@ -89,16 +98,9 @@ def extract_citations_from_response(
     return cleaned_text, citations
 
 
-def _field_value(value: Any, name: str, default: Any = None) -> Any:
-    """Read a field from an SDK model or a plain mapping."""
-    if isinstance(value, dict):
-        return value.get(name, default)
-    return getattr(value, name, default)
-
-
 def _response_output_items(response: Any) -> list[Any]:
     """Return the Agent API ``output`` items as a list."""
-    output = _field_value(response, "output")
+    output = object_field(response, "output")
     if output is None:
         return []
     if isinstance(output, dict):
@@ -115,16 +117,16 @@ def _extract_agent_text(response: Any) -> str:
     """
     texts: list[str] = []
     for item in _response_output_items(response):
-        if _field_value(item, "type") != "message":
+        if object_field(item, "type") != "message":
             continue
-        content = _field_value(item, "content") or []
+        content = object_field(item, "content") or []
         if isinstance(content, str):
             texts.append(content)
             continue
         for part in content:
-            if _field_value(part, "type") != "output_text":
+            if object_field(part, "type") != "output_text":
                 continue
-            text = _field_value(part, "text")
+            text = object_field(part, "text")
             if text:
                 texts.append(str(text))
 
@@ -158,13 +160,13 @@ def _extract_agent_search_results(response: Any) -> list[Any] | None:
     """
     results: list[Any] = []
     for item in _response_output_items(response):
-        item_type = _field_value(item, "type")
+        item_type = object_field(item, "type")
         if item_type == "search_results":
-            entries = _result_entries(_field_value(item, "results"))
+            entries = _result_entries(object_field(item, "results"))
         elif item_type == "fetch_url_results":
-            entries = _result_entries(_field_value(item, "contents"))
+            entries = _result_entries(object_field(item, "contents"))
             if not entries:
-                entries = _result_entries(_field_value(item, "results"))
+                entries = _result_entries(object_field(item, "results"))
         else:
             continue
         results.extend(entries)
@@ -187,6 +189,23 @@ def _parse_agent_response(response: Any) -> tuple[str, dict[str, str]]:
     answer_text = _extract_agent_text(response)
     search_results = _extract_agent_search_results(response)
     return extract_citations_from_response(answer_text, search_results=search_results)
+
+
+def _agent_finish_reason(response: Any) -> str | None:
+    """Return the chat-completions spelling of an Agent API finish reason.
+
+    The Responses spec reports a cut-off answer as ``status == "incomplete"``
+    with ``incomplete_details.reason == "max_output_tokens"``. Normalise that
+    to ``"length"`` so both provider adapters expose one truncation signal.
+    """
+    if object_field(response, "status") != "incomplete":
+        return None
+
+    details = object_field(response, "incomplete_details")
+    reason = object_field(details, "reason") if details is not None else None
+    if reason in {"max_output_tokens", "max_tokens"}:
+        return "length"
+    return None
 
 
 def _map_from_metadata(unique: list[str], metadata: list[Any], target: dict[str, str]) -> None:
@@ -213,11 +232,11 @@ def _map_from_search_results(
     has_explicit_ids = False
 
     for result in results:
-        url = _field_value(result, "url")
+        url = object_field(result, "url")
         if not url:
             continue
         urls_in_order.append(str(url))
-        result_id = _field_value(result, "id")
+        result_id = object_field(result, "id")
         if result_id is not None:
             has_explicit_ids = True
             try:
@@ -292,26 +311,31 @@ def _normalize_citation_text(text: str, citations: dict[str, str]) -> str:
     return "\n".join(cleaned_lines).strip()
 
 
-def _build_api_params(  # noqa: PLR0913
+def _completion_request(  # noqa: PLR0913 - one builder carries every request option
     model: str,
     system: str,
     user_msg: str,
     tokens: int,
     history: list[dict] | None = None,
     *,
-    input_tokens: int = DEFAULT_INPUT_TOKENS,
+    input_tokens: int = DEFAULT_PERPLEXITY_INPUT_TOKENS,
     output_tokens: int | None = None,
-    context_window: int = DEFAULT_CONTEXT_WINDOW,
+    context_window: int = DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
+    input_setting: str = "PERPLEXITY_INPUT_TOKENS",
+    context_setting: str = "PERPLEXITY_CONTEXT_WINDOW",
     logger=None,
-) -> dict[str, Any]:
-    """Prepare Perplexity Agent API request parameters.
+) -> CompletionRequest:
+    """Build one normalised Agent API request.
 
-    The system prompt travels as ``instructions`` and everything else travels
-    as ``input`` messages, matching the Agent API request shape. Web search and
-    URL fetching are always enabled because this path exists for live-data
-    questions.
+    The fixed fetch-url instruction suffix is charged against the prompt budget
+    and carried in the system message exactly once. The setting names come from
+    the caller so a budget warning names whichever shared key supplied the
+    effective value.
     """
     completion_tokens = tokens if output_tokens is None else output_tokens
+    prompt_budget = (
+        None if input_tokens is None else max(0, int(input_tokens) - FETCH_URL_SUFFIX_TOKENS)
+    )
     messages = build_messages(
         system,
         user_msg,
@@ -320,6 +344,10 @@ def _build_api_params(  # noqa: PLR0913
         output_tokens=completion_tokens,
         context_window=context_window,
         logger=logger,
+        input_setting=input_setting,
+        output_setting="PERPLEXITY_OUTPUT_TOKENS",
+        context_setting=context_setting,
+        prompt_reserve_tokens=FETCH_URL_SUFFIX_TOKENS,
     )
 
     instructions = system
@@ -329,16 +357,73 @@ def _build_api_params(  # noqa: PLR0913
         input_messages = messages[1:]
     instructions = f"{instructions.rstrip()}\n\n{FETCH_URL_INSTRUCTIONS}"
 
+    return CompletionRequest(
+        model=model,
+        messages=[{"role": "system", "content": instructions}, *input_messages],
+        max_output_tokens=resolve_completion_budget(
+            completion_tokens, context_window, prompt_budget
+        ),
+        reasoning_effort=None,
+        tools=tuple(WEB_TOOLS),
+        extra={"max_steps": DEFAULT_MAX_STEPS},
+    )
+
+
+def _api_params(req: CompletionRequest, *, default_system: str = "") -> dict[str, Any]:
+    """Convert a normalised request into Agent API parameters."""
+    messages = list(req.messages)
+    if messages and messages[0].get("role") == "system":
+        instructions = str(messages[0].get("content", ""))
+        input_messages = messages[1:]
+    else:
+        instructions = default_system
+        input_messages = messages
+
     return {
-        "model": model,
+        "model": req.model,
         "instructions": instructions,
         "input": input_messages,
-        "max_output_tokens": resolve_completion_budget(
-            completion_tokens, context_window, input_tokens
-        ),
-        "tools": WEB_TOOLS,
-        "extra_body": {"max_steps": DEFAULT_MAX_STEPS},
+        "max_output_tokens": req.max_output_tokens,
+        "tools": list(req.tools) or WEB_TOOLS,
+        "extra_body": {"max_steps": int(req.extra.get("max_steps", DEFAULT_MAX_STEPS))},
     }
+
+
+def _build_api_params(  # noqa: PLR0913 - mirrors _completion_request's options
+    model: str,
+    system: str,
+    user_msg: str,
+    tokens: int,
+    history: list[dict] | None = None,
+    *,
+    input_tokens: int = DEFAULT_PERPLEXITY_INPUT_TOKENS,
+    output_tokens: int | None = None,
+    context_window: int = DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
+    input_setting: str = "PERPLEXITY_INPUT_TOKENS",
+    context_setting: str = "PERPLEXITY_CONTEXT_WINDOW",
+    logger=None,
+) -> dict[str, Any]:
+    """Prepare Perplexity Agent API request parameters.
+
+    The system prompt travels as ``instructions`` and everything else travels
+    as ``input`` messages, matching the Agent API request shape. Web search and
+    URL fetching are always enabled because this path exists for live-data
+    questions.
+    """
+    request = _completion_request(
+        model,
+        system,
+        user_msg,
+        tokens,
+        history,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        context_window=context_window,
+        input_setting=input_setting,
+        context_setting=context_setting,
+        logger=logger,
+    )
+    return _api_params(request, default_system=system)
 
 
 class AgentResponsesProvider:
@@ -382,7 +467,7 @@ class AgentResponsesProvider:
     ) -> CompletionRequest:
         """Build one normalised request using the Agent API shape."""
         config = self._config
-        params = _build_api_params(
+        return _completion_request(
             config.model,
             system,
             user_msg,
@@ -391,41 +476,14 @@ class AgentResponsesProvider:
             input_tokens=config.input_tokens if input_tokens is None else input_tokens,
             output_tokens=config.output_tokens if output_tokens is None else output_tokens,
             context_window=(config.context_window if context_window is None else context_window),
+            input_setting=config.input_setting,
+            context_setting=config.context_setting,
             logger=logger or self._logger,
-        )
-        return CompletionRequest(
-            model=params["model"],
-            messages=[
-                {"role": "system", "content": params["instructions"]},
-                *params["input"],
-            ],
-            max_output_tokens=int(params["max_output_tokens"]),
-            reasoning_effort=None,
-            tools=tuple(params["tools"]),
-            extra=dict(params.get("extra_body", {})),
         )
 
     def _api_params(self, req: CompletionRequest) -> dict[str, Any]:
         """Convert a normalised request into Agent API parameters."""
-        messages = list(req.messages)
-        if messages and messages[0].get("role") == "system":
-            instructions = str(messages[0].get("content", ""))
-            input_messages = messages[1:]
-        else:
-            instructions = self._config.system_message
-            input_messages = messages
-
-        if FETCH_URL_INSTRUCTIONS not in instructions:
-            instructions = f"{instructions.rstrip()}\n\n{FETCH_URL_INSTRUCTIONS}"
-
-        return {
-            "model": req.model,
-            "instructions": instructions,
-            "input": input_messages,
-            "max_output_tokens": req.max_output_tokens,
-            "tools": list(req.tools) or WEB_TOOLS,
-            "extra_body": {"max_steps": int(req.extra.get("max_steps", DEFAULT_MAX_STEPS))},
-        }
+        return _api_params(req, default_system=self._config.system_message)
 
     async def complete(self, req: CompletionRequest) -> ProviderResult:
         """Return answer text and citations from one Agent API call."""
@@ -437,48 +495,24 @@ class AgentResponsesProvider:
             self._logger,
         )
 
+        finish_reason = _agent_finish_reason(response)
         try:
             text, citations = _parse_agent_response(response)
         except ValueError:
-            return ProviderResult(text="", citations={}, finish_reason=None, raw=response)
+            return ProviderResult(
+                text="",
+                citations={},
+                finish_reason=finish_reason,
+                raw=response,
+            )
 
         return ProviderResult(
             text=text,
             citations=citations,
-            finish_reason=None,
+            finish_reason=finish_reason,
             raw=response,
         )
 
     async def probe(self) -> ProbeResult:
         """List models with a bounded timeout and report reachability."""
-        started_at = time.monotonic()
-        try:
-            response = await asyncio.wait_for(
-                self._client.models.list(),
-                timeout=self._probe_timeout,
-            )
-        except Exception as exc:  # noqa: BLE001 - probes report, never raise
-            latency_ms = (time.monotonic() - started_at) * 1000
-            return ProbeResult(
-                ok=False,
-                detail=f"{type(exc).__name__}: {exc}",
-                latency_ms=round(latency_ms, 1),
-            )
-
-        latency_ms = (time.monotonic() - started_at) * 1000
-        model_ids = [
-            model_id
-            for item in getattr(response, "data", [])
-            if (model_id := getattr(item, "id", None))
-        ]
-        if not model_ids:
-            return ProbeResult(
-                ok=False,
-                detail="provider returned no models",
-                latency_ms=round(latency_ms, 1),
-            )
-        return ProbeResult(
-            ok=True,
-            detail=f"{len(model_ids)} models available",
-            latency_ms=round(latency_ms, 1),
-        )
+        return await probe_models(self._client, self._probe_timeout)

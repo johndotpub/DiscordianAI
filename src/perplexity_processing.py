@@ -12,13 +12,14 @@ import re
 from typing import Any
 
 from .api_context import api_call
-from .caching import cached_response
+from .caching import cached_response, conversation_digest
 from .citation_formatting import _format_unlinked_citations, format_citations
 from .config import DEFAULT_CACHE_TTL
-from .discord_embeds import citation_embed_formatter
+from .discord_embeds import citation_embed_formatter, clamp_embed_description
+from .error_handling import ProviderCallError, classify_error, provider_error_summary
 from .message_splitter import CitationMap, sanitize_model_output, should_suppress_embeds
 from .models import AIRequest, PerplexityConfig
-from .providers.base import ProviderResult
+from .providers.base import AssistantText, ProviderResult, object_field
 from .providers.perplexity import (
     FETCH_URL_INSTRUCTIONS,
     WEB_TOOLS,
@@ -46,24 +47,6 @@ __all__ = [
 LINK_THRESHOLD = 2
 
 
-def _history_digest(conversation_summary: list[dict] | None) -> str:
-    """Hash ordered conversation history for the explicit cache key."""
-    if not conversation_summary:
-        payload = "[]"
-    else:
-        try:
-            payload = json.dumps(
-                conversation_summary,
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-                default=str,
-            )
-        except (TypeError, ValueError):
-            payload = repr(conversation_summary)
-    return hashlib.sha256(payload.encode()).hexdigest()
-
-
 def _scope_id(request: AIRequest) -> str | None:
     """Return the conversation key, or the requester id as a legacy fallback."""
     conversation_key = getattr(request, "conversation_key", None)
@@ -79,16 +62,10 @@ def _routing_fields(request: AIRequest) -> tuple[bool, str, bool]:
     routing = getattr(request, "routing", None)
     if routing is None:
         return True, "direct:perplexity", False
-    if isinstance(routing, dict):
-        return (
-            bool(routing.get("cacheable", True)),
-            str(routing.get("salt") or "direct:perplexity"),
-            bool(routing.get("degraded", False)),
-        )
     return (
-        bool(getattr(routing, "cacheable", True)),
-        str(getattr(routing, "salt", None) or "direct:perplexity"),
-        bool(getattr(routing, "degraded", False)),
+        bool(object_field(routing, "cacheable", True)),
+        str(object_field(routing, "salt", None) or "direct:perplexity"),
+        bool(object_field(routing, "degraded", False)),
     )
 
 
@@ -97,6 +74,7 @@ def _perplexity_cache_key(
     perplexity_client: Any,
     config: PerplexityConfig,
     conversation_summary: list[dict] | None = None,
+    **_kwargs: Any,
 ) -> str | None:
     """Build a fully scoped cache key for one Perplexity request."""
     cacheable, salt, degraded = _routing_fields(request)
@@ -113,7 +91,7 @@ def _perplexity_cache_key(
         "model": config.model,
         "system_digest": hashlib.sha256(str(config.system_message).encode()).hexdigest(),
         "scope": scope,
-        "history_digest": _history_digest(conversation_summary),
+        "history_digest": conversation_digest(conversation_summary),
         "salt": salt,
         "degraded": degraded,
         "client_base_url": str(getattr(perplexity_client, "base_url", "")),
@@ -168,7 +146,7 @@ def _handle_provider_result(
     request: AIRequest,
 ) -> tuple[str, bool, dict | None] | None:
     """Format one parsed provider result for Discord."""
-    if not result.text:
+    if not result.text or not result.text.strip():
         request.logger.warning("Perplexity returned empty response content")
         return None
 
@@ -177,13 +155,23 @@ def _handle_provider_result(
         citations = CitationMap(citations)
     final_text = format_citations_for_discord(result.text, citations, linkify=False)
     final_text = sanitize_model_output(final_text, citations)
+    if not final_text.strip():
+        request.logger.warning("Perplexity returned empty response content")
+        return None
     suppress_embeds = should_suppress_embeds(final_text, threshold=LINK_THRESHOLD)
+    truncated = result.finish_reason == "length"
+    if truncated:
+        request.logger.warning(
+            "Perplexity response hit the output-token limit; delivering a partial answer"
+        )
 
     embed_data = None
     if citations:
         embed, meta = citation_embed_formatter.create_citation_embed(final_text, citations)
         if embed.description:
-            embed.description = sanitize_model_output(embed.description, citations)
+            embed.description = clamp_embed_description(
+                sanitize_model_output(embed.description, citations)
+            )
         embed_data = {
             "embed": embed,
             "citations": citations,
@@ -191,7 +179,7 @@ def _handle_provider_result(
             "meta": meta,
         }
 
-    return final_text, suppress_embeds, embed_data
+    return AssistantText(final_text, truncated=truncated), suppress_embeds, embed_data
 
 
 @cached_response(
@@ -204,6 +192,8 @@ async def _fetch_perplexity_response(
     perplexity_client: Any,
     config: PerplexityConfig,
     conversation_summary: list[dict] | None = None,
+    *,
+    raise_on_failure: bool = False,
 ) -> tuple[str, bool, dict | None] | None:
     """Fetch and format a Perplexity answer behind the shared cache."""
     try:
@@ -222,8 +212,15 @@ async def _fetch_perplexity_response(
             result = await provider.complete(completion_request)
             ctx.set_result(result.raw)
             return _handle_provider_result(result, request)
-    except Exception:
-        request.logger.exception("Perplexity API call failed for user %s", request.user.id)
+    except Exception as exc:
+        error_details = classify_error(exc)
+        request.logger.error(  # noqa: TRY400 - a traceback would print the provider body
+            "Perplexity API call failed for user %s: %s",
+            request.user.id,
+            provider_error_summary(exc),
+        )
+        if raise_on_failure:
+            raise ProviderCallError(error_details, provider="perplexity") from exc
         return None
 
 
@@ -232,6 +229,8 @@ async def process_perplexity_message(
     perplexity_client: Any,
     config: PerplexityConfig,
     conversation_summary: list[dict] | None = None,
+    *,
+    raise_on_failure: bool = False,
 ) -> tuple[str, bool, dict | None] | None:
     """Get a web-enabled response from Perplexity and format it for Discord.
 
@@ -247,11 +246,17 @@ async def process_perplexity_message(
         config: `PerplexityConfig` containing model and system message.
         conversation_summary: Optional prior conversation turns to send between
             the system message and the current user message.
+        raise_on_failure: Raise a typed ``ProviderCallError`` instead of
+            returning ``None`` when the provider call fails.
 
     Returns:
         A tuple `(response_text, suppress_embeds, embed_metadata)` when a
         successful response is obtained, or `None` on failure/timeouts.
     """
     return await _fetch_perplexity_response(
-        request, perplexity_client, config, conversation_summary
+        request,
+        perplexity_client,
+        config,
+        conversation_summary,
+        raise_on_failure=raise_on_failure,
     )

@@ -48,17 +48,20 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 | Component | File | Purpose |
 |-----------|------|---------|
 | **Main** | `main.py` | Application entry point, startup sequence, logging setup |
-| **Bot** | `bot.py` | Discord client initialization, event handlers, graceful shutdown |
+| **Bot** | `bot.py` | Dependency wiring and bot startup; event handlers and shutdown live in `bot_manager.py` |
+| **Bot Manager** | `bot_manager.py` | Client lifecycle, signal handling, health-monitor scheduling, and shutdown |
 
 ### Core Processing
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| **Router** | `routing/` | Decides whether a message needs live web data. Evidence model: *bearing* cues (a mutable referent) may decide, *framing* cues (the shape of the request) can never decide alone. Owns the lexicon, the gate and the cache policy. |
+| **Routing Package** | `routing/` | Decides whether a message needs live web data. Evidence model: *bearing* cues (a mutable referent) may decide, *framing* cues (the shape of the request) can never decide alone. Owns the lexicon and the gate; cache eligibility is `_cacheable()` in smart_orchestrator.py. |
 | **Smart Orchestrator** | `smart_orchestrator.py` | Executes the router's decision against the providers, applies fallbacks, and records conversation turns |
 | **OpenAI-Compatible Processing** | `openai_processing.py` | Cache/dedup wrapper around the chat adapter |
-| **Perplexity Processing** | `perplexity_processing.py` | Cache wrapper, Discord citation formatting, and embed construction |
-| **Provider Adapters** | `providers/` | Narrow protocol plus chat-completions and Agent Responses adapters, and the provider registry |
+| **Perplexity Processing** | `perplexity_processing.py` | Cache wrapper and embed construction around the Perplexity adapter |
+| **Provider Package** | `providers/` | Narrow protocol plus chat-completions and Agent Responses adapters, and the provider registry |
+| **Message Builder** | `message_builder.py` | Builds role-tagged chat messages, applies prompt budgets, and adds image parts to the current turn |
+| **Models** | `models.py` | Shared frozen request, result, and configuration dataclasses |
 | **Image Attachments** | `image_attachments.py` | Validates and decodes Discord image attachments for the chat provider |
 | **Web Tools** | `web_tools.py` | Native search and page-fetch tools for the Ollama chat path |
 
@@ -72,31 +75,38 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 | **Error Handling** | `error_handling.py` | Circuit breaker, retry logic, error classification |
 | **Conversation Manager** | `conversation_manager.py` | Thread-safe conversation history |
 | **Rate Limiter** | `rate_limits.py` | Per-user rate limiting |
-| **Health Checks** | `health_checks.py` | API health monitoring, metrics |
+| **Health Checks** | `health_checks.py` | Startup provider reachability probes (bounded, no metrics store) |
 | **Health Server** | `health_server.py` | HTTP liveness/readiness probes (Kubernetes-compatible) |
 | **API Context** | `api_context.py` | Context managers for API call lifecycle, timing, and error tracking |
 | **Structured Logging** | `structured_logging.py` | structlog configuration and structured logger factory |
+| **Logging Adapter** | `logging_adapter.py` | Adds Discord ids to log records without copying free text |
 | **Dependencies** | `dependencies.py` | `BotDependencies` dataclass for formal dependency injection |
+| **Dependency Check** | `dependency_check.py` | Verifies the runtime imports the bot needs at startup |
 
 ### Discord Integration
 
 | Component | File | Purpose |
 |-----------|------|---------|
+| **Message Router** | `message_router.py` | Mention and DM detection, channel and thread authorisation, and dispatch to the DM and channel processors |
 | **Discord Bot** | `discord_bot.py` | Activity status, presence management |
-| **Discord Embeds** | `discord_embeds.py` | Citation formatting, embed creation |
+| **Discord Embeds** | `discord_embeds.py` | Embed creation for citations |
+| **Citation Formatting** | `citation_formatting.py` | Renders numbered citations as markdown links for messages and embeds, and vets each URL before it can become clickable |
+| **Truncation** | `truncation.py` | Generic character-limit helper that appends the caller's own notice |
 | **Message Processor** | `message_processor.py` | Normalizes Discord events, delegates to orchestrator, records metadata |
-| **Message Splitter** | `message_splitter.py` | Message splitting, formatting, sanitization |
-| **API Validation** | `api_validation.py` | Configuration validation, API key format checks |
+| **Message Splitter** | `message_splitter.py` | Message splitting, formatting, sanitization, and the shared parser-backed code regions |
+| **API Validation** | `api_validation.py` | Configuration validation, key presence, and provider URL checks |
 
 ## ⚙️ Operational Features
 
 - **Rate Limiting** (`rate_limits.py`): Per-user buckets enforce `[Limits]` from config.ini so spam never overwhelms upstream APIs.
 - **Conversation History** (`conversation_manager.py`): Thread-safe per-conversation transcripts preserve context while pruning automatically. A conversation key is `g:<guild>:c:<channel>` for a guild channel or thread, or `dm:<user>` for a direct message; a thread uses its own channel id, so it never shares history with its parent.
 - **Activity & Presence** (`discord_bot.py` + config): Status text, presence state, and activity type are configurable at runtime.
-- **Direct Messages** (`bot.py`): DM sessions bypass mention requirements but still honour rate limits, and follow-ups inherit the previous service through the router.
+- **Direct Messages** (`message_router.py` + `message_processor.py`): DM sessions bypass mention requirements but still honour rate limits, and short anaphoric follow-ups inherit the previous route through the router.
 - **Channel Targeting** (`message_router.py`): `ALLOWED_CHANNELS` gating ensures the bot only replies where it is expected.
 - **Smart Message Splitting** (`message_splitter.py`): Discord-safe splitting protects code blocks, embeds, and citations from truncation.
-- **Global Exception Handling** (`error_handling.py` + `bot.py`): Centralized logging and graceful fallbacks keep the process alive after faults.
+- **Delivery Policy** (`message_splitter.py`): One helper sends every answer with `channel.send`, builds the reply reference with `fail_if_not_exists=False`, and owns the allowed-mentions policy (`everyone=False`, `roles=[]`).
+- **Global Exception Handling** (`main.py`): `sys.excepthook` logs an unhandled exception with a traceback, and the process still exits. Provider failures fall back inside the orchestrator; an unhandled error outside that path ends the process.
+- **Shutdown Order** (`bot_manager.py`): Message intake stops first, then provider connection pools and the router's HTTP client close, and Discord closes last. Closing Discord first lets `Client.run` finish and cancel the remaining shutdown work.
 - **Health Server** (`health_server.py`): Lightweight HTTP endpoint for liveness/readiness probes, compatible with Kubernetes and load balancers.
 
 ## 🔄 Request Flow
@@ -105,7 +115,8 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 sequenceDiagram
     participant U as User
     participant D as Discord
-    participant B as Bot (bot.py)
+    participant BM as Bot Manager (bot_manager.py)
+    participant R as Message Router (message_router.py)
     participant MP as Message Processor
     participant O as Orchestrator
     participant AI as AI Service
@@ -113,12 +124,13 @@ sequenceDiagram
     participant CM as Conversation Manager
 
     U->>D: Send message
-    D->>B: on_message event
-    B->>MP: Normalize message + log context
+    D->>BM: on_message event
+    BM->>R: handle_incoming_message
+    R->>MP: Mention/DM routing; normalize message + log context
     MP->>MP: Rate limit & guardrail checks
     MP->>CM: Fetch conversation history
     MP->>O: Route message
-    O->>O: Build one RouterInput (message, channel kind, history)
+    O->>O: Build one RouterInput (message, history, previous route)
     O->>O: Apply the gate to bearing and framing cues
     O->>O: Select AI service from the route decision
     O->>C: Check cache
@@ -139,8 +151,7 @@ sequenceDiagram
     O-->>MP: Response payload
     O->>CM: Update conversation history
     MP->>MP: Split/format output
-    MP-->>B: Final payload
-    B->>D: Send response
+    MP->>D: Send response via message_splitter
     D-->>U: Display message
 ```
 
@@ -190,7 +201,8 @@ class CircuitBreaker:
 ```
 
 **State Transitions:**
-- **CLOSED**: Normal operation, requests pass through.
+- **CLOSED**: Normal operation, requests pass through. A success clears the
+  consecutive-failure count.
 - **OPEN**: After 5 failed logical calls, reject requests immediately. Retries
   inside one call do not add to the count: one call that exhausts its attempts
   is one failure. A stale count is reset when the next failure arrives more
@@ -198,6 +210,18 @@ class CircuitBreaker:
 - **HALF_OPEN**: After the 60-second timeout, admit one probe request. Other
   calls fail fast until it finishes; success closes the breaker and resets the
   count, failure reopens it.
+
+A user-caused request error (400, 409, 413, 422, and other deterministic
+client errors) means the provider received and rejected this request. It is
+neutral for the breaker: a half-open probe is released, but no failure or
+success is stamped and no counter moves. Configuration errors (401, 403, 404,
+and a 400 whose structured error names the model: type or code
+`invalid_model` or `model_not_found`, `param` equal to `model`, or a message
+that combines `model` with `is not supported`, `not found`, or `does not
+exist`) are not neutral, because a revoked key or retired model fails every
+call; they count as failures so `/health` reports the provider degraded or
+unhealthy. Timeouts, connection failures, 408, 429, and 5xx still
+count. One user's bad request still cannot open the breaker or turn health red.
 
 The health server publishes each breaker's state through
 `get_circuit_breaker_states()`.
@@ -216,9 +240,10 @@ one registry.
   client-side web-tool loop, and response parsing.
 - `providers/perplexity.py` owns the Agent API request shape, the Responses call, and
   citation extraction from search and fetched-page output.
-- `providers/registry.py` is the single source for provider names, client construction,
-  health-check metadata, and breaker membership. Health checks, the health
-  server, and the breaker table derive their entries from it.
+- `providers/registry.py` is the single source for provider names, client
+  construction, health-check metadata, and breaker membership. The bot builds its
+  clients through it, and health checks call the adapter `probe()` selected by the
+  registry row. The health server and the breaker table derive their entries from it.
 
 `process_openai_message()` and `process_perplexity_message()` remain the public
 entry points. They keep caching, retry lifecycle, and Discord formatting in the
@@ -252,13 +277,15 @@ OpenAI-compatible scope; the Perplexity wrapper supplies a fully scoped
 ```python
 class ThreadSafeConversationManager:
     def __init__(self):
-        self._conversations: dict[int | str, list[dict[str, str]]] = {}
+        self._conversations: TTLCache[int | str, list[dict[str, str]]] = TTLCache(...)
+        self._bot_streaks: TTLCache[int | str, int] = TTLCache(...)
         self._user_locks: dict[int | str, threading.RLock] = {}
         self._global_lock = threading.RLock()
 ```
 
 **Features:**
 - Per-user locking for fine-grained concurrency
+- Sliding TTL expiry through `cachetools.TTLCache` with an injectable clock
 - Automatic history pruning
 - Deep copy returns to prevent external modification
 
@@ -279,17 +306,38 @@ DEFAULT_API_RETRY_CONFIG = RetryConfig(
 delay is capped at 30 seconds, then full jitter picks a random value below it;
 a 90-second overall deadline stops retries even when attempts remain.
 
+### 7. Parser-Backed Code Regions
+
+`src/message_splitter.py` uses `tree-sitter` and `tree-sitter-markdown` as runtime
+dependencies. The block grammar finds fenced code, and each inline node is reparsed with
+the inline grammar to find code spans, links, images, and autolinks. The sanitiser and the
+splitter both call the conservative filter `_filtered_code_regions()`; the public
+`protected_code_regions()` is its wrapper. Only a closed fence with exact three-backtick
+markers whose opener and closer are the next sequential Discord triple-run pair, with no
+stray triple run inside or outside it, or a closed inline span whose opener and closer are
+not backslash-escaped in a text that uses one backtick run length and the next sequential
+Discord pair and whose content has no emphasis, strikethrough, spoiler, or scheme-qualified
+link syntax, is protected. Delimiter-dense text skips the inline grammar and relies on the
+catch-all passes. Sanitisation then rewrites parser spans outside those regions and applies
+parse-independent catch-all passes; splitting closes and reopens a fence and sanitises
+every final chunk again. Nested link labels render only 100 levels deep and then become
+ordinary text, so adversarial nesting cannot exhaust the stack. A lone UTF-16 surrogate is
+replaced before parsing so it cannot abort an encode. The splitter also keeps a split-only Discord pairing
+(`_discord_fence_spans()`) to place chunk boundaries when the filter protects no fence;
+those extra spans never suppress sanitisation. The routing package keeps a separate masker
+because its contract is to remove code-shaped cues before a route decision.
+
 ## 🔐 Security Architecture
 
 ### API Key Handling
 - Keys loaded from config files or environment variables
-- Empty keys are rejected; OpenAI key shape is advisory (`sk-` is OpenAI-specific), Perplexity uses `pplx-*`
+- Blank keys disable their provider; any non-empty OpenAI-compatible key is accepted and the provider rejects a wrong key at request time, Perplexity uses `pplx-*`
 - Never logged or exposed in error messages
 
 ### Input Validation
-- Message content sanitization
-- URL validation patterns
-- Rate limiting per user
+- Inbound text is not sanitised; prompts are bounded by token budgets and per-user rate limits
+- No local URL validation or fetching; user URLs are opened by the provider's tools
+- Outbound model text is sanitised before it reaches Discord
 
 ### Pre-commit Hooks
 - `detect-secrets` prevents accidental key commits
@@ -302,15 +350,18 @@ a 90-second overall deadline stops retries even when attempts remain.
 - Request/response metadata logging
 
 ### Health Checks
-- API connectivity monitoring
-- Model availability validation
-- Connection pool health metrics
+- Startup reachability probes for each configured provider, through the
+  adapter's bounded `probe()`
+- One log line per provider: service, status, latency, and error type; no
+  response body, request body, or key is logged
+- `/health` includes connection-pool metrics when a pool manager is configured
 
-### Metrics (via `APIHealthMetrics`)
-- Total/successful/failed checks
-- Average response times
-- Consecutive failure tracking
-- Uptime percentage
+### Health State
+- `/health` reports the bot's observed provider state from each circuit breaker; it
+  does not run a live provider probe on request.
+- Startup reachability checks call each provider adapter's bounded `probe()` and log
+  one line per provider. They keep no in-process metrics history, and no periodic
+  model-availability validation runs.
 
 ## 🚀 Performance Optimizations
 
@@ -324,7 +375,10 @@ perplexity_client = pool.create_perplexity_client(perplexity_api_key, perplexity
 ```
 
 ### Caching Strategy
-- Response cache: 10-minute TTL
+- Response cache: one 10-minute TTL (`DEFAULT_CACHE_TTL`) for every complete answer, regardless of
+  length; an answer cut off at the provider's output cap is not cached
+- Time-sensitive answers (for example a phrase such as "as of today" anywhere in the text) are
+  not cached
 - Conversation cache: 2-hour TTL
 - LRU eviction with 2000 entry limit
 

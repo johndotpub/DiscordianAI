@@ -13,6 +13,8 @@ unconditionally, so the mount fails or misbehaves when the path does not exist.
 cp .env.example .env
 # Edit .env and set DISCORD_TOKEN plus the provider keys you use.
 cp config.ini.example config.ini
+# Replace every placeholder in config.ini (tokens, keys, channel names) with a
+# real value; config.ini.example ships placeholders, not working credentials.
 # If every value comes from .env, an empty config file is enough:
 # touch config.ini
 docker compose up -d
@@ -23,6 +25,9 @@ because it cannot read the config file.
 
 The shipped `docker-compose.yml`:
 
+- pulls the published image `ghcr.io/johndotpub/discordianai:latest`; the local `build: .`
+  line is commented out, so `docker compose up` does not include changes in your checkout.
+  Uncomment `build: .` or build and tag the image yourself when testing local changes;
 - injects `.env` into the container with `env_file: [.env]`, so secrets stay out of the
   compose file;
 - mounts `./config.ini` read-only at `/app/config.ini`;
@@ -30,7 +35,15 @@ The shipped `docker-compose.yml`:
   inside the container so the published port is reachable from the host;
 - defines a `healthcheck` that calls `http://127.0.0.1:8080/health` with Python's
   standard-library `urllib.request`; it fails when the endpoint reports unhealthy or
-  cannot be reached.
+  cannot be reached;
+- bounds Docker's default `json-file` log driver at three files of 10 MB each, so a
+  long-running container cannot fill the host disk with container logs. Adjust
+  `logging.options.max-size` and `max-file`, or configure a remote logging driver, when
+  a different retention window is required.
+
+For a non-container deployment, the shipped `contrib/logrotate/discordianai` fragment
+rotates a supervisor-owned `bot.log` with `copytruncate`. Replace its log path and the
+`USER GROUP` placeholders on the `su` line as described in [Daemon.md](Daemon.md).
 
 Check the running service:
 
@@ -52,14 +65,24 @@ container does not write to `./logs` or `./data`.
 
 ```bash
 docker build . -t discordianai:latest
+cp .env.example .env
+# Edit .env and set DISCORD_TOKEN plus the provider keys you use.
 cp config.ini.example config.ini
 docker run --restart always \
+  --log-opt max-size=10m \
+  --log-opt max-file=3 \
   --env-file .env \
   -p 127.0.0.1:8080:8080 \
   -e HEALTH_HOST=0.0.0.0 \
   -v "$(pwd)/config.ini:/app/config.ini:ro" \
   discordianai:latest
 ```
+
+Replace the placeholder values in the copied `config.ini` with real tokens, keys, and
+channel names before starting the container; the example file is a template.
+
+The `--env-file .env` flag reads the file created above; keep it out of version control and
+restrict its permissions. The bot does not read Docker secret files.
 
 The image defines the same `/health` `HEALTHCHECK` as the compose file, so `docker ps`
 reports the container as unhealthy when the bot or its providers stop responding.

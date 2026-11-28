@@ -23,10 +23,10 @@ Bot-authored messages are accepted like human messages, but replies never includ
 Configure the OpenAI-compatible chat provider (Ollama Cloud by default) and the Perplexity Agent API for intelligent hybrid operation.
 
 #### OpenAI-Compatible Settings
-- **`OPENAI_API_KEY`**: Key for the configured OpenAI-compatible provider *(leave empty to disable)*. OpenAI keys start with `sk-`; other compatible providers use their own formats, which are accepted with a warning.
+- **`OPENAI_API_KEY`**: Key for the configured OpenAI-compatible provider *(leave empty to disable)*. Any non-empty key is accepted; OpenAI keys usually start with `sk-`, but the shape is not checked and the provider rejects a wrong key at request time.
 - **`OPENAI_API_URL`**: Chat provider base URL. Accepted: `https://api.openai.com/v1/`, `https://ollama.com/v1/`, and `http(s)://localhost:11434/v1/` or `http(s)://127.0.0.1:11434/v1/` *(default: "https://ollama.com/v1/")*
 - **`GPT_MODEL`**: Model identifier sent as configured. Any non-empty identifier is accepted; the provider decides which names are valid *(default: "deepseek-v4.1-flash:1017")*
-- **`REASONING_EFFORT`**: Reasoning effort sent with chat requests only when non-empty. It is a reasoning-model parameter; valid values are model-defined, `low`, `high`, and `max` are supported by the shipped model, and `none` disables thinking. Reasoning tokens are billed as output *(default: "high")*
+- **`REASONING_EFFORT`**: Reasoning effort sent with chat requests only when non-empty. It is a reasoning-model parameter; valid values are model-defined, `low`, `high`, and `max` are supported by the shipped model, and `none` disables thinking. Leave it blank to omit the parameter entirely. Reasoning tokens count toward the output cap *(default: "high")*
 
 OpenAI remains supported by setting all three of `OPENAI_API_URL`, `GPT_MODEL`, and `OPENAI_API_KEY` to OpenAI values.
 
@@ -37,9 +37,11 @@ OpenAI remains supported by setting all three of `OPENAI_API_URL`, `GPT_MODEL`, 
 
 #### Token Limits
 - **`INPUT_TOKENS`**: Maximum input context tokens *(default: 250000)*
-- **`OUTPUT_TOKENS`**: Maximum chat output tokens per response, sent as `max_tokens` to Ollama-compatible providers and `max_completion_tokens` to `api.openai.com` *(default: 16384)*
+- **`OUTPUT_TOKENS`**: Maximum chat output tokens per response, sent as `max_tokens` on Ollama-compatible hosts (`ollama.com`, `*.ollama.com`, `localhost`, `127.0.0.1`) and as `max_completion_tokens` on every other OpenAI-compatible host, including `api.openai.com` *(default: 16384)*
 - **`PERPLEXITY_OUTPUT_TOKENS`**: Maximum Perplexity output tokens per response, sent as `max_output_tokens` to the Agent API *(default: the value of `OUTPUT_TOKENS`)*
-- **`CONTEXT_WINDOW`**: Total context window size *(default: 1000000)*. The default chat model's window is 1,000,000 tokens, so this value may be set that high; it feeds the prompt budget and truncation, not billing.
+- **`PERPLEXITY_INPUT_TOKENS`**: Prompt budget for the Perplexity Sonar path only *(default: 111000)*. It leaves room for `PERPLEXITY_OUTPUT_TOKENS` and the fixed `fetch_url` instruction suffix inside the Sonar context window.
+- **`CONTEXT_WINDOW`**: Total chat-provider context window size *(default: 1000000)*. The default chat model's window is 1,000,000 tokens, so this value may be set that high; it feeds the prompt budget and truncation, not an API usage limit.
+- **`PERPLEXITY_CONTEXT_WINDOW`**: Total Perplexity Sonar context window *(default: 128000)*. The figure comes from the former Sonar model page, which documented a 128K-token window; the Agent API models page publishes no context figure, so 128K is unverified there. The Perplexity path uses this value instead of the larger chat-provider window.
 - **`SYSTEM_MESSAGE`**: System prompt for AI personality *(default: "You are a helpful assistant.")*
 
 `OUTPUT_TOKENS` and `PERPLEXITY_OUTPUT_TOKENS` mean different things. The chat
@@ -47,16 +49,43 @@ provider's output cap (`max_tokens` or `max_completion_tokens`) covers reasoning
 as well as visible output, so a small
 chat-provider value can be consumed entirely by reasoning and produce an empty reply with
 `finish_reason: length`. Perplexity's `max_output_tokens` covers output only. Both settings
-share the documented maximum of 1,000,000; values above it stop startup, and a chat-provider
-value below 512 logs a warning about empty replies.
+share a fixed validation ceiling of 128,000 tokens that is independent of
+`CONTEXT_WINDOW`; values above it stop startup, and a chat-provider value
+below 512 logs a warning about empty replies.
 
 `INPUT_TOKENS` is enforced as a prompt budget. The bot estimates prompt size from the
-system prompt, history, and current message using roughly four characters per token with
-a 10% safety margin and a small per-message overhead. Oldest question/answer pairs are
-trimmed first; an oversized message is truncated with a visible marker. The prompt budget
-also leaves room for the provider's output cap inside `CONTEXT_WINDOW`; if the input and
-output budgets exceed `CONTEXT_WINDOW`, the context window wins and a warning naming the
-conflicting settings is logged.
+system prompt, history, and current message. ASCII prose and code use roughly four
+characters per token. Characters from U+0080-U+07FF cost half a token, U+0800-U+FFFF cost
+0.8, and astral-plane characters (most emoji) cost 1.7, each before the shared 10% safety
+margin and the small per-message overhead. History in Chinese, Japanese, Korean, Hindi, or
+emoji is therefore counted at its real script weight instead of the old ASCII ratio.
+Oldest question/answer pairs are trimmed first; an oversized message is truncated with a
+visible marker.
+
+At startup, `INPUT_TOKENS` plus `OUTPUT_TOKENS` must fit inside `CONTEXT_WINDOW`, or
+startup stops with an ERROR naming all three keys. The same relation is checked for
+`PERPLEXITY_INPUT_TOKENS`, `PERPLEXITY_OUTPUT_TOKENS`, and `PERPLEXITY_CONTEXT_WINDOW`.
+On the Perplexity path the effective values are the ones the request builder uses:
+`PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW` by default, or the shared
+`INPUT_TOKENS` and `CONTEXT_WINDOW` when a lowered shared limit caps the Sonar prompt.
+The request builder still clamps values for a direct caller with a warning naming the
+conflicting settings, but a production configuration that would need that clamp is
+rejected before the bot connects.
+
+The chat and Perplexity paths have different windows. Chat requests use `INPUT_TOKENS` and
+`CONTEXT_WINDOW`; Perplexity requests use `PERPLEXITY_INPUT_TOKENS` and
+`PERPLEXITY_CONTEXT_WINDOW` because the former Sonar model page documented a 128K-token
+context length (the Agent API models page publishes no figure) rather than the chat model's
+1,000,000. When the operator lowers the shared `INPUT_TOKENS` or
+`CONTEXT_WINDOW` below the Perplexity value, the smaller chat value also applies to
+Perplexity prompts, so an existing budget keeps constraining the web path. The Perplexity
+prompt budget also reserves the fixed `fetch_url` instruction suffix before history is
+trimmed, so a full prompt plus `PERPLEXITY_OUTPUT_TOKENS` fits the Sonar window. All four
+prompt-budget and context-window keys must be positive integers. `INPUT_TOKENS` and
+`PERPLEXITY_INPUT_TOKENS` must be at least 1,000; a parsed value below its minimum, or a
+non-positive value, stops startup with an error naming the key. A value that cannot be parsed
+at all (for example `INPUT_TOKENS=not_an_integer` in `config.ini` or the environment) is
+reported with a warning and the documented default applies.
 
 #### Web Tools
 - **`WEB_TOOLS`**: Offer native web search and page fetch to Ollama-compatible chat providers; OpenAI endpoints never receive these tools *(default: true)*
@@ -71,7 +100,7 @@ Image attachments are read from normal messages in allowed channels and direct m
 
 ### Rate Limiting
 
-Prevents spam and manages API costs.
+Prevents spam and manages API usage.
 
 - **`RATE_LIMIT`**: Messages per time period *(default: 10)*
 - **`RATE_LIMIT_PER`**: Time period in seconds *(default: 60)*
@@ -91,11 +120,12 @@ Advanced configuration for intelligent AI service routing.
 
 - **`LOOKBACK_MESSAGES_FOR_CONSISTENCY`**: Messages to check for follow-up consistency; `0` or a negative value disables the lookup *(default: 6)*
   
-- **`MAX_HISTORY_PER_USER`**: Maximum conversation history per user *(default: 100)*
+- **`MAX_HISTORY_PER_USER`**: Maximum conversation entries kept per conversation key *(default: 100)*. The name is legacy: the cap is applied to a `g:<guild>:c:<channel>` or `dm:<user>` conversation, not to a user across conversations.
 - **`CONVERSATION_TTL_SECONDS`**: Idle seconds before a conversation and its lock are evicted *(default: 7200)*
 - **`USER_LOCK_CLEANUP_INTERVAL`**: Memory cleanup interval in seconds *(default: 3600)*
 - **`ENTITY_DETECTION_MIN_WORDS`**: Minimum message length intended for entity detection *(default: 10)*. Note: this setting is parsed into config but not yet wired into the current routing implementation; changing it has no runtime effect in this release.
-- **`ROUTER_MODE`**: Router implementation, `heuristic` or `clef` *(default: "heuristic")*. `heuristic` is the deterministic gate and remains the fallback. `clef` sends each message to Ollama Cloud's decision model (about 0.4 seconds, billed per token); network, timeout, HTTP, or malformed-response failures fall back to the deterministic gate. `model` is not implemented and raises with a pointer to `ROUTER_MODE=clef`.
+- **`ROUTER_MODE`**: Router implementation, `heuristic` or `clef` *(default: "heuristic")*. `heuristic` is the deterministic gate and remains the fallback. `clef` sends each message to Ollama Cloud's decision model (about 0.4 seconds, consuming tokens); network, timeout, HTTP, or malformed-response failures fall back to the deterministic gate. `model` is not implemented and raises with a pointer to `ROUTER_MODE=clef`.
+- **`ROUTER_CLEF_API_KEY`**: Optional dedicated key for the Clef decision endpoint. Prefer the environment variable because it is a secret. Resolution order is this key, `OLLAMA_API_KEY` from the environment, then `OPENAI_API_KEY` only when `OPENAI_API_URL` points at `ollama.com`; a key issued by another provider is never sent to Clef. When no eligible key exists, startup warns once and uses the deterministic gate. Unset by default.
 - **`ROUTER_CLEF_MODEL`**: Decision model used when `ROUTER_MODE=clef` *(default: "clef")*
 - **`ROUTER_CLEF_THRESHOLD`**: Probability at or above which Clef routes to the web *(default: 0.5)*
 - **`ROUTER_CLEF_TIMEOUT_MS`**: Clef request timeout in milliseconds before falling back to the deterministic gate *(default: 2000)*
@@ -104,9 +134,9 @@ Advanced configuration for intelligent AI service routing.
 
 Logs are emitted to stderr as structured lines. The process supervisor or a shell redirect decides where they are stored; redirecting stdout alone produces an empty file.
 
-- **`LOG_FILE`**: Deprecated and ignored. It is still parsed for backwards compatibility, and startup logs an INFO line naming the configured value. Redirect stderr (or both streams) or configure the supervisor's output capture instead.
+- **`LOG_FILE`**: Deprecated and ignored. It is still parsed for backwards compatibility; when an operator explicitly sets it, startup logs one INFO line naming the configured value and pointing to stderr. The built-in default does not produce that line. Redirect stderr (or both streams) or configure the supervisor's output capture instead.
 - **`LOG_LEVEL`**: Logging verbosity ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL") *(default: "INFO")*
-- **`DISCORDIANAI_LOG_COLOR`**: Color is enabled only when the output stream is a terminal, unless the setting is present and forces it on with `1`/`true`/`yes` or off with `0`/`false`/`no`; it can be set in the `[Logging]` section or as an environment variable, and the environment wins.
+- **`DISCORDIANAI_LOG_COLOR`**: Color follows the output stream's terminal detection when the key is unset or blank. Set it to `1`/`true`/`yes`/`on` to force color on or `0`/`false`/`no`/`off` to force it off; any other value is treated as unset. It can be set in the `[Logging]` section or as an environment variable, and a non-blank environment value overrides the file.
 
 ### Health
 
@@ -117,13 +147,25 @@ Lightweight HTTP health checks for Docker and Kubernetes deployments.
 - **`HEALTH_PORT`**: Port for readiness/liveness probes *(default: `8080`)*
 - **`HEALTH_PROVIDER_STALE_SECONDS`**: Seconds after a provider's last success before the informational `last_success_stale` flag is set; it does not change health status *(default: `300`)*
 
-A configured provider is `unhealthy` when its breaker is open, `degraded` when it is half-open or when a
-failure happened after its last success, and `healthy` otherwise. A provider that has never been called is
-healthy: silence is not a failure. The payload still reports
+A configured provider is `unhealthy` when its breaker is open and its recovery timeout has not
+elapsed, `degraded` when it is half-open or when a failure happened after its last success, and
+`healthy` otherwise. An open breaker past its recovery timeout is treated as recovering: it is
+reported healthy and does not make `/health` return 503, because the breaker would admit a probe
+on the next request. A configuration error (401, 403,
+404, or a 400 whose structured error names the model: type or code `invalid_model` or
+`model_not_found`, `param` equal to `model`, or a message that combines `model` with
+`is not supported`, `not found`, or `does not exist`) counts as a failure; a user-caused
+client error does not. A provider that has never been called is healthy: silence is not a failure. The payload still reports
 `last_success_age_seconds` and `last_success_stale` for diagnostics, but neither decides health.
 
-> **No cost cap.** Routing carries no budget knob: the gate decides from the message alone, so spend
-> follows the message mix rather than a configured ceiling. Measured precision also falls on trap-heavy
+Readiness also requires a live Discord gateway connection. The health server starts before
+the gateway connects, so `/health/live` answers while the connection is still being
+established; `/health/ready` returns 503 until `on_ready` reports a live gateway. The bot records disconnect
+and resume events, so `/health` and `/health/ready` return 503 during an outage even though
+discord.py's `is_ready()` remains set.
+
+> **No usage cap.** Routing carries no budget knob: the gate decides from the message alone, so search
+> volume follows the message mix rather than a configured ceiling. Measured precision also falls on trap-heavy
 > input (pleasantries that contain a date or a state word); the numbers are in `docs/routing/DESIGN.md`.
 
 ## Operation Modes
@@ -194,7 +236,9 @@ PERPLEXITY_MODEL=perplexity/sonar
 INPUT_TOKENS=250000
 OUTPUT_TOKENS=16384
 PERPLEXITY_OUTPUT_TOKENS=16384
+PERPLEXITY_INPUT_TOKENS=111000
 CONTEXT_WINDOW=1000000
+PERPLEXITY_CONTEXT_WINDOW=128000
 
 # === SYSTEM MESSAGE ===
 # Customize your bot's personality
@@ -209,8 +253,6 @@ VISION_ENABLED=true
 VISION_MAX_IMAGES=4
 VISION_MAX_BYTES=5242880
 VISION_TOKEN_ESTIMATE=1000
-
-# No chat-provider-specific sampling parameters are supported by the public API; do not configure
 
 [Limits]
 # Rate limiting to prevent spam
@@ -229,7 +271,8 @@ PERPLEXITY_MAX_KEEPALIVE=10
 # How many recent messages to check for AI service consistency (0 disables)
 LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 
-# Maximum conversation entries per user before pruning
+# Maximum conversation entries per conversation before pruning
+# (the key name is legacy; the cap is not per user)
 MAX_HISTORY_PER_USER=100
 
 # How long a conversation may sit idle before its history and lock are dropped
@@ -238,18 +281,20 @@ CONVERSATION_TTL_SECONDS=7200
 # How often to clean up inactive user locks (seconds) - default 1 hour
 USER_LOCK_CLEANUP_INTERVAL=3600
 
-# Minimum words required before entity detection runs
+# Parsed but not wired into routing; changing it has no runtime effect
 ENTITY_DETECTION_MIN_WORDS=10
 
 # Router implementation: heuristic (default) or clef (optional decision model)
 ROUTER_MODE=heuristic
+ROUTER_CLEF_API_KEY=
 ROUTER_CLEF_MODEL=clef
 ROUTER_CLEF_THRESHOLD=0.5
 ROUTER_CLEF_TIMEOUT_MS=2000
 
 [Logging]
 LOG_LEVEL=INFO
-DISCORDIANAI_LOG_COLOR=false
+# Unset or blank means "detect the terminal"; true/false force colour on/off.
+# DISCORDIANAI_LOG_COLOR=false
 
 [Health]
 # HTTP health endpoint for Kubernetes / load balancer probes
@@ -277,6 +322,8 @@ export ACTIVITY_STATUS="Humans"
 # AI service settings
 export OPENAI_API_KEY="your_ollama_cloud_key"
 export OPENAI_API_URL="https://ollama.com/v1/"
+# Optional Clef fallback key; environment only, not a config.ini key.
+export OLLAMA_API_KEY="your_ollama_cloud_key"
 export PERPLEXITY_API_KEY="your_perplexity_key"
 export PERPLEXITY_API_URL="https://api.perplexity.ai"
 export PERPLEXITY_MODEL="perplexity/sonar"
@@ -285,7 +332,9 @@ export REASONING_EFFORT="high"
 export INPUT_TOKENS="250000"
 export OUTPUT_TOKENS="16384"
 export PERPLEXITY_OUTPUT_TOKENS="16384"
+export PERPLEXITY_INPUT_TOKENS="111000"
 export CONTEXT_WINDOW="1000000"
+export PERPLEXITY_CONTEXT_WINDOW="128000"
 export SYSTEM_MESSAGE="You are a helpful assistant."
 
 # Rate limiting and connection pooling
@@ -303,6 +352,9 @@ export CONVERSATION_TTL_SECONDS="7200"
 export USER_LOCK_CLEANUP_INTERVAL="3600"
 export ENTITY_DETECTION_MIN_WORDS="10"
 export ROUTER_MODE="heuristic"
+export ROUTER_CLEF_API_KEY="your_clef_key"
+# Resolution order: ROUTER_CLEF_API_KEY, then OLLAMA_API_KEY, then
+# OPENAI_API_KEY only when OPENAI_API_URL is an ollama.com URL.
 export ROUTER_CLEF_MODEL="clef"
 export ROUTER_CLEF_THRESHOLD="0.5"
 export ROUTER_CLEF_TIMEOUT_MS="2000"
@@ -317,7 +369,7 @@ export VISION_MAX_BYTES="5242880"
 export VISION_TOKEN_ESTIMATE="1000"
 
 # Logging and health
-export LOG_FILE="bot.log"
+# LOG_FILE is parsed for backwards compatibility but ignored; logs always go to stderr.
 export LOG_LEVEL="INFO"
 export DISCORDIANAI_LOG_COLOR="1"
 export HEALTH_ENABLED="true"
@@ -335,8 +387,8 @@ Environment variables take precedence over `config.ini` values, allowing for fle
 
 ### Usage Examples
 ```bash
-# Use config.ini in current directory  
-python -m src.main
+# Use config.ini in current directory
+python -m src.main --conf config.ini
 
 # Use specific config file
 python -m src.main --conf production.ini
@@ -347,26 +399,50 @@ python -m src.main --folder /opt/discordianai --conf bot.ini
 
 ## Configuration Validation & Error Handling
 
-DiscordianAI includes comprehensive configuration validation:
+DiscordianAI includes comprehensive configuration validation.
+
+### Literal Values and File Errors
+
+Configuration values are read literally. A `%` in a prompt or key is data, not an
+interpolation marker, so write `SYSTEM_MESSAGE=I am 100% sure` without escaping it;
+`%%` is kept as two characters rather than collapsed to one. Duplicate keys are not
+merged.
+
+A file passed with `--conf` must exist. A missing file, or a path that is not a regular
+file, stops startup with `Configuration file <path> is missing or not a regular file;
+create it before starting` and exit code 1. If the file exists but cannot be used, an
+unreadable file, permission error, duplicate key, malformed section, or decode error stops
+startup with an error that names the file and the error class plus any source line numbers.
+That error does not reproduce the offending line or the parser's message, because the text
+can contain a token or another secret. Files are read as UTF-8; a decode error is fatal.
+The bot never continues with built-in defaults after a config file fails to load; omit
+`--conf` to run from environment variables and defaults.
+
+An empty value means the setting is not set, so its documented default applies. This
+applies to config-file values and environment overrides alike: a blank provider URL or
+model does not select that provider. Three settings keep an explicit empty meaning: a blank
+`OPENAI_API_KEY` or `PERPLEXITY_API_KEY` disables that provider, and a blank
+`REASONING_EFFORT` omits the parameter from chat requests.
 
 ### Startup Validation
 - **Required Fields**: Ensures DISCORD_TOKEN and the credentials for every configured provider are present
-- **Errors Abort Startup**: Missing credentials, malformed base URLs, non-positive limits, and output caps above 1,000,000 stop the process
-- **Warnings Continue**: Non-standard provider base URLs, small chat-provider output caps, non-`sk-` OpenAI-compatible keys, and other provider-tolerated settings are logged without blocking startup
+- **Errors Abort Startup**: Missing credentials, malformed base URLs, non-positive rate and token limits, non-positive `OPENAI_MAX_CONNECTIONS` or `PERPLEXITY_MAX_CONNECTIONS`, prompt budgets below 1,000, a prompt budget that does not fit its context window (`INPUT_TOKENS + OUTPUT_TOKENS > CONTEXT_WINDOW`, or the Perplexity trio), output caps above 128,000, and an unknown `ROUTER_MODE` stop the process
+- **Warnings Continue**: Non-standard provider base URLs, small chat-provider output caps, non-positive `MAX_HISTORY_PER_USER`, `CONVERSATION_TTL_SECONDS`, or `USER_LOCK_CLEANUP_INTERVAL` (0 keeps all history, a non-positive TTL disables expiry, and a non-positive cleanup interval sweeps on every call), and other provider-tolerated settings are logged without blocking startup
 - **Value Validation**: Checks integer fields, validates rate limits, and ensures proper data types
 
 ### Runtime Error Handling
-- **Global Exception Handler**: Catches and logs all unhandled exceptions with full stack traces
-- **Graceful Fallbacks**: Continues operation with sensible defaults when possible
+- **Global Exception Handler**: `sys.excepthook` in `src/main.py` logs an unhandled exception with a full stack trace; the process still exits.
+- **Provider Failures**: The orchestrator applies its bounded fallbacks between providers.
+- **Unhandled Errors**: An error outside the orchestrator's fallback path is not swallowed and ends the process.
 - **Production Logging**: Comprehensive logging for debugging and monitoring
 - **Memory Management**: Automatic cleanup and resource management
 
 ### Error Examples
 ```
-CRITICAL: No API keys provided! Bot cannot function without either an OpenAI-compatible provider or Perplexity API access.
-WARNING: RATE_LIMIT very high (101). Consider lower value to prevent abuse.
-ERROR: Invalid log level 'VERBOSE', defaulting to INFO  
-INFO: Configuration validation passed - all critical settings are valid
+ERROR: No API keys provided! Bot cannot function without either OpenAI or Perplexity API access. Please provide either OPENAI_API_KEY (for OpenAI) or PERPLEXITY_API_KEY (for Perplexity) or both.
+WARNING: Config validation: RATE_LIMIT very high (101). Consider lower value to prevent abuse.
+WARNING: Invalid log level 'VERBOSE', defaulting to INFO
+INFO: Configuration validation passed successfully
 ```
 
 ## Production Deployment Considerations
@@ -375,7 +451,7 @@ INFO: Configuration validation passed - all critical settings are valid
 - **Never commit API keys** to version control
 - **Use environment variables** in production
 - **Restrict file permissions** on config files (chmod 600)
-- **Monitor API usage** to prevent unexpected costs
+- **Monitor API usage** for unexpected activity
 
 ### Performance  
 - **Adjust `MAX_HISTORY_PER_USER`** based on memory constraints

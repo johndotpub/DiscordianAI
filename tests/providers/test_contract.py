@@ -192,6 +192,24 @@ async def test_chat_request_shape(base_url, cap_key, tools_expected):
 
 
 @pytest.mark.asyncio
+async def test_invalid_response_body_is_not_logged(caplog):
+    """An invalid chat response is logged by type and id, not by body."""
+    canary = "PROVIDER-BODY-CANARY-987654"
+    response = SimpleNamespace(choices=[], body=canary, id="resp-1")
+    client = FakeChatClient([response])
+    logger = logging.getLogger("provider-invalid-response")
+    provider = ChatCompletionsProvider(client, _openai_config(), logger=logger)
+    request = provider.build_request("System prompt", "Current question", [], 100)
+
+    with caplog.at_level(logging.ERROR, logger=logger.name):
+        with pytest.raises(ValueError, match="no choices"):
+            await provider.complete(request)
+
+    assert canary not in caplog.text
+    assert "id=resp-1" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_perplexity_request_shape_and_citations():
     client = FakeResponsesClient(
         [_agent_response("The report says [1].", [{"id": 1, "url": URL_ONE}])]
@@ -220,6 +238,50 @@ async def test_perplexity_request_shape_and_citations():
     assert "messages" not in params
     assert result.text == "The report says [1]."
     assert dict(result.citations) == {"1": URL_ONE}
+    assert result.finish_reason is None
+
+
+@pytest.mark.asyncio
+async def test_chat_length_finish_reason_is_reported():
+    """A chat answer stopped by the output cap reports the length reason."""
+    client = FakeChatClient([_chat_response("A partial answer", finish_reason="length")])
+    provider = ChatCompletionsProvider(client, _openai_config())
+
+    request = provider.build_request("System prompt", "Current question", [], 100)
+    result = await provider.complete(request)
+
+    assert result.text == "A partial answer"
+    assert result.finish_reason == "length"
+
+
+@pytest.mark.asyncio
+async def test_agent_incomplete_max_output_tokens_is_normalised_to_length():
+    """The Agent API's incomplete output-cap status becomes a length reason."""
+    response = _agent_response("A partial answer [1]", [{"id": 1, "url": URL_ONE}])
+    response["status"] = "incomplete"
+    response["incomplete_details"] = {"reason": "max_output_tokens"}
+    client = FakeResponsesClient([response])
+    provider = AgentResponsesProvider(client, _perplexity_config())
+
+    request = provider.build_request("System prompt", "Current question", [], 100)
+    result = await provider.complete(request)
+
+    assert result.text == "A partial answer [1]"
+    assert result.finish_reason == "length"
+
+
+@pytest.mark.asyncio
+async def test_agent_other_incomplete_reason_is_not_reported_as_length():
+    """An incomplete response for another reason must not claim a length cap."""
+    response = _agent_response("A filtered answer")
+    response["status"] = "incomplete"
+    response["incomplete_details"] = {"reason": "content_filter"}
+    client = FakeResponsesClient([response])
+    provider = AgentResponsesProvider(client, _perplexity_config())
+
+    request = provider.build_request("System prompt", "Current question", [], 100)
+    result = await provider.complete(request)
+
     assert result.finish_reason is None
 
 
@@ -286,7 +348,8 @@ async def test_chat_tool_loop_stops_at_the_round_cap():
     assert result.text == ""
     assert result.finish_reason == "tool_calls"
     assert len(client.calls) == 4
-    assert executor.await_count == 4
+    assert "tools" not in client.calls[-1]
+    assert executor.await_count == 3
 
 
 def _status_response(status_code):
@@ -413,6 +476,44 @@ async def test_identical_perplexity_calls_hit_the_cache():
     assert len(client.calls) == 1
 
 
+@pytest.mark.asyncio
+async def test_truncated_openai_answer_is_not_cached():
+    """A partial answer stopped at the output cap is fetched again."""
+    client = FakeChatClient(
+        [
+            _chat_response("A partial answer", finish_reason="length"),
+            _chat_response("A fresh answer"),
+        ]
+    )
+    request = _request("cache me")
+
+    first = await process_openai_message(request, [], client, _openai_config())
+    second = await process_openai_message(request, [], client, _openai_config())
+
+    assert first == "A partial answer"
+    assert second == "A fresh answer"
+    assert len(client.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_truncated_perplexity_answer_is_not_cached():
+    """An incomplete Agent response is not replayed from the cache."""
+    partial = _agent_response("A partial web answer.")
+    partial["status"] = "incomplete"
+    partial["incomplete_details"] = {"reason": "max_output_tokens"}
+    client = FakeResponsesClient([partial, _agent_response("A fresh web answer.")])
+    request = _request("cache me")
+
+    first = await process_perplexity_message(request, client, _perplexity_config())
+    second = await process_perplexity_message(request, client, _perplexity_config())
+
+    assert first is not None
+    assert first[0] == "A partial web answer."
+    assert second is not None
+    assert second[0] == "A fresh web answer."
+    assert len(client.calls) == 2
+
+
 def test_registry_is_the_single_source_for_provider_wiring():
     assert tuple(PROVIDERS) == ("openai", "perplexity")
     assert get("openai").config_type is OpenAIConfig
@@ -431,3 +532,14 @@ def test_registry_is_the_single_source_for_provider_wiring():
     )
     pool.create_openai_client.assert_called_once_with("key", "https://example/v1", None)
     pool.create_perplexity_client.assert_called_once_with("key", "https://example/v1", None)
+
+
+def test_build_adapter_honours_the_configured_web_tools_flag():
+    """An adapter built for health checks must not silently enable web tools."""
+    client = SimpleNamespace(base_url="https://ollama.com/v1/", api_key="")
+
+    disabled = get("openai").build_adapter(client, web_tools=False)
+    enabled = get("openai").build_adapter(client, web_tools=True)
+
+    assert disabled.supports_web_tools is False
+    assert enabled.supports_web_tools is True

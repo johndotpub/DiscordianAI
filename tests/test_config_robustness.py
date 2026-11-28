@@ -13,63 +13,6 @@ from src.main import validate_critical_config
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-ENV_KEYS = [
-    "DISCORD_TOKEN",
-    "ADDRESS",
-    "ALLOWED_CHANNELS",
-    "ALLOWED_CHANNEL_IDS",
-    "ALLOWED_GUILDS",
-    "ALLOWED_GUILD_IDS",
-    "BOT_PRESENCE",
-    "ACTIVITY_TYPE",
-    "ACTIVITY_STATUS",
-    "OPENAI_API_KEY",
-    "OPENAI_API_URL",
-    "PERPLEXITY_API_KEY",
-    "PERPLEXITY_API_URL",
-    "PERPLEXITY_MODEL",
-    "GPT_MODEL",
-    "REASONING_EFFORT",
-    "INPUT_TOKENS",
-    "OUTPUT_TOKENS",
-    "PERPLEXITY_OUTPUT_TOKENS",
-    "CONTEXT_WINDOW",
-    "SYSTEM_MESSAGE",
-    "RATE_LIMIT",
-    "RATE_LIMIT_PER",
-    "OPENAI_MAX_CONNECTIONS",
-    "OPENAI_MAX_KEEPALIVE",
-    "PERPLEXITY_MAX_CONNECTIONS",
-    "PERPLEXITY_MAX_KEEPALIVE",
-    "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
-    "MAX_HISTORY_PER_USER",
-    "CONVERSATION_TTL_SECONDS",
-    "USER_LOCK_CLEANUP_INTERVAL",
-    "ENTITY_DETECTION_MIN_WORDS",
-    "ROUTER_MODE",
-    "ROUTER_CLEF_MODEL",
-    "ROUTER_CLEF_THRESHOLD",
-    "ROUTER_CLEF_TIMEOUT_MS",
-    "WEB_TOOLS",
-    "VISION_ENABLED",
-    "VISION_MAX_IMAGES",
-    "VISION_MAX_BYTES",
-    "VISION_TOKEN_ESTIMATE",
-    "LOG_FILE",
-    "LOG_LEVEL",
-    "DISCORDIANAI_LOG_COLOR",
-    "HEALTH_ENABLED",
-    "HEALTH_HOST",
-    "HEALTH_PORT",
-]
-
-
-@pytest.fixture(autouse=True)
-def isolate_config_environment(monkeypatch):
-    """Keep host environment variables from leaking into these tests."""
-    for key in ENV_KEYS:
-        monkeypatch.delenv(key, raising=False)
-
 
 def _write_config(tmp_path: Path, contents: str) -> str:
     config_path = tmp_path / "config.ini"
@@ -89,6 +32,64 @@ def _minimal_config() -> dict:
         "ALLOWED_CHANNELS": ["general"],
         "ALLOWED_CHANNEL_IDS": [],
     }
+
+
+_LIST_OVERRIDE_CASES = [
+    ("ALLOWED_CHANNELS", ["general"], "other", ["other"]),
+    ("ALLOWED_GUILDS", ["home"], "other", ["other"]),
+    ("ALLOWED_CHANNEL_IDS", [111], "222", [222]),
+    ("ALLOWED_GUILD_IDS", [333], "444", [444]),
+]
+
+
+def _write_list_config(tmp_path: Path) -> str:
+    return _write_config(
+        tmp_path,
+        "[Discord]\n"
+        "ALLOWED_CHANNELS=general\n"
+        "ALLOWED_CHANNEL_IDS=111\n"
+        "ALLOWED_GUILDS=home\n"
+        "ALLOWED_GUILD_IDS=333\n",
+    )
+
+
+@pytest.mark.parametrize(("key", "file_value", "_override", "_parsed"), _LIST_OVERRIDE_CASES)
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_blank_list_environment_value_keeps_the_file_value(
+    monkeypatch, tmp_path, key, file_value, _override, _parsed, blank
+):
+    """A blank environment value means "not set" for list keys too."""
+    config_path = _write_list_config(tmp_path)
+    monkeypatch.setenv(key, blank)
+
+    config = load_config(config_path)
+
+    assert config[key] == file_value
+
+
+@pytest.mark.parametrize(("key", "_file_value", "override", "parsed"), _LIST_OVERRIDE_CASES)
+def test_non_blank_list_environment_value_overrides_the_file(
+    monkeypatch, tmp_path, key, _file_value, override, parsed
+):
+    """A non-blank value still replaces the config-file list."""
+    config_path = _write_list_config(tmp_path)
+    monkeypatch.setenv(key, override)
+
+    config = load_config(config_path)
+
+    assert config[key] == parsed
+
+
+def test_string_environment_values_are_stripped(monkeypatch, tmp_path):
+    """A key pasted or mounted with surrounding whitespace must be trimmed."""
+    config_path = _write_config(tmp_path, "[Default]\n")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test\n")
+    monkeypatch.setenv("BOT_PRESENCE", "online ")
+
+    config = load_config(config_path)
+
+    assert config["OPENAI_API_KEY"] == "sk-test"
+    assert config["BOT_PRESENCE"] == "online"
 
 
 def test_malformed_health_enabled_warns_with_key_and_section(tmp_path, caplog):

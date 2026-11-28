@@ -319,28 +319,28 @@ class TestBuildRouterClefConfig:
     def test_invalid_threshold_falls_back_to_default(self, monkeypatch):
         monkeypatch.setenv("ROUTER_MODE", "clef")
         monkeypatch.setenv("ROUTER_CLEF_THRESHOLD", "not-a-number")
-        monkeypatch.setenv("OPENAI_API_KEY", "k")
+        monkeypatch.setenv("ROUTER_CLEF_API_KEY", "k")
         router = build_router({})
         assert isinstance(router, ClefRouter)
 
     def test_out_of_range_threshold_is_clamped(self, monkeypatch):
         monkeypatch.setenv("ROUTER_MODE", "clef")
         monkeypatch.setenv("ROUTER_CLEF_THRESHOLD", "9")
-        monkeypatch.setenv("OPENAI_API_KEY", "k")
+        monkeypatch.setenv("ROUTER_CLEF_API_KEY", "k")
         router = build_router({})
         assert router._threshold == 1.0
 
     def test_invalid_timeout_falls_back(self, monkeypatch):
         monkeypatch.setenv("ROUTER_MODE", "clef")
         monkeypatch.setenv("ROUTER_CLEF_TIMEOUT_MS", "-5")
-        monkeypatch.setenv("OPENAI_API_KEY", "k")
+        monkeypatch.setenv("ROUTER_CLEF_API_KEY", "k")
         router = build_router({})
         assert router._timeout_s == 2.0
 
     def test_empty_model_falls_back(self, monkeypatch):
         monkeypatch.setenv("ROUTER_MODE", "clef")
         monkeypatch.setenv("ROUTER_CLEF_MODEL", "  ")
-        monkeypatch.setenv("OPENAI_API_KEY", "k")
+        monkeypatch.setenv("ROUTER_CLEF_API_KEY", "k")
         router = build_router({})
         assert router._model == "clef"
 

@@ -41,7 +41,7 @@ GPT_MODEL=deepseek-v4.1-flash:1017
 
 # Reasoning effort sent with chat requests. Valid values are model-defined
 # (low|high|max for deepseek-v4.1-flash:1017; none disables thinking).
-# Reasoning tokens are billed as output.
+# Reasoning tokens count toward the output cap.
 REASONING_EFFORT=high
 
 # === PERPLEXITY CONFIGURATION ===  
@@ -54,14 +54,25 @@ PERPLEXITY_MODEL=perplexity/sonar
 
 # === TOKEN LIMITS ===
 # INPUT_TOKENS is the enforced prompt budget (oldest history is trimmed first).
-# OUTPUT_TOKENS caps chat completions (max_tokens) and includes reasoning
-# tokens as well as visible output.
+# INPUT_TOKENS and PERPLEXITY_INPUT_TOKENS must be at least 1000.
+# OUTPUT_TOKENS caps chat completions: max_tokens on Ollama-compatible hosts
+# (ollama.com, *.ollama.com, localhost, 127.0.0.1) and max_completion_tokens on
+# every other OpenAI-compatible host, including api.openai.com. It includes
+# reasoning tokens as well as visible output.
 # PERPLEXITY_OUTPUT_TOKENS caps Perplexity completions (max_output_tokens),
 # which are output only. Omit it to use the same value as OUTPUT_TOKENS.
+# PERPLEXITY_INPUT_TOKENS and PERPLEXITY_CONTEXT_WINDOW apply only to the
+# Sonar web path. The 128K window comes from the former Sonar model page; the
+# Agent API models page publishes no context figure. The chat path keeps
+# INPUT_TOKENS and CONTEXT_WINDOW. If you lower INPUT_TOKENS or
+# CONTEXT_WINDOW below the Perplexity value, the smaller chat value also
+# constrains the Perplexity prompt.
 INPUT_TOKENS=250000
 OUTPUT_TOKENS=16384
 PERPLEXITY_OUTPUT_TOKENS=16384
+PERPLEXITY_INPUT_TOKENS=111000
 CONTEXT_WINDOW=1000000
+PERPLEXITY_CONTEXT_WINDOW=128000
 
 # === SYSTEM MESSAGE ===
 # Customize your bot's personality
@@ -105,7 +116,8 @@ PERPLEXITY_MAX_KEEPALIVE=10
 LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 
 
-# Maximum conversation entries per user before pruning
+# Maximum conversation entries per conversation before pruning
+# (the key name is legacy; the cap is not per user)
 MAX_HISTORY_PER_USER=100
 
 # How long a conversation may sit idle before its history and lock are dropped
@@ -119,18 +131,24 @@ USER_LOCK_CLEANUP_INTERVAL=3600
 ENTITY_DETECTION_MIN_WORDS=10
 
 # Router implementation: heuristic (default, no network) or clef (Ollama Cloud
-# decision model, ~0.4 s per message and billed per token). "model" is retired.
+# decision model, ~0.4 s per message and consuming tokens). "model" is retired.
 ROUTER_MODE=heuristic
 # Clef settings; ignored unless ROUTER_MODE=clef
+# Optional dedicated Clef key. Prefer the environment variable. When unset,
+# OLLAMA_API_KEY is used, and OPENAI_API_KEY is used only if OPENAI_API_URL is
+# an Ollama Cloud URL. A key issued by another provider is never sent to Clef.
+ROUTER_CLEF_API_KEY=
 ROUTER_CLEF_MODEL=clef
 ROUTER_CLEF_THRESHOLD=0.5
 ROUTER_CLEF_TIMEOUT_MS=2000
 
 [Logging]
 LOG_LEVEL=INFO
-# Console colors for logs are opted into. Set this to true (or 1/yes) to enable
-# them; false keeps redirected logs plain. Also settable via the env var.
-DISCORDIANAI_LOG_COLOR=false
+# Unset or blank means "detect the terminal" (colour on a TTY, plain when
+# redirected). Set it to true (or 1/yes/on) to force colour, or to
+# false (or 0/no/off) to force it off; any other value is treated as unset.
+# Also settable via the environment variable.
+# DISCORDIANAI_LOG_COLOR=
 
 [Health]
 # HTTP health endpoint for Kubernetes / load balancer probes
@@ -165,4 +183,6 @@ HEALTH_PROVIDER_STALE_SECONDS=300
 # PERPLEXITY_MODEL=perplexity/sonar
 #
 # === INVITE URL TEMPLATE ===
-# https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_CLIENT_ID&permissions=274945084416&scope=bot
+# Permissions: View Channel, Send Messages, Send Messages in Threads,
+# Read Message History, Embed Links. The bot sends no files.
+# https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_CLIENT_ID&permissions=274877991936&scope=bot

@@ -1,13 +1,18 @@
 import asyncio
 import logging
 import signal
+import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import aiohttp
 import discord
 import pytest
 
 from src.bot_manager import DiscordBotManager
+from src.dependencies import BotDependencies
+from src.health_server import HealthServer
+from tests.helpers import health_server_port
 
 
 class DummyBot:
@@ -28,6 +33,9 @@ class DummyBot:
 
     def is_closed(self):
         return self.closed_calls > 0
+
+    def is_ready(self):
+        return False
 
     async def close(self):
         self.closed_calls += 1
@@ -98,6 +106,30 @@ async def test_on_ready_sets_presence_and_health(monkeypatch, base_deps):
 
 
 @pytest.mark.asyncio
+async def test_health_endpoint_answers_before_on_ready(base_deps):
+    """Liveness answers before login; readiness stays 503 until on_ready."""
+    base_deps["client"] = object()
+    health_server = HealthServer(base_deps, port=0)
+    base_deps["health_server"] = health_server
+    manager = DiscordBotManager(base_deps)
+    manager.register_events()
+    try:
+        await manager.bot.event_handlers["setup_hook"]()
+
+        assert health_server._site is not None, "health server did not start before login"
+        port = health_server_port(health_server)
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"http://127.0.0.1:{port}/health/live") as response:
+                assert response.status == 200
+                assert (await response.json())["status"] == "alive"
+            async with session.get(f"http://127.0.0.1:{port}/health/ready") as response:
+                assert response.status == 503
+                assert (await response.json())["status"] == "not_ready"
+    finally:
+        await health_server.stop()
+
+
+@pytest.mark.asyncio
 async def test_on_message_routes_to_router(monkeypatch, base_deps):
     router_mock = AsyncMock()
     monkeypatch.setattr("src.bot_manager.handle_incoming_message", router_mock)
@@ -133,6 +165,17 @@ async def test_graceful_shutdown_closes_resources(base_deps):
     assert manager.bot.closed_calls == 1
     pool_manager.close_all.assert_awaited_once()
     assert health_task.cancelled()
+
+
+@pytest.mark.asyncio
+async def test_graceful_shutdown_closes_the_router_client(base_deps):
+    router = SimpleNamespace(aclose=AsyncMock())
+    base_deps["router"] = router
+    manager = DiscordBotManager(base_deps)
+
+    await manager.graceful_shutdown()
+
+    router.aclose.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -243,3 +286,229 @@ def test_run_disables_discord_default_logging(base_deps):
     manager.run()
 
     assert base_deps["bot"].run_calls == [("token", {"log_handler": None})]
+
+
+@pytest.mark.asyncio
+async def test_shutdown_with_unset_health_task_closes_everything_in_order(monkeypatch):
+    """A stop before on_ready must not crash into the hard-exit path."""
+    order = []
+
+    class OrderedBot(DummyBot):
+        async def close(self):
+            order.append("discord")
+            await super().close()
+
+    async def stop_health_server():
+        order.append("health-server")
+
+    async def close_pools():
+        order.append("pools")
+
+    async def close_router():
+        order.append("router")
+
+    async def close_cached_routers():
+        order.append("cached-routers")
+
+    monkeypatch.setattr("src.smart_orchestrator.close_default_routers", close_cached_routers)
+    logger = logging.getLogger("bot-manager-shutdown-order")
+    logger.addHandler(logging.NullHandler())
+    deps = BotDependencies(
+        bot=OrderedBot(),
+        logger=logger,
+        config={},
+        health_server=SimpleNamespace(stop=stop_health_server),
+        connection_pool_manager=SimpleNamespace(close_all=close_pools),
+        router=SimpleNamespace(aclose=close_router),
+    )
+    assert deps.get("_health_task") is None
+
+    manager = DiscordBotManager(deps)
+    manager._rate_limit_maintenance_handle = SimpleNamespace(
+        cancel=lambda: order.append("rate-limit-timer")
+    )
+    exits = []
+    monkeypatch.setattr("src.bot_manager.os._exit", exits.append)
+
+    await manager._shutdown_with_timeout()
+
+    assert exits == [], "shutdown took the hard-exit path with an unset health task"
+    assert order == [
+        "rate-limit-timer",
+        "health-server",
+        "pools",
+        "router",
+        "cached-routers",
+        "discord",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_pool_close_failure_does_not_skip_later_closers(monkeypatch, caplog):
+    """One failing pool close must not leak the router client or the gateway."""
+    order = []
+
+    class OrderedBot(DummyBot):
+        async def close(self):
+            order.append("discord")
+            await super().close()
+
+    async def failing_pools():
+        order.append("pools")
+        message = "pool close failed"
+        raise RuntimeError(message)
+
+    async def close_router():
+        order.append("router")
+
+    async def close_cached_routers():
+        order.append("cached-routers")
+
+    monkeypatch.setattr("src.smart_orchestrator.close_default_routers", close_cached_routers)
+    logger = logging.getLogger("bot-manager-pool-failure")
+    logger.addHandler(logging.NullHandler())
+    deps = BotDependencies(
+        bot=OrderedBot(),
+        logger=logger,
+        config={},
+        connection_pool_manager=SimpleNamespace(close_all=failing_pools),
+        router=SimpleNamespace(aclose=close_router),
+    )
+
+    manager = DiscordBotManager(deps)
+    with caplog.at_level(logging.ERROR, logger="bot-manager-pool-failure"):
+        await manager.graceful_shutdown()
+
+    assert order == ["pools", "router", "cached-routers", "discord"]
+    assert any(
+        "RuntimeError" in record.getMessage() for record in caplog.records
+    ), "the pool close failure was not logged by exception class"
+
+
+@pytest.mark.asyncio
+async def test_graceful_shutdown_closes_discord_last(monkeypatch, base_deps):
+    """Provider pools, cached routers, and the router close before the gateway."""
+    order = []
+
+    class OrderedBot(DummyBot):
+        async def close(self):
+            order.append("discord")
+            await super().close()
+
+    async def close_pools():
+        order.append("pools")
+
+    async def close_router():
+        order.append("router")
+
+    async def close_cached_routers():
+        order.append("cached-routers")
+
+    monkeypatch.setattr("src.smart_orchestrator.close_default_routers", close_cached_routers)
+    base_deps["bot"] = OrderedBot()
+    base_deps["connection_pool_manager"] = SimpleNamespace(close_all=close_pools)
+    base_deps["router"] = SimpleNamespace(aclose=close_router)
+
+    manager = DiscordBotManager(base_deps)
+    await manager.graceful_shutdown()
+
+    assert order == ["pools", "router", "cached-routers", "discord"]
+
+
+@pytest.mark.asyncio
+async def test_shutdown_stops_accepting_new_messages(monkeypatch, base_deps):
+    """Once shutdown begins, new gateway events must not start provider work."""
+    router_mock = AsyncMock()
+    monkeypatch.setattr("src.bot_manager.handle_incoming_message", router_mock)
+    manager = DiscordBotManager(base_deps)
+    manager.register_events()
+
+    await manager.graceful_shutdown()
+    await manager.bot.event_handlers["on_message"](SimpleNamespace())
+
+    router_mock.assert_not_awaited()
+
+
+def test_real_client_run_teardown_closes_provider_resources(base_deps):
+    """The real Client.run teardown must not cancel the rest of shutdown."""
+    order = []
+
+    class TeardownClient(discord.Client):
+        def __init__(self):
+            super().__init__(intents=discord.Intents.default())
+            self.started = threading.Event()
+            self.stop_event = None
+
+        async def start(self, token, *, reconnect=True):
+            _ = token, reconnect
+            self.stop_event = asyncio.Event()
+            self.started.set()
+            await self.stop_event.wait()
+
+        async def close(self):
+            order.append("discord")
+            await super().close()
+            if self.stop_event is not None:
+                self.stop_event.set()
+
+    async def close_pools():
+        await asyncio.sleep(0)
+        order.append("pools")
+
+    async def close_router():
+        await asyncio.sleep(0)
+        order.append("router")
+
+    client = TeardownClient()
+    base_deps["bot"] = client
+    base_deps["connection_pool_manager"] = SimpleNamespace(close_all=close_pools)
+    base_deps["router"] = SimpleNamespace(aclose=close_router)
+
+    manager = DiscordBotManager(base_deps)
+    manager.setup_signal_handlers = lambda: None
+    thread = threading.Thread(target=manager.run, daemon=True)
+    thread.start()
+
+    assert client.started.wait(timeout=5.0)
+    assert client.loop is not None
+    client.loop.call_soon_threadsafe(manager._schedule_shutdown)
+    thread.join(timeout=5.0)
+
+    assert not thread.is_alive()
+    assert order == ["pools", "router", "discord"]
+
+
+@pytest.mark.asyncio
+async def test_shutdown_guard_contains_errors_and_exits_zero(monkeypatch, base_deps):
+    """Any shutdown exception is contained and the process exits cleanly."""
+    manager = DiscordBotManager(base_deps)
+
+    async def failing_shutdown():
+        msg = "shutdown backend failed"
+        raise RuntimeError(msg)
+
+    manager.graceful_shutdown = failing_shutdown
+    exits = []
+    monkeypatch.setattr("src.bot_manager.os._exit", exits.append)
+
+    caught = None
+    try:
+        await manager._shutdown_with_timeout()
+    except Exception as exc:  # noqa: BLE001 - the guard must contain everything
+        caught = exc
+
+    assert caught is None, f"shutdown guard let {caught!r} escape"
+    assert exits == [0]
+
+
+@pytest.mark.asyncio
+async def test_disconnect_and_resume_publish_the_gateway_state(base_deps):
+    """Health reads a real disconnect instead of discord.py's sticky readiness."""
+    manager = DiscordBotManager(base_deps)
+    manager.register_events()
+
+    await manager.bot.event_handlers["on_disconnect"]()
+    assert getattr(manager.bot, "discordian_gateway_connected", None) is False
+
+    await manager.bot.event_handlers["on_resumed"]()
+    assert getattr(manager.bot, "discordian_gateway_connected", None) is True

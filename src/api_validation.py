@@ -12,14 +12,21 @@ import discord
 
 # Import constants from config.py (single source of truth)
 from .config import (
+    DEFAULT_CONTEXT_WINDOW,
+    DEFAULT_INPUT_TOKENS,
     DEFAULT_OPENAI_API_URL,
+    DEFAULT_OUTPUT_TOKENS,
     DEFAULT_PERPLEXITY_API_URL,
+    DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
+    DEFAULT_PERPLEXITY_INPUT_TOKENS,
+    DEFAULT_PERPLEXITY_OUTPUT_TOKENS,
     DISCORD_ACTIVITY_TYPES,
     MAX_INPUT_TOKENS_THRESHOLD,
     MAX_OUTPUT_TOKENS_CEILING,
     MAX_OUTPUT_TOKENS_COST_WARNING,
     MAX_RATE_LIMIT_THRESHOLD,
     MAX_RECOMMENDED_REQ_PER_MIN,
+    MIN_INPUT_TOKENS,
     MIN_OPENAI_OUTPUT_TOKENS_WARNING,
     OPENAI_VALID_MODELS,
     PERPLEXITY_MODELS,
@@ -31,13 +38,14 @@ from .config import (
 # Re-export for backward compatibility
 __all__ = [
     "DISCORD_ACTIVITY_TYPES",
-    "OPENAI_API_KEY_PATTERN",
     "OPENAI_VALID_MODELS",
     "PERPLEXITY_API_KEY_PATTERN",
     "PERPLEXITY_MODELS",
     "VALID_OPENAI_URL_PATTERN",
     "VALID_PERPLEXITY_URL_PATTERN",
     "log_validation_results",
+    "validate_connection_pool_config",
+    "validate_conversation_lifecycle_config",
     "validate_discord_config",
     "validate_full_config",
     "validate_openai_api_key_format",
@@ -47,20 +55,17 @@ __all__ = [
     "validate_perplexity_config",
 ]
 
-# API key format patterns
-# OpenAI keys can be: sk-xxx, sk-proj-xxx, sk-svcacct-xxx, etc.
-OPENAI_API_KEY_PATTERN = re.compile(r"^sk-[a-zA-Z0-9\-_]{20,}$")
-# Perplexity keys: pplx-xxx
+# Perplexity API key format: pplx-xxx
 PERPLEXITY_API_KEY_PATTERN = re.compile(r"^pplx-[a-zA-Z0-9\-_]{20,}$")
 
 
 def validate_openai_api_key_format(api_key: str | None) -> tuple[bool, str | None]:
     """Validate that an OpenAI-compatible API key is present.
 
-    The ``sk-`` shape is OpenAI-specific. Other OpenAI-compatible providers
-    (Ollama Cloud, local gateways) use their own key formats, so a non-empty
-    key that does not match ``OPENAI_API_KEY_PATTERN`` is accepted here and
-    reported as a warning by :func:`validate_openai_config`.
+    Any non-empty key is accepted because the configured provider decides what
+    a valid key looks like. A wrong key is reported by the provider at request
+    time, where the existing error classification handles it. Only an empty or
+    whitespace-only key is rejected here.
 
     Args:
         api_key: API key to validate (can be None if not provided)
@@ -213,7 +218,7 @@ def _output_token_issues(config: dict, key: str, *, reasoning_model: bool) -> li
         )
     elif tokens > MAX_OUTPUT_TOKENS_COST_WARNING:
         issues.append(
-            f"WARNING: {key} very high ({tokens}). Consider lower limit for cost control.",
+            f"WARNING: {key} very high ({tokens}). Consider a lower limit to reduce token use.",
         )
 
     return issues
@@ -253,47 +258,212 @@ def _provider_configured(config: dict, provider: str) -> bool:
     return any(field in config for field in fields)
 
 
+def _positive_limit_issues(
+    config: dict,
+    key: str,
+    *,
+    minimum: int = 1,
+    warning_above: int | None = None,
+) -> list[str]:
+    """Validate one prompt-budget or context-window key."""
+    value = config.get(key)
+    if value is None:
+        return []
+
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return [f"ERROR: {key} must be an integer greater than 0 (got {value!r})."]
+
+    if parsed <= 0:
+        return [
+            f"ERROR: {key} must be positive; accepted range: 1 or greater (got {parsed}).",
+        ]
+    if parsed < minimum:
+        return [
+            (
+                f"ERROR: {key} is {parsed}, below the minimum of {minimum}; "
+                f"accepted range: {minimum} or greater."
+            ),
+        ]
+    if warning_above is not None and parsed > warning_above:
+        return [
+            f"WARNING: {key} very high ({parsed}). May exceed model limits.",
+        ]
+    return []
+
+
+def _config_int(config: dict, key: str, default: int) -> int | None:
+    """Return one configured integer, or None when it cannot be parsed."""
+    value = config.get(key, default)
+    if value is None:
+        value = default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _effective_shared_limit(
+    config: dict,
+    own_key: str,
+    shared_key: str,
+    own_default: int,
+    shared_default: int,
+) -> tuple[int | None, str]:
+    """Return the effective value and the key that supplied it.
+
+    This mirrors the request builder: the provider-specific key stays
+    authoritative unless the operator explicitly changed the shared key to a
+    smaller value.
+    """
+    own_value = _config_int(config, own_key, own_default)
+    shared_value = _config_int(config, shared_key, shared_default)
+    if (
+        own_value is not None
+        and shared_value is not None
+        and shared_value != shared_default
+        and shared_value < own_value
+    ):
+        return shared_value, shared_key
+    return own_value, own_key
+
+
+def _budget_relation_issue(  # noqa: PLR0913, PLR0917 - three key/value pairs are the message
+    input_key: str,
+    input_tokens: int | None,
+    output_key: str,
+    output_tokens: int | None,
+    context_key: str,
+    context_window: int | None,
+) -> list[str]:
+    """Return an error when the configured budgets cannot fit the window."""
+    if input_tokens is None or output_tokens is None or context_window is None:
+        return []
+    if input_tokens + output_tokens <= context_window:
+        return []
+    return [
+        (
+            f"ERROR: {input_key} ({input_tokens}) + {output_key} ({output_tokens}) "
+            f"exceed {context_key} ({context_window}); lower the input or output "
+            "budget, or raise the context window."
+        )
+    ]
+
+
 def _input_and_context_issues(config: dict) -> list[str]:
-    """Validate prompt-budget and context-window limits."""
+    """Validate the chat-provider prompt budget and context window."""
+    input_tokens = _config_int(config, "INPUT_TOKENS", DEFAULT_INPUT_TOKENS)
+    output_tokens = _config_int(config, "OUTPUT_TOKENS", DEFAULT_OUTPUT_TOKENS)
+    context_window = _config_int(config, "CONTEXT_WINDOW", DEFAULT_CONTEXT_WINDOW)
+    return [
+        *_positive_limit_issues(
+            config,
+            "INPUT_TOKENS",
+            minimum=MIN_INPUT_TOKENS,
+            warning_above=MAX_INPUT_TOKENS_THRESHOLD,
+        ),
+        *_positive_limit_issues(config, "CONTEXT_WINDOW"),
+        *_budget_relation_issue(
+            "INPUT_TOKENS",
+            input_tokens,
+            "OUTPUT_TOKENS",
+            output_tokens,
+            "CONTEXT_WINDOW",
+            context_window,
+        ),
+    ]
+
+
+def _perplexity_prompt_limit_issues(config: dict) -> list[str]:
+    """Validate the Perplexity prompt budget and context window."""
+    input_tokens, input_key = _effective_shared_limit(
+        config,
+        "PERPLEXITY_INPUT_TOKENS",
+        "INPUT_TOKENS",
+        DEFAULT_PERPLEXITY_INPUT_TOKENS,
+        DEFAULT_INPUT_TOKENS,
+    )
+    context_window, context_key = _effective_shared_limit(
+        config,
+        "PERPLEXITY_CONTEXT_WINDOW",
+        "CONTEXT_WINDOW",
+        DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
+        DEFAULT_CONTEXT_WINDOW,
+    )
+    output_tokens = _config_int(
+        config,
+        "PERPLEXITY_OUTPUT_TOKENS",
+        _config_int(config, "OUTPUT_TOKENS", DEFAULT_PERPLEXITY_OUTPUT_TOKENS)
+        or DEFAULT_PERPLEXITY_OUTPUT_TOKENS,
+    )
+    return [
+        *_positive_limit_issues(
+            config,
+            "PERPLEXITY_INPUT_TOKENS",
+            minimum=MIN_INPUT_TOKENS,
+            warning_above=MAX_INPUT_TOKENS_THRESHOLD,
+        ),
+        *_positive_limit_issues(config, "PERPLEXITY_CONTEXT_WINDOW"),
+        *_budget_relation_issue(
+            input_key,
+            input_tokens,
+            "PERPLEXITY_OUTPUT_TOKENS",
+            output_tokens,
+            context_key,
+            context_window,
+        ),
+    ]
+
+
+def validate_connection_pool_config(config: dict) -> list[str]:
+    """Validate the provider connection-pool sizes.
+
+    A pool with no connections makes every request wait out the pool timeout
+    before failing, so a non-positive limit stops startup.
+
+    Args:
+        config: Configuration dictionary.
+
+    Returns:
+        List[str]: Validation errors prefixed with ``ERROR:``.
+    """
+    return [
+        *_positive_limit_issues(config, "OPENAI_MAX_CONNECTIONS"),
+        *_positive_limit_issues(config, "PERPLEXITY_MAX_CONNECTIONS"),
+    ]
+
+
+_CONVERSATION_LIMIT_EFFECTS = {
+    "MAX_HISTORY_PER_USER": "0 keeps all history and disables pruning",
+    "CONVERSATION_TTL_SECONDS": "0 or a negative value disables expiry",
+    "USER_LOCK_CLEANUP_INTERVAL": "0 or a negative value sweeps on every call",
+}
+
+
+def validate_conversation_lifecycle_config(config: dict) -> list[str]:
+    """Warn about non-positive conversation limits that change runtime behaviour.
+
+    These keys already accept non-positive values at runtime, so they warn
+    instead of stopping startup.
+
+    Args:
+        config: Configuration dictionary.
+
+    Returns:
+        List[str]: Validation warnings prefixed with ``WARNING:``.
+    """
     issues = []
-
-    input_tokens = config.get("INPUT_TOKENS")
-    if input_tokens is not None:
+    for key, effect in _CONVERSATION_LIMIT_EFFECTS.items():
+        value = config.get(key)
+        if value is None:
+            continue
         try:
-            parsed_input_tokens = int(input_tokens)
+            parsed = int(value)
         except (TypeError, ValueError):
-            issues.append(
-                "ERROR: INPUT_TOKENS must be an integer in the accepted range "
-                f"1..{MAX_INPUT_TOKENS_THRESHOLD} (got {input_tokens!r})."
-            )
-        else:
-            if parsed_input_tokens <= 0:
-                issues.append(
-                    "ERROR: INPUT_TOKENS must be positive; accepted range: "
-                    f"1..{MAX_INPUT_TOKENS_THRESHOLD} (got {parsed_input_tokens})."
-                )
-            elif parsed_input_tokens > MAX_INPUT_TOKENS_THRESHOLD:
-                issues.append(
-                    f"WARNING: INPUT_TOKENS very high ({parsed_input_tokens}). "
-                    "May exceed model limits."
-                )
-
-    context_window = config.get("CONTEXT_WINDOW")
-    if context_window is not None:
-        try:
-            parsed_context_window = int(context_window)
-        except (TypeError, ValueError):
-            issues.append(
-                "ERROR: CONTEXT_WINDOW must be an integer greater than 0 "
-                f"(got {context_window!r})."
-            )
-        else:
-            if parsed_context_window <= 0:
-                issues.append(
-                    "ERROR: CONTEXT_WINDOW must be positive; accepted range: "
-                    f"1 or greater (got {parsed_context_window})."
-                )
-
+            continue
+        if parsed <= 0:
+            issues.append(f"WARNING: {key} is {parsed}; {effect}.")
     return issues
 
 
@@ -308,7 +478,7 @@ def validate_openai_config(config: dict) -> list[str]:
     """
     issues = []
 
-    # Validate API key presence and format
+    # Validate API key presence
     api_key = config.get("OPENAI_API_KEY")
     if not api_key and _provider_configured(config, "OPENAI"):
         issues.append(
@@ -324,12 +494,6 @@ def validate_openai_config(config: dict) -> list[str]:
                 error_msg.replace(api_key, "[REDACTED]") if api_key in error_msg else error_msg
             )
             issues.append(f"ERROR: OPENAI_API_KEY is invalid: {safe_msg}")
-        elif not OPENAI_API_KEY_PATTERN.match(api_key.strip()):
-            issues.append(
-                "WARNING: OPENAI_API_KEY does not match OpenAI's 'sk-' key format. "
-                "Non-OpenAI-compatible providers are supported; verify the key "
-                "matches the configured OPENAI_API_URL.",
-            )
 
     issues.extend(
         _validate_api_url(
@@ -401,6 +565,8 @@ def validate_perplexity_config(config: dict) -> list[str]:
         )
 
     issues.extend(_output_token_issues(config, "PERPLEXITY_OUTPUT_TOKENS", reasoning_model=False))
+
+    issues.extend(_perplexity_prompt_limit_issues(config))
 
     return issues
 
@@ -534,9 +700,18 @@ def validate_full_config(config: dict) -> tuple[list[str], list[str]]:
     perplexity_issues = validate_perplexity_config(config)
     discord_issues = validate_discord_config(config)
     rate_limit_issues = validate_rate_limiting_config(config)
+    connection_issues = validate_connection_pool_config(config)
+    conversation_issues = validate_conversation_lifecycle_config(config)
 
     # Categorize issues
-    all_issues = openai_issues + perplexity_issues + discord_issues + rate_limit_issues
+    all_issues = (
+        openai_issues
+        + perplexity_issues
+        + discord_issues
+        + rate_limit_issues
+        + connection_issues
+        + conversation_issues
+    )
 
     for issue in all_issues:
         if issue.startswith("ERROR:"):
@@ -608,7 +783,7 @@ def _log_validation_messages(
     """Log validation messages with sensitive data redacted.
 
     Note: The validation messages themselves do NOT contain actual API key values.
-    They only contain format requirements like "should start with 'sk-'".
+    They name the failing configuration key and the accepted value or range.
     The _sanitize_log_message function provides additional protection.
 
     Args:
@@ -616,13 +791,17 @@ def _log_validation_messages(
         warnings: List of warning messages
         errors: List of error messages
     """
-    # Log warnings with sanitization
+    # Log warnings with sanitization. The collected strings carry a
+    # "WARNING:"/"ERROR:" prefix only for classification; strip it so a
+    # warning does not read "WARNING: WARNING: ..." once the level is added.
     for warning in warnings:
-        logger.warning("Config validation: %s", _sanitize_log_message(warning))
+        message = warning.removeprefix("WARNING:").strip()
+        logger.warning("Config validation: %s", _sanitize_log_message(message))
 
     # Log errors with sanitization
     for error in errors:
-        logger.error("Config validation: %s", _sanitize_log_message(error))
+        message = error.removeprefix("ERROR:").strip()
+        logger.error("Config validation: %s", _sanitize_log_message(message))
 
 
 def log_validation_results(config: dict, logger: logging.Logger | None = None) -> bool:

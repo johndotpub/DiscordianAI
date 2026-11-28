@@ -1,9 +1,11 @@
-discord.py>=2.7.1
+discord.py[voice]>=2.7.1
 # Tested with openai 3.40.0. Keep <4: custom httpx clients rely on the
 # runtime-only legacy escape hatch on the HTTPX2 line and may vanish in 4.x.
 openai>=2.41,<4
 httpx[http2]>=0.28.1
 h2>=4.3.0
-starlette>=1.2.1
-uvicorn>=0.34.0
+cachetools>=8.0.2,<9
+aiohttp>=3.10,<4
 structlog>=25.5.0
+tree-sitter>=0.27
+tree-sitter-markdown>=0.5.4

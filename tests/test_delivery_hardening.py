@@ -9,17 +9,28 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+from src import message_splitter
+from src.config import ERROR_MESSAGES
 from src.conversation_manager import ThreadSafeConversationManager
 from src.message_splitter import (
     sanitize_for_discord,
     send_formatted_message,
+    send_split_message,
     send_split_message_with_embed,
+    truncation_notice,
 )
 from src.models import AIRequest, PerplexityConfig
 from src.perplexity_processing import process_perplexity_message
 from tests.helpers import FakePerplexityClient
 
 TRUSTED_URL = "https://good.example/source"
+HOSTILE_URL = "https://evil.example/gift"
+HOSTILE_LINK = f"[Claim your Nitro]({HOSTILE_URL})"
+UNRENDERED_CODE_INPUTS = [
+    f"Sure:\n```\n{HOSTILE_LINK}",
+    f"\\`{HOSTILE_LINK}\\`",
+    f"[`Claim`]({HOSTILE_URL})",
+]
 
 
 def _deps() -> dict:
@@ -69,6 +80,74 @@ def test_bare_url_and_autolink_are_neutralised_but_citation_is_not() -> None:
     assert "https://\u200bevil.example/bare" in sanitized
     assert "https://\u200bevil.example/auto" in sanitized
     assert f"[1]({TRUSTED_URL})" in sanitized
+
+
+def test_dotted_capital_i_keeps_trusted_bare_url_offsets_aligned() -> None:
+    """A case-folding expansion must not shift the trusted URL's position."""
+    trusted = "https://trusted.example/page"
+    text = f"\u0130 {trusted}"
+
+    spans = message_splitter._allowed_bare_url_spans(text, {trusted})
+    sanitized = sanitize_for_discord(text, {"1": trusted})
+
+    assert [(span.start, span.end) for span in spans] == [(2, 2 + len(trusted))]
+    assert f"\u0130 {trusted}" == sanitized
+
+
+def test_code_spans_and_fences_keep_link_like_syntax_unchanged() -> None:
+    """Discord does not render links in code, so the rewrites must skip it."""
+    inline = "Use `handlers[0](event)` and `https://example.com/inline` here."
+    fenced = "```python\nhandlers[0](event)\nurl = https://example.com/fenced\n```"
+
+    assert sanitize_for_discord(inline) == inline
+    assert "handlers[0](event)" in sanitize_for_discord(fenced)
+    assert "https://example.com/fenced" in sanitize_for_discord(fenced)
+    assert "\u200b" not in sanitize_for_discord(fenced)
+
+
+@pytest.mark.parametrize("message", UNRENDERED_CODE_INPUTS)
+@pytest.mark.asyncio
+async def test_unrendered_code_delimiters_do_not_hide_untrusted_links(message: str) -> None:
+    """Unclosed fences and escaped backticks are literal, so links stay untrusted."""
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock()
+
+    await send_formatted_message(channel, message, _deps())
+
+    sent = channel.send.call_args.args[0]
+    assert HOSTILE_URL not in sent
+    assert "](https://" not in sent
+
+
+@pytest.mark.parametrize("description", UNRENDERED_CODE_INPUTS)
+@pytest.mark.asyncio
+async def test_unrendered_code_delimiters_do_not_hide_links_in_embed_description(
+    description: str,
+) -> None:
+    """The embed description path applies the same code-rendering rules."""
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock()
+    embed = discord.Embed(description=description)
+
+    await send_formatted_message(channel, "See the source.", _deps(), embed_data={"embed": embed})
+
+    delivered = channel.send.call_args.kwargs["embed"]
+    assert HOSTILE_URL not in (delivered.description or "")
+    assert "](https://" not in (delivered.description or "")
+
+
+def test_mentions_are_still_neutralised_inside_code() -> None:
+    """Mention neutralisation is a security property and applies everywhere."""
+    message = "```\n@everyone @here <@123> <@&456> <#789>\n```"
+
+    sanitized = sanitize_for_discord(message)
+
+    assert "@everyone" not in sanitized
+    assert "@\u200beveryone" in sanitized
+    assert "@\u200bhere" in sanitized
+    assert "<@\u200b123>" in sanitized
+    assert "<@&\u200b456>" in sanitized
+    assert "<#\u200b789>" in sanitized
 
 
 @pytest.mark.asyncio
@@ -133,14 +212,45 @@ async def test_truncated_head_does_not_render_hostile_citation_markdown() -> Non
 
 
 @pytest.mark.asyncio
+async def test_a_truncated_final_chunk_closes_an_open_fence_before_the_notice() -> None:
+    """A chunk cut at the length limit must not leave the last code fence open."""
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock()
+
+    message = "```python\n" + ("x" * 3000)
+
+    await send_split_message(channel, message, _deps(), _chunk_budget=1)
+
+    sent = channel.send.call_args.args[0]
+    assert sent.endswith(truncation_notice(len(message)))
+    assert sent.count("```") == 2
+    assert "```\n\n" in sent
+
+
+@pytest.mark.parametrize("answer", ["   ", "\n\t", "[](https://x)", "![](https://x.png)"])
+@pytest.mark.asyncio
+async def test_answer_with_no_deliverable_content_sends_the_no_response_notice(answer):
+    """Whitespace or an answer that sanitises away must not send empty content."""
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock()
+
+    await send_formatted_message(channel, answer, _deps())
+
+    assert channel.send.await_count == 1
+    content = channel.send.call_args.args[0]
+    assert content == ERROR_MESSAGES["no_response_generated"]
+    assert content.strip()
+
+
+@pytest.mark.asyncio
 async def test_delivery_allowed_mentions_denies_everyone_and_roles() -> None:
     """Reply delivery explicitly disables everyone and role mentions."""
     channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock()
     author = MagicMock()
     author.bot = False
     original_message = MagicMock(spec=discord.Message)
     original_message.author = author
-    original_message.reply = AsyncMock()
 
     await send_formatted_message(
         channel,
@@ -149,6 +259,6 @@ async def test_delivery_allowed_mentions_denies_everyone_and_roles() -> None:
         original_message=original_message,
     )
 
-    allowed = original_message.reply.call_args.kwargs["allowed_mentions"]
+    allowed = channel.send.call_args.kwargs["allowed_mentions"]
     assert allowed.everyone is False
     assert allowed.roles == []

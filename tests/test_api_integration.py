@@ -9,15 +9,17 @@ This test suite covers:
 """
 
 import logging
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from src.conversation_manager import ThreadSafeConversationManager
 from src.error_handling import ErrorType, classify_error, safe_discord_send
-from src.models import OpenAIConfig, PerplexityConfig
+from src.models import AIClients, AIConfig, AIRequest, OpenAIConfig, PerplexityConfig
 from src.openai_processing import process_openai_message
 from src.perplexity_processing import process_perplexity_message
+from src.smart_orchestrator import get_smart_response
 
 
 class TestOpenAIAPIIntegration:
@@ -111,7 +113,8 @@ class TestOpenAIAPIIntegration:
         call_args = openai_client.chat.completions.create.call_args[1]
         assert call_args["model"] == "gpt-5"
         assert call_args["reasoning_effort"] == "high"
-        assert "verbosity" not in call_args
+        assert call_args["max_completion_tokens"] == 2000
+        assert "max_tokens" not in call_args
 
 
 class TestPerplexityAPIIntegration:
@@ -310,42 +313,45 @@ class TestAPIErrorClassification:
 class TestIntegrationScenarios:
     """Test realistic end-to-end integration scenarios."""
 
-    async def test_hybrid_mode_integration_scenario(self, make_request, openai_response):
-        """Test a realistic hybrid mode scenario with fallback."""
-        conversation_manager = Mock(spec=ThreadSafeConversationManager)
-        conversation_manager.get_conversation_summary_formatted.return_value = []
+    async def test_hybrid_mode_falls_back_to_openai_through_the_orchestrator(
+        self, openai_response
+    ):
+        """A failed web route reaches OpenAI through the real orchestrator."""
+        conversation_manager = ThreadSafeConversationManager()
+        request = AIRequest(
+            message="search the web for the current status of example.com",
+            user=SimpleNamespace(id=42),
+            conversation_manager=conversation_manager,
+            logger=logging.getLogger("api-integration-hybrid"),
+            conversation_key="g:1:c:2",
+        )
 
         perplexity_client = Mock()
         perplexity_client.responses.create = AsyncMock(
-            side_effect=Exception("Perplexity unavailable")
+            side_effect=TimeoutError("Perplexity timed out")
         )
 
         openai_client = Mock()
+        openai_client.base_url = "https://api.openai.com/v1/"
         openai_client.chat.completions.create = AsyncMock(
             return_value=openai_response("Fallback response from OpenAI")
         )
 
-        perplexity_result = await process_perplexity_message(
-            make_request("Test web search", conversation_manager=conversation_manager),
-            perplexity_client,
-            PerplexityConfig(),
+        response, _suppress_embeds, _embed_data = await get_smart_response(
+            request,
+            [],
+            AIClients(openai=openai_client, perplexity=perplexity_client),
+            AIConfig(),
+            {"ROUTER_MODE": "heuristic"},
         )
-        assert perplexity_result is None
 
-        openai_result = await process_openai_message(
-            request=make_request(
-                "Test fallback",
-                conversation_manager=conversation_manager,
-            ),
-            conversation_summary=[],
-            openai_client=openai_client,
-            config=OpenAIConfig(
-                model="gpt-5-mini",
-                system_message="Fallback assistant",
-                output_tokens=1000,
-            ),
-        )
-        assert openai_result == "Fallback response from OpenAI"
+        assert response == "Fallback response from OpenAI"
+        perplexity_client.responses.create.assert_awaited_once()
+        openai_client.chat.completions.create.assert_awaited_once()
+        history = conversation_manager.get_conversation(conversation_key="g:1:c:2")
+        assert [message["role"] for message in history] == ["user", "assistant"]
+        assert history[1]["content"] == "Fallback response from OpenAI"
+        assert history[1]["metadata"]["ai_service"] == "openai"
 
 
 if __name__ == "__main__":

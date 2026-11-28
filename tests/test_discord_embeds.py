@@ -1,8 +1,12 @@
 """Tests for Discord embed formatting and citation handling."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import discord
+import pytest
 
 from src.discord_embeds import EMBED_LIMIT, CitationEmbedFormatter, citation_embed_formatter
+from src.message_splitter import send_formatted_message
 
 
 class TestCitationEmbedFormatter:
@@ -130,6 +134,24 @@ class TestCitationEmbedFormatter:
 
         # Verify metadata shows truncation
         assert metadata["was_truncated"] is True
+
+    @pytest.mark.asyncio
+    async def test_sanitised_embed_description_is_clamped_to_the_hard_limit(self):
+        """A description that grows during sanitising cannot exceed 4096 chars."""
+        embed = discord.Embed(description="](" * 3_000)
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+
+        await send_formatted_message(
+            channel,
+            "See the source.",
+            {"logger": MagicMock()},
+            embed_data={"embed": embed},
+        )
+
+        delivered = channel.send.await_args.kwargs["embed"]
+        assert len(delivered.description) <= 4096
+        assert delivered.description.endswith("...")
 
     def test_global_formatter_instance(self):
         """Test that global formatter instance is available."""

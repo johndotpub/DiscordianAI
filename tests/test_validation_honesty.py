@@ -161,3 +161,38 @@ def test_missing_openai_key_for_configured_openai_aborts_startup():
     exit_code, run_bot = _run_main_with_config(config)
     assert exit_code not in (None, 0)
     run_bot.assert_not_called()
+
+
+def test_output_token_warning_is_logged_once(caplog):
+    """main and full validation must not both log the same output-cap warning."""
+    config = _valid_config(OUTPUT_TOKENS=60000)
+    logger = logging.getLogger("test.output-warning")
+
+    with caplog.at_level(logging.WARNING, logger="test.output-warning"):
+        main_module.validate_critical_config(config, logger)
+        assert log_validation_results(config, logger) is True
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if "OUTPUT_TOKENS very high" in record.getMessage()
+    ]
+    assert len(messages) == 1, messages
+
+
+def test_no_channels_warning_is_logged_once_without_a_nested_prefix(caplog):
+    """main and api_validation must not both log the same warning."""
+    config = _valid_config(ALLOWED_CHANNELS=[], ALLOWED_CHANNEL_IDS=[])
+    logger = logging.getLogger("test.no-channels")
+
+    with caplog.at_level(logging.WARNING, logger="test.no-channels"):
+        main_module.validate_critical_config(config, logger)
+        assert log_validation_results(config, logger) is True
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if "No ALLOWED_CHANNELS" in record.getMessage()
+    ]
+    assert len(messages) == 1, messages
+    assert "WARNING: No ALLOWED_CHANNELS" not in messages[0]

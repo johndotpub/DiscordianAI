@@ -284,3 +284,155 @@ def test_legacy_sonar_model_only_warns_at_startup():
         issue.startswith("WARNING: Unknown Perplexity model") and "perplexity/sonar" in issue
         for issue in issues
     )
+
+
+RECORDED_INVALID_MODEL_BODY = {
+    "error": {
+        "type": "invalid_request",
+        "code": 400,
+        "message": 'validation failed: model "sonar" is not supported',
+    }
+}
+
+
+async def _sdk_client_with_http_stub(body: dict):
+    """Build an SDK client with whichever HTTPX class the installed openai accepts."""
+    import httpx
+    import httpx2
+
+    last_error: TypeError | None = None
+    for http_module in (httpx2, httpx):
+
+        async def handler(_request, module=http_module):
+            return module.Response(400, json=body)
+
+        http_client = http_module.AsyncClient(transport=http_module.MockTransport(handler))
+        try:
+            sdk_client = openai.AsyncOpenAI(
+                api_key="test-key",
+                base_url="https://api.perplexity.ai/v1",
+                http_client=http_client,
+            )
+        except TypeError as exc:
+            last_error = exc
+            await http_client.aclose()
+            continue
+        return sdk_client, http_client
+    raise last_error or TypeError("the installed openai accepted no HTTPX client")
+
+
+async def _raise_recorded_bad_request(body: dict) -> openai.BadRequestError:
+    """Send one real SDK request through a mocked HTTP response."""
+    from src.providers.perplexity import AgentResponsesProvider
+
+    sdk_client, http_client = await _sdk_client_with_http_stub(body)
+    provider = AgentResponsesProvider(
+        sdk_client,
+        PerplexityConfig(
+            model="sonar",
+            input_tokens=1000,
+            output_tokens=100,
+            context_window=2000,
+        ),
+    )
+    try:
+        request = provider.build_request("System", "Hello", [], 100)
+        with pytest.raises(openai.BadRequestError) as exc_info:
+            await provider.complete(request)
+    finally:
+        await http_client.aclose()
+    return exc_info.value
+
+
+@pytest.mark.parametrize(
+    ("body", "counts_as_failure"),
+    [
+        (RECORDED_INVALID_MODEL_BODY, True),
+        (
+            {
+                "error": {
+                    "type": "invalid_request",
+                    "code": 400,
+                    "param": "model",
+                    "message": "validation failed",
+                }
+            },
+            True,
+        ),
+        (
+            {
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "model_not_found",
+                    "message": "The model `sonar-typo` does not exist",
+                }
+            },
+            True,
+        ),
+        (
+            {
+                "error": {
+                    "type": "invalid_model",
+                    "code": 400,
+                    "message": "internal assertion failed",
+                }
+            },
+            True,
+        ),
+        (
+            {
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "model_not_found",
+                    "message": "internal assertion failed",
+                }
+            },
+            True,
+        ),
+        (
+            {
+                "error": {
+                    "type": "invalid_request",
+                    "code": 400,
+                    "message": "This model's maximum context length is 4096 tokens",
+                }
+            },
+            False,
+        ),
+        (
+            {
+                "error": {
+                    "type": "invalid_request",
+                    "code": 400,
+                    "param": "temperature",
+                    "message": "temperature must be between 0 and 2",
+                }
+            },
+            False,
+        ),
+    ],
+)
+def test_real_sdk_400_body_shapes_decide_provider_health(body, counts_as_failure):
+    """The SDK exposes the inner error object; model faults must count."""
+    import asyncio
+
+    from src.health_server import create_health_app
+    from tests.helpers import health_deps, request_health
+
+    error = asyncio.run(_raise_recorded_bad_request(body))
+    if body is RECORDED_INVALID_MODEL_BODY:
+        assert "error" not in error.body
+        assert error.body["code"] == 400
+
+    response = request_health(create_health_app(health_deps()), "/health")
+
+    payload = response.json()
+    provider = payload["providers"]["perplexity"]
+    if counts_as_failure:
+        assert response.status_code == 503, payload
+        assert provider["consecutive_failures"] == 1, payload
+        assert provider["status"] == "degraded", payload
+    else:
+        assert response.status_code == 200, payload
+        assert provider["consecutive_failures"] == 0, payload
+        assert provider["status"] == "healthy", payload

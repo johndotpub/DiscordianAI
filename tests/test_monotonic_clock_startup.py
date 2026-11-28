@@ -6,50 +6,26 @@ the past may be negative. Zero is the only value that means "never".
 """
 
 import logging
-from unittest.mock import MagicMock, patch
-
-from starlette.testclient import TestClient
+from unittest.mock import patch
 
 from src.health_server import create_health_app
 from src.rate_limits import RateLimiter
+from tests.helpers import FakeBreaker, health_deps, request_health
 
-
-class _Breaker:
-    """Minimal breaker snapshot provider for the health endpoint."""
-
-    def __init__(self, last_success_time: float) -> None:
-        self._last_success_time = last_success_time
-
-    def snapshot(self) -> dict:
-        """Return a closed breaker with the supplied last success time."""
-        return {
-            "state": "CLOSED",
-            "consecutive_failures": 0,
-            "last_failure_time": 0.0,
-            "last_success_time": self._last_success_time,
-        }
+_Breaker = FakeBreaker
 
 
 def _health_app(openai_success: float, perplexity_success: float):
     """Build a ready health app with explicit breaker snapshots."""
-    bot = MagicMock()
-    bot.is_ready.return_value = True
-    bot.guilds = []
-    bot.latency = 0.05
-    deps = {
-        "bot": bot,
-        "client": MagicMock(),
-        "perplexity_client": MagicMock(),
-        "config": {
-            "OPENAI_API_KEY": "sk-test-key",
-            "PERPLEXITY_API_KEY": "pplx-test-key",
-        },
-        "circuit_breakers": {
-            "openai": _Breaker(openai_success),
-            "perplexity": _Breaker(perplexity_success),
-        },
-    }
-    return create_health_app(deps)
+    return create_health_app(
+        health_deps(
+            guilds=[],
+            breakers={
+                "openai": _Breaker(openai_success),
+                "perplexity": _Breaker(perplexity_success),
+            },
+        )
+    )
 
 
 def test_first_request_on_young_clock_starts_the_window():
@@ -73,8 +49,7 @@ def test_first_request_on_young_clock_starts_the_window():
 def test_stale_success_on_young_clock_is_reported_but_healthy():
     """A success 3600 seconds ago is aged correctly but is not a failure."""
     with patch("src.health_server.time.monotonic", return_value=30.0):
-        with TestClient(_health_app(-3570.0, 30.0)) as client:
-            response = client.get("/health")
+        response = request_health(_health_app(-3570.0, 30.0), "/health")
 
     body = response.json()
     assert response.status_code == 200, body
@@ -87,8 +62,7 @@ def test_stale_success_on_young_clock_is_reported_but_healthy():
 def test_never_succeeded_on_young_clock_is_not_stale():
     """Zero means never succeeded; it must not look like a stale success."""
     with patch("src.health_server.time.monotonic", return_value=30.0):
-        with TestClient(_health_app(0.0, 0.0)) as client:
-            response = client.get("/health")
+        response = request_health(_health_app(0.0, 0.0), "/health")
 
     body = response.json()
     assert response.status_code == 200, body

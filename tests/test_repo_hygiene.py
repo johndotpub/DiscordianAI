@@ -21,9 +21,13 @@ ARTIFACT_PATTERNS = (
     re.compile(r"(^|/)\.coverage[^/]*$"),
     re.compile(r"(^|/)[^/]+\.egg-info/"),
     re.compile(r"\.log$"),
+    re.compile(r"\.log-[^/]*$"),
+    re.compile(r"\.ini\.bak(?:-|$)"),
+    re.compile(r"(^|/)\.hermes/"),
 )
 
 LOGROTATE_REQUIRED_DIRECTIVES = (
+    "su",
     "size",
     "rotate",
     "compress",
@@ -57,6 +61,17 @@ def _installed_version():
         return None
 
 
+def test_scripts_readme_lists_only_existing_scripts():
+    scripts_dir = REPO_ROOT / "scripts"
+    readme = (scripts_dir / "README.md").read_text(encoding="utf-8")
+
+    referenced = set(re.findall(r"scripts/([A-Za-z0-9_]+\.(?:py|sh))", readme))
+    missing = sorted(name for name in referenced if not (scripts_dir / name).is_file())
+
+    assert not missing, f"scripts/README.md references missing scripts: {missing}"
+    assert not (scripts_dir / "debug_perplexity_citations.py").exists()
+
+
 def test_ruff_errors_dump_is_absent_and_untracked():
     assert not (REPO_ROOT / "ruff_errors.txt").exists()
     assert "ruff_errors.txt" not in _tracked_paths()
@@ -80,6 +95,28 @@ def test_no_tracked_build_or_cache_artifacts():
     assert not offenders, f"Tracked build or cache artifacts: {offenders}"
 
 
+def _is_git_ignored(path: str) -> bool:
+    git = which("git")
+    assert git is not None
+    result = subprocess.run(  # noqa: S603 — fixed git command, no shell
+        [git, "-C", str(REPO_ROOT), "check-ignore", "-q", "--no-index", path],
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def test_rotated_logs_backups_and_agent_state_are_git_ignored():
+    for path in (
+        "bot.log-2026-10-30.gz",
+        "production.ini.bak-2026-10-30",
+        ".hermes/state",
+    ):
+        assert _is_git_ignored(path), f"{path} must not be committed"
+
+    for path in ("config.ini.example", "tox.ini"):
+        assert not _is_git_ignored(path), f"{path} must stay tracked"
+
+
 def test_logrotate_fragment_is_shipped_and_complete():
     assert LOGROTATE_PATH.is_file()
     text = LOGROTATE_PATH.read_text(encoding="utf-8")
@@ -90,6 +127,7 @@ def test_logrotate_fragment_is_shipped_and_complete():
         ), f"Missing '{directive}' directive"
     assert re.search(r"^\s*size\s+\S+", text, re.MULTILINE)
     assert re.search(r"^\s*rotate\s+\d+", text, re.MULTILINE)
+    assert re.search(r"^\s*su\s+USER\s+GROUP\s*$", text, re.MULTILINE)
 
 
 def test_daemon_docs_document_installation_and_copytruncate_caveat():

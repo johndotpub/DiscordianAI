@@ -1,21 +1,20 @@
-"""Every 2,000-character message stays within the routing latency budgets."""
+"""Every routing input shape does bounded cue work per decision."""
 
 from datetime import UTC, datetime
-import math
-import sys
-from time import perf_counter
+from itertools import pairwise
 
 import pytest
 
+from src.routing import features
 from src.routing.contracts import RouterInput
 from src.routing.heuristic import HeuristicRouter
 
 FIXED_NOW = datetime(2026, 10, 30, tzinfo=UTC)
-ITERATIONS = 300
-P50_BUDGET_MS = 5.0
-P99_BUDGET_MS = 25.0
-COVERED_P50_BUDGET_MS = 12.0
-COVERED_P99_BUDGET_MS = 60.0
+SIZES = (500, 1_000, 2_000)
+MAX_GROWTH = 2.1
+# The heaviest 2,000-character shape measured 1,001 clause evaluations
+# ("dots"); 2,000 leaves clear headroom without allowing an unbounded scan.
+CLAUSE_CEILING = 2_000
 PATHOLOGICAL_INPUTS = {
     "dots": "a." * 1000,
     "letters": "a" * 2000,
@@ -35,51 +34,42 @@ REALISTIC_LOG = (REALISTIC_LOG_LINE * (2_000 // len(REALISTIC_LOG_LINE) + 1))[:2
 INPUTS = {**PATHOLOGICAL_INPUTS, "realistic-log": REALISTIC_LOG}
 
 
-def _percentile(samples: list[float], quantile: float) -> float:
-    index = max(0, math.ceil(len(samples) * quantile) - 1)
-    return samples[index]
+def _clause_counts(router: HeuristicRouter, text: str) -> list[int]:
+    """Return the cue work for 500, 1,000, and 2,000 characters of ``text``."""
+    counts: list[int] = []
+    for size in SIZES:
+        features._reset_decision_stats()
+        router.decide_sync(RouterInput(text=text[:size], now=FIXED_NOW))
+        counts.append(features._decision_stats()["clauses"])
+    return counts
 
 
 @pytest.mark.parametrize(("label", "text"), INPUTS.items(), ids=tuple(INPUTS))
-def test_p99_latency_for_every_input_shape(label: str, text: str) -> None:
-    """Separate the router's own cost from noise on the machine running it.
+def test_clause_count_grows_no_faster_than_the_input(label: str, text: str) -> None:
+    """The clause counter, not a wall clock, proves the bound.
 
-    p50 measures the code: on a quiet machine the slowest shape takes about
-    1.6 ms, so the 5 ms budget leaves room for a slower host without hiding a
-    regression. p99 measures the code plus the machine: scheduler delays and
-    co-tenant load pushed the same code from 2.5 ms to 11 ms on a busy host.
-    Its 25 ms bound is a sanity ceiling, not a performance target, and exists
-    to catch the return of a complexity regression rather than to benchmark.
-    The input once took about 260 ms per decision, so 25 ms still catches that
-    quadratic blowup by an order of magnitude.
-
-    Coverage instrumentation adds per-line bookkeeping to every decision. The
-    looser 12 ms/60 ms pair keeps the same shape of assertion in the CI run
-    that always enables ``--cov`` while still failing far below the former
-    260 ms regression. The pair that ran is printed with each measurement.
+    A shared two-core CI machine makes millisecond budgets flaky even when the
+    code is linear, so this test counts the clause and pattern matches the cue
+    extractor processes. Each doubling of the input may add at most 2.1 times
+    the previous work, and the 2,000-character case stays under an absolute
+    ceiling. Revert check: rescanning the full text once per token makes the
+    count grow with the square of the input and fails this assertion.
     """
-    covered = "coverage" in sys.modules
-    p50_budget = COVERED_P50_BUDGET_MS if covered else P50_BUDGET_MS
-    p99_budget = COVERED_P99_BUDGET_MS if covered else P99_BUDGET_MS
-    budget_name = "coverage-instrumented" if covered else "uninstrumented"
+    counts = _clause_counts(HeuristicRouter(), text)
 
+    for previous, current in pairwise(counts):
+        assert current <= MAX_GROWTH * previous + 1, f"{label}: clause counts {counts}"
+    assert counts[-1] <= CLAUSE_CEILING, f"{label}: clause counts {counts}"
+
+
+@pytest.mark.parametrize(("label", "text"), INPUTS.items(), ids=tuple(INPUTS))
+def test_repeated_decisions_are_stable(label: str, text: str) -> None:
+    """The same input decides identically twice, with no clock-dependent cue."""
     router = HeuristicRouter()
     request = RouterInput(text=text, now=FIXED_NOW)
-    for _ in range(5):
-        router.decide_sync(request)
 
-    samples: list[float] = []
-    for _ in range(ITERATIONS):
-        started = perf_counter()
-        router.decide_sync(request)
-        samples.append((perf_counter() - started) * 1000.0)
+    first = router.decide_sync(request)
+    second = router.decide_sync(request)
 
-    samples.sort()
-    p50 = _percentile(samples, 0.50)
-    p99 = _percentile(samples, 0.99)
-    sys.stdout.write(
-        f"{label}: p50={p50:.4f} ms p99={p99:.4f} ms over {ITERATIONS} decisions "
-        f"({budget_name} budgets: p50<{p50_budget} ms, p99<{p99_budget} ms)\n"
-    )
-    assert p50 < p50_budget, f"{label}: p50={p50:.4f} ms exceeds {p50_budget} ms"
-    assert p99 < p99_budget, f"{label}: p99={p99:.4f} ms exceeds {p99_budget} ms"
+    assert second.route == first.route, label
+    assert second.reasons == first.reasons, label

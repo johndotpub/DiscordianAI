@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -13,6 +15,52 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+
+_IGNORED_DIRECTORIES = frozenset(
+    {
+        ".git",
+        ".venv",
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".mypy_cache",
+        ".tox",
+        ".hermes",
+        "_build",
+        "build",
+        "dist",
+        "htmlcov",
+        "node_modules",
+    }
+)
+_IGNORED_FILES = frozenset({".coverage", "bot.log", ".bot.pid"})
+_KEPT_INI_FILES = frozenset({"config.ini.example", "tox.ini"})
+
+
+def _is_ignored_workspace_entry(directory: str, name: str) -> bool:
+    """Return True when one checkout entry must stay out of the scratch copy."""
+    path = Path(directory) / name
+    if path.is_dir() and name in _IGNORED_DIRECTORIES:
+        return True
+    if name in _IGNORED_FILES or name.endswith((".pyc", ".pyo")):
+        return True
+    if name == ".env" or (name.startswith(".env.") and name != ".env.example"):
+        return True
+    if name.endswith(".log") or ".log-" in name:
+        return True
+    if name.endswith((".ini.bak",)) or ".ini.bak-" in name:
+        return True
+    return name.endswith(".ini") and name not in _KEPT_INI_FILES
+
+
+def _ignore_workspace(directory: str, names: list[str]) -> set[str]:
+    """Return children of one directory that must not enter the scratch copy."""
+    return {name for name in names if _is_ignored_workspace_entry(directory, name)}
+
+
+def _copy_workspace(source: Path, destination: Path) -> None:
+    """Copy the checkout into a scratch tree without VCS state, caches, or secrets."""
+    shutil.copytree(source, destination, ignore=_ignore_workspace, symlinks=True)
 
 
 @dataclass(frozen=True)
@@ -34,6 +82,22 @@ class Result:
     status: str
     duration: float
     detail: str = ""
+
+
+@dataclass(frozen=True)
+class TestRun:
+    """Outcome of one pytest invocation."""
+
+    returncode: int | None
+    detail: str
+    output: str = ""
+
+
+class BaselineFailure(RuntimeError):
+    """The unmutated copy did not pass the selected tests."""
+
+
+_FAILED_TEST = re.compile(r"\b[1-9]\d* failed\b")
 
 
 MUTATIONS = [
@@ -140,11 +204,11 @@ MUTATIONS = [
         path="src/caching.py",
         test="tests/test_caching_scope.py",
         old=(
-            '        "conversation_scope": "" if scope_id is None else str(scope_id),\n'
-            '        "conversation_digest": conversation_digest,'
+            '        "conversation_scope": str(scope_id),\n'
+            '        "conversation_digest": digest,'
         ),
         new=(
-            '        "conversation_scope": "" if scope_id is None else str(scope_id),\n'
+            '        "conversation_scope": str(scope_id),\n'
             '        "conversation_digest": "",'
         ),
     ),
@@ -166,40 +230,35 @@ MUTATIONS = [
         path="src/error_handling.py",
         test="tests/test_retry_policy.py",
         old=(
-            "    return error_details.error_type not in {\n"
-            "        ErrorType.API_AUTH_ERROR,\n"
-            "        ErrorType.API_TIMEOUT,\n"
-            "        ErrorType.CONFIG_ERROR,\n"
-            "        ErrorType.VALIDATION_ERROR,\n"
-            "    }"
+            "    if isinstance(exception, (openai.APITimeoutError, *_HTTPX_TIMEOUT_ERRORS)):\n"
+            "        # The SDK wraps every transport timeout in APITimeoutError. Only a\n"
+            "        # connect timeout proves the request was never sent and safe to retry.\n"
+            "        return _chain_matches(exception, _HTTPX_CONNECT_ERRORS)"
         ),
         new=(
-            "    return error_details.error_type not in {\n"
-            "        ErrorType.API_AUTH_ERROR,\n"
-            "        ErrorType.CONFIG_ERROR,\n"
-            "        ErrorType.VALIDATION_ERROR,\n"
-            "    }"
+            "    if isinstance(exception, (openai.APITimeoutError, *_HTTPX_TIMEOUT_ERRORS)):\n"
+            "        return True"
         ),
     ),
     Mutation(
         name="breaker-inside-retry-counts-attempts",
-        path="src/openai_processing.py",
+        path="src/providers/openai_chat.py",
         test="tests/test_circuit_breaker_wiring.py",
         old=(
             "            response = await openai_circuit_breaker.call(\n"
             "                retry_with_backoff,\n"
-            "                lambda: openai_client.chat.completions.create(**api_params),\n"
+            "                lambda params=round_params: self._client.chat.completions.create(**params),\n"
             "                DEFAULT_API_RETRY_CONFIG,\n"
-            "                request.logger,\n"
+            "                self._logger,\n"
             "            )"
         ),
         new=(
             "            response = await retry_with_backoff(\n"
             "                lambda: openai_circuit_breaker.call(\n"
-            "                    lambda: openai_client.chat.completions.create(**api_params)\n"
+            "                    lambda params=round_params: self._client.chat.completions.create(**params)\n"
             "                ),\n"
             "                DEFAULT_API_RETRY_CONFIG,\n"
-            "                request.logger,\n"
+            "                self._logger,\n"
             "            )"
         ),
     ),
@@ -220,12 +279,93 @@ MUTATIONS = [
         ),
     ),
     Mutation(
+        name="protect-misaligned-inline-span",
+        path="src/message_splitter.py",
+        test="tests/test_code_protection.py",
+        old=(
+            "        or opener_index % 2\n"
+            "        or closer_index != opener_index + 1\n"
+        ),
+        new="",
+    ),
+    Mutation(
+        name="protect-unclosed-fence",
+        path="src/message_splitter.py",
+        test="tests/test_code_protection.py",
+        old=(
+            '    accepted = [fence for fence in parse.fences '
+            'if fence.marker == "```" and fence.closed]\n'
+        ),
+        new=(
+            '    accepted = [fence for fence in parse.fences '
+            'if fence.marker == "```"]\n'
+        ),
+    ),
+    Mutation(
+        name="protect-fence-with-inner-run",
+        path="src/message_splitter.py",
+        test="tests/test_code_protection.py",
+        old=(
+            "        closer_index = run_index - 1\n"
+            "        if closer_index != opener_index + 1 or opener_index % 2:\n"
+            "            return []\n"
+        ),
+        new=(
+            "        closer_index = run_index - 1\n"
+            "        if False:\n"
+            "            return []\n"
+        ),
+    ),
+    Mutation(
+        name="neutralize-only-first-scheme",
+        path="src/message_splitter.py",
+        test="tests/test_code_protection.py",
+        old="        position = scheme_end\n",
+        new="        position = len(text)\n",
+    ),
+    Mutation(
+        name="sanitizer-keeps-link-syntax",
+        path="src/message_splitter.py",
+        test="tests/test_code_protection.py",
+        old='    text = text.replace("](", f"]{_ZERO_WIDTH_SPACE}(")\n',
+        new="",
+    ),
+    Mutation(
+        name="sanitizer-keeps-url-scheme",
+        path="src/message_splitter.py",
+        test="tests/test_code_protection.py",
+        old=(
+            "    pieces: list[str] = []\n"
+            "    position = 0\n"
+            "    while True:\n"
+            '        scheme = text.find("://", position)\n'
+            "        if scheme < 0:\n"
+            "            pieces.append(text[position:])\n"
+            "            break\n"
+            "        scheme_end = scheme + 3\n"
+            "        pieces.append(text[position:scheme_end])\n"
+            "        if not text.startswith(_ZERO_WIDTH_SPACE, scheme_end):\n"
+            "            pieces.append(_ZERO_WIDTH_SPACE)\n"
+            "        position = scheme_end\n"
+            '    text = "".join(pieces)\n'
+        ),
+        new="",
+    ),
+    Mutation(
+        name="delivery-skips-per-chunk-sanitise",
+        path="src/message_splitter.py",
+        test="tests/test_code_protection.py",
+        old="        chunk_text = sanitize_for_discord(chunk, citations)\n",
+        new="        chunk_text = chunk\n",
+    ),
+    Mutation(
         name="routing-skips-markup-sanitization",
         path="src/smart_orchestrator.py",
         test="tests/test_smart_orchestrator_coverage.py",
         old=(
             '    cleaned = DISCORD_MARKUP_PATTERN.sub("", message)\n'
-            '    return " ".join(cleaned.split()).strip()'
+            '    lines = [" ".join(line.split()) for line in cleaned.splitlines()]\n'
+            '    return "\\n".join(lines).strip()'
         ),
         new="    return message",
     ),
@@ -276,24 +416,20 @@ def _restore(root: Path, mutation: Mutation, backup: Path, original: bytes) -> N
     if target.read_bytes() != original:
         message = f"{mutation.path}: restored bytes differ from the backup"
         raise RuntimeError(message)
-    diff = subprocess.run(
-        ["git", "diff", "--quiet", "--", mutation.path],
-        cwd=root,
-        check=False,
+
+
+def _run_test(root: Path, test_paths: list[str], timeout: float) -> TestRun:
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        part for part in (str(root), environment.get("PYTHONPATH", "")) if part
     )
-    if diff.returncode != 0:
-        message = f"{mutation.path}: git diff reports changes after restore"
-        raise RuntimeError(message)
-
-
-def _run_test(root: Path, test_path: str, timeout: float) -> tuple[bool, str]:
     try:
         completed = subprocess.run(
             [
                 sys.executable,
                 "-m",
                 "pytest",
-                test_path,
+                *test_paths,
                 "-q",
                 "-x",
                 "-p",
@@ -304,12 +440,78 @@ def _run_test(root: Path, test_path: str, timeout: float) -> tuple[bool, str]:
             text=True,
             timeout=timeout,
             check=False,
+            env=environment,
         )
     except subprocess.TimeoutExpired:
-        return True, "test run timed out"
-    output = (completed.stdout + completed.stderr).strip().splitlines()
-    detail = output[-1] if output else ""
-    return completed.returncode != 0, detail
+        return TestRun(None, "test run timed out")
+    output = (completed.stdout + completed.stderr).strip()
+    lines = output.splitlines()
+    detail = lines[-1] if lines else ""
+    return TestRun(completed.returncode, detail, output)
+
+
+def _classify_mutant(run: TestRun) -> tuple[str, str]:
+    """Classify one mutant run as KILLED, SURVIVED, or INCONCLUSIVE."""
+    if run.returncode == 1 and _FAILED_TEST.search(run.output):
+        return "KILLED", run.detail
+    if run.returncode == 0:
+        return "SURVIVED", run.detail
+    if run.returncode is None:
+        return "INCONCLUSIVE", "test run timed out"
+    if run.returncode == 5:
+        return "INCONCLUSIVE", f"no tests collected: {run.detail}"
+    return "INCONCLUSIVE", f"pytest exit {run.returncode}: {run.detail}"
+
+
+def _failure_exit_code(results: list[Result]) -> int:
+    """Return the process status for a completed run."""
+    return 0 if all(result.status == "KILLED" for result in results) else 1
+
+
+def _run_selected(
+    workspace: Path,
+    selected: list[Mutation],
+    timeout: float,
+    run_test,
+) -> list[Result]:
+    """Run the selected tests unmutated, then each mutation against them."""
+    baseline = run_test(workspace, sorted({mutation.test for mutation in selected}), timeout)
+    if baseline.returncode != 0:
+        message = baseline.detail or "baseline tests failed"
+        raise BaselineFailure(message)
+
+    backup_dir = workspace.parent / "backups"
+    backup_dir.mkdir(exist_ok=True)
+    results: list[Result] = []
+    for index, mutation in enumerate(selected, start=1):
+        print(f"[{index}/{len(selected)}] {mutation.name} ... ", end="", flush=True)
+        target = workspace / mutation.path
+        original = target.read_bytes()
+        backup = backup_dir / f"{index:02d}-{target.name}.bak"
+        backup.write_bytes(original)
+        text = original.decode("utf-8")
+        old, new, occurrences = _match_snippet(text, mutation.old, mutation.new)
+
+        if occurrences != 1:
+            detail = f"expected one match in {mutation.path}, found {occurrences}"
+            result = Result(mutation, "INVALID", 0.0, detail)
+            results.append(result)
+            print(f"INVALID ({detail})")
+            continue
+
+        mutation_started = time.perf_counter()
+        status = "ERROR"
+        detail = ""
+        try:
+            target.write_bytes(text.replace(old, new, 1).encode("utf-8"))
+            status, detail = _classify_mutant(run_test(workspace, [mutation.test], timeout))
+        finally:
+            _restore(workspace, mutation, backup, original)
+        duration = time.perf_counter() - mutation_started
+        results.append(Result(mutation, status, duration, detail))
+        print(f"{status} ({duration:.2f}s)")
+
+    return results
 
 
 def _print_table(results: list[Result], total_duration: float) -> None:
@@ -370,35 +572,14 @@ def main(argv: list[str] | None = None) -> int:
     started = time.perf_counter()
 
     with tempfile.TemporaryDirectory(prefix="mutation-check-") as temp_dir:
-        backup_dir = Path(temp_dir)
-        for index, mutation in enumerate(selected, start=1):
-            print(f"[{index}/{len(selected)}] {mutation.name} ... ", end="", flush=True)
-            target = ROOT / mutation.path
-            original = target.read_bytes()
-            backup = backup_dir / f"{index:02d}-{target.name}.bak"
-            backup.write_bytes(original)
-            text = original.decode("utf-8")
-            old, new, occurrences = _match_snippet(text, mutation.old, mutation.new)
-
-            if occurrences != 1:
-                detail = f"expected one match in {mutation.path}, found {occurrences}"
-                result = Result(mutation, "INVALID", 0.0, detail)
-                results.append(result)
-                print(f"INVALID ({detail})")
-                continue
-
-            mutation_started = time.perf_counter()
-            status = "ERROR"
-            detail = ""
-            try:
-                target.write_bytes(text.replace(old, new, 1).encode("utf-8"))
-                killed, detail = _run_test(ROOT, mutation.test, args.timeout)
-                status = "KILLED" if killed else "SURVIVED"
-            finally:
-                _restore(ROOT, mutation, backup, original)
-            duration = time.perf_counter() - mutation_started
-            results.append(Result(mutation, status, duration, detail))
-            print(f"{status} ({duration:.2f}s)")
+        workspace = Path(temp_dir) / "workspace"
+        _copy_workspace(ROOT, workspace)
+        try:
+            results = _run_selected(workspace, selected, args.timeout, _run_test)
+        except BaselineFailure as exc:
+            print("Baseline tests do not pass on the unmutated copy.", file=sys.stderr)
+            print(f"  {exc}", file=sys.stderr)
+            return 2
 
     total_duration = time.perf_counter() - started
     _print_table(results, total_duration)
@@ -410,8 +591,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{result.status}: {result.mutation.name} ({result.mutation.test})")
             if result.detail:
                 print(f"  {result.detail}")
-        return 1
-    return 0
+        return _failure_exit_code(results)
+    return _failure_exit_code(results)
 
 
 if __name__ == "__main__":

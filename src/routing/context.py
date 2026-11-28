@@ -7,8 +7,8 @@ import logging
 from typing import Any
 
 from .contracts import ConversationContext, RouterInput, Turn
+from .services import ROUTE_BY_SERVICE
 
-_SERVICE_ROUTE: dict[str, str] = {"perplexity": "web", "openai": "local"}
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -109,7 +109,7 @@ def _turns(history: Sequence[Mapping[str, Any]], lookback: int) -> tuple[Turn, .
 def _service_route(service: object) -> str | None:
     if not isinstance(service, str):
         return None
-    return _SERVICE_ROUTE.get(service.lower())
+    return ROUTE_BY_SERVICE.get(service.lower())
 
 
 def _input_for(request: Any, text: str, context: ConversationContext) -> RouterInput:

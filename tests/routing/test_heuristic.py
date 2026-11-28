@@ -186,3 +186,29 @@ def test_group_10_empty_and_non_word_input_is_local(text: str) -> None:
     assert decision.route == "local"
     assert decision.reasons == ("local:default",)
     assert decision.text == text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "why does this fail?\n```\npip install requests==2.32.0\n```",
+        "what's wrong here?\n```\n2026-11-22 10:01:02 ERROR boom\n```",
+        "fix my function\n```python\nprice = '$19.99'\n```",
+    ],
+)
+def test_fenced_code_never_contributes_bearing_cues(text: str) -> None:
+    """A version, year, or price inside a fenced block cannot route to web."""
+    decision = _decide(text)
+
+    assert decision.route == "local"
+    assert not any(reason.startswith("bearing:") for reason in decision.reasons)
+
+
+def test_text_outside_the_fence_still_contributes_bearing_cues() -> None:
+    """Masking the pasted block must not hide a live question around it."""
+    text = "is github down?\n```\nprint('checking')\n```"
+
+    decision = _decide(text)
+
+    assert decision.route == "web"
+    assert "bearing:pred.status" in decision.reasons

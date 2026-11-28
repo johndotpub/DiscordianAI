@@ -20,22 +20,42 @@ import configparser
 import logging
 import os
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, NoReturn
 
-import discord
-
-from .api_validation import log_validation_results, validate_output_token_limits
-from .bot import run_bot
 from .config import (
     DEFAULT_ACTIVITY_TYPE,
     DEFAULT_BOT_PRESENCE,
     DEFAULT_RATE_LIMIT,
     DEFAULT_RATE_LIMIT_PER,
+    DEFAULT_ROUTER_MODE,
+    _parse_bool,
     load_config,
     parse_arguments,
 )
 from .dependency_check import check_dependencies
-from .structured_logging import configure_structlog
+
+
+def run_bot(config: dict[str, Any]) -> None:
+    """Run the bot through the real implementation after the import gate.
+
+    The wrapper keeps the entry module free of the third-party imports in
+    :mod:`src.bot` until :func:`check_dependencies` has explained any missing
+    package. Tests patch this module attribute directly.
+    """
+    from .bot import run_bot as _run_bot  # noqa: PLC0415 - deferred until the gate passes
+
+    _run_bot(config)
+
+
+def configure_structlog(**kwargs: Any) -> None:
+    """Configure structured logging after the dependency gate has run.
+
+    The entry module exposes this name so callers and tests can patch it, but
+    the structlog import itself stays inside the function.
+    """
+    from .structured_logging import configure_structlog as _configure_structlog  # noqa: PLC0415
+
+    _configure_structlog(**kwargs)
 
 
 def setup_early_logging() -> logging.Logger:
@@ -59,16 +79,19 @@ def _log_color_is_explicit(config_file: str | None, base_folder: str | None) -> 
 
     The loaded configuration always carries a value for the key, so the
     default cannot be distinguished from an explicit setting after parsing.
-    Check the environment and the config file itself instead.
+    Check the environment and the config file itself instead. A blank or
+    unrecognised value counts as unset, so terminal detection applies.
 
     Args:
         config_file: Config file path that was passed to ``load_config``.
         base_folder: Optional base folder used to resolve a relative path.
 
     Returns:
-        True when the environment or the ``[Logging]`` section sets the key.
+        True when the environment or the ``[Logging]`` section sets a
+        recognised boolean value for the key.
     """
-    if "DISCORDIANAI_LOG_COLOR" in os.environ:
+    env_value = os.environ.get("DISCORDIANAI_LOG_COLOR")
+    if env_value is not None and _parse_bool(env_value) is not None:
         return True
     if not config_file:
         return False
@@ -84,7 +107,9 @@ def _log_color_is_explicit(config_file: str | None, base_folder: str | None) -> 
         parser.read(path, encoding="utf-8")
     except (configparser.Error, OSError):
         return False
-    return parser.has_option("Logging", "DISCORDIANAI_LOG_COLOR")
+    if not parser.has_option("Logging", "DISCORDIANAI_LOG_COLOR"):
+        return False
+    return _parse_bool(parser.get("Logging", "DISCORDIANAI_LOG_COLOR", fallback="")) is not None
 
 
 def _require_existing_config_file(
@@ -146,12 +171,13 @@ def setup_production_logging(config: dict, logger: logging.Logger) -> None:
         )
 
         # The process supervisor or launcher owns bot.log redirection.
-        # Keep a single structured stream here to avoid duplicate lines.
+        # Keep a single structured stream here to avoid duplicate lines, and
+        # only explain the deprecated key when the operator actually set it.
         configured_log_file = config.get("LOG_FILE")
-        if configured_log_file:
+        if configured_log_file and config.get("_LOG_FILE_EXPLICIT"):
             logger.info(
-                "LOG_FILE is ignored (configured as %r); logs go to stdout. "
-                "Redirect stdout or let the process supervisor capture the output.",
+                "LOG_FILE is ignored (configured as %r); logs go to stderr. "
+                "Redirect stderr, or let the process supervisor capture both streams.",
                 configured_log_file,
             )
 
@@ -205,8 +231,11 @@ def validate_critical_config(config: dict, logger: logging.Logger) -> None:
     Raises:
         ValueError: If critical configuration is missing or invalid
     """
+    import discord  # noqa: PLC0415 - deferred until the gate passes
+
+    from .api_validation import validate_output_token_limits  # noqa: PLC0415
+
     errors = _credential_errors(config)
-    warnings = []
 
     # Validate rate limiting settings
     try:
@@ -217,12 +246,12 @@ def validate_critical_config(config: dict, logger: logging.Logger) -> None:
     except (ValueError, TypeError):
         errors.append("RATE_LIMIT and RATE_LIMIT_PER must be valid integers")
 
-    # Validate the separate OpenAI and Perplexity output-token caps.
+    # Validate the separate OpenAI and Perplexity output-token caps. Only the
+    # errors are collected here; the warnings are logged once by the full API
+    # validation that runs after this check.
     for issue in validate_output_token_limits(config):
         if issue.startswith("ERROR:"):
             errors.append(issue.removeprefix("ERROR:").strip())
-        else:
-            warnings.append(issue.removeprefix("WARNING:").strip())
 
     # Validate Discord presence and activity types against discord.py's enums.
     # These are operator typos: reject them now instead of failing inside on_ready.
@@ -242,18 +271,20 @@ def validate_critical_config(config: dict, logger: logging.Logger) -> None:
         activity_values = ", ".join(valid_activity_types)
         errors.append(f"ACTIVITY_TYPE must be one of: {activity_values} (got {activity_type!r})")
 
-    # Check allowed channels; ID-based targeting is just as valid as names.
-    allowed_channels = config.get("ALLOWED_CHANNELS", [])
-    allowed_channel_ids = config.get("ALLOWED_CHANNEL_IDS", [])
-    if not allowed_channels and not allowed_channel_ids:
-        warnings.append(
-            "No ALLOWED_CHANNELS or ALLOWED_CHANNEL_IDS configured - "
-            "bot will not respond in any channels"
+    # Reject a router mode that cannot select a real implementation. This is
+    # checked before the bot starts so a typo cannot turn every message into an
+    # error reply while startup and /health look healthy.
+    router_mode = str(config.get("ROUTER_MODE", DEFAULT_ROUTER_MODE)).strip().lower()
+    if router_mode == "model":
+        errors.append("ROUTER_MODE=model is not implemented; use ROUTER_MODE=clef")
+    elif router_mode not in {"heuristic", "clef"}:
+        errors.append(
+            f"Unknown ROUTER_MODE {router_mode!r}; expected 'heuristic' or 'clef' "
+            "(the retired value is 'model')"
         )
 
-    # Log warnings
-    for warning in warnings:
-        logger.warning("Configuration warning: %s", warning)
+    # The full API validation in ``log_validation_results`` owns the
+    # no-channels warning, so it is logged once rather than twice.
 
     # Raise error if critical issues found
     if errors:
@@ -310,14 +341,19 @@ def main() -> NoReturn:
     Raises:
         SystemExit: If critical initialization fails
     """
-    # Step 1: Set up early logging before anything else
-    early_logger = setup_early_logging()
-    logger = None
-
+    # Step 1: check dependencies before importing the packages they describe.
     dependencies_ok, missing_dependencies = check_dependencies()
     if not dependencies_ok:
-        early_logger.error("Missing required packages: %s", ", ".join(missing_dependencies))
+        sys.stderr.write(
+            "Missing required packages: "
+            f"{', '.join(missing_dependencies)}\n"
+            "Install them with: pip install -r requirements.txt\n"
+        )
         sys.exit(1)
+
+    # Step 2: Set up early logging before anything else
+    early_logger = setup_early_logging()
+    logger = None
 
     try:
         # Step 2: Parse command-line arguments
@@ -351,6 +387,8 @@ def main() -> NoReturn:
         validate_critical_config(config, logger)
 
         # Step 5.1: Validate API parameters
+        from .api_validation import log_validation_results  # noqa: PLC0415
+
         logger.info("Validating API parameters")
         api_validation_passed = log_validation_results(config, logger)
         if not api_validation_passed:

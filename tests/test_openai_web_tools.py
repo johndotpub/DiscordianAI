@@ -1,10 +1,12 @@
 """Tests for the bounded web-tool loop on the Ollama chat path."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src import message_router
+from src.bot import initialize_bot_and_dependencies
 from src.models import OpenAIConfig
 from src.openai_processing import process_openai_message
 
@@ -150,7 +152,8 @@ async def test_tool_loop_stops_after_four_rounds(make_request, monkeypatch):
 
     assert result is None
     assert len(client.calls) == 4
-    assert tool.await_count == 4
+    assert "tools" not in client.calls[-1]
+    assert tool.await_count == 3
 
 
 @pytest.mark.asyncio
@@ -177,3 +180,102 @@ async def test_tools_are_not_attached_when_disabled(make_request):
 
     assert result == "Plain answer."
     assert "tools" not in client.calls[0]
+
+
+@pytest.mark.asyncio
+async def test_production_dependencies_honour_web_tools_false(config_dict, e2e_scene):
+    """A config loaded with WEB_TOOLS=false removes the tools from the request."""
+    scene = e2e_scene("Tell me about monads.")
+    client = _ChatClient("https://ollama.com/v1/", [_response("Plain answer.")])
+    config = config_dict(
+        OPENAI_API_KEY="test-ollama-key",
+        PERPLEXITY_API_KEY=None,
+        ALLOWED_CHANNEL_IDS=[scene.channel.id],
+        WEB_TOOLS=False,
+    )
+
+    with patch("src.bot.get_connection_pool_manager") as pool_factory:
+        pool_factory.return_value.create_openai_client.return_value = client
+        deps = initialize_bot_and_dependencies(config)
+
+    assert deps.web_tools is False
+    await message_router.handle_incoming_message(scene.message, deps, scene.bot)
+
+    assert client.calls
+    assert "tools" not in client.calls[0]
+
+
+@pytest.mark.asyncio
+async def test_final_tool_round_answers_without_tools(make_request, monkeypatch):
+    """The fourth round is offered no tools and its answer is returned."""
+    tool = AsyncMock(return_value='{"results":[]}')
+    monkeypatch.setattr("src.openai_processing.call_web_tool", tool)
+    client = _ChatClient(
+        "https://ollama.com/v1/",
+        [
+            _response(finish_reason="tool_calls", tool_calls=[_tool_call()]),
+            _response(finish_reason="tool_calls", tool_calls=[_tool_call()]),
+            _response(finish_reason="tool_calls", tool_calls=[_tool_call()]),
+            _response("Answered on the last round."),
+        ],
+    )
+
+    result = await _run(make_request, client)
+
+    assert result == "Answered on the last round."
+    assert len(client.calls) == 4
+    assert all("tools" in call for call in client.calls[:3])
+    assert "tools" not in client.calls[-1]
+    assert tool.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_tool_calls_per_round_are_capped(make_request, monkeypatch):
+    """Extra tool calls in one round are answered without being executed."""
+    tool = AsyncMock(return_value='{"results":[]}')
+    monkeypatch.setattr("src.openai_processing.call_web_tool", tool)
+    calls = [_tool_call(f"call-{index}") for index in range(5)]
+    client = _ChatClient(
+        "https://ollama.com/v1/",
+        [
+            _response(finish_reason="tool_calls", tool_calls=calls),
+            _response("Done."),
+        ],
+    )
+
+    result = await _run(make_request, client)
+
+    assert result == "Done."
+    assert tool.await_count == 3
+    tool_messages = [
+        message for message in client.calls[1]["messages"] if message["role"] == "tool"
+    ]
+    assert len(tool_messages) == 5
+    assert tool_messages[3]["content"] == '{"error":"tool-call limit reached"}'
+    assert tool_messages[4]["content"] == '{"error":"tool-call limit reached"}'
+
+
+@pytest.mark.asyncio
+async def test_tool_output_budget_feeds_back_a_short_result(make_request, monkeypatch):
+    """A result over the output budget becomes a short budget notice."""
+    oversized = '{"results":["' + "x" * 60000 + '"]}'
+    tool = AsyncMock(return_value=oversized)
+    monkeypatch.setattr("src.openai_processing.call_web_tool", tool)
+    client = _ChatClient(
+        "https://ollama.com/v1/",
+        [
+            _response(finish_reason="tool_calls", tool_calls=[_tool_call()]),
+            _response("Answered without the oversized result."),
+        ],
+    )
+
+    result = await _run(make_request, client)
+
+    assert result == "Answered without the oversized result."
+    tool.assert_awaited_once()
+    tool_message = client.calls[1]["messages"][-1]
+    assert tool_message == {
+        "role": "tool",
+        "tool_call_id": "call-1",
+        "content": '{"error":"tool-output budget reached"}',
+    }

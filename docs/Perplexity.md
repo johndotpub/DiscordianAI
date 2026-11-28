@@ -10,7 +10,9 @@ bot's default:
 
 - **Real-time information access** from current web sources
 - **Automatic citation extraction** with numbered `[n]` source links
-- **Web search on every call** through the `web_search` tool
+- **`web_search` and `fetch_url` offered on every call**; the model chooses
+  when to search; the instructions ask it to use `fetch_url` for a URL the
+  user supplied
 
 The legacy Sonar names (`sonar`, `sonar-pro`, `sonar-deep-research`,
 `sonar-reasoning-pro`) still answer on Chat Completions, but that interface is
@@ -24,7 +26,7 @@ The bot calls the Agent API through the OpenAI SDK's `responses.create()`:
   `POST /v1/responses` as the OpenAI-compatible alias used by the SDK.
 - **Request fields**: `model`, `instructions` (the system prompt), `input` (the
   prior turns and current user message), `max_output_tokens`, and
-  `tools: [{"type": "web_search"}]`. No `temperature` is sent.
+  `tools: [{"type": "web_search"}, {"type": "fetch_url"}]`. No `temperature` is sent.
 - **Response**: an `output` array. A `search_results` item carries
   `results[]` entries with `id`, `url`, `title`, `snippet`, `date`,
   `last_updated`, and `source`; the 1-based `id` matches the `[1]`, `[2]`
@@ -33,8 +35,8 @@ The bot calls the Agent API through the OpenAI SDK's `responses.create()`:
 - **No-search answers**: a query that needs no search returns only the
   `message` item, so the parser tolerates a missing `search_results` item.
 - **Usage**: `usage` reports `input_tokens`, `output_tokens`,
-  `total_tokens`, and a `cost` breakdown. The bot does not currently log that
-  cost.
+  `total_tokens`, and a provider-specific breakdown. The bot does not currently
+  log those figures.
 
 Chat Completions remains supported by Perplexity, but it is the legacy
 interface and this bot no longer calls it.
@@ -79,7 +81,8 @@ PERPLEXITY_API_KEY=your_perplexity_key_here
 ### 🌐 Real-Time Web Search & URL Fetching
 - Access to current information and breaking news
 - Real-time data from various web sources
-- **Native `fetch_url`** for GitHub PRs, articles, and web pages supplied by users
+- **Native `fetch_url`** for GitHub PRs, articles, and web pages supplied by users,
+  when the model chooses to open them
 - **Native `web_search`** when no page is supplied or a page cannot be fetched
 - Up-to-date facts and statistics
 
@@ -106,8 +109,8 @@ Stable facts, creative requests, code help, and social messages stay local even 
 questions or contain proper names.
 
 ### 🔗 URL Processing
-When URLs are detected in messages, the Agent API request already carries both
-`web_search` and `fetch_url`; no local scraping code runs. The model:
+The Agent API request always carries both `web_search` and `fetch_url`; no local
+scraping code runs. When the user supplies a URL, the model:
 1. **Opens each URL** with `fetch_url` (up to 10 per message)
 2. **Answers from the page contents** and cites the sources it used
 3. **Falls back to `web_search`** and labels the answer as search-based when a page cannot be fetched
@@ -210,7 +213,7 @@ One decision is built per message before any provider call:
   to this gate on failure. See [routing/DESIGN.md](routing/DESIGN.md) for the full model.
 
 ### Routing Decision Logic
-1. **Build one input**: message text, channel kind, recent turns, and the previous route.
+1. **Build one input**: message text, recent turns, and the previous route.
 2. **Apply the gate**: overrides, then bearing cues; otherwise inherit a live follow-up route or stay
    local.
 3. **Deliver and record**: the selected provider answers, and only the successful turn is written to
@@ -225,12 +228,13 @@ One decision is built per message before any provider call:
 
 ### Model Selection
 - Use **perplexity/sonar**, the current Agent API Sonar model, for web search
-- Consider token costs when setting OUTPUT_TOKENS; `usage.cost` reports the
-  provider's own breakdown for each response
+- Consider token use when setting PERPLEXITY_OUTPUT_TOKENS; the provider's `usage` block
+  reports its own breakdown for each response
 
 ### Integration Tips
 - **Hybrid mode recommended**: Combines web search with conversational AI
-- **Monitor usage**: Track API costs and optimize token limits
+- **Monitor usage**: The bot does not log usage; tune token limits from your own
+  measurements
 
 ## Troubleshooting
 
@@ -241,7 +245,7 @@ One decision is built per message before any provider call:
 - Verify the API key starts with `pplx-`
 
 **"Rate limit exceeded"**:
-- Check your Perplexity billing and usage limits
+- Check your Perplexity usage limits
 - Implement appropriate rate limiting in bot configuration
 
 **"Model not found"**:
@@ -250,7 +254,7 @@ One decision is built per message before any provider call:
 - Check if you have access to the specified model
 
 **Citations not formatting properly**:
-- Ensure OUTPUT_TOKENS is sufficient (recommended: 16000+)
+- Ensure PERPLEXITY_OUTPUT_TOKENS is sufficient (recommended: 16000+)
 - Check that citation extraction patterns are working
 - Verify Discord message length limits aren't truncating citations
 
@@ -261,8 +265,8 @@ One decision is built per message before any provider call:
 
 ### Performance Optimization
 
-- **Adjust OUTPUT_TOKENS**: Higher values allow for more complete responses with citations
-- **Monitor API costs**: Track usage patterns and optimize for your use case
+- **Adjust PERPLEXITY_OUTPUT_TOKENS**: Higher values allow for more complete responses with citations
+- **Monitor API usage**: The bot does not log usage; tune limits for your use case
 
 ## Environment Variables
 
@@ -278,7 +282,7 @@ export PERPLEXITY_MODEL="perplexity/sonar"
 
 - Check Perplexity's [API documentation](https://docs.perplexity.ai/)
 - Monitor the bot logs for specific error messages
-- Verify your API key has sufficient credits and permissions
+- Verify your API key has sufficient access and permissions
 - Test with simple queries first to ensure connectivity
 
 ## Advanced Features
@@ -287,19 +291,42 @@ export PERPLEXITY_MODEL="perplexity/sonar"
 - The bot maintains conversation context across queries
 - A genuine follow-up (anaphora such as "tell me more" or "and the second one?"),
   with a recent assistant turn in the same conversation, reuses that service
-- Conversation summary helps provide relevant context to searches
+- The stored conversation history (the last `MAX_HISTORY_PER_USER` entries after
+  pruning) is sent as prior turns, not a generated summary
+- That history is trimmed further to fit `PERPLEXITY_INPUT_TOKENS` and
+  `PERPLEXITY_CONTEXT_WINDOW`, or the lower shared `INPUT_TOKENS` /
+  `CONTEXT_WINDOW` value when the operator set one; the oldest
+  question/answer pairs are dropped first
 
 ### Metadata Tracking
 - All Perplexity responses include service metadata
-- Citation counts are tracked for analytics
-- API usage is logged for monitoring and optimization
+- The response's `usage` block is available to the provider
+  adapter, but the bot does not log it
 
 ### Error Handling
 - In hybrid mode, falls back to OpenAI when Perplexity returns no response
-- `retry_with_backoff` allows 2 attempts total and retries only transient
-  failures (429, 5xx, connection errors, and connect timeouts); authentication
-  errors, read timeouts, and exhausted quotas fail immediately. Delays use
-  capped exponential backoff with full jitter.
+- `retry_with_backoff` allows 2 attempts total. It retries failures a repeat can
+  help: connection errors where no request was established, 429 responses with
+  `Retry-After` honoured (capped at 30 seconds), and 5xx. It does not retry read
+  timeouts, authentication errors, validation errors, or other 4xx, and it does
+  not retry a path whose outcome is unknown. Every retry is bounded by
+  `RetryConfig.max_elapsed` (90 seconds by default); delays use capped
+  exponential backoff with full jitter.
 - A shared per-provider circuit breaker opens after 5 failed logical calls,
   counting the whole retry sequence for one call as one failure, and admits one
-  probe after 60 seconds.
+  probe after 60 seconds. A user-caused request error (400, 409, 413, 422, and
+  other deterministic client errors) is neutral: the provider answered, so the
+  error releases a half-open probe but does not reset the failure count, stamp
+  a success, or move any counter. Configuration errors — 401, 403, 404, and a
+  400 whose structured error names the model: type or code `invalid_model` or
+  `model_not_found`, `param` equal to `model`, or a message that combines
+  `model` with `is not supported`, `not found`, or `does not exist` — do count,
+  because every call with a bad key or retired model fails. 5xx, 429, and
+  timeouts also count.
+- Perplexity prompts use `PERPLEXITY_INPUT_TOKENS` and
+  `PERPLEXITY_CONTEXT_WINDOW` because the former Sonar model page documented a
+  128K-token context window. The Agent API models page publishes no context
+  figure, so 128K is unverified there. The chat path keeps the larger
+  `INPUT_TOKENS` and `CONTEXT_WINDOW`. If the operator explicitly lowers
+  `INPUT_TOKENS` or `CONTEXT_WINDOW`, the smaller shared value also caps the
+  Perplexity prompt and window.

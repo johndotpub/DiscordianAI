@@ -1,8 +1,8 @@
 """Formal dependency injection container for DiscordianAI.
 
-Replaces the ad-hoc ``deps`` dictionary with a typed, frozen dataclass that
-makes the bot's service graph explicit, prevents typos in key names, and
-enables IDE autocompletion across the codebase.
+Replaces the ad-hoc ``deps`` dictionary with a typed dataclass that makes the
+bot's service graph explicit, prevents typos in key names, and enables IDE
+autocompletion across the codebase.
 
 Usage::
 
@@ -56,6 +56,7 @@ class BotDependencies:
         client: OpenAI AsyncClient (or ``None`` if not configured).
         perplexity_client: Perplexity AsyncClient (or ``None``).
         connection_pool_manager: HTTP connection pool manager.
+        router: Process-wide routing implementation built once at startup.
         rate_limiter: Per-user rate limiter.
         conversation_manager: Thread-safe conversation history store.
         health_server: Health endpoint server (or ``None``).
@@ -77,7 +78,7 @@ class BotDependencies:
         context_window: Total model context window in tokens.
         reasoning_effort: Reasoning effort sent with OpenAI-compatible requests.
         web_tools: Whether to offer native web tools to Ollama-compatible providers.
-        health_task: Asyncio task for the health server (set at runtime).
+        health_task: Asyncio task for the startup provider probes (set at runtime).
     """
 
     # Service objects
@@ -87,6 +88,7 @@ class BotDependencies:
     client: Any | None = None
     perplexity_client: Any | None = None
     connection_pool_manager: ConnectionPoolManager | None = None
+    router: Any | None = None
     rate_limiter: RateLimiter | None = None
     conversation_manager: ThreadSafeConversationManager | None = None
     health_server: HealthServer | None = None
@@ -134,6 +136,7 @@ class BotDependencies:
             "client": self.client,
             "perplexity_client": self.perplexity_client,
             "connection_pool_manager": self.connection_pool_manager,
+            "router": self.router,
             "rate_limiter": self.rate_limiter,
             "conversation_manager": self.conversation_manager,
             "health_server": self.health_server,
@@ -188,6 +191,7 @@ class BotDependencies:
             "OUTPUT_TOKENS": "output_tokens",
             "PERPLEXITY_OUTPUT_TOKENS": "perplexity_output_tokens",
             "INPUT_TOKENS": "input_tokens",
+            "router": "router",
             "CONTEXT_WINDOW": "context_window",
             "_health_task": "health_task",
         }.get(key)

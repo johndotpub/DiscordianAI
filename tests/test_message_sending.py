@@ -142,6 +142,7 @@ class TestSendFormattedMessage:
                 embed_data["citations"],
                 None,
                 None,
+                suppress_embeds=False,
             )
 
     @pytest.mark.asyncio
@@ -170,6 +171,51 @@ class TestSendFormattedMessage:
         assert not channel.send.call_args_list[1][1]["suppress_embeds"]
 
     @pytest.mark.asyncio
+    async def test_truncated_embed_failure_still_delivers_split_text(self):
+        """An embed rejection on the truncated path must fall back to text."""
+
+        class EmbedRejectingChannel:
+            def __init__(self):
+                self.text_chunks = []
+
+            async def send(self, content, **kwargs):
+                if "embed" in kwargs:
+                    response = MagicMock()
+                    response.status = 400
+                    response.reason = "Bad Request"
+                    raise discord.HTTPException(response, "embed rejected")
+                self.text_chunks.append(content)
+                return MagicMock()
+
+        channel = EmbedRejectingChannel()
+        message = "[1] " + ("A" * 4000)
+        embed = discord.Embed(description="[1] " + ("A" * 3900))
+        embed_data = {
+            "embed": embed,
+            "citations": {"1": "https://example.com/source"},
+            "clean_text": message,
+            "embed_metadata": {"was_truncated": True},
+        }
+        deps = {"logger": MagicMock()}
+
+        try:
+            await send_formatted_message(
+                channel,
+                message,
+                deps,
+                embed_data=embed_data,
+                truncated=True,
+            )
+        except discord.HTTPException as exc:
+            pytest.fail(f"truncated delivery raised instead of falling back: {exc}")
+
+        assert channel.text_chunks
+        assert all(len(chunk) <= 2000 for chunk in channel.text_chunks)
+        delivered = "".join(channel.text_chunks)
+        assert "A" * 100 in delivered
+        assert len(delivered) > 2000
+
+    @pytest.mark.asyncio
     async def test_send_formatted_message_regular_short(self):
         """Test sending regular message (no embed data) that fits in 2000 chars."""
         channel = MagicMock(spec=discord.TextChannel)
@@ -190,11 +236,11 @@ class TestSendFormattedMessage:
     async def test_send_formatted_message_reply_with_mention(self):
         """Send uses reply with mention prefix when original_message is provided."""
         channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
         author = MagicMock()
         author.mention = "<@user>"
         original_message = MagicMock(spec=discord.Message)
         original_message.author = author
-        original_message.reply = AsyncMock()
 
         message = "Hello there"
         deps = {"logger": MagicMock()}
@@ -207,10 +253,11 @@ class TestSendFormattedMessage:
             mention_prefix=f"{author.mention} ",
         )
 
-        original_message.reply.assert_called_once()
-        call_args, call_kwargs = original_message.reply.call_args
+        channel.send.assert_called_once()
+        call_args, call_kwargs = channel.send.call_args
         assert call_args[0].startswith(f"{author.mention} ")
         assert call_kwargs["mention_author"] is False
+        original_message.to_reference.assert_called_once_with(fail_if_not_exists=False)
 
     @pytest.mark.asyncio
     async def test_send_formatted_message_regular_long(self):
@@ -240,23 +287,24 @@ class TestSendFormattedMessage:
         author.mention = "<@user>"
         original_message = MagicMock(spec=discord.Message)
         original_message.author = author
-        original_message.reply = AsyncMock()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
 
         long_message = "A" * 2500
         deps = {"logger": MagicMock()}
 
         await send_split_message(
-            MagicMock(spec=discord.TextChannel),
+            channel,
             long_message,
             deps,
             original_message=original_message,
             mention_prefix=f"{author.mention} ",
         )
 
-        # Should have multiple replies (due to split)
-        assert original_message.reply.call_count >= 2
-        first_content = original_message.reply.call_args_list[0][0][0]
-        second_content = original_message.reply.call_args_list[1][0][0]
+        # Should have multiple sends (due to split)
+        assert channel.send.call_count >= 2
+        first_content = channel.send.call_args_list[0][0][0]
+        second_content = channel.send.call_args_list[1][0][0]
         assert first_content.startswith(f"{author.mention} ")
         assert not second_content.startswith(f"{author.mention} ")
 
@@ -289,8 +337,78 @@ class TestSendFormattedMessage:
         assert channel.send.call_count == 1
 
 
+class _RecordingChannel:
+    """Record sends and fail one chosen call with a Discord HTTP error."""
+
+    def __init__(self, fail_on: int | None = None):
+        self.calls: list[tuple[str, dict]] = []
+        self.text_chunks: list[str] = []
+        self._fail_on = fail_on
+        self._send_count = 0
+
+    async def send(self, content, **kwargs):
+        self._send_count += 1
+        self.calls.append((content, kwargs))
+        if self._fail_on is not None and self._send_count == self._fail_on:
+            response = MagicMock()
+            response.status = 500
+            response.reason = "Server Error"
+            raise discord.HTTPException(response, "send failed")
+        if kwargs.get("embed") is None:
+            self.text_chunks.append(content)
+        return MagicMock()
+
+
 class TestSendSplitMessageWithEmbed:
     """Test send_split_message_with_embed function for proper citation handling."""
+
+    @pytest.mark.asyncio
+    async def test_head_embed_failure_falls_back_to_split_text_once(self):
+        """A head embed rejection falls back to text exactly once."""
+        message = "[1] " + ("A" * 5000)
+        embed = discord.Embed(description=message)
+        citations = {"1": "https://example.com/source"}
+        channel = _RecordingChannel(fail_on=1)
+        deps = {"logger": MagicMock()}
+
+        await send_split_message_with_embed(
+            channel,
+            message,
+            deps,
+            embed,
+            citations,
+        )
+
+        assert "".join(channel.text_chunks) == message
+        assert len(channel.text_chunks) == 3
+        assert all(kwargs.get("embed") is None for _content, kwargs in channel.calls[1:])
+
+    @pytest.mark.asyncio
+    async def test_continuation_failure_does_not_resend_the_whole_answer(self):
+        """A failed continuation propagates instead of re-sending the answer."""
+        message = "[1] " + ("A" * 4000)
+        embed = discord.Embed(description=message)
+        embed_data = {
+            "embed": embed,
+            "citations": {"1": "https://example.com/source"},
+            "clean_text": message,
+            "embed_metadata": {"was_truncated": True},
+        }
+        channel = _RecordingChannel(fail_on=2)
+        deps = {"logger": MagicMock()}
+
+        with pytest.raises(discord.HTTPException):
+            await send_formatted_message(
+                channel,
+                message,
+                deps,
+                embed_data=embed_data,
+                mention_prefix="<@user> ",
+            )
+
+        assert channel.calls[0][1].get("embed") is embed
+        assert channel.text_chunks == []
+        assert all(content != message for content, _kwargs in channel.calls)
 
     @pytest.mark.asyncio
     async def test_split_embed_short_content(self):
@@ -346,7 +464,6 @@ class TestSendSplitMessageWithEmbed:
         author.mention = "<@user>"
         original_message = MagicMock(spec=discord.Message)
         original_message.author = author
-        original_message.reply = AsyncMock()
 
         # Craft content that exceeds the safe limit so a continuation is needed
         long_content = "A" * (EMBED_SAFE_LIMIT + 50) + " [1] " + ("B" * 50) + " [2]"
@@ -370,15 +487,15 @@ class TestSendSplitMessageWithEmbed:
                 mention_prefix=f"{author.mention} ",
             )
 
-        # First reply should include the mention prefix
-        first_call_args, first_call_kwargs = original_message.reply.call_args_list[0]
+        # First send should include the mention prefix
+        first_call_args, first_call_kwargs = channel.send.call_args_list[0]
         assert first_call_args[0].startswith(f"{author.mention} ")
         assert first_call_kwargs["embed"] is first_embed
         assert first_call_kwargs["mention_author"] is False
         assert isinstance(first_call_kwargs["allowed_mentions"], discord.AllowedMentions)
 
-        # Continuation reply should omit the mention prefix and use the continuation embed
-        second_call_args, second_call_kwargs = original_message.reply.call_args_list[1]
+        # Continuation send should omit the prefix and use the continuation embed
+        second_call_args, second_call_kwargs = channel.send.call_args_list[1]
         assert second_call_args[0] == ""
         assert second_call_kwargs["embed"] is continuation_embed
         assert second_call_kwargs["mention_author"] is False
@@ -395,7 +512,6 @@ class TestSendSplitMessageWithEmbed:
         author.mention = "<@user>"
         original_message = MagicMock(spec=discord.Message)
         original_message.author = author
-        original_message.reply = AsyncMock()
 
         citations = {"1": "https://example.com/one"}
         first_embed = MagicMock(spec=discord.Embed)
@@ -413,8 +529,8 @@ class TestSendSplitMessageWithEmbed:
             )
 
         mock_split.assert_not_called()
-        original_message.reply.assert_called_once()
-        assert original_message.reply.call_args.kwargs["embed"] is first_embed
+        channel.send.assert_called_once()
+        assert channel.send.call_args.kwargs["embed"] is first_embed
 
 
 class TestEmbedCharacterLimits:
@@ -452,16 +568,12 @@ class TestEmbedCharacterLimits:
         long_message = "A" * 2001
         deps = {"logger": MagicMock()}
 
-        with patch("src.message_splitter.send_split_message") as mock_split:
-            await send_formatted_message(channel, long_message, deps)
+        await send_formatted_message(channel, long_message, deps)
 
-            # Should trigger splitting for > 2000 chars
-            mock_split.assert_called_once()
-            args, _kwargs = mock_split.call_args
-            assert args[0] is channel
-            assert args[1] == long_message
-            assert args[2] == deps
-            assert args[3] is False
+        assert channel.send.call_count >= 2
+        chunks = [call.args[0] for call in channel.send.call_args_list]
+        assert all(len(chunk) <= 2000 for chunk in chunks)
+        assert "".join(chunks) == long_message
 
 
 @pytest.mark.asyncio

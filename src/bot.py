@@ -1,18 +1,16 @@
-"""Discord bot core module with event handling and message processing.
+"""Discord bot startup wiring.
 
-This module provides the main Discord bot implementation including:
-- Bot initialization and dependency injection
-- Event handlers for Discord messages
-- Message splitting for long responses
-- Graceful shutdown with signal handlers
-- Integration with AI services (OpenAI, Perplexity)
+This module holds ``initialize_bot_and_dependencies`` (builds the Discord
+client, provider clients, router, and shared services) and ``run_bot`` (starts
+the manager). Event handlers and graceful shutdown live in ``bot_manager.py``,
+mention and DM routing live in ``message_router.py``, and message splitting and
+delivery live in ``message_splitter.py``.
 
 The bot uses a ``BotDependencies`` dataclass for typed dependency injection,
 replacing the previous untyped ``deps`` dict pattern.
 """
 
 import logging
-import sys
 from typing import Any
 
 import discord
@@ -31,7 +29,9 @@ from .conversation_manager import ThreadSafeConversationManager
 from .dependencies import BotDependencies
 from .error_handling import get_circuit_breaker
 from .health_server import HealthServer
+from .providers.registry import build_configured_clients
 from .rate_limits import RateLimiter
+from .routing import build_router
 
 
 def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
@@ -60,43 +60,12 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
 
     # Initialize connection pool manager for optimized API clients
     pool_manager = get_connection_pool_manager(config)
+    router = build_router(config)
+    logger.info("Routing configured with %s", router.router_id)
 
-    # Initialize OpenAI client if API key is provided
-    client = None
-    if config["OPENAI_API_KEY"]:
-        try:
-            client = pool_manager.create_openai_client(
-                api_key=config["OPENAI_API_KEY"],
-                base_url=config["OPENAI_API_URL"],
-            )
-            logger.info(
-                "OpenAI client initialized with model %s (connection pooling enabled)",
-                config["GPT_MODEL"],
-            )
-        except Exception as e:
-            logger.exception("Failed to initialize OpenAI client")
-            error_msg = "OpenAI client initialization failed"
-            raise RuntimeError(error_msg) from e
-    else:
-        logger.info("No OpenAI API key provided; GPT models disabled")
-
-    # Initialize Perplexity client for web search if API key is provided
-    perplexity_client = None
-    if config["PERPLEXITY_API_KEY"]:
-        try:
-            perplexity_client = pool_manager.create_perplexity_client(
-                api_key=config["PERPLEXITY_API_KEY"],
-                base_url=config["PERPLEXITY_API_URL"],
-            )
-            logger.info(
-                "Perplexity client initialized for web search (connection pooling enabled)",
-            )
-        except Exception as e:
-            logger.exception("Failed to initialize Perplexity client")
-            error_msg = "Perplexity client initialization failed"
-            raise RuntimeError(error_msg) from e
-    else:
-        logger.info("No Perplexity API key provided; web search disabled")
+    configured_clients = build_configured_clients(pool_manager, config, logger)
+    client = configured_clients.get("openai")
+    perplexity_client = configured_clients.get("perplexity")
 
     # Verify at least one API is configured
     if not client and not perplexity_client:
@@ -136,6 +105,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
         client=client,
         perplexity_client=perplexity_client,
         connection_pool_manager=pool_manager,
+        router=router,
         circuit_breakers=circuit_breakers,
         allowed_channels=config["ALLOWED_CHANNELS"],
         allowed_channel_ids=config.get("ALLOWED_CHANNEL_IDS", []),
@@ -149,6 +119,7 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
         rate_limit_period=config["RATE_LIMIT_PER"],
         gpt_model=config["GPT_MODEL"],
         reasoning_effort=config.get("REASONING_EFFORT", DEFAULT_REASONING_EFFORT),
+        web_tools=config.get("WEB_TOOLS", True),
         perplexity_model=config.get("PERPLEXITY_MODEL", DEFAULT_PERPLEXITY_MODEL),
         system_message=config["SYSTEM_MESSAGE"],
         output_tokens=config["OUTPUT_TOKENS"],
@@ -175,17 +146,12 @@ def initialize_bot_and_dependencies(config: dict[str, Any]) -> BotDependencies:
 
 
 def run_bot(config: dict[str, Any]) -> None:
-    """Initialize and run the Discord bot using DiscordBotManager."""
-    deps: BotDependencies | None = None
-    try:
-        deps = initialize_bot_and_dependencies(config)
-        deps.logger.info("Starting Discord bot manager")
-        manager = DiscordBotManager(deps)
-        manager.run()
-    except Exception as e:
-        # Fatal startup error
-        if deps is not None:
-            deps.logger.critical("Fatal error starting bot: %s", e, exc_info=True)
-        else:
-            sys.stderr.write(f"CRITICAL: Fatal error starting bot: {e}\n")
-        raise
+    """Initialize and run the Discord bot using DiscordBotManager.
+
+    A fatal startup or run-loop error propagates to the caller. The command-line
+    entry point logs it once, with a traceback, before exiting.
+    """
+    deps = initialize_bot_and_dependencies(config)
+    deps.logger.info("Starting Discord bot manager")
+    manager = DiscordBotManager(deps)
+    manager.run()

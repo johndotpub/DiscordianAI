@@ -9,6 +9,116 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Behaviour changes
 
+- **Non-positive connection limits stop startup.** `OPENAI_MAX_CONNECTIONS` or
+  `PERPLEXITY_MAX_CONNECTIONS` set to 0 or a negative value now fails validation with an
+  ERROR naming the key, because every request would otherwise wait out the pool timeout.
+  Non-positive `MAX_HISTORY_PER_USER`, `CONVERSATION_TTL_SECONDS`, and
+  `USER_LOCK_CLEANUP_INTERVAL` keep their existing runtime behaviour and log one warning
+  each instead of aborting.
+- **Prompt estimates follow the script.** ASCII prose and code keep the historical
+  one-quarter token per character. Characters from U+0080-U+07FF cost one-half token,
+  U+0800-U+FFFF cost 0.8, and astral-plane characters (most emoji) cost 1.7, all before
+  the existing 1.1 margin and per-message overhead. A Chinese, Japanese, Korean, Hindi, or
+  emoji history is therefore no longer estimated at the ASCII rate, so the Perplexity
+  prompt stays inside its 128K window instead of silently exceeding it.
+- **A context window smaller than its budgets stops startup.** `INPUT_TOKENS` plus
+  `OUTPUT_TOKENS` must fit `CONTEXT_WINDOW`, and the Perplexity trio must fit
+  `PERPLEXITY_CONTEXT_WINDOW` using the same effective values the request builder uses.
+  A configuration such as `CONTEXT_WINDOW=2000` with the default 250,000-token prompt
+  budget now fails with an ERROR naming the keys instead of cutting every question to a
+  fragment.
+- **Oversized answers are bounded before delivery scans them.** An answer longer than
+  `MAX_SPLIT_CHUNKS` times `MESSAGE_LIMIT` (100,000 characters with the defaults) is
+  truncated with the existing chunk-cap notice and ERROR log line before sanitisation or
+  splitting. Long code-heavy answers no longer stall the Discord event loop while every
+  chunk reparses the remaining text.
+- **Startup provider checks use the same bounded probe as the adapters.** The
+  reachability check now times out instead of waiting indefinitely, and the
+  in-process check counters and recent-result list that nothing read are gone.
+  `/health` still reports observed breaker state rather than running a live probe.
+- **A routing lexicon may still carry a per-class weight field.** The field is
+  ignored when the lexicon loads, so an existing data file keeps working while the
+  removed scoring layer stays removed.
+- **The channel rate-limit notice uses the standard message.** A rate-limited
+  channel reply now asks the user to wait before sending another message, matching
+  the direct-message notice, instead of using a second hand-written copy.
+- **The launcher keeps one instance per config.** The restart loop no longer exits the
+  script on its first second under `set -e`, and each config now records its PID in
+  `.bot-<stem>-<hash>.pid`, where the hash comes from the resolved absolute config path.
+  Starting `production.ini` leaves a running `bot.ini` alone, and two configs that share a
+  basename in different directories no longer share one PID file. The straggler scan reads
+  the NUL-separated argv, so a checkout path containing a space still matches, and compares
+  the absolute config path, so two checkouts that both use `bot.ini` no longer match each
+  other. A legacy `.bot.pid` is honoured only when its process runs the same config. The
+  force-kill wait is overridable with `DISCORDIANAI_STOP_TIMEOUT` for tests and unusual
+  supervisors. `--install-systemd` now starts the unit after enabling it.
+- **A stale launcher PID file cannot signal an unrelated process.** The per-config PID
+  file is trusted only when its process still runs the same config. A number left by a
+  reboot is removed without a signal, so the next restart cannot kill an unrelated process.
+- **`LOG_FILE` is mentioned only when it is actually set.** The deprecated key has a
+  built-in default, so every startup used to log an "ignored" notice while directing
+  operators to stdout even though logs go to stderr. The notice now appears only when the
+  environment or `[Logging]` section sets the key, and it names stderr.
+- **An empty setting means "not set".** Blank `GPT_MODEL`, `PERPLEXITY_MODEL`,
+  `OPENAI_API_URL`, `PERPLEXITY_API_URL`, and the other string settings now fall back to
+  their documented defaults instead of reaching the provider as empty strings. A blank
+  environment override is treated the same way and no longer marks its provider as
+  explicitly selected. A blank `REASONING_EFFORT` omits the parameter, and a blank API key
+  still disables its provider.
+- **Config values are literal, and a bad config file stops startup.** A `%` in a prompt or
+  secret (for example `SYSTEM_MESSAGE=I am 100% sure`) no longer breaks parsing, and `%%` is
+  kept as two characters instead of being collapsed. A missing, unreadable, duplicated, or
+  malformed `--conf` file now stops startup with the file path, the error class, and any
+  source line numbers, without quoting the offending line or chaining the parser exception.
+  Files are read as UTF-8 and a decode error is fatal.
+- **Perplexity prompts fit the Sonar context window.** The web path now budgets prompts with
+  `PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW` (111,000 and 128,000 by default)
+  instead of the chat provider's 250,000 and 1,000,000. The fixed `fetch_url` instruction
+  suffix is charged against the prompt budget before history is trimmed, so a full prompt
+  plus `PERPLEXITY_OUTPUT_TOKENS` stays inside the 128K window taken from the former Sonar
+  model page (the Agent API models page publishes no context figure). Both Perplexity
+  limits must be positive integers like the shared limits, and an operator who lowers
+  `INPUT_TOKENS` or `CONTEXT_WINDOW` still caps the Perplexity prompt with the smaller
+  value. `INPUT_TOKENS` and `PERPLEXITY_INPUT_TOKENS` also share a 1,000-token minimum, so a
+  budget that would cut a real question to a fragment is rejected at startup.
+- **Pasted code and logs stay local.** A version string, current year, price, or other bearing cue inside
+  a fenced code block no longer routes the message to web search; bearing and override cues are extracted
+  from the code-masked view, and text outside the fence still counts as before. Code-shape and traceback
+  cues still read the original text so a pasted artifact is marked as code-shaped, but they are framing
+  cues and cannot decide a route alone.
+- **Image requests decide before the router runs.** An image-bearing message uses the `images:local`
+  decision without consulting Clef, and the single routing log line reports that decision.
+- **Clef is consulted only when it can act, under one deadline.** A deterministic gate override such as a
+  supplied artifact is returned without a Clef call, the router is built once and reuses a pooled client,
+  and `ROUTER_CLEF_TIMEOUT_MS` is a hard total deadline for one decision.
+- **A missing or corrupt routing lexicon no longer stops startup.** `build_router` logs it
+  at CRITICAL and injects a local-only fallback router, so the bot keeps answering on the
+  local route instead of aborting before it connects.
+- **Router faults fall back to the deterministic gate.** An unexpected router failure or a Clef error logs
+  a reason and continues through the gate instead of turning every hybrid message into an error reply.
+  An unknown `ROUTER_MODE` now fails startup validation; `model` keeps its explicit retirement error.
+- **The web-inability reroute requires a first-person admission.** General statements, quoted text, and
+  creative output such as a haiku mentioning browsing no longer discard a good local answer.
+  Typographic apostrophes are normalised before matching, so an answer such as "I’m unable
+  to browse the internet" still triggers the one Perplexity retry.
+- **Shutdown closes provider resources before Discord.** Message intake stops first, then
+  the provider connection pools and the router's HTTP client close, and Discord closes
+  last inside the existing 8-second guard. Closing Discord first let `Client.run` finish
+  and cancel the rest of shutdown, leaking those HTTP connections on a normal stop. Any
+  exception raised during shutdown is logged and the process still exits 0.
+- **Configuration errors make a provider unhealthy; a user's bad request does not.**
+  A 401, 403, or 404 now counts as a provider failure, and so does a 400 whose structured
+  error names the model: type or code `invalid_model` or `model_not_found`, `param` equal to
+  `model`, or a message that combines `model` with `is not supported`, `not found`, or
+  `does not exist`. This covers the recorded Agent API response, whose inner error says
+  `validation failed: model "sonar" is not supported`. A revoked key or a retired model
+  therefore shows up as degraded or unhealthy on `/health` instead of looking healthy while
+  every call fails. A 400, 409, 413, 422, or other user-caused client error
+  stays neutral: it releases a half-open probe without stamping a success or moving any
+  counter.
+- **Startup reachability checks log one line per provider.** Each checked service
+  reports its status, latency, and classified error type; provider text, request
+  and response bodies, and keys are not logged.
 - **Ollama Cloud is the default OpenAI-compatible chat provider.** `OPENAI_API_URL` defaults to
   `https://ollama.com/v1/` and `GPT_MODEL` defaults to `deepseek-v4.1-flash:1017`. OpenAI remains
   supported by changing `OPENAI_API_URL`, `GPT_MODEL`, and `OPENAI_API_KEY`; the Perplexity path is
@@ -18,8 +128,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `max_completion_tokens`. The cap still includes reasoning tokens as well as visible output.
 - **Provider model ids are no longer gated.** Any non-empty `GPT_MODEL` is accepted, and the health
   check no longer reports a non-empty model as deprecated or unsupported.
-- **An `OPENAI_API_KEY` that is not `sk-`-shaped is no longer fatal.** Empty keys still fail; a
-  non-OpenAI-compatible key shape logs a warning so Ollama Cloud and local gateways work.
+- **Any non-empty `OPENAI_API_KEY` is accepted.** The startup warning about OpenAI's `sk-` key
+  shape is gone, so an Ollama Cloud or local-gateway key starts cleanly. An empty key still
+  stops startup, and a wrong key is reported by the provider when the first request is made.
 - **Empty chat responses log the finish reason.** The client warns with `finish_reason` and returns
   no content, so the orchestrator's existing fallback handles it instead of delivering empty text.
 - **Routing is a deterministic gate; the scoring layer is gone.** A message routes to the web when an
@@ -40,6 +151,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   TTL instead of calling the provider again. The key includes the model, system message, history,
   conversation scope, routing salt, and degraded flag, so a cached answer is never replayed across
   conversations or routes.
+- **The response cache has one TTL, and time-sensitive wording is found anywhere.** Every
+  cached answer uses the fixed `DEFAULT_CACHE_TTL` of 600 seconds; the undocumented 1,800-second
+  long-response TTL never applied, so this removes a false promise rather than changing the
+  effective lifetime. An answer such as "Bitcoin is trading at a record high as of today" is no
+  longer cached just because the phrase is mid-sentence.
 - **Image attachments are understood by the chat provider.** A message may carry up to four
   PNG, JPEG, GIF, or WebP images, with or without text. The current turn is sent to the
   OpenAI-compatible chat provider as an `image_url` data part; history stays text-only, and
@@ -48,29 +164,138 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against the declared content type and skips a mismatch. `VISION_ENABLED=false` restores the
   previous behaviour of ignoring attachments. Cache keys include a digest of each image, so the
   same text with a different image cannot reuse an answer.
+- **Long code fences are split, not dropped.** A fenced block larger than one Discord
+  message is split at a line boundary, closed at the end of the chunk, and reopened with the
+  same language tag in the next chunk. Every code line and the prose after the block are
+  delivered, and each chunk has balanced fences. A single line wider than the limit is
+  hard-wrapped rather than dropped; only the 50-chunk cap still truncates content.
+- **The truncation notice reports the original answer length.** It says the bot's delivery
+  limit was reached instead of blaming Discord for a cap the bot chose.
+- **A partial answer that hit the provider's output-token limit says so.** Both the chat and
+  Perplexity adapters report the normalised length signal, and delivery appends one fixed
+  notice line after the visible partial answer. The notice is bot text, is not written into
+  conversation history, and does not change the system prompt. A partial answer is also not
+  cached, so a later identical request asks the provider again instead of replaying the cut-off
+  text.
+- **An answer survives its question being deleted.** Every answer is sent with
+  `channel.send` and a reference built with `fail_if_not_exists=False`, so Discord delivers
+  the same content once to the channel with the same mention policy instead of rejecting a
+  reply and losing the answer. The bot no longer guesses Discord error codes to detect a
+  missing target.
+- **Connection notices describe the bot's situation.** The fixed network and Discord notices
+  say the bot could not reach its service and ask the user to try again shortly; neither asks
+  the user to check their own network or claims a reconnect that does not happen.
+- **Embed heads never split a citation marker or a code fence.** A split that would land
+  inside `[n]` moves the marker whole into the next embed, and long fences are closed and
+  reopened with the same language tag.
+- **One parser decides what is code, and every chunk is sanitised after splitting.**
+  `tree-sitter-markdown` supplies the spans to both the sanitiser and the splitter. Only a
+  closed fence opened and closed by exactly three backticks, with no other triple-backtick
+  run outside it, is protected; a closed inline code span is protected only when neither
+  its opener nor its closer is backslash-escaped and the text does not mix backtick run
+  lengths. Tilde fences,
+  four-or-more-backtick fences, indented blocks, unclosed fences, and every uncertain shape
+  protect nothing. Outside those regions parser-reported links, images, and autolinks become
+  their label text or a neutralised URL, then catch-all passes break every `](`, add a
+  zero-width space after every `://`, and separate `<` from a following scheme. Definition
+  shaped lines stay as text with an invisible separator instead of being deleted. Chunk
+  boundaries use the same protected fences, close and reopen them with the same language
+  tag, and each final chunk is sanitised independently; a split-only Discord pairing still
+  places a boundary for a block CommonMark does not recognise, and those extra spans never
+  suppress sanitisation. Routing keeps its own masker because cues inside dangling pasted
+  code must not decide a route.
+- **No line is deleted to neutralise a link.** A line shaped `[label]: destination` is
+  ordinary text to Discord; its URL receives the zero-width space and the definition syntax
+  is broken with an invisible separator so a CommonMark renderer cannot resolve it. Several
+  URLs in one whitespace-free run are all neutralised, and nesting depth no longer limits
+  the rewrite. Mention neutralisation (`@everyone`, `@here`, raw user/role/channel mentions)
+  still applies everywhere, including inside code.
+- **Bare `www.` addresses in answers are broken like links.** Model text such as
+  `www.example.com/login` now receives a zero-width space after `www.` so Discord cannot
+  turn it into a clickable link. A `www.` inside a longer word, protected inline code, a
+  fenced block, or a trusted citation URL is unchanged. Bare domains without `www.` and
+  without a scheme, such as `example.com` or `main.py`, are left readable because Discord
+  decides those.
 
 ### Added ✨
 
+- **`PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW`**: control the prompt budget
+  and context window for the Perplexity Sonar path only. Defaults are 111,000 and 128,000;
+  the 128K figure comes from the former Sonar model page, and the Agent API models page
+  publishes no context figure. The chat path keeps `INPUT_TOKENS` and `CONTEXT_WINDOW`.
+- **`ROUTER_CLEF_API_KEY`**: optional dedicated credential for the Clef decision endpoint. When it is
+  unset, `OLLAMA_API_KEY` from the environment is eligible, and `OPENAI_API_KEY` is eligible only when
+  `OPENAI_API_URL` is an Ollama Cloud URL. A key issued for another provider is never sent to Clef.
+  Prefer the environment variable because the value is a secret.
+- **`ROUTER_CLEF_MODEL`, `ROUTER_CLEF_THRESHOLD`, and `ROUTER_CLEF_TIMEOUT_MS`**: select the
+  Clef decision model, the probability at or above which it routes web, and the hard total
+  deadline for one decision. They are ignored unless `ROUTER_MODE=clef`.
+- **`WEB_TOOLS`**: offer native `web_search` and `web_fetch` tools to Ollama-compatible chat
+  providers; defaults to true. OpenAI endpoints never receive these tools.
 - **`REASONING_EFFORT`**: sent as `reasoning_effort` with chat requests; defaults to `high`. Valid
-  values are model-defined, and reasoning tokens are billed as output.
+  values are model-defined, and reasoning tokens count toward the output cap.
 - **Optional Clef decision-model router.** `ROUTER_MODE=clef` asks Ollama Cloud's Clef model
-  (`/v1/systemone`) one bounded yes/no question per message (~0.4 s, billed per token);
+  (`/v1/systemone`) one bounded yes/no question per message (~0.4 s, consuming tokens);
   `heuristic` remains the default. Network, timeout, HTTP, or malformed-response failures fall back
   to the deterministic gate, and a missing key selects it at startup.
 - **`VISION_ENABLED`, `VISION_MAX_IMAGES`, `VISION_MAX_BYTES`, and `VISION_TOKEN_ESTIMATE`**:
   control image attachment handling, per-image size and count caps, and the flat prompt-token
   estimate charged per image during budget trimming.
+- **`tree-sitter` and `tree-sitter-markdown` are runtime dependencies.** Both are MIT
+  licensed and actively released. `tree-sitter` 0.27.0 ships CPython 3.12 wheels for
+  manylinux x86_64 and aarch64 and for musllinux x86_64, but not musllinux aarch64;
+  `tree-sitter-markdown` 0.5.4 ships wheels for all four. `python:3.12-slim-bookworm` is a
+  manylinux image, so it needs no compiler; a musllinux aarch64 image would need one for
+  `tree-sitter`. They provide the shared code-region parser used by output sanitisation and
+  message splitting.
 
 ### Changed 🔁
 
+- **The two discord.py voice warnings are gone.** `discord.py[voice]` is now the runtime
+  dependency, so `pip install -r requirements.txt` also installs PyNaCl and davey and the
+  "PyNaCl is not installed" and "davey is not installed" warnings no longer appear at
+  startup. The bot does not use voice today; the libraries are present so a later voice
+  feature can use them.
+- **The launcher prefers the project venv.** `.venv/bin/python3` is tried first when its
+  core dependencies are importable, then the shell-activated venv, then pyenv, then the
+  system interpreter. The docs match the new order.
+- **CI smoke-tests every installed `src` module.** The wheel job now imports each module
+  under the installed `src` package, so a broken import in the bot, health server,
+  providers, or routing fails the build.
+- **Cache and conversation TTLs use the monotonic clock by default.** A wall-clock
+  step no longer extends or shortens a cached answer or conversation lifetime. Both
+  stores still accept an injected clock for tests.
+- **Sanitiser link scans are single pass.** The trusted-link pass searched
+  for a closing angle bracket from every unclosed `](<` marker, and the
+  bare-URL allowlist searched a lowercased copy for every scheme. The markdown
+  pass now caches the next `>` (including "none"), and the scheme search runs
+  on the original text, so both scans are linear in the answer length.
+- **Link counting uses an indexed lookup.** `count_links()` now compares each
+  bare URL with the one link span that could contain it instead of scanning
+  every span, so an answer with thousands of links no longer spends quadratic
+  time deciding whether to suppress embeds.
+- **The fallback router cache is bounded and closed.** When no router is injected, the
+  orchestrator keeps at most eight cached fallback routers, closes the oldest when a new
+  entry arrives, and closes every remaining one at shutdown, so the Clef HTTP clients do
+  not leak.
+- **The health endpoint is served by aiohttp.** `HealthServer` and `create_health_app()`
+  keep the same `/health`, `/health/live`, and `/health/ready` routes and JSON bodies, but
+  the `starlette` and `uvicorn` runtime dependencies are gone; `aiohttp>=3.10,<4` is
+  declared instead. A bind or startup failure still disables the endpoint without stopping
+  the bot.
+- **The conversation and response caches now use `cachetools`.** The hand-rolled history and
+  bot-streak TTL maps and the response LRU cache are replaced by `TTLCache` and `TLRUCache`
+  with the same injected clock, sliding expiry, LRU eviction, and conversation-scoped keys.
+  `cachetools>=8.0.2,<9` is a runtime dependency. The fixed-window rate-limit map stays a
+  plain dict-plus-sweep because its window reset is not TTL eviction.
 - **Default capacity is right-sized for a 1M-token model.** `INPUT_TOKENS` defaults to 250,000,
   `OUTPUT_TOKENS` and `PERPLEXITY_OUTPUT_TOKENS` to 16,384, and `CONTEXT_WINDOW` to 1,000,000;
-  the input-token warning threshold is now 1,000,000 and the output-cap ceiling follows the
-  context window. Conversation history defaults to 100 entries with a 7,200-second idle TTL.
-- **Cache and connection-pool defaults are larger.** Response cache TTL is 600 seconds, long
-  responses 1,800 seconds, the response cache holds 2,000 entries, chat-provider pools default
-  to 100 connections/20 keepalive, Perplexity pools to 40/10, and Perplexity requests allow up
-  to four `max_steps`.
+  the input-token warning threshold is now 1,000,000, and the output-cap ceiling is 128,000,
+  independent of the context window. Conversation history defaults to 100 entries with a
+  7,200-second idle TTL.
+- **Cache capacity and connection-pool defaults are larger.** The response cache holds 2,000
+  entries, chat-provider pools default to 100 connections/20 keepalive, Perplexity pools to
+  40/10, and Perplexity requests allow up to four `max_steps`.
 - **Local environment references were scrubbed from the documentation.** No hostnames or
   private configuration filenames are published.
 - **Provider calls share one narrow adapter protocol and registry.** The Chat Completions
@@ -88,9 +313,387 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ships; the sealed corpora are a behaviour-pinning fixture, not a scoreboard; the previously
   assert-free `test_corpus.py` fails on drift; overrides are evaluated on code-masked text, so an
   instruction inside a fenced block no longer routes web.
+- **Mention policy has one owner.** Only `message_splitter._deliver()` constructs
+  `discord.AllowedMentions`; operational notices pass their permitted user to
+  `safe_discord_send()`, which delegates to the same helper. The source guard now detects
+  qualified, unqualified, and aliased construction calls, and an end-to-end test checks that
+  model-output mentions are neutralised in the text actually sent.
+- **CI tests the declared minimum dependency versions.** A `min-versions` job installs
+  runtime requirements with `--resolution lowest-direct` and the test tools at their
+  declared floors, then runs the suite. The ordinary test job still follows the latest
+  allowed releases, so a floor-only failure now fails the build instead of reaching an
+  operator.
+- **Docker publishing waits for CI and cannot be cancelled mid-push.** The Docker
+  workflow polls the CI run for the same commit and publishes only after it succeeds.
+  The `latest` tag now moves only for `main` or a version tag, and concurrency cancels
+  superseded pull-request builds but not a publish run between the GHCR and Docker Hub
+  pushes. The gate queries the repository from the workflow context and, once a CI run
+  exists, waits for it to finish instead of failing after ten minutes.
+
+### Fixed 🔧
+
+- **An invalid log-colour value no longer forces colour on.** `DISCORDIANAI_LOG_COLOR=maybe`
+  used to count as an explicit choice and turn colour on, and the copied example set
+  `false`, which turned colour off even on a terminal. Only a recognised boolean now
+  counts as explicit; unset, blank, or invalid values fall back to terminal detection,
+  and `config.ini.example` leaves the key commented out. `tests/test_log_colour.py`
+  covers the invalid, true, and false cases.
+- **Output-token warnings and fatal bot errors are logged once.** The startup check and
+  the full API validation both logged the same output-cap warning, and `bot.run_bot` and
+  `main.main` both logged a fatal run error with a traceback. The startup check now leaves
+  warnings to the full validation, and the entry point logs the fatal error once.
+  `tests/test_validation_honesty.py` and `tests/test_main.py` count one record each.
+- **A port or size is no longer mistaken for a year.** A question such as "what port
+  does postgres listen on, 5432?" went to web search because any four-digit number
+  from last year upward counted as a current-year cue. The year cue now covers last
+  year, this year, and next year only, so a port or size no longer decides the route.
+  `tests/routing/test_features.py` covers the window and the rejected numbers.
+- **A local-only instruction needs whole words.** An override phrase such as
+  "no web" matched inside "casino website" and "piano webinar", so the bot
+  answered locally with no web access. Every override phrase now has a word
+  boundary where it starts or ends with a letter, while "no web please",
+  "do not search", and "answer from memory" still match. The same change
+  covers the web-instruction phrases, so "research the web app" and "recheck
+  online" no longer count as explicit search requests.
+  `tests/routing/test_lexicon.py` covers both override groups.
+- **A failed stop refuses to start a second instance.** When the old process survived the
+  final signal, the launcher still started a new bot, giving two gateway sessions on one
+  token. The stop helper now waits briefly after `SIGKILL`, reports the surviving PID as
+  an ERROR, and returns failure; the launcher exits non-zero without starting and leaves
+  the PID file so the next attempt retries. A process that `kill -0` cannot probe is still
+  recognised from its `/proc` entry instead of being treated as gone.
+  `tests/test_launcher_script.py` stubs an unsignalable process and checks both the helper
+  and the PID-file wrapper.
+- **The launcher checks every runtime dependency before stopping the bot.** The pre-start
+  check imported only `discord`, `openai`, and `httpx`, while the source also needs
+  `aiohttp`, `cachetools`, `structlog`, `tree-sitter`, and `tree-sitter-markdown`. After a
+  pull that added a package, the launcher could stop a healthy instance and then fail to
+  start the new one. It now runs `src/dependency_check.py` in isolated mode, so the exact
+  runtime set is checked before any stop, and a failure prints the missing packages and
+  the install hint. `tests/test_launcher_script.py` covers the failing and passing check.
+- **String environment overrides are trimmed.** A key pasted or mounted from a file with
+  a trailing newline or space is now stored without that whitespace for
+  `OPENAI_API_KEY`, `BOT_PRESENCE`, `GPT_MODEL`, and every other string override,
+  matching the config-file path. The two API keys and `REASONING_EFFORT` keep their
+  explicit-empty meaning. `tests/test_config_robustness.py` covers a key with a newline
+  and a presence with a trailing space.
+- **A blank list override leaves the config-file list alone.** `ALLOWED_CHANNELS`,
+  `ALLOWED_GUILDS`, `ALLOWED_CHANNEL_IDS`, and `ALLOWED_GUILD_IDS` set to an empty or
+  whitespace-only environment value used to replace the file's list with `[]`, and an
+  empty guild list dropped the guild scope. A blank value now means "not set" for these
+  keys as it already did for scalar settings; a non-blank value still overrides.
+  `tests/test_config_robustness.py` covers all four keys.
+- **A stop before `on_ready` no longer skips graceful shutdown.** The dependency
+  container always exposed the `_health_task` key with a `None` value, so a stop
+  before the health monitor existed raised `AttributeError`; the guard logged a
+  timeout and called a hard exit, leaving provider pools and the Discord
+  connection open. Shutdown now skips an unset task, contains a failing pool
+  close so the router and gateway still close, and logs a timeout and any other
+  failure as separate messages. `tests/test_bot_manager.py` covers both paths.
+- **A failed continuation no longer re-sends the whole answer.** When the head embed was
+  accepted and a later continuation failed, the delivery error triggered the text fallback
+  for the entire answer, duplicating it and repeating the mention prefix. The continuation
+  error now propagates; only a failed head embed falls back to split text, and that happens
+  before anything has been sent.
+- **`--conf=VALUE` is matched by the launcher.** Stop and the straggler scan now read both
+  `--conf VALUE` and `--conf=VALUE`, so a bot started in the joined form cannot be missed
+  and left running beside a new instance on the same token.
+- **A chat answer with no visible content is not stored.** An answer that sanitises to an
+  empty string, such as a label-less link, now returns the existing no-response notice
+  instead of being written to conversation history and the response cache.
+- **Health probes use the configured `WEB_TOOLS` value.** The adapter built for the
+  startup probe no longer ignores the setting; it inherits the same policy as the
+  production client.
+- **A closed Clef router refuses synchronous decisions too.** `decide_sync` now returns
+  the deterministic fallback without building another HTTP client after `aclose()`.
+- **Readiness waits for `on_ready`.** The manager marks the gateway disconnected before
+  login, so `/health/ready` is 503 while discord.py already reports `is_ready()` true but
+  the gateway handler has not run.
+- **A blank `DISCORDIANAI_LOG_COLOR` no longer forces colour on.** The presence of the
+  key used to count as an explicit choice, so a blank `[Logging]` value or environment
+  variable overrode terminal detection with the default `true` and coloured redirected
+  logs. A blank value is now treated as unset, matching the config-wide blank-value rule;
+  `false` still forces colour off.
+- **The launcher rejects an unknown option before stopping anything.** The `--config=FILE`,
+  `--folder=DIR`, and `--install-systemd=FILE` forms are accepted. Any other option prints
+  the bad argument and a usage line, exits 2, and sends no signal. The run path resolves the
+  config file before the stop step, so `--config=prod.ini` with a missing file cannot stop a
+  healthy `bot.ini` instance.
+- **A dollar sign survives systemd unit generation.** `ExecStart` escapes `$` as `$$`, so a
+  project path such as `price$home` is not treated as a variable name.
+- **`--install-systemd` accepts an absolute config path and restarts an active unit.** The
+  install path uses the same config resolver as the run path. Re-installing a running unit
+  issues `systemctl --user restart` instead of a no-op `start`.
+- **The launcher waits for a straggler to exit.** The PID-file path and the straggler scan
+  share one bounded signal/wait/force-kill helper, so a new instance starts only after the
+  old process for the same config is gone.
+- **Trailing-slash health probes work again.** `GET /health/`, `/health/live/`, and
+  `/health/ready/` return the same status and JSON body as the slash-less routes.
+- **An idle open breaker stops reporting unhealthy after its timeout.** Once the breaker's
+  recovery timeout has elapsed, `/health` reports the provider healthy and returns 200; within
+  the timeout it remains 503. The status vocabulary has no non-failing "recovering" value, so
+  the recovering state maps to healthy while the breaker state still reads `OPEN`.
+- **Liveness answers before Discord login.** The health server starts in `setup_hook`, so
+  `/health/live` returns 200 while login and the first gateway connection are in progress.
+  `/health/ready` stays 503 until `on_ready` records a connected gateway.
+- **A routing lexicon that is not UTF-8 follows the local fallback.** A decode
+  error used to escape `Lexicon.load` and abort startup even though a missing or
+  corrupt lexicon already produced the documented local-only router. The loader
+  now reports it as a lexicon error, so `build_router` keeps the bot answering.
+- **A closed Clef router stays closed.** Shutdown closes the pooled HTTP client,
+  but the next decision used to build a new client that nothing closed again.
+  A closed router now logs once and answers through the deterministic gate
+  without reopening a connection.
+- **A port number or a row count is not an HTTP status.** The text fallback now
+  reads a status only when the message names one (`HTTP 429`, `status 429`, or
+  `error code: 429`). A connection refused on `port 443` is retried as a connection
+  error where no request was established, and prose such as `processed 429 rows`
+  no longer becomes a rate limit.
+- **`WEB_TOOLS=false` reaches the chat provider.** The loaded value now travels into
+  the bot's dependencies, so the Ollama-compatible path omits `web_search` and
+  `web_fetch` as documented; it previously always offered them because the
+  dependency kept its own `True` default.
+- **A dotted capital I no longer shifts trusted citation links.** The
+  bare-URL allowlist searched a lowercased copy and applied those offsets to
+  the original text, so `İ`, whose lowercase form is two code points, made an
+  exact trusted URL miss the match and lose its link. The search now matches
+  case-insensitively on the original text, so offsets stay aligned.
+- **A Discord send timeout is not retried, and the send retry is bounded.**
+  A send whose outcome is unknown now gets one attempt instead of repeating a
+  message that may already have arrived, and the retry sequence honours the
+  same 90-second deadline as provider calls. A 429 carrying `Retry-After` is
+  still retried within the existing cap.
+- **An answer with nothing left after sanitising is treated as no response.**
+  Whitespace-only output and output such as `[](https://x)` were sent as empty
+  content, which Discord rejects, so the user saw the generic processing error.
+  The answer path now sends the fixed no-response notice instead, and the
+  Perplexity wrapper drops an answer that sanitises away before it is cached or
+  recorded in history.
+- **A rejected truncated-answer embed falls back to text.** When an answer that
+  hit the provider's output limit was sent as an embed, a Discord rejection of
+  that embed left the user with the generic processing error. The truncated
+  path now delivers the split text, matching the normal embed path.
+- **The dependency gate runs before third-party imports.** A missing package now produces
+  the friendly `Missing required packages` message and exit code instead of a raw
+  `ImportError`, and the no-`ALLOWED_CHANNELS` warning is logged once instead of twice.
+- **An embed description cannot exceed Discord's 4096-character limit.** Sanitising can
+  insert zero-width spaces and make a description longer than the text that built it, so
+  every description is clamped after sanitising with the existing `...` marker.
+- **Deeply nested link labels no longer raise `RecursionError`.** The sanitiser renders
+  nested labels only 100 levels deep; beyond that the label is sanitised as ordinary text,
+  so an adversarial nesting answer still produces a deliverable string.
+- **Delimiter-dense answers cannot stall the inline parser.** Text with more than 2,048
+  emphasis, strikethrough, or spoiler marker characters skips the inline grammar. Links are
+  still neutralised by the catch-all passes, mentions are still neutralised, and a closed
+  fence still passes through.
+- **A lone UTF-16 surrogate no longer aborts delivery.** The sanitiser replaces an
+  unencodable surrogate with `?` before parsing, and the parser's byte-offset table uses
+  the same replacement width, so one bad character cannot fail the whole answer.
+- **The generated systemd unit quotes only word-list directives.**
+  `--install-systemd` no longer wraps `WorkingDirectory`, `StandardOutput`, or
+  `StandardError` in quotes, which systemd treated as part of the path and rejected with
+  `path is not absolute`. `ExecStart` words and each `ReadWritePaths` path stay quoted,
+  percent signs are doubled, and `Environment=` quotes the whole assignment when its value
+  contains spaces. A unit generated for a path with a space now passes
+  `systemd-analyze verify`.
+- **One masked link no longer suppresses embeds by itself.** `count_links()` counts a
+  `[title](url)` once instead of also counting its destination, and it ignores filenames
+  such as `main.py` and `utils.py`. A single masked link therefore stays below the
+  two-link embed-suppression threshold.
+- **Delivery splitting is linear and the fence pairing runs once.** Each chunk used to
+  slice off the remaining text and rescan it for code fences, so doubling an answer of
+  triple-backtick runs multiplied delivery time by four to six. The split-only Discord
+  pairing is now a single forward pass with equal-length runs kept outermost first, which
+  preserves the `a-fence-nested-looking` golden boundary. Fence spans are planned once, and
+  every later chunk walks an offset into the original text instead of slicing and
+  reparsing the remainder, so the whole delivery is linear in the input size.
+- **User-caused client errors no longer open the provider breaker.** A deterministic 4xx
+  caused by the request itself (400, 409, 413, 422, and other client errors except 401, 403,
+  404, 408, and 429) means the provider answered and rejected the request, so it does not
+  count as a failure or mark the provider unhealthy; a success while the breaker is closed
+  now clears the consecutive-failure count. A 400 with `invalid_model` or `model_not_found`
+  is a configuration error and counts.
+- **Retries follow the wrapped transport cause.** A connect timeout is retried because no
+  request was sent, while read timeouts, read errors, and protocol errors after send are
+  not. A host:port number such as `:443` in a connect message is no longer read as an HTTP
+  status, and a structured `insufficient_quota` 429 is not retried and keeps its quota
+  notice.
+- **Unclassified exceptions are not retried.** The retry policy now refuses an exception
+  it cannot classify instead of treating the unknown type as transient. Built-in
+  `ConnectionError` still classifies as a network error and remains retryable.
+- **Reset, broken-pipe, and aborted connections are not retried.** `ConnectionResetError`,
+  `BrokenPipeError`, and `ConnectionAbortedError` can arrive after the request was sent, so
+  repeating the call is not provably safe; the bot now reports them instead of sending the
+  same request twice. A bare `ConnectionError` still classifies as a connect failure and is
+  retried.
+- **A malformed `Retry-After` falls back to normal backoff.** A value that is `nan`, `inf`,
+  negative, empty, not numeric, or so large that it overflows to infinity is ignored
+  instead of becoming a sleep; the retry then uses normal backoff. A valid value is still
+  capped at 30 seconds. A `Retry-After: nan` header can no longer hang the retry loop.
+- **The budget-conflict warning names the key that supplied each value.** A Perplexity
+  request that exceeds its window reports the effective prompt and context keys, so a
+  lowered shared `INPUT_TOKENS` or `CONTEXT_WINDOW` is named as the shared key rather than
+  as the Sonar default it replaced.
+- **An idle provider no longer reads unhealthy.** A configured provider that has never been
+  called and has no recorded failure is healthy; only an open breaker or a failure after the
+  last success degrades it. `last_success_age_seconds` and `last_success_stale` remain
+  diagnostic and do not decide `/health`.
+- **The web tool loop answers on its last round.** The fourth round is offered no tools,
+  at most three calls per round are executed, and total tool output is capped; capped or
+  over-budget calls still receive a short tool result so the model can continue.
+- **Single-provider outages show the outage notice.** The processing wrappers can report a
+  classified failure instead of swallowing it, so an outage in OpenAI-only or
+  Perplexity-only mode no longer tells the user to rephrase the question.
+- **A failed provider call logs one traceback.** The retry policy logs its final summary
+  without repeating the traceback, the orchestrator no longer logs the classified failure a
+  second time, and the delivery helper logs its own final failure once. One logical failure
+  now produces one traceback instead of two or three.
+- **`/health` reports gateway disconnects.** A disconnect is recorded and reported as
+  disconnected even while discord.py's `is_ready()` remains set; `/health/ready` returns
+  503 during the outage.
+- **Clef honours gate overrides as data.** The gate marks a deterministic override on the decision, and
+  Clef returns it without a network call instead of relying on a `reasons` prefix.
+- **A chat key without an explicit URL is not sent to Clef.** A direct caller that supplies only
+  `OPENAI_API_KEY` no longer has that key treated as an Ollama Cloud credential through an implicit
+  default URL. The loaded configuration still carries `OPENAI_API_URL`, so normal deployments that
+  use the default Ollama Cloud endpoint keep the existing fallback.
+- **The fallback router is built once, not once per message.** When no startup router is injected,
+  the orchestrator caches the router for the effective routing configuration instead of calling
+  `build_router` for every message.
+- **Structured logs carry the Discord context they were given.** The formatter now reads the
+  stdlib record extras before removing the record, so `user_id`, `channel_id`, `guild_id`, and
+  the logger name appear in both console and JSON output. The adapter attaches ids only; a guild
+  name is no longer copied into every line.
+- **Exception logs render without the optional Rich package.** Console tracebacks use
+  structlog's Rich formatter only when Rich is importable and otherwise fall back to the
+  plain structlog traceback renderer, so a pip install or the container image no longer
+  prints `--- Logging error --- NameError: Console`. Neither formatter prints frame locals.
+- **Provider failures no longer put response bodies in the logs.** The retry warning, the
+  OpenAI and Perplexity wrapper failure lines, and the API-call failure line now log the
+  exception class, HTTP status code when present, and classified error type instead of the
+  exception text. A provider body can no longer reach a log record through these paths.
+- **A local Docker build cannot copy an environment file.** `.dockerignore` now excludes
+  every env-file pattern `.gitignore` ignores, plus `.env.*` and `*.env`, while keeping
+  `.env.example`. A file such as `.env.production.local` or `deploy.env` no longer enters
+  the build context or an image layer through `COPY . .`.
+
+### Operations ⚙️
+
+- **Markdown-only changes run CI.** The workflow no longer ignores `**.md`, so a
+  documentation-only commit still runs the documentation-truth and changelog guards
+  instead of landing red on a later pull request.
+- **Log rotation works on non-root-owned directories, and container logs are bounded.**
+  The logrotate fragment now has an `su USER GROUP` directive next to the path
+  placeholder, so logrotate no longer refuses when the project directory is
+  group-writable by a non-root group. The shipped compose file caps Docker's
+  `json-file` log at three 10 MB files instead of letting it grow unbounded.
+- **Repository ignores cover the artefacts the project produces.** Rotated
+  `bot.log-YYYY-MM-DD.gz` files, `*.ini.bak-<date>` configuration backups, and local
+  state directories are excluded from git and the Docker build context, while
+  `config.ini.example` and `tox.ini` stay tracked.
+
+### Security 🛡️
+
+- **An inline code span with markup inside no longer hides a link.** A span whose content
+  holds an emphasis, strikethrough, or spoiler marker, or a markdown link with an
+  `http(s)` destination, is now sanitised as ordinary text. Discord may pair the backticks
+  differently from CommonMark, so copying the span verbatim could deliver a clickable
+  attacker URL.
+- **A trusted citation exempts only its own destination.** Title text between the
+  destination and the closing parenthesis, and any second `](` after it, now go through the
+  catch-all passes. An allowlisted first link can no longer carry a second attacker URL
+  through the exemption.
+- **A malformed config file cannot leak its contents into the fatal log.** The startup
+  error names the file, the exception class, and any source line numbers without quoting
+  the offending line, and the parser exception is no longer chained. A token on a broken
+  line therefore stays out of the CRITICAL message and the rendered traceback.
+- **Message text and provider response bodies stay out of the log.** The message processor
+  logs the Discord message id and its length instead of the first 100 characters of the
+  content, the cache logs the prompt length instead of the prompt, and the chat adapter logs
+  only the response type and id when a provider reply has no choices. A DM body, a channel
+  question, or a full SDK response can no longer reach the log through these paths.
+- **Tracebacks no longer print frame locals.** Console and JSON logs render exceptions without
+  the local variables of each frame, so a config dictionary holding an API key, a message
+  body, or request parameters cannot reach the log through an exception. Console output keeps
+  a readable traceback, and JSON records now carry the formatted traceback text instead of a
+  bare `exc_info` object list.
+- **The Clef key is scoped to its endpoint.** `ROUTER_MODE=clef` no longer sends the chat provider's
+  `OPENAI_API_KEY` to Ollama Cloud when `OPENAI_API_URL` points at another host. Existing Ollama Cloud
+  deployments keep working with no config change.
+- **A link cannot survive a chunk boundary.** The sanitiser runs again on every final
+  chunk after splitting, and a split never protects text the region function did not
+  protect. A URL inside an inline code span that the split cuts is therefore neutralised in
+  the delivered chunk instead of becoming clickable.
+- **A fence is protected only where Discord ends it.** Discord pairs triple-backtick runs
+  sequentially anywhere in the text, while CommonMark requires a line-start closer. A fence
+  with a stray triple-backtick run between its opener and closer is now treated as ordinary
+  text, so a link after that run is neutralised instead of being delivered live. Inline code
+  spans follow the same sequential pairing, and blank lines or backslash-escaped backticks
+  can no longer shift the protected span away from Discord's boundary.
+- **A code span with an escaped closer protects nothing.** When a parsed inline span ends
+  at a backslash-escaped backtick, Discord does not close the span there, so the parsed end
+  is not trustworthy. The span is treated as ordinary text and any link inside it is
+  neutralised instead of being delivered live.
+- **An angle-bracket link is neutralised whatever its scheme.** A parser-reported autolink
+  such as `<steam://run/123>` or `<ftp://host/x>` now receives the same zero-width break
+  after `://` as `http` and `https` text. Previously only those two schemes were broken, so
+  another scheme could survive as clickable text.
 
 ### Tests ✅
 
+- **Link-count work is measured in span comparisons.** The helper test now counts each
+  examined link span, so a reintroduced linear scan fails the 3,000-match bound instead of
+  passing on one lookup per match.
+- **Startup-claim docs check matches whole words.** "exit" inside "perplexity" no longer
+  satisfies the abort-wording requirement, and negated claims such as "does not prevent
+  startup" are excluded.
+- **Delivery complexity is guarded by scaling, not a single timing.** The guard builds
+  every adversarial shape, including triple-backtick runs and mixed mid-line fences, at
+  32,000 and 64,000 characters, then compares work counters rather than elapsed time. It
+  fails when the 64,000-character run uses more than 2.5 times the bytes passed to
+  `Parser.parse` (plus 4,096) or more than three times the parse calls (plus two) of the
+  32,000-character run. A separate check delivers 128,000- and 256,000-character answers,
+  confirms the work cap truncates them, and asserts each arrives in under a second.
+- **The code-region contract is checked with markdown-it-py on every case, plus the
+  Discord parser on the corpus it can parse (crashes bounded at 5 %).** A fixed-seed corpus
+  of one thousand adversarial cases, the reported bypasses, and each delivered chunk are
+  rendered with markdown-it-py; the Discord-markdown-ast-parser oracle runs on the cases it
+  can parse, and its crash share is capped at 5 %. The complexity guard sanitises and
+  delivers each 32,000- and 64,000-character adversarial shape once and compares the
+  parser work counters. The mutation checker now kills a removed `](` pass, a removed `://` pass, a
+  delivery path that skips the per-chunk sanitiser, and three parser-backed mutations
+  (protect-misaligned-inline-span, protect-unclosed-fence, protect-fence-with-inner-run)
+  that protect a misaligned inline span, an unclosed fence, or a fence with an inner run.
+- **The mutation checker works on a scratch copy.** `scripts/mutation_check.py` copies
+  the checkout (minus VCS state, caches, logs, local `*.ini`, and `.env`) into a temporary
+  directory before applying mutations, so an interrupted run cannot corrupt the working
+  tree. Three stale mutation anchors were re-anchored to the current source, and
+  `tests/test_mutation_check.py` fails if any anchor stops matching.
+- **The safe embed limit is an absolute number in the split assertion.** The expected head
+  and tail now use `3840` instead of importing the constant under test, so a change to the
+  production safe limit fails this delivery contract instead of silently moving with it.
+- **The Discord send failure test patches its retry sleep.** The failure case waited a
+  real second before retrying; it now patches `src.error_handling.asyncio.sleep` and
+  asserts the one backoff, so the suite has no wall-clock wait on this path.
+- **The launcher stop test waits for the child before asserting.** The test used to
+  check `kill -0` immediately after the stop helper returned, which raced the child's
+  exit and intermittently exited 5. Waiting on the child first makes the test report a
+  real stop failure instead of a scheduling artifact; 50 consecutive runs passed.
+- **A web route calls Perplexity at most once.** When the initial web call fails and the
+  chat fallback also returns nothing, the test asserts the request tail returns the
+  both-services notice without calling Perplexity a second time. Removing the attempt
+  ledger now fails the suite.
+- **Clef host eligibility is pinned against lookalike names.** A suffix such as
+  `ollama.com.evil.example`, userinfo such as `ollama.com@evil.example`, a path containing
+  `ollama.com`, and a prefix such as `notollama.com` are all refused. The test fails if the
+  exact-hostname check is weakened to a substring match.
+- **Root logging is restored between tests.** A test that configures production logging
+  no longer leaves its rich handler installed for later tests, which had made traceback
+  rendering, not retry sleep, the slow part of the outage tests.
+- **Single-provider outage tests prove their retry sleep is intercepted.** The retry
+  sleep is patched at its real boundary in `src.error_handling`, and each test asserts
+  that one backoff sleep happened, so the suite exercises the retry path without a real
+  backoff wait.
 - **Default-provider regression coverage** pins the Ollama Cloud URL and model, permissive model
   validation, `REASONING_EFFORT` overriding, and the `max_tokens` request payload.
 - **Provider contract coverage** runs both adapters against stubbed SDK clients: request shape,
@@ -101,12 +704,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   round-tripping; multimodal message shape; image-aware token accounting and truncation; cache
   keys scoped by image digest; image-only messages; disabled-vision short-circuiting; local route
   forcing; Perplexity refusal; and history labels without base64.
+- **The sanitiser is checked against an independent CommonMark parser.** A fixed-seed
+  corpus of backticks, fences, escapes, autolinks, reference links, and inline-code labels
+  is rendered with `markdown-it-py`; any `<a>` element or surviving mention fails the test,
+  and the same corpus runs through the embed description path.
+- **Provider environment variables cannot leak into a test.** An autouse fixture removes
+  `OLLAMA_*`, `OPENAI_*`, `PERPLEXITY_*`, `ROUTER_*`, and `DISCORD_TOKEN` before each test,
+  so the suite is identical under `env -i` and the normal shell.
+- **A retired model is not a neutral 400.** A real SDK `BadRequestError` built from the
+  provider's `invalid_model` response and the OpenAI-style `model_not_found` body opens the
+  provider breaker and makes `/health` report the provider degraded.
+- **A tiny prompt budget is rejected.** `INPUT_TOKENS` and `PERPLEXITY_INPUT_TOKENS` below
+  1,000 are startup errors, while 1,000 is accepted.
+- **The launcher reads its stop timeout and PID assignment from code.** The
+  `DISCORDIANAI_STOP_TIMEOUT` override is exercised, the script's own `PID_FILE=` line is
+  evaluated for two configs that share a basename, and a config path with a space is matched
+  by the straggler scan.
+- **A truncated chunk closes its open fence.** A one-chunk cut inside a fenced code block
+  ends with the closing marker before the length notice.
+- **Delivery splitting coverage.** A long fence spanning three or more messages delivers
+  every line with balanced fences, and the test also checks prose after the fence, the
+  first-chunk mention limit, the chunk-cap notice's original length, citation-marker and
+  fence safety in embed heads, and code-preserving sanitisation while mentions stay
+  neutralised.
+- **The floor-version suite can run its own tests.** The health tests read the bound port
+  through the runner's address list instead of a newer `TCPSite` attribute, and the recorded
+  Perplexity 400 test builds its HTTP stub with whichever HTTPX class the installed openai
+  SDK accepts. The formatter test already runs without the optional Rich package. The full
+  suite now passes against every declared minimum runtime version.
+- **The dependency gate is checked against a hand-written set.** The test no longer
+  reimplements the gate's own import walker, so a wrong algorithm cannot agree with
+  itself. A second test maps every declared runtime distribution through the gate's alias
+  table to the expected import names, with `h2` allowed because it is declared for httpx's
+  HTTP/2 extra but never imported by `src`.
+- **The mutation checker distinguishes a killed mutant from a broken run.** The selected
+  tests now run once on the unmutated copy and abort the check if that baseline is not
+  green. A mutant is KILLED only on pytest exit 1 with at least one failed test; exit 0
+  is SURVIVED, and exit codes 2-5, a timeout, or no collected tests are INCONCLUSIVE and
+  fail the check by name. Fake-runner tests cover the failing baseline, exit 2, exit 1,
+  and exit 0.
+- **The shared environment scrub covers every config-loader key.** The autouse fixture now
+  removes the keys `src/config.py` itself reads, derived from the loader instead of a
+  hand-written prefix list. The hermeticity test seeds several of those keys before the
+  fixture runs and fails if any survive; four per-file copies of the same scrubber are
+  gone. The retry tests that waited on real 0.1-second sleeps now patch
+  `asyncio.sleep` and assert the requested backoff, and a new Perplexity breaker test
+  proves its retry sequence counts as one logical failure, matching the OpenAI test.
 
 ### Documentation 📝
 
+- **Provider validation prose states the startup rule that ships.** `docs/Security.md`
+  now explains that a provider selected by a key, base URL, or model without a key stops
+  startup, even when the other provider has a key.
+- **Delivery and security docs state the code-protection rule that ships.** The shared
+  region function, the two neutralisation layers, per-chunk sanitising, the no-deletion
+  rule, and the new runtime dependencies are recorded in `docs/MessageSplitting.md`,
+  `docs/Security.md`, `docs/Architecture.md`, and the dependency notes in the README and
+  setup guide.
+- **The scripts README matches the shipped tools.** The unimportable
+  `debug_perplexity_citations.py` helper is deleted; `scripts/README.md` now documents
+  only the scripts that exist, what each reads, and which ones write files by design.
+- **Routing docs describe the masking, credential, lifecycle, and reroute rules.** `docs/routing/DESIGN.md`,
+  `docs/HybridMode.md`, and `docs/Configuration.md` now state that bearing and override cues are
+  code-masked while code-shape and traceback framing cues still read the original text, how the Clef
+  key is resolved, that the router is built once and closed at shutdown, and that only first-person
+  browsing admissions trigger the safety-net reroute.
 - **`docs/Vision.md`** documents how to send images, the provider used, limits, fallback
   behavior, and the privacy note that images leave the bot for the configured chat provider.
   The README documentation map and `docs/Configuration.md` link to it.
+
+### Notes ⚠️
+
+- **Existing virtual environments must reinstall the runtime requirements.**
+  `tree-sitter` and `tree-sitter-markdown` are now runtime dependencies. The startup
+  dependency check stops with a clear `Missing required packages` message naming them;
+  run `pip install -r requirements.txt` (or `pip install -e ".[dev]"`) in the existing
+  environment before upgrading.
+- **Non-Latin and emoji history trims earlier.** Prompt estimates now charge U+0080-U+07FF
+  at one-half token per character, U+0800-U+FFFF at 0.8, and astral-plane characters such
+  as most emoji at 1.7, before the existing 1.1 margin. A history that was previously
+  under-counted at the ASCII rate is trimmed sooner; ASCII prose and code keep the
+  one-quarter token per character estimate.
+- **Local scraping is gone, and three scrape-budget keys are removed.**
+  `MAX_URLS_PER_MESSAGE`, `MAX_TOTAL_SCRAPED_CHARS`, and `SCRAPE_DEADLINE_SECONDS` are no
+  longer read because URL fetching now happens in the provider tools. An existing
+  `config.ini` that still sets them loads and ignores them; delete those lines during the
+  upgrade. `PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW` bound the bot's own
+  prompt on the web path; they do not replace a scraping budget because fetching now happens
+  in the provider tools.
+- **Double percent signs are no longer collapsed.** A value that wrote `%%` to mean one
+  literal `%` now keeps both characters; write a single `%`.
+- **Clef no longer reuses the chat key for a local daemon URL.** With an `OPENAI_API_URL`
+  such as `http://localhost:11434/v1/`, `OPENAI_API_KEY` is not eligible for Clef. Set
+  `ROUTER_CLEF_API_KEY` or `OLLAMA_API_KEY` to use `ROUTER_MODE=clef`.
+- **A missing `--conf` file now stops startup.** The 0.4.0 configuration loader allowed an
+  explicitly requested file to fall through to environment defaults. Every entry point now
+  rejects a missing file; the launcher is not the only path that must fail.
+- **The launcher PID file is per config.** An existing `.bot.pid` is honoured only when its
+  process runs the same config, then removed; new runs write
+  `.bot-<stem>-<hash>.pid`.
+- **A configuration that was legal on 0.4.0 can now fail to start.** `INPUT_TOKENS` plus
+  `OUTPUT_TOKENS` must fit `CONTEXT_WINDOW`, and `PERPLEXITY_INPUT_TOKENS` plus
+  `PERPLEXITY_OUTPUT_TOKENS` must fit `PERPLEXITY_CONTEXT_WINDOW`. A config that exceeds
+  either window aborts at startup with an ERROR naming the keys; lower the budget or raise
+  the window before upgrading.
+- **Retries are narrower than before.** `ConnectionResetError`, `BrokenPipeError`, and
+  `ConnectionAbortedError` are no longer retried, an exception the policy cannot classify
+  is refused instead of treated as transient, and a `Retry-After` header of `nan` or `inf`
+  no longer turns into a sleep. Retries still cover requests that provably never left the
+  bot, 429 responses with a usable `Retry-After`, and 5xx responses.
 
 ## [0.4.0] - 2026-10-28
 

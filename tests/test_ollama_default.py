@@ -49,12 +49,19 @@ def test_reasoning_effort_env_override_matches_gpt_model_path(monkeypatch):
     assert config["GPT_MODEL"] == "custom-model"
 
 
-def test_empty_reasoning_effort_falls_back_to_high(monkeypatch):
+def test_empty_reasoning_effort_omits_the_parameter(monkeypatch):
     monkeypatch.setenv("REASONING_EFFORT", "   ")
 
     config = load_config()
 
-    assert config["REASONING_EFFORT"] == "high"
+    assert config["REASONING_EFFORT"] == ""
+    assert "reasoning_effort" not in _build_openai_api_params(
+        "model",
+        "system",
+        "hello",
+        1024,
+        reasoning_effort=config["REASONING_EFFORT"],
+    )
 
 
 def test_reasoning_effort_from_config_file(tmp_path, monkeypatch):

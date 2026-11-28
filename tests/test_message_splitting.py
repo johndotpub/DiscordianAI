@@ -18,10 +18,10 @@ import pytest
 from src.config import EMBED_SAFE_LIMIT, MESSAGE_LIMIT
 from src.discord_embeds import citation_embed_formatter
 from src.message_splitter import (
-    adjust_split_for_code_blocks,
     find_optimal_split_point,
     send_split_message,
     send_split_message_with_embed,
+    split_fence_aware,
 )
 from tests.helpers import create_mock_channel, create_test_context
 
@@ -104,77 +104,25 @@ class TestMessageSplittingBasic:
         assert split_index < len(message)
 
 
-class TestCodeBlockSplitting:
-    """Test message splitting with code blocks."""
+class TestFenceDetector:
+    """The splitter and sanitiser agree on which fences Discord renders."""
 
-    def test_split_outside_code_block(self):
-        """Test splitting outside code blocks."""
-        message = "Normal text\n```\ncode block\n```\nMore text"
-        split_point = 20
-        before, after = adjust_split_for_code_blocks(message, split_point)
+    def test_unclosed_fence_is_literal_when_splitting(self):
+        """An unclosed fence hides nothing, so it must not reshape a split."""
+        message = "```\n" + ("A" * 60) + "\nhttps://evil.example"
+        head, tail = split_fence_aware(message, 20, 10)
 
-        # Should split normally outside code block
-        # The function detects that split_point is inside the code block and adjusts
-        assert before == "Normal text\n"
-        assert after == "```\ncode block\n```\nMore text"
+        assert head == message[:10]
+        assert tail == message[10:]
 
-        outside_before, outside_after = adjust_split_for_code_blocks(
-            "Text before ```code``` text after", 5
-        )
-        assert outside_before == "Text "
-        assert outside_after == "before ```code``` text after"
+    def test_closed_fence_still_splits_inside_the_code(self):
+        """A rendered fence is still closed and reopened across the split."""
+        message = "```python\n" + ("A" * 600) + "\n```"
 
-    def test_split_inside_code_block_near_start(self):
-        """Test splitting inside code block near start."""
-        message = "Text\n```\ncode line 1\ncode line 2\n```\nMore text"
-        split_point = 25  # Inside the code block
-        before, after = adjust_split_for_code_blocks(message, split_point)
+        head, tail = split_fence_aware(message, 200)
 
-        # Should split after the code block (closer to end since 25 is closer to end)
-        assert before == "Text\n```\ncode line 1\ncode line 2\n```"
-        assert after == "\nMore text"
-
-        near_start_before, near_start_after = adjust_split_for_code_blocks(
-            "Text ```very long code block here``` more text", 10
-        )
-        assert near_start_before == "Text "
-        assert near_start_after.startswith("```")
-
-    def test_split_inside_code_block_near_end(self):
-        """Test splitting inside code block near end."""
-        message = "Text\n```\ncode line 1\ncode line 2\n```\nMore text"
-        split_point = 45  # Near end of code block
-        before, after = adjust_split_for_code_blocks(message, split_point)
-
-        # Should split after the code block (closer to end)
-        assert before == "Text\n```\ncode line 1\ncode line 2\n```\nMore tex"
-        assert after == "t"
-
-        inside_before, inside_after = adjust_split_for_code_blocks(
-            "Text ```code block``` more text", 16
-        )
-        assert inside_before.endswith("```")
-        assert inside_after == " more text"
-
-    def test_split_multiple_code_blocks(self):
-        """Test splitting with multiple code blocks."""
-        message = "Text\n```\ncode1\n```\nMiddle\n```\ncode2\n```\nEnd"
-        split_point = 30  # In second code block
-        before, after = adjust_split_for_code_blocks(message, split_point)
-
-        # Should handle multiple code blocks correctly
-        assert "```" in before
-        assert "```" in after
-
-    def test_split_no_code_blocks(self):
-        """Test splitting with no code blocks."""
-        message = "Just regular text with no code blocks at all"
-        split_point = 20
-        before, after = adjust_split_for_code_blocks(message, split_point)
-
-        # Should split normally
-        assert before == message[:split_point]
-        assert after == message[split_point:]
+        assert head.endswith("```")
+        assert tail.startswith("```python")
 
 
 class TestMessageSplittingIntegration:
@@ -223,7 +171,6 @@ class TestMessageSplittingIntegration:
         channel.send = AsyncMock()
 
         original_message = MagicMock(spec=discord.Message)
-        original_message.reply = AsyncMock()
         original_message.author = MagicMock()
 
         prefix = "<@123456789012345678> "
@@ -238,8 +185,8 @@ class TestMessageSplittingIntegration:
             mention_prefix=prefix,
         )
 
-        original_message.reply.assert_called_once()
-        sent = original_message.reply.call_args[0][0]
+        channel.send.assert_called_once()
+        sent = channel.send.call_args[0][0]
         assert sent.startswith(prefix)
         assert len(sent) <= MESSAGE_LIMIT
 
@@ -250,7 +197,6 @@ class TestMessageSplittingIntegration:
         channel.send = AsyncMock()
 
         original_message = MagicMock(spec=discord.Message)
-        original_message.reply = AsyncMock()
         original_message.author = MagicMock()
 
         prefix = "<@123456789012345678> "
@@ -265,7 +211,7 @@ class TestMessageSplittingIntegration:
             mention_prefix=prefix,
         )
 
-        replies = [call.args[0] for call in original_message.reply.call_args_list]
+        replies = [call.args[0] for call in channel.send.call_args_list]
         assert len(replies) >= 2
         assert replies[0].startswith(prefix)
         assert all(len(content) <= MESSAGE_LIMIT for content in replies)
@@ -367,9 +313,9 @@ class TestMessageSplittingIntegration:
                 mention_prefix=None,
             )
 
-            # First send uses rebuilt head embed aligned to the adjusted head chunk
-            split_index = find_optimal_split_point(message, EMBED_SAFE_LIMIT)
-            expected_head, expected_tail = adjust_split_for_code_blocks(message, split_index)
+            # First send uses a head that stays inside the 3840-character safe limit
+            expected_head = message[:3840]
+            expected_tail = message[3840:]
 
             first_call = channel.send.call_args_list[0]
             head_embed = first_call.kwargs.get("embed")
@@ -576,6 +522,25 @@ class TestMessageSplittingEdgeCases:
         assert find_optimal_split_point("", 0) == 0
 
     @pytest.mark.asyncio
+    async def test_oversized_chunk_cut_logs_counts_and_stays_within_limit(self):
+        """The hard cut is logged with the length and the limit, never the text."""
+        channel = create_mock_channel()
+        channel.send = AsyncMock()
+        logger = MagicMock()
+
+        message = "`" + ("https://a " * 220) + "`"
+
+        await send_split_message(channel, message, {"logger": logger})
+
+        logger.warning.assert_called_once()
+        format_string, length, limit = logger.warning.call_args.args
+        assert "Hard-truncated" in format_string
+        assert isinstance(length, int)
+        assert length > 2000
+        assert limit == 2000
+        assert all(len(call[0][0]) <= 2000 for call in channel.send.call_args_list)
+
+    @pytest.mark.asyncio
     async def test_exactly_limit_length(self):
         """Test message that is exactly at the limit."""
         channel = create_mock_channel()
@@ -663,7 +628,7 @@ class TestMessageSplittingEdgeCases:
         assert split_point > 0
         assert split_point < len(long_unicode_message)
 
-        part1, part2 = adjust_split_for_code_blocks(long_unicode_message, split_point)
+        part1, part2 = split_fence_aware(long_unicode_message, 2000, split_point)
         assert len(part1) <= MESSAGE_LIMIT
         # Unicode characters should be preserved
         assert "测试" in part1 or "测试" in part2
@@ -677,7 +642,7 @@ class TestMessageSplittingEdgeCases:
         long_mixed_message = mixed_message * 150
 
         split_point = find_optimal_split_point(long_mixed_message, MESSAGE_LIMIT)
-        part1, part2 = adjust_split_for_code_blocks(long_mixed_message, split_point)
+        part1, part2 = split_fence_aware(long_mixed_message, 2000, split_point)
 
         assert len(part1) <= MESSAGE_LIMIT
         # Should preserve all content types
@@ -694,7 +659,7 @@ More text here."""
 
         long_code = code_with_emoji * 50
         split_point = find_optimal_split_point(long_code, MESSAGE_LIMIT)
-        part1, part2 = adjust_split_for_code_blocks(long_code, split_point)
+        part1, part2 = split_fence_aware(long_code, 2000, split_point)
 
         # Code blocks should not be broken
         assert "```" in part1 or "```" in part2
@@ -712,7 +677,7 @@ End of code."""
 
         long_code = code_with_unicode * 50
         split_point = find_optimal_split_point(long_code, MESSAGE_LIMIT)
-        part1, part2 = adjust_split_for_code_blocks(long_code, split_point)
+        part1, part2 = split_fence_aware(long_code, 2000, split_point)
 
         # Unicode in code should be preserved
         assert "测试" in part1 or "测试" in part2
@@ -723,7 +688,7 @@ End of code."""
         long_sequence = emoji_sequence * 200
 
         split_point = find_optimal_split_point(long_sequence, MESSAGE_LIMIT)
-        part1, part2 = adjust_split_for_code_blocks(long_sequence, split_point)
+        part1, part2 = split_fence_aware(long_sequence, 2000, split_point)
 
         # Emoji sequences should be preserved
         assert len(part1) + len(part2) == len(long_sequence)
@@ -734,7 +699,7 @@ End of code."""
         long_mixed = mixed * 150
 
         split_point = find_optimal_split_point(long_mixed, MESSAGE_LIMIT)
-        part1, part2 = adjust_split_for_code_blocks(long_mixed, split_point)
+        part1, part2 = split_fence_aware(long_mixed, 2000, split_point)
 
         # Both should be preserved
         assert "👋" in part1 or "👋" in part2

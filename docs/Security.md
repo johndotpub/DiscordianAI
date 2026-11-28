@@ -34,31 +34,29 @@ This document outlines security considerations and best practices for deploying 
    chmod 600 config.ini
    ```
 
-3. **Docker Secrets** (optional hardening; not enabled in the shipped compose file)
-   ```yaml
-   # Optional hardening only; not enabled in the shipped docker-compose.yml.
-   services:
-     discordianai:
-       secrets:
-         - discord_token
-         - openai_key
-   secrets:
-     discord_token:
-       file: ./secrets/discord_token.txt
-     openai_key:
-       file: ./secrets/openai_key.txt
+3. **Environment file for containers** (recommended for production)
+   The shipped `docker-compose.yml` loads credentials from `.env` with
+   `env_file: [.env]`. Create that file from the tracked template, keep it out of
+   version control, and restrict its permissions:
+   ```bash
+   cp .env.example .env
+   chmod 600 .env
+   # Edit .env and set DISCORD_TOKEN plus the provider keys you use.
    ```
+   The bot does not read Docker secret files, mounted secret paths, or any other
+   secret-file mechanism. Credentials come only from `config.ini` and environment
+   variables.
 
-### Key Format Validation
+### API Key Validation
 
-DiscordianAI validates API key formats before use:
+DiscordianAI checks that each configured provider has a key. The Perplexity key also has a format check:
 
-| Service | Expected Format | Example |
-|---------|-----------------|---------|
-| OpenAI-compatible | `sk-` is OpenAI's shape; any non-empty key is accepted, and a non-`sk-` key logs a warning | `sk-abc123...` or an Ollama Cloud key |
-| Perplexity | `pplx-` + at least 20 letters, digits, `-` or `_` | `pplx-xyz789...` |
+| Service | Check | Example |
+|---------|-------|---------|
+| OpenAI-compatible | Presence only: any non-empty key is accepted, the shape is not checked, and the provider rejects a wrong key at request time | `sk-abc123...` or an Ollama Cloud key |
+| Perplexity | `pplx-` followed by at least 20 letters, digits, `-` or `_` | `pplx-xyz789...` |
 
-An empty or whitespace-only key for a configured provider is an error. A non-empty OpenAI-compatible key that is not `sk-`-shaped is accepted because Ollama Cloud and local gateways use their own formats.
+A blank key disables that provider, and a whitespace-only value counts as blank in both the config file and the environment. A provider counts as configured when its key is non-empty, or when its base URL or model is set in the file or environment. A configured provider without a key stops startup even when the other provider has a key; to run only one provider, leave the other provider at its defaults or set its key blank. Any non-empty OpenAI-compatible key is accepted because the configured provider decides what a valid key looks like; a wrong key is rejected by the provider at request time.
 
 ### Key Rotation
 
@@ -112,9 +110,9 @@ The bot handles upstream API rate limits gracefully:
    (one initial request plus one retry). The delay is full-jitter exponential
    backoff, and 429 responses honour `Retry-After` up to 30 seconds. A
    90-second deadline stops retries even when attempts remain.
-2. **Transient Failures Only**: 429, 5xx, connection errors, and connect
-   timeouts are retried. Authentication errors, read timeouts, and exhausted
-   quotas fail immediately.
+2. **Transient Failures Only**: 429, 5xx, connection errors where no request was
+   established, and connect timeouts are retried. Authentication errors, read
+   timeouts, exhausted quotas, and unclassified exceptions fail immediately.
 3. **Circuit Breaker**: A shared per-provider breaker opens after 5 failed
    logical calls (all retries for one call count as one failure) and allows a
    single probe after 60 seconds.
@@ -135,8 +133,34 @@ RetryConfig(
 
 ### Message Handling
 
-- **Inbound text is not sanitized.** The message body is sent to the configured provider unchanged; the bot does not strip instructions, links, or markdown before the request.
-- **Outbound text is neutralised.** Messages longer than Discord's 2000-character limit are split, and model output is sanitised for mentions and links before delivery. These controls apply to outbound text only.
+- **Inbound text is mostly not sanitized.** For guild messages the bot removes mention tokens (`<@id>`, `<@!id>`, `<@&id>`) from the message body and trims the result before the request; DMs are left unchanged. The bot does not strip instructions, links, or markdown.
+- **Outbound text is neutralised.** Messages longer than Discord's 2000-character limit are
+  split, and every final chunk is sanitised for mentions and links after splitting. The
+  sanitiser and splitter both call the `tree-sitter-markdown` filter
+  `_filtered_code_regions()`; the public `protected_code_regions()` is its wrapper. It
+  protects only a closed fence opened and closed by exactly three backticks when Discord
+  would also end that fence at the same place and the text contains no other unmatched
+  triple-backtick run, or a closed inline code span whose opener
+  and closer are not backslash-escaped when the text uses one backtick run length and the
+  span carries no emphasis, strikethrough, spoiler, or scheme-qualified link syntax. A stray
+  triple-backtick run between a fence's opener and closer, or any pairing mismatch, makes
+  the whole text ordinary. Tilde fences, four-or-more-backtick fences, indented blocks,
+  unclosed fences, and mixed backtick runs protect nothing. Outside those regions
+  parser-reported links, images, and autolinks become label text or a neutralised URL, then
+  catch-all passes break every `](`, insert a zero-width space after every `://`, and
+  separate `<` from a following scheme. Definition-shaped lines are kept as ordinary text
+  with an invisible separator, never deleted; a trusted citation URL is left clickable.
+  Only that citation's own destination is exempt, so title text and any second link after
+  it are scanned as ordinary text. Mentions are neutralised everywhere, including inside
+  code. A message with more than 2,048 emphasis, strikethrough, or spoiler marker characters
+  skips the inline grammar and is sanitised by the catch-all passes, which keeps a
+  delimiter-dense answer from stalling delivery. Nested link labels are rendered only 100
+  levels deep; deeper labels become ordinary text instead of raising `RecursionError`. A
+  lone UTF-16 surrogate is replaced with `?` before parsing so an unencodable character
+  cannot abort the whole answer. The splitter additionally
+  keeps a split-only Discord pairing for chunk boundaries when the filter protects no
+  fence; those spans never suppress sanitisation. These controls apply to outbound text
+  only.
 - **Discord does not moderate bot messages.** Server AutoMod or channel permissions can restrict what users send, but the bot's own replies are not passed through Discord's moderation.
 - **URLs are opened by provider tools.** User-supplied URLs are passed to the provider's native search and fetch tools. The bot does not fetch page content itself.
 
@@ -150,7 +174,7 @@ These instructions do not compel a model to obey them. An injected page can stil
 
 On startup, DiscordianAI validates:
 
-- API key presence and format for every configured provider
+- API key presence for every configured provider and the Perplexity key format
 - Provider base URLs (malformed or non-absolute URLs are fatal; well-formed
   non-standard URLs are warnings)
 - Numeric ranges (rate limits and input, output, and context token caps)
@@ -160,11 +184,17 @@ On startup, DiscordianAI validates:
 Not every invalid configuration prevents startup. Fatal errors are logged and
 abort startup with a non-zero exit: missing Discord credentials, a missing key
 for a configured provider, invalid Perplexity key formats, malformed or
-non-absolute base URLs, non-integer or non-positive rate/input/context limits,
-output-token caps outside 1..1,000,000, and invalid presence or activity values.
-Warnings are logged and startup continues: non-`sk-` OpenAI-compatible key
-formats, well-formed non-standard provider URLs, unusually small or large token
-values, high rate limits, and a missing channel allowlist.
+non-absolute base URLs, non-positive rate/input/context limits,
+`INPUT_TOKENS` or `PERPLEXITY_INPUT_TOKENS` below 1,000, a prompt budget that
+does not fit its context window (`INPUT_TOKENS + OUTPUT_TOKENS > CONTEXT_WINDOW`,
+or the Perplexity trio), output-token caps outside
+1..128,000 (a fixed ceiling independent of the context window), an unknown
+`ROUTER_MODE` (only `heuristic` and `clef` are accepted), and invalid presence or
+activity values. A malformed integer in the file or environment is reported with
+a warning and its default applies.
+Warnings are logged and startup continues: well-formed non-standard provider
+URLs, unusually small or large token values, high rate limits, and a missing
+channel allowlist.
 
 ## 🌐 Network Security
 
@@ -307,10 +337,13 @@ The bot serves real health endpoints at `HEALTH_HOST:HEALTH_PORT` (default
 - `GET /health` returns 200 only when the bot and its configured providers are healthy,
   and 503 otherwise. A provider is degraded only when its breaker is `HALF_OPEN` or a
   failure happened after its last success; an idle provider with no traffic stays healthy.
-  An `OPEN` breaker is always unhealthy;
-- `GET /health/live` reports process liveness;
+  An `OPEN` breaker is unhealthy until its recovery timeout has elapsed; after that it is
+  reported healthy as recovering, because the breaker would admit a probe on the next call;
+- `GET /health/live` reports process liveness and answers before the gateway connects;
 - `GET /health/ready` reports readiness, including the Discord connection and provider
-  health.
+  health, and stays 503 until the gateway is connected.
+
+Trailing-slash variants of all three routes return the same status and body.
 
 The shipped `docker-compose.yml` and `Dockerfile` both define a `HEALTHCHECK` that calls
 `/health` with Python's standard-library `urllib.request`; the slim image has no curl.
@@ -323,7 +356,7 @@ the endpoint from the host.
 For production deployments, consider:
 
 1. **Log aggregation**: Ship logs to centralized system
-2. **API usage tracking**: Monitor token usage and costs
+2. **API usage tracking**: Monitor token usage
 3. **Error alerting**: Alert on repeated API failures
 4. **Uptime monitoring**: External health checks
 
@@ -340,7 +373,7 @@ For production deployments, consider:
 
 3. **Review logs** for unauthorized usage
 
-4. **Check billing** for unexpected charges
+4. **Check provider usage** for unexpected activity
 
 ### Reporting Security Issues
 

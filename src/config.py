@@ -131,6 +131,12 @@ DEFAULT_OUTPUT_TOKENS = 16384
 DEFAULT_PERPLEXITY_OUTPUT_TOKENS = DEFAULT_OUTPUT_TOKENS
 DEFAULT_CONTEXT_WINDOW = 1000000
 
+# Sonar has a 128K context window. The Perplexity prompt budget leaves room
+# for its output cap and the fixed fetch-url instruction suffix, while the
+# chat path keeps the 1M-token defaults above.
+DEFAULT_PERPLEXITY_CONTEXT_WINDOW = 128000
+DEFAULT_PERPLEXITY_INPUT_TOKENS = 111000
+
 # Image attachment policy. Images travel only to the OpenAI-compatible chat
 # provider; Perplexity never receives them.
 DEFAULT_VISION_ENABLED = True
@@ -147,6 +153,8 @@ DEFAULT_VISION_TOKEN_ESTIMATE = 1000
 MAX_OUTPUT_TOKENS_CEILING = 128_000
 MAX_OUTPUT_TOKENS_COST_WARNING = 50000
 MIN_OPENAI_OUTPUT_TOKENS_WARNING = 512
+# A prompt budget below this cannot hold a useful question plus instructions.
+MIN_INPUT_TOKENS = 1000
 # Warning threshold tracks the default chat model's real context window.
 MAX_INPUT_TOKENS_THRESHOLD = 1000000
 MAX_RATE_LIMIT_THRESHOLD = 100
@@ -207,6 +215,10 @@ ERROR_MESSAGES = {
     "rate_limit_exceeded": (
         "⏱️ Rate limit exceeded! Please wait a moment before sending another message."
     ),
+    "processing_error": (
+        "🔧 Sorry, I encountered an error while processing your message. "
+        "Please try again in a moment."
+    ),
     "api_error": (
         "🔧 There was an issue connecting to the AI service. Please try again in a moment."
     ),
@@ -251,7 +263,9 @@ _CONFIG_DEFAULTS: dict[str, Any] = {
     "INPUT_TOKENS": DEFAULT_INPUT_TOKENS,
     "OUTPUT_TOKENS": DEFAULT_OUTPUT_TOKENS,
     "PERPLEXITY_OUTPUT_TOKENS": None,
+    "PERPLEXITY_INPUT_TOKENS": DEFAULT_PERPLEXITY_INPUT_TOKENS,
     "CONTEXT_WINDOW": DEFAULT_CONTEXT_WINDOW,
+    "PERPLEXITY_CONTEXT_WINDOW": DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
     "SYSTEM_MESSAGE": "You are a helpful assistant.",
     "RATE_LIMIT": DEFAULT_RATE_LIMIT,
     "RATE_LIMIT_PER": DEFAULT_RATE_LIMIT_PER,
@@ -264,6 +278,7 @@ _CONFIG_DEFAULTS: dict[str, Any] = {
     "CONVERSATION_TTL_SECONDS": DEFAULT_CONVERSATION_TTL_SECONDS,
     "USER_LOCK_CLEANUP_INTERVAL": DEFAULT_USER_LOCK_CLEANUP_INTERVAL,
     "ROUTER_MODE": DEFAULT_ROUTER_MODE,
+    "ROUTER_CLEF_API_KEY": None,
     "ROUTER_CLEF_MODEL": DEFAULT_ROUTER_CLEF_MODEL,
     "ROUTER_CLEF_THRESHOLD": DEFAULT_ROUTER_CLEF_THRESHOLD,
     "ROUTER_CLEF_TIMEOUT_MS": DEFAULT_ROUTER_CLEF_TIMEOUT_MS,
@@ -287,6 +302,46 @@ _CONFIG_DEFAULTS: dict[str, Any] = {
 # ============================================================================
 
 
+def _config_error_line_numbers(error: BaseException) -> list[int]:
+    """Return the source line numbers attached to a parser error.
+
+    Only the numeric positions are read. Parser messages and the ``errors``
+    tuples can quote the offending configuration line, which may hold a
+    secret, so their text is never copied.
+    """
+    lines: set[int] = set()
+    errors = getattr(error, "errors", None)
+    if isinstance(errors, list):
+        for entry in errors:
+            if isinstance(entry, tuple) and entry and isinstance(entry[0], int):
+                lines.add(entry[0])
+    lineno = getattr(error, "lineno", None)
+    if isinstance(lineno, int):
+        lines.add(lineno)
+    return sorted(lines)
+
+
+class ConfigFileError(RuntimeError):
+    """Raised when an explicitly requested configuration file cannot be used."""
+
+    def __init__(self, path: Path | str, error: object) -> None:
+        """Build the fatal startup message without reproducing parser text.
+
+        The message names the file, the error class, and any source line
+        numbers. ``configparser`` quotes the raw offending line in its own
+        message, so that text is deliberately left out to keep a token or
+        other secret in the file out of the fatal log.
+        """
+        error_name = type(error).__name__ if isinstance(error, BaseException) else "Error"
+        lines = _config_error_line_numbers(error) if isinstance(error, BaseException) else []
+        if lines:
+            label = "line" if len(lines) == 1 else "lines"
+            location = f" at {label} {', '.join(str(line) for line in lines)}"
+        else:
+            location = ""
+        super().__init__(f"Could not read configuration file {path}: {error_name}{location}")
+
+
 def parse_arguments() -> argparse.Namespace:
     """Parse command-line arguments.
 
@@ -295,7 +350,7 @@ def parse_arguments() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(description="GPT-based Discord bot.")
     parser.add_argument("--conf", help="Configuration file path")
-    parser.add_argument("--folder", help="Base folder for config and logs")
+    parser.add_argument("--folder", help="Base folder for the configuration file")
     return parser.parse_args()
 
 
@@ -310,8 +365,13 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
 
     Returns:
         dict: Configuration dictionary with all settings.
+
+    Raises:
+        ConfigFileError: If an explicitly requested file cannot be read or parsed.
     """
-    config = configparser.ConfigParser()
+    # Values are literal: prompts and secrets may contain '%' without needing
+    # to escape it, and the parser must not treat it as an interpolation marker.
+    config = configparser.ConfigParser(interpolation=None)
     config_data = {}
 
     # Get logger for error handling
@@ -323,34 +383,41 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
     perplexity_explicit = False
     openai_key_disabled = False
     perplexity_key_disabled = False
+    log_file_explicit = False
 
     # If base_folder is provided, resolve config_file and log file paths
     if base_folder and config_file and not Path(config_file).is_absolute():
         config_file = str(Path(base_folder) / config_file)
 
-    if config_file and Path(config_file).exists():
+    if config_file:
+        config_path = Path(config_file)
         try:
-            config.read(config_file)
-            openai_explicit, openai_key_disabled = _provider_option_flags(config, "OPENAI")
-            perplexity_explicit, perplexity_key_disabled = _provider_option_flags(
-                config, "PERPLEXITY"
-            )
-            _parse_discord_config(config, config_data, logger)
-            _parse_default_config(config, config_data, logger)
-            _parse_limits_config(config, config_data, logger)
-            _parse_connection_pool_config(config, config_data, logger)
-            _parse_orchestrator_config(config, config_data, logger)
-            _parse_logging_config(config, config_data, base_folder, logger)
-            _parse_health_config(config, config_data, logger)
-        except (configparser.Error, OSError, ValueError):
-            config_data.clear()
-            logger.warning("Failed to parse config file %s, using defaults", config_file)
+            with config_path.open(encoding="utf-8") as config_stream:
+                config.read_file(config_stream)
+        except (configparser.Error, OSError, UnicodeError) as exc:
+            raise ConfigFileError(config_path, exc) from None
+
+        openai_explicit, openai_key_disabled = _provider_option_flags(config, "OPENAI")
+        perplexity_explicit, perplexity_key_disabled = _provider_option_flags(config, "PERPLEXITY")
+        _parse_discord_config(config, config_data, logger)
+        _parse_default_config(config, config_data, logger)
+        _parse_limits_config(config, config_data, logger)
+        _parse_connection_pool_config(config, config_data, logger)
+        _parse_orchestrator_config(config, config_data, logger)
+        _parse_logging_config(config, config_data, base_folder, logger)
+        _parse_health_config(config, config_data, logger)
+        log_file_explicit = bool(
+            config.has_option("Logging", "LOG_FILE")
+            and config.get("Logging", "LOG_FILE", fallback="").strip()
+        )
 
     # 2. Override with environment variables
     _apply_env_overrides(config_data, logger)
+    if os.environ.get("LOG_FILE", "").strip():
+        log_file_explicit = True
 
     for provider, keys in _PROVIDER_SETTINGS.items():
-        if any(key in os.environ for key in keys):
+        if any(key in os.environ and os.environ[key].strip() for key in keys):
             if provider == "OPENAI":
                 openai_explicit = True
             else:
@@ -364,6 +431,7 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
 
     # Record which providers the operator explicitly selected before defaults
     # make every provider look configured.
+    config_data["_LOG_FILE_EXPLICIT"] = log_file_explicit
     config_data["_OPENAI_CONFIGURED"] = _provider_has_explicit_settings(
         config_data,
         "OPENAI",
@@ -381,6 +449,21 @@ def load_config(config_file: str | None = None, base_folder: str | None = None) 
     _apply_config_defaults(config_data)
 
     return config_data
+
+
+# A blank API key is an explicit "provider disabled" signal, and a blank
+# REASONING_EFFORT means "omit the parameter". Every other blank value is
+# treated as if the option were absent, so its documented default applies.
+_EXPLICIT_EMPTY_KEYS = frozenset({"OPENAI_API_KEY", "PERPLEXITY_API_KEY"})
+
+
+def _is_unset_value(key: str, value: Any) -> bool:
+    """Return True when a parsed value should fall back to its default."""
+    if value is None:
+        return True
+    if key in _EXPLICIT_EMPTY_KEYS or key == "REASONING_EFFORT":
+        return False
+    return isinstance(value, str) and not value.strip()
 
 
 _PROVIDER_SETTINGS = {
@@ -409,7 +492,10 @@ def _provider_option_flags(
     api_key, api_url, model, _default_url, _default_model = _PROVIDER_SETTINGS[provider]
     key_option = config.has_option("Default", api_key)
     key_disabled = key_option and not config.get("Default", api_key, fallback="").strip()
-    explicit = any(config.has_option("Default", key) for key in (api_key, api_url, model))
+    explicit = any(
+        config.has_option("Default", key) and bool(config.get("Default", key, fallback="").strip())
+        for key in (api_key, api_url, model)
+    )
     return explicit, key_disabled
 
 
@@ -457,7 +543,9 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "INPUT_TOKENS",
         "OUTPUT_TOKENS",
         "PERPLEXITY_OUTPUT_TOKENS",
+        "PERPLEXITY_INPUT_TOKENS",
         "CONTEXT_WINDOW",
+        "PERPLEXITY_CONTEXT_WINDOW",
         "SYSTEM_MESSAGE",
         "RATE_LIMIT",
         "RATE_LIMIT_PER",
@@ -470,6 +558,7 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
         "CONVERSATION_TTL_SECONDS",
         "USER_LOCK_CLEANUP_INTERVAL",
         "ROUTER_MODE",
+        "ROUTER_CLEF_API_KEY",
         "ROUTER_CLEF_MODEL",
         "ROUTER_CLEF_THRESHOLD",
         "ROUTER_CLEF_TIMEOUT_MS",
@@ -494,15 +583,14 @@ def _apply_env_overrides(config_data: dict[str, Any], logger: logging.Logger) ->
             _apply_single_env_override(config_data, key, value, logger)
 
 
-def _apply_single_env_override(
-    config_data: dict[str, Any], key: str, value: str, logger: logging.Logger
-) -> None:
-    """Apply a single environment variable override."""
-    int_keys = {
+_ENV_INT_KEYS = frozenset(
+    {
         "INPUT_TOKENS",
         "OUTPUT_TOKENS",
         "PERPLEXITY_OUTPUT_TOKENS",
+        "PERPLEXITY_INPUT_TOKENS",
         "CONTEXT_WINDOW",
+        "PERPLEXITY_CONTEXT_WINDOW",
         "RATE_LIMIT",
         "RATE_LIMIT_PER",
         "OPENAI_MAX_CONNECTIONS",
@@ -521,49 +609,76 @@ def _apply_single_env_override(
         "HEALTH_PORT",
         "HEALTH_PROVIDER_STALE_SECONDS",
     }
-    bool_keys = {"HEALTH_ENABLED", "DISCORDIANAI_LOG_COLOR", "WEB_TOOLS", "VISION_ENABLED"}
-    float_keys = {"ROUTER_CLEF_THRESHOLD"}
+)
+_ENV_BOOL_KEYS = frozenset(
+    {"HEALTH_ENABLED", "DISCORDIANAI_LOG_COLOR", "WEB_TOOLS", "VISION_ENABLED"}
+)
+_ENV_FLOAT_KEYS = frozenset({"ROUTER_CLEF_THRESHOLD"})
+_ENV_LIST_KEYS = frozenset({"ALLOWED_CHANNELS", "ALLOWED_GUILDS"})
+_ENV_ID_LIST_KEYS = frozenset({"ALLOWED_CHANNEL_IDS", "ALLOWED_GUILD_IDS"})
 
-    if key in {"ALLOWED_CHANNELS", "ALLOWED_GUILDS"}:
-        config_data[key] = (
-            [c.strip().lstrip("#").strip() for c in value.split(",") if c.strip()]
-            if value.strip()
-            else []
+
+def _apply_env_int(
+    config_data: dict[str, Any], key: str, value: str, logger: logging.Logger
+) -> None:
+    """Coerce one integer environment override, warning on a malformed value."""
+    try:
+        config_data[key] = int(value)
+    except (ValueError, TypeError):
+        logger.warning("Invalid integer for %s: %s", key, value)
+
+
+def _apply_env_float(
+    config_data: dict[str, Any], key: str, value: str, logger: logging.Logger
+) -> None:
+    """Coerce one float environment override, warning on a malformed value."""
+    try:
+        config_data[key] = float(value)
+    except (ValueError, TypeError):
+        logger.warning("Invalid float for %s: %s", key, value)
+
+
+def _apply_env_bool(
+    config_data: dict[str, Any], key: str, value: str, logger: logging.Logger
+) -> None:
+    """Coerce one boolean environment override, warning on a malformed value."""
+    parsed = _parse_bool(value)
+    if parsed is None:
+        logger.warning(
+            "Invalid boolean for environment variable %s=%r; accepted values are %s; "
+            "ignoring override",
+            key,
+            value,
+            _BOOLEAN_ACCEPTED_FORMS,
         )
-    elif key in {"ALLOWED_CHANNEL_IDS", "ALLOWED_GUILD_IDS"}:
-        config_data[key] = _parse_channel_ids(value, logger, source=key)
-    elif key in int_keys:
-        try:
-            config_data[key] = int(value)
-        except (ValueError, TypeError):
-            logger.warning("Invalid integer for %s: %s", key, value)
-    elif key in float_keys:
-        try:
-            config_data[key] = float(value)
-        except (ValueError, TypeError):
-            logger.warning("Invalid float for %s: %s", key, value)
-    elif key in bool_keys:
-        parsed = _parse_bool(value)
-        if parsed is None:
-            logger.warning(
-                "Invalid boolean for environment variable %s=%r; accepted values are %s; "
-                "ignoring override",
-                key,
-                value,
-                _BOOLEAN_ACCEPTED_FORMS,
-            )
-        else:
-            config_data[key] = parsed
-    elif key == "REASONING_EFFORT":
-        config_data[key] = value.strip() or _CONFIG_DEFAULTS["REASONING_EFFORT"]
     else:
-        config_data[key] = value
+        config_data[key] = parsed
+
+
+def _apply_single_env_override(
+    config_data: dict[str, Any], key: str, value: str, logger: logging.Logger
+) -> None:
+    """Apply a single environment variable override."""
+    if not value.strip() and key not in _EXPLICIT_EMPTY_KEYS and key != "REASONING_EFFORT":
+        return
+    if key in _ENV_LIST_KEYS:
+        config_data[key] = [c.strip().lstrip("#").strip() for c in value.split(",") if c.strip()]
+    elif key in _ENV_ID_LIST_KEYS:
+        config_data[key] = _parse_channel_ids(value, logger, source=key)
+    elif key in _ENV_INT_KEYS:
+        _apply_env_int(config_data, key, value, logger)
+    elif key in _ENV_FLOAT_KEYS:
+        _apply_env_float(config_data, key, value, logger)
+    elif key in _ENV_BOOL_KEYS:
+        _apply_env_bool(config_data, key, value, logger)
+    else:
+        config_data[key] = value.strip()
 
 
 def _apply_config_defaults(config_data: dict[str, Any]) -> None:
-    """Apply default values for missing configuration keys."""
+    """Apply defaults for missing keys and blank values that mean "not set"."""
     for key, value in _CONFIG_DEFAULTS.items():
-        if key not in config_data or config_data[key] is None:
+        if _is_unset_value(key, config_data.get(key)):
             config_data[key] = list(value) if isinstance(value, list) else value
 
     # PERPLEXITY_OUTPUT_TOKENS defaults to the configured OpenAI cap, not a
@@ -667,15 +782,23 @@ def _parse_orchestrator_config(
         logger,
         section="Orchestrator",
     )
-    config_data["ROUTER_MODE"] = config.get(
-        "Orchestrator",
+    config_data["ROUTER_MODE"] = _get_str_safe(
+        config,
         "ROUTER_MODE",
-        fallback=_CONFIG_DEFAULTS["ROUTER_MODE"],
+        _CONFIG_DEFAULTS["ROUTER_MODE"],
+        section="Orchestrator",
     )
-    config_data["ROUTER_CLEF_MODEL"] = config.get(
-        "Orchestrator",
+    config_data["ROUTER_CLEF_API_KEY"] = _get_str_safe(
+        config,
+        "ROUTER_CLEF_API_KEY",
+        _CONFIG_DEFAULTS["ROUTER_CLEF_API_KEY"],
+        section="Orchestrator",
+    )
+    config_data["ROUTER_CLEF_MODEL"] = _get_str_safe(
+        config,
         "ROUTER_CLEF_MODEL",
-        fallback=_CONFIG_DEFAULTS["ROUTER_CLEF_MODEL"],
+        _CONFIG_DEFAULTS["ROUTER_CLEF_MODEL"],
+        section="Orchestrator",
     )
     config_data["ROUTER_CLEF_THRESHOLD"] = _get_float_safe(
         config,
@@ -700,13 +823,19 @@ def _parse_logging_config(
     logger: logging.Logger,
 ) -> None:
     """Parse Logging section of configuration."""
-    config_data["LOG_FILE"] = config.get(
-        "Logging", "LOG_FILE", fallback=_CONFIG_DEFAULTS["LOG_FILE"]
+    config_data["LOG_FILE"] = _get_str_safe(
+        config,
+        "LOG_FILE",
+        _CONFIG_DEFAULTS["LOG_FILE"],
+        section="Logging",
     )
     if base_folder and not Path(config_data["LOG_FILE"]).is_absolute():
         config_data["LOG_FILE"] = str(Path(base_folder) / config_data["LOG_FILE"])
-    config_data["LOG_LEVEL"] = config.get(
-        "Logging", "LOG_LEVEL", fallback=_CONFIG_DEFAULTS["LOG_LEVEL"]
+    config_data["LOG_LEVEL"] = _get_str_safe(
+        config,
+        "LOG_LEVEL",
+        _CONFIG_DEFAULTS["LOG_LEVEL"],
+        section="Logging",
     )
     config_data["DISCORDIANAI_LOG_COLOR"] = _get_bool_safe(
         config,
@@ -730,8 +859,11 @@ def _parse_health_config(
         logger,
         section="Health",
     )
-    config_data["HEALTH_HOST"] = config.get(
-        "Health", "HEALTH_HOST", fallback=_CONFIG_DEFAULTS["HEALTH_HOST"]
+    config_data["HEALTH_HOST"] = _get_str_safe(
+        config,
+        "HEALTH_HOST",
+        _CONFIG_DEFAULTS["HEALTH_HOST"],
+        section="Health",
     )
     config_data["HEALTH_PORT"] = _get_int_safe(
         config,
@@ -753,8 +885,11 @@ def _parse_discord_config(
     config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger
 ) -> None:
     """Parse Discord section of configuration."""
-    config_data["DISCORD_TOKEN"] = config.get(
-        "Discord", "DISCORD_TOKEN", fallback=_CONFIG_DEFAULTS["DISCORD_TOKEN"]
+    config_data["DISCORD_TOKEN"] = _get_str_safe(
+        config,
+        "DISCORD_TOKEN",
+        _CONFIG_DEFAULTS["DISCORD_TOKEN"],
+        section="Discord",
     )
     channels_str = config.get("Discord", "ALLOWED_CHANNELS", fallback="")
     config_data["ALLOWED_CHANNELS"] = [c.strip() for c in channels_str.split(",") if c.strip()]
@@ -774,14 +909,23 @@ def _parse_discord_config(
         logger,
         source="Discord.ALLOWED_GUILD_IDS",
     )
-    config_data["BOT_PRESENCE"] = config.get(
-        "Discord", "BOT_PRESENCE", fallback=_CONFIG_DEFAULTS["BOT_PRESENCE"]
+    config_data["BOT_PRESENCE"] = _get_str_safe(
+        config,
+        "BOT_PRESENCE",
+        _CONFIG_DEFAULTS["BOT_PRESENCE"],
+        section="Discord",
     )
-    config_data["ACTIVITY_TYPE"] = config.get(
-        "Discord", "ACTIVITY_TYPE", fallback=_CONFIG_DEFAULTS["ACTIVITY_TYPE"]
+    config_data["ACTIVITY_TYPE"] = _get_str_safe(
+        config,
+        "ACTIVITY_TYPE",
+        _CONFIG_DEFAULTS["ACTIVITY_TYPE"],
+        section="Discord",
     )
-    config_data["ACTIVITY_STATUS"] = config.get(
-        "Discord", "ACTIVITY_STATUS", fallback=_CONFIG_DEFAULTS["ACTIVITY_STATUS"]
+    config_data["ACTIVITY_STATUS"] = _get_str_safe(
+        config,
+        "ACTIVITY_STATUS",
+        _CONFIG_DEFAULTS["ACTIVITY_STATUS"],
+        section="Discord",
     )
 
 
@@ -789,39 +933,50 @@ def _parse_default_config(
     config: configparser.ConfigParser, config_data: dict[str, Any], logger: logging.Logger
 ) -> None:
     """Parse Default section of configuration."""
-    config_data["OPENAI_API_KEY"] = config.get(
-        "Default", "OPENAI_API_KEY", fallback=_CONFIG_DEFAULTS["OPENAI_API_KEY"]
+    config_data["OPENAI_API_KEY"] = _get_str_safe(
+        config,
+        "OPENAI_API_KEY",
+        _CONFIG_DEFAULTS["OPENAI_API_KEY"],
+        allow_empty=True,
     )
-    config_data["OPENAI_API_URL"] = config.get(
-        "Default", "OPENAI_API_URL", fallback=_CONFIG_DEFAULTS["OPENAI_API_URL"]
+    config_data["OPENAI_API_URL"] = _get_str_safe(
+        config, "OPENAI_API_URL", _CONFIG_DEFAULTS["OPENAI_API_URL"]
     )
-    config_data["GPT_MODEL"] = config.get(
-        "Default", "GPT_MODEL", fallback=_CONFIG_DEFAULTS["GPT_MODEL"]
-    )
-    config_data["REASONING_EFFORT"] = (
-        config.get("Default", "REASONING_EFFORT", fallback="").strip()
-        or _CONFIG_DEFAULTS["REASONING_EFFORT"]
-    )
+    config_data["GPT_MODEL"] = _get_str_safe(config, "GPT_MODEL", _CONFIG_DEFAULTS["GPT_MODEL"])
+    # An explicit blank REASONING_EFFORT means "omit the parameter"; a missing
+    # value falls back to the documented default later.
+    raw_reasoning_effort = config.get("Default", "REASONING_EFFORT", fallback=None)
+    if raw_reasoning_effort is not None:
+        config_data["REASONING_EFFORT"] = raw_reasoning_effort.strip()
 
     # Perplexity API
-    config_data["PERPLEXITY_API_KEY"] = config.get(
-        "Default", "PERPLEXITY_API_KEY", fallback=_CONFIG_DEFAULTS["PERPLEXITY_API_KEY"]
+    config_data["PERPLEXITY_API_KEY"] = _get_str_safe(
+        config,
+        "PERPLEXITY_API_KEY",
+        _CONFIG_DEFAULTS["PERPLEXITY_API_KEY"],
+        allow_empty=True,
     )
-    config_data["PERPLEXITY_API_URL"] = config.get(
-        "Default", "PERPLEXITY_API_URL", fallback=_CONFIG_DEFAULTS["PERPLEXITY_API_URL"]
+    config_data["PERPLEXITY_API_URL"] = _get_str_safe(
+        config, "PERPLEXITY_API_URL", _CONFIG_DEFAULTS["PERPLEXITY_API_URL"]
     )
-    config_data["PERPLEXITY_MODEL"] = config.get(
-        "Default", "PERPLEXITY_MODEL", fallback=_CONFIG_DEFAULTS["PERPLEXITY_MODEL"]
+    config_data["PERPLEXITY_MODEL"] = _get_str_safe(
+        config, "PERPLEXITY_MODEL", _CONFIG_DEFAULTS["PERPLEXITY_MODEL"]
     )
 
-    settings = ["INPUT_TOKENS", "OUTPUT_TOKENS", "CONTEXT_WINDOW"]
+    settings = [
+        "INPUT_TOKENS",
+        "OUTPUT_TOKENS",
+        "PERPLEXITY_INPUT_TOKENS",
+        "CONTEXT_WINDOW",
+        "PERPLEXITY_CONTEXT_WINDOW",
+    ]
     for key in settings:
         config_data[key] = _get_int_safe(config, key, _CONFIG_DEFAULTS[key], logger)
 
     # An omitted Perplexity cap follows OUTPUT_TOKENS (applied after all
     # overrides); an explicit value is validated and honoured on its own.
     raw_perplexity_output = config.get("Default", "PERPLEXITY_OUTPUT_TOKENS", fallback=None)
-    if raw_perplexity_output is not None:
+    if raw_perplexity_output is not None and raw_perplexity_output.strip():
         try:
             config_data["PERPLEXITY_OUTPUT_TOKENS"] = int(raw_perplexity_output)
         except (TypeError, ValueError):
@@ -830,8 +985,8 @@ def _parse_default_config(
                 raw_perplexity_output,
             )
 
-    config_data["SYSTEM_MESSAGE"] = config.get(
-        "Default", "SYSTEM_MESSAGE", fallback=_CONFIG_DEFAULTS["SYSTEM_MESSAGE"]
+    config_data["SYSTEM_MESSAGE"] = _get_str_safe(
+        config, "SYSTEM_MESSAGE", _CONFIG_DEFAULTS["SYSTEM_MESSAGE"]
     )
     config_data["WEB_TOOLS"] = _get_bool_safe(
         config,
@@ -849,6 +1004,23 @@ def _parse_default_config(
         config_data[key] = _get_int_safe(config, key, _CONFIG_DEFAULTS[key], logger)
 
 
+def _get_str_safe(
+    config: configparser.ConfigParser,
+    key: str,
+    default: str | None,
+    section: str = "Default",
+    *,
+    allow_empty: bool = False,
+) -> str | None:
+    """Get a string setting, treating a blank value as absent unless allowed."""
+    raw_value = config.get(section, key, fallback=None)
+    if raw_value is None:
+        return default
+    if not allow_empty and not raw_value.strip():
+        return default
+    return raw_value
+
+
 def _get_int_safe(
     config: configparser.ConfigParser,
     key: str,
@@ -857,6 +1029,9 @@ def _get_int_safe(
     section: str = "Default",
 ) -> int:
     """Safely get an integer from configuration with fallback."""
+    raw_value = config.get(section, key, fallback=None)
+    if raw_value is None or not raw_value.strip():
+        return default
     try:
         return config.getint(section, key, fallback=default)
     except ValueError:
@@ -873,7 +1048,7 @@ def _get_float_safe(
 ) -> float:
     """Safely get a float from configuration with fallback."""
     raw_value = config.get(section, key, fallback=None)
-    if raw_value is None:
+    if raw_value is None or not raw_value.strip():
         return default
     try:
         return float(raw_value)
@@ -906,7 +1081,7 @@ def _get_bool_safe(
 ) -> bool:
     """Safely get a boolean from configuration with fallback."""
     raw_value = config.get(section, key, fallback=None)
-    if raw_value is None:
+    if raw_value is None or not raw_value.strip():
         return default
 
     try:

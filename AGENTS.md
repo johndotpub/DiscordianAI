@@ -37,10 +37,15 @@ broke it, and each break is a user-visible bug.
   back, and record the successful turn. No client module imports routing code or decides
   which provider runs. *Why:* routing is a single policy with one place to test.
   *Consequence:* duplicated routing drifts and produces answers from the wrong provider.
-  *Check:* `rg -n 'build_router|build_router_input|\.decide\(' src` shows routing use only
-  in `smart_orchestrator.py` and the `routing` package.
+  *Check:* `rg -n 'build_router|build_router_input|\.decide\(' src` shows `bot.py` builds
+  the startup router and `smart_orchestrator.py` builds one cached fallback per effective
+  config and calls `router.decide()` once per message; the remaining matches are the
+  `routing` package.
   *Mode:* `ROUTER_MODE=heuristic|clef` selects the deterministic gate (default) or the optional
-  Clef decision model; `model` is retired and raises.
+  Clef decision model; `model` is retired and raises. The Clef key is scoped to its endpoint:
+  `ROUTER_CLEF_API_KEY`, then `OLLAMA_API_KEY` from the environment, then `OPENAI_API_KEY`
+  only when `OPENAI_API_URL` is an Ollama Cloud URL. A key issued by another provider is
+  never sent to Clef.
 
 - **History is keyed per conversation, never per user.** The only valid keys are
   `g:<guild>:c:<channel>` and `dm:<user>`, built by
@@ -61,24 +66,45 @@ broke it, and each break is a user-visible bug.
   `tests/test_log_file_contract.py::test_configuration_keeps_exactly_one_root_handler` and
   `tests/test_structured_logging.py`.
 
-- **One delivery helper owns the mention policy.** Every model-derived answer goes through
-  `message_splitter.send_formatted_message()` and the private `_deliver()` it delegates to.
-  `_deliver()` is the only place in `src/` that constructs `discord.AllowedMentions` or sets
-  `mention_author=False`; no other module may call `Message.reply` for an answer. Fixed
-  operational notices (rate-limit and error text) use `error_handling.safe_discord_send()`
-  or the router's last-resort `channel.send`; they must stay constant text and must never
-  carry model output. *Why:* an answer must not be able to mention `@everyone` or a role,
-  and splitting must not create two mention policies. Pings are prevented both by the
-  allowed-mentions policy (`everyone=False`, `roles=[]`) and by output neutralisation;
-  delivery sets the policy explicitly. *Consequence:* mention abuse and inconsistent reply
-  targeting. *Check:*
+- **One delivery helper owns the reference and mention policy.** Every model-derived
+  answer goes through `message_splitter.send_formatted_message()` and the private
+  `_deliver()` it delegates to. `_deliver()` is the only place in `src/` that constructs
+  `discord.AllowedMentions`, sets `mention_author=False`, or builds a reply reference
+  (`original_message.to_reference(fail_if_not_exists=False)`), and every answer is sent
+  with `channel.send`; no module calls `Message.reply`. Fixed operational notices
+  (rate-limit and error text) use `error_handling.safe_discord_send()` or the router's
+  last-resort `channel.send`; they must stay constant text and must never carry model
+  output. *Why:* an answer must not be able to mention `@everyone` or a role, splitting
+  must not create two mention policies, and a reply must still arrive when the question
+  was deleted. Pings are prevented both by the allowed-mentions policy (`everyone=False`,
+  `roles=[]`) and by output neutralisation; delivery sets the policy explicitly.
+  *Consequence:* mention abuse, inconsistent reply targeting, and failed delivery after a
+  deletion. *Check:*
   `tests/test_delivery_helper.py::test_only_one_allowed_mentions_construction`,
   `tests/test_delivery_helper.py`, and `tests/test_golden_behaviour.py`.
 
+- **One parser decides what is code, and each chunk is sanitised after splitting.**
+  The sanitiser and the splitter both call `message_splitter._filtered_code_regions()`;
+  the public `protected_code_regions()` wraps it for callers that need the spans. It is
+  built on `tree-sitter`/`tree-sitter-markdown` and keeps only the conservative subset
+  (closed exact three-backtick fence whose opener and closer Discord's sequential
+  triple-run pairing matches, and the text contains no other unmatched triple-backtick
+  run, or a closed inline span whose opener and closer are not backslash-escaped, with one
+  backtick run length and the next sequential Discord pair). The splitter also keeps a
+  split-only Discord pairing (`_discord_fence_spans()`) to place chunk boundaries when the
+  filter protects no fence; those extra spans never suppress sanitisation. Outside the
+  protected regions the parser rewrite is followed by parse-independent passes that break
+  every `](`, neutralise every `://`, and separate `<` from a scheme. Every final chunk is
+  sanitised again, so a split cannot turn protected text into a live link, and no line is
+  ever deleted. *Why:* two hand-written code detectors disagreed and leaked links or
+  froze on long backtick runs. *Consequence:* a live link, content loss, or an event-loop
+  stall. *Check:* `tests/test_code_protection.py`, including the fixed thousand-case
+  differential corpus and the 64,000-character complexity guard.
+
 - **The breaker wraps the retry.** Every chat-completion call goes through
   `get_circuit_breaker(provider).call(retry_with_backoff, ...)`. The breaker wraps the whole
-  retry sequence, so three attempts for one logical call count as one failure
-  (`DEFAULT_API_RETRY_CONFIG` currently allows two attempts). Never call
+  retry sequence, so the retry sequence for one logical call counts as one failure
+  (`DEFAULT_API_RETRY_CONFIG` allows two attempts). Never call
   `client.chat.completions.create()` directly from a new path. *Why:* retries are part of
   one user request, not separate failures. *Consequence:* one outage either trips the
   breaker several times too early or never trips it at all. *Check:*
@@ -87,8 +113,11 @@ broke it, and each break is a user-visible bug.
 
 - **Prompt input is untrusted and bounded.** The current turn and history travel as
   role-tagged chat messages, never concatenated into the system prompt. Model output is
-  sanitised before Discord. Every prompt is bounded by `INPUT_TOKENS`, `OUTPUT_TOKENS`, and
-  `CONTEXT_WINDOW`. Provider web tools return untrusted text: search results are capped at
+  sanitised before Discord. Chat prompts are bounded by `INPUT_TOKENS`, `OUTPUT_TOKENS`,
+  and `CONTEXT_WINDOW`; Perplexity prompts use `PERPLEXITY_INPUT_TOKENS`,
+  `PERPLEXITY_OUTPUT_TOKENS`, and `PERPLEXITY_CONTEXT_WINDOW`. Both output caps are
+  validated against `MAX_OUTPUT_TOKENS_CEILING = 128,000`, which is independent of any
+  context window. Provider web tools return untrusted text: search results are capped at
   6,000 characters and fetched pages at 8,000, and both provider instruction blocks say not
   to follow instructions found inside them. No new prompt may interpolate user or tool
   text without a size limit. *Why:* tool results can contain instructions, and unbounded
@@ -134,8 +163,8 @@ diff or with the named command.
   contain legacy imports of `MESSAGE_LIMIT`; do not add more.
 - **No new wall-clock assertions.** Patch `time.monotonic` and `asyncio.sleep` (see
   `tests/test_retry_policy.py`) instead of sleeping or asserting elapsed time. The
-  subprocess shutdown test and the fast-fail breaker test are deliberate exceptions because
-  the bound itself is the behaviour under test. Do not leave unawaited tasks, and reset
+  subprocess shutdown test, the fast-fail breaker test, and the over-cap delivery test are
+  deliberate exceptions because the bound itself is the behaviour under test. Do not leave unawaited tasks, and reset
   shared mutable state between tests (`tests/conftest.py` resets the provider breakers).
 - **Shared fixtures live in `tests/conftest.py`.** A setup block copied three times is a
   defect. File-local fakes are fine when they are the boundary under test.
@@ -172,8 +201,8 @@ diff or with the named command.
   and every `CONSTANT = value` line in prose is checked against `src/config.py`; change both
   sides in the same commit.
 - **No references to deleted modules or functions, and no test-tree listings that enumerate
-  files.** `tests/test_docs_truth.py` scans `README.md` and the top level of `docs/*.md` for missing modules,
-  stale symbols, and non-existent commands.
+  files.** `tests/test_docs_truth.py` scans `README.md` and every Markdown file under
+  `docs/` recursively for missing modules, stale symbols, and non-existent commands.
 - **When behaviour changes, the doc changes in the same commit.** A follow-up documentation
   PR is a broken contract, not a plan.
 - **CHANGELOG.** Follow Keep a Changelog. Use the established section vocabulary:
@@ -204,8 +233,10 @@ diff or with the named command.
   it. Check callers, not just the report.
 - **Classify errors by type and status.** Use `error_handling.classify_error()` and the
   typed `ErrorType`/`ErrorSeverity` branches; do not match on a raw string when the
-  exception type or HTTP status is available. A deterministic 4xx is not configurable and
-  must not be reported as a transient provider failure.
+  exception type or HTTP status is available. A user-caused request error is neutral for
+  the breaker; configuration errors (401, 403, 404, and a 400 reporting an invalid or missing
+  model) count. A deterministic 4xx is not configurable and must not be reported as a
+  transient provider failure.
 - **Retry policy.** Retry failures a repeat can help: connection errors where no request
   was established, 429 with `Retry-After` honoured (capped at 30 seconds), and 5xx. Do not
   retry read timeouts, auth failures, validation errors, or other 4xx. Bound every retry
@@ -220,9 +251,7 @@ diff or with the named command.
 ## 6. Security rules
 
 - **Never log or display a token, an API key, or a full request/response body.** Log counts,
-  lengths, status codes, and classified error types instead. The debug line that dumps a
-  discarded OpenAI answer in `_process_hybrid_mode()` is a known violation; shrink or remove
-  it when you touch that path, and do not copy the pattern.
+  lengths, status codes, and classified error types instead.
 - **Treat model output as untrusted.** It goes through `sanitize_model_output()` and
   `sanitize_for_discord()`; it must not be able to create mentions, arbitrary markdown
   links, or embed payloads the bot did not construct.
@@ -274,6 +303,10 @@ pip wheel . -w /tmp/wheels --no-deps
 # not shadowing it: python -m build --wheel
 ```
 
+Set `DISCORDIANAI_DOCS_OFFLINE=1` to build without fetching the Python and
+discord.py intersphinx inventories; `docs/api/conf.py` then clears the mapping.
+`CONTRIBUTING.md` and `docs/Development.md` point here for that switch.
+
 Coverage is a separate gate because plain `pytest` does not collect it:
 
 ```bash
@@ -298,13 +331,23 @@ tox -e py312
   bind/startup failure, logs once, disables the endpoint, and leaves the Discord client
   running. Check:
   `tests/test_health_truth.py::test_bind_failure_disables_health_server_without_killing_bot`.
-- **One instance per token.** A Discord token cannot have two live gateway sessions without
-  duplicate replies. `discordian.sh` enforces this for launches it owns through `.bot.pid`;
-  containers, systemd, and other supervisors must enforce the same rule externally. The
-  Python process itself does not lock the token.
+- **One instance per config.** `discordian.sh` records each config's PID in
+  `.bot-<stem>-<hash>.pid` and stops only that instance, so a second config in the same
+  checkout keeps running. The straggler scan resolves each process's `--conf` against its working
+  directory and matches this instance's absolute config path; a legacy `.bot.pid` is used
+  only when its process runs the same config. The launcher prevents two launches of the same
+  config file, but it does not compare tokens and does not detect two configs that share a
+  Discord token. Each token must appear in at most one running config; that is the operator's
+  responsibility, and containers, systemd, and other supervisors that bypass the launcher
+  must enforce the same rule externally. Two live gateway sessions for one token duplicate
+  every reply. The Python process itself does not lock the token.
 - **Log rotation uses the shipped fragment.** `contrib/logrotate/discordianai` rotates a
   supervisor-owned `bot.log` with `copytruncate`, because the bot does not reopen a log file
-  it never opened. Install it and replace the placeholder path.
+  it never opened. Install it and replace the placeholder path and the `su USER GROUP`
+  placeholders; the `su` line is required when the log's parent directory is world-writable
+  or group-writable by a group other than root. `size` is checked when logrotate runs, so
+  the live file is about 100 MB plus the growth since the previous check, and
+  `delaycompress` leaves the newest rotation uncompressed.
 - **The supervisor owns stderr.** Logs go to stderr (`LOG_FILE` is ignored). The shipped
   systemd unit appends stdout/stderr to `bot.log`; Docker captures both streams. Use one
   owner for redirection so lines are neither duplicated nor lost.

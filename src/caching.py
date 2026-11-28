@@ -8,7 +8,6 @@ This module provides:
 """
 
 import asyncio
-from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
@@ -20,15 +19,15 @@ import threading
 import time
 from typing import Any
 
+from cachetools import TLRUCache
+
 from .config import DEFAULT_CACHE_TTL
+from .providers.base import object_field
 
 logger = logging.getLogger(__name__)
 
 # Constants for caching
 MIN_CACHABLE_RESPONSE_LENGTH = 10
-RESPONSE_LENGTH_TTL_THRESHOLD = 1000
-LONG_RESPONSE_TTL = 1800.0
-SHORT_RESPONSE_TTL = DEFAULT_CACHE_TTL
 POSITIONAL_CONFIG_INDEX = 3
 
 
@@ -110,7 +109,7 @@ def _extract_conversation_summary(args: tuple[Any, ...], kwargs: dict[str, Any])
     return []
 
 
-def _conversation_digest(conversation_summary: Any) -> str:
+def conversation_digest(conversation_summary: Any) -> str:
     """Hash ordered conversation history without losing message order."""
     if not conversation_summary:
         payload = "[]"
@@ -149,7 +148,7 @@ def _extract_request_scope(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dic
     return {
         "user_id": user_id,
         "conversation_key": conversation_key,
-        "conversation_digest": _conversation_digest(conversation_summary),
+        "conversation_digest": conversation_digest(conversation_summary),
         "has_conversation": bool(conversation_summary),
         "image_digests": _image_digests(request),
     }
@@ -159,13 +158,13 @@ def _generate_scoped_key(message: str, context: dict[str, Any], *, salt: str) ->
     """Build a key scoped to the conversation, history, and routing decision."""
     user_id = context.get("user_id")
     conversation_key = context.get("conversation_key")
-    conversation_digest = context.get("conversation_digest")
+    digest = context.get("conversation_digest")
 
-    if conversation_digest is None:
+    if digest is None:
         conversation_summary = context.get("conversation_summary")
         if conversation_summary is None:
             conversation_summary = context.get("history", [])
-        conversation_digest = _conversation_digest(conversation_summary)
+        digest = conversation_digest(conversation_summary)
 
     scope_id = conversation_key if conversation_key is not None else user_id
     if scope_id is None:
@@ -179,7 +178,7 @@ def _generate_scoped_key(message: str, context: dict[str, Any], *, salt: str) ->
             str(context.get("system_message") or "").encode(),
         ).hexdigest()[:8],
         "conversation_scope": str(scope_id),
-        "conversation_digest": conversation_digest,
+        "conversation_digest": digest,
         "service": context.get("service", "unknown"),
         "router_id": context.get("router_id", "unknown"),
         "policy_version": context.get("policy_version", "unknown"),
@@ -200,11 +199,7 @@ def _extract_routing_context(request: Any, func_name: str) -> dict[str, Any]:
     routing = getattr(request, "routing", None) if request is not None else None
 
     def read(name: str, default: Any) -> Any:
-        if routing is None:
-            return default
-        if isinstance(routing, dict):
-            return routing.get(name, default)
-        return getattr(routing, name, default)
+        return default if routing is None else object_field(routing, name, default)
 
     salt = read("salt", None)
     if not isinstance(salt, str) or not salt:
@@ -241,17 +236,30 @@ def _cache_context(
     return message, context, salt
 
 
-@dataclass
-class CacheEntry:
-    """Cache entry with metadata."""
+@dataclass(frozen=True)
+class _CacheEntry:
+    """Value and time-to-live stored in the response cache."""
 
     value: Any
-    timestamp: float
-    ttl: float = DEFAULT_CACHE_TTL  # 10 minutes default
+    ttl: float
 
-    def is_expired(self) -> bool:
-        """Check if cache entry has expired."""
-        return time.time() - self.timestamp > self.ttl
+
+class _StatsTLRUCache(TLRUCache):
+    """TLRUCache that counts the entries it evicts and expires."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.evicted = 0
+        self.expired = 0
+
+    def popitem(self) -> tuple[str, _CacheEntry]:
+        self.evicted += 1
+        return super().popitem()
+
+    def expire(self, time: float | None = None) -> list[tuple[str, _CacheEntry]]:
+        expired = super().expire(time)
+        self.expired += len(expired)
+        return expired
 
 
 class ThreadSafeLRUCache:
@@ -260,16 +268,27 @@ class ThreadSafeLRUCache:
     Provides fast caching with automatic cleanup of expired entries.
     """
 
-    def __init__(self, max_size: int = 1000, default_ttl: float = DEFAULT_CACHE_TTL):
+    def __init__(
+        self,
+        max_size: int = 1000,
+        default_ttl: float = DEFAULT_CACHE_TTL,
+        clock: Callable[[], float] | None = None,
+    ):
         """Initialize cache with capacity and default TTL.
 
         Args:
             max_size: Maximum number of entries to store.
             default_ttl: Default time-to-live per entry in seconds.
+            clock: Optional time source used for TTL calculations.
         """
         self.max_size = max_size
         self.default_ttl = default_ttl
-        self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
+        self._clock = clock or time.monotonic
+        self._cache: _StatsTLRUCache[str, _CacheEntry] = _StatsTLRUCache(
+            max_size,
+            ttu=lambda _key, entry, now: now + entry.ttl,
+            timer=self._clock,
+        )
         self._lock = threading.RLock()
         self._stats = {
             "hits": 0,
@@ -281,23 +300,13 @@ class ThreadSafeLRUCache:
     def get(self, key: str) -> Any | None:
         """Get value from cache."""
         with self._lock:
-            if key not in self._cache:
+            try:
+                entry = self._cache[key]
+            except KeyError:
                 self._stats["misses"] += 1
                 return None
 
-            entry = self._cache[key]
-
-            # Check if expired
-            if entry.is_expired():
-                del self._cache[key]
-                self._stats["expired"] += 1
-                self._stats["misses"] += 1
-                return None
-
-            # Move to end (most recently used)
-            self._cache.move_to_end(key)
             self._stats["hits"] += 1
-
             return entry.value
 
     def put(self, key: str, value: Any, ttl: float | None = None) -> None:
@@ -306,20 +315,7 @@ class ThreadSafeLRUCache:
             if ttl is None:
                 ttl = self.default_ttl
 
-            # Remove existing entry if present
-            if key in self._cache:
-                del self._cache[key]
-
-            # Add new entry
-            entry = CacheEntry(value=value, timestamp=time.time(), ttl=ttl)
-            self._cache[key] = entry
-
-            # Enforce max size
-            while len(self._cache) > self.max_size:
-                # Remove least recently used
-                oldest_key = next(iter(self._cache))
-                del self._cache[oldest_key]
-                self._stats["evictions"] += 1
+            self._cache[key] = _CacheEntry(value=value, ttl=ttl)
 
     def clear(self) -> None:
         """Clear all cache entries."""
@@ -329,11 +325,14 @@ class ThreadSafeLRUCache:
     def get_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         with self._lock:
+            size = len(self._cache)
+            self._stats["evictions"] = self._cache.evicted
+            self._stats["expired"] = self._cache.expired
             total_requests = self._stats["hits"] + self._stats["misses"]
             hit_rate = (self._stats["hits"] / total_requests * 100) if total_requests > 0 else 0
 
             return {
-                "size": len(self._cache),
+                "size": size,
                 "max_size": self.max_size,
                 "hit_rate": round(hit_rate, 2),
                 "total_requests": total_requests,
@@ -347,20 +346,29 @@ class ResponseCache:
     Caches expensive API responses with intelligent cache key generation.
     """
 
-    def __init__(self, max_size: int = 500, default_ttl: float = DEFAULT_CACHE_TTL):
+    def __init__(
+        self,
+        max_size: int = 500,
+        default_ttl: float = DEFAULT_CACHE_TTL,
+        clock: Callable[[], float] | None = None,
+    ):
         """Initialize response cache wrapper.
 
         Args:
             max_size: Maximum cache entries to store.
             default_ttl: Default TTL for cached responses (seconds).
+            clock: Optional time source used for TTL calculations.
         """
-        self.cache = ThreadSafeLRUCache(max_size, default_ttl)
+        self.cache = ThreadSafeLRUCache(max_size, default_ttl, clock)
         self.logger = logging.getLogger(__name__)
 
     def _should_cache_response(self, response: str, error: Exception | None = None) -> bool:
         """Determine if response should be cached."""
         if error:
             return False  # Don't cache errors
+
+        if getattr(response, "truncated", False):
+            return False  # A partial answer must not be replayed as the answer
 
         if not response or len(response.strip()) < MIN_CACHABLE_RESPONSE_LENGTH:
             return False  # Don't cache very short responses
@@ -369,10 +377,10 @@ class ResponseCache:
         response_lower = response.lower()
         time_indicators = [
             r"\bcurrent time\b",
-            r"(?:^|[.!?]\s+)(?:today(?:'s)?|yesterday|tomorrow|latest|recent|tonight)\b",
-            r"(?:^|[.!?]\s+)right now\b",
-            r"(?:^|[.!?]\s+)just now\b",
-            r"(?:^|[.!?]\s+)breaking news\b",
+            r"\b(?:today(?:'s)?|yesterday|tomorrow|latest|recent|tonight)\b",
+            r"\bright now\b",
+            r"\bjust now\b",
+            r"\bbreaking news\b",
             r"\bthis (?:morning|afternoon|evening)\b",
         ]
 
@@ -407,7 +415,7 @@ class ResponseCache:
             cached_response = self.cache.get(cache_key)
 
             if cached_response:
-                self.logger.debug("Cache hit for message: %s...", message[:50])
+                self.logger.debug("Cache hit for message (length=%d)", len(message))
                 return cached_response
 
         except Exception as e:  # noqa: BLE001
@@ -436,16 +444,8 @@ class ResponseCache:
             if cache_key is None:
                 return
 
-            # Use shorter TTL for potentially time-sensitive content
-            if ttl is None:
-                # Default TTL based on response characteristics
-                if len(response) > RESPONSE_LENGTH_TTL_THRESHOLD:
-                    ttl = LONG_RESPONSE_TTL
-                else:
-                    ttl = SHORT_RESPONSE_TTL
-
             self.cache.put(cache_key, response, ttl)
-            self.logger.debug("Cached response for message: %s...", message[:50])
+            self.logger.debug("Cached response for message (length=%d)", len(message))
 
         except Exception as e:  # noqa: BLE001
             self.logger.warning("Cache storage failed: %s", e)

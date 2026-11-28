@@ -23,6 +23,8 @@ _IMPORT_ERRORS = {"ImportError", "ModuleNotFoundError"}
 # Import names that differ from the distribution users need to install.
 _DISTRIBUTION_ALIASES = {
     "discord": "discord.py",
+    "tree_sitter": "tree-sitter",
+    "tree_sitter_markdown": "tree-sitter-markdown",
 }
 
 
@@ -131,9 +133,13 @@ def _collect_imports(tree: ast.AST) -> set[str]:
 
 def get_required_imports() -> set[str]:
     """Return the third-party modules imported by the source tree at runtime."""
-    local_modules = {path.stem for path in _SRC_DIR.glob("*.py")} | {"src"}
+    local_modules = (
+        {path.stem for path in _SRC_DIR.rglob("*.py")}
+        | {path.name for path in _SRC_DIR.iterdir() if path.is_dir()}
+        | {"src"}
+    )
     imported: set[str] = set()
-    for path in _SRC_DIR.glob("*.py"):
+    for path in _SRC_DIR.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         imported.update(_collect_imports(tree))
     return {

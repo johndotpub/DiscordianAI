@@ -20,6 +20,8 @@ We use `tox` to run the canonical CI/test suite. Run Python 3.12 locally (the ca
 tox -e py312
 ```
 
+CI also runs the tests against the minimum supported version of each runtime dependency.
+
 ## Modern Development Workflow
 
 - Canonical test/lint/audit suite (run in a terminal): `tox -e py312`, `black --check .`, `ruff check .`, `tox -e audit`.
@@ -62,7 +64,11 @@ To run all checks and tests:
 black --check .
 ruff check .
 pytest -q
+python -m sphinx -b html docs/api docs/api/_build -W
 ```
+
+For an offline documentation build, use the switch described in `AGENTS.md`
+section 8.
 
 To auto-fix formatting and linting:
 

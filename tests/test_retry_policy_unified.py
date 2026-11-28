@@ -7,7 +7,11 @@ from unittest.mock import AsyncMock, Mock, patch
 import discord
 import pytest
 
-from src.error_handling import retry_after_seconds, safe_discord_send
+from src.error_handling import (
+    _discord_retry_config,
+    retry_after_seconds,
+    safe_discord_send,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -86,6 +90,26 @@ async def test_discord_403_makes_one_attempt_without_sleeping():
 
     with patch("src.error_handling.asyncio.sleep", sleep):
         result = await safe_discord_send(channel, "hello", Mock())
+
+    assert result is False
+    assert channel.send.await_count == 1
+    assert not sleep.called
+
+
+def test_discord_retry_has_a_finite_deadline():
+    """The send retry sequence is bounded even when attempts remain."""
+    assert _discord_retry_config(3).max_elapsed == 90.0
+
+
+@pytest.mark.asyncio
+async def test_discord_timeout_makes_one_attempt_without_sleeping():
+    """A send timeout has an unknown outcome, so it must not be retried."""
+    channel = Mock()
+    channel.send = AsyncMock(side_effect=TimeoutError("send timed out"))
+    sleep = AsyncMock()
+
+    with patch("src.error_handling.asyncio.sleep", sleep):
+        result = await safe_discord_send(channel, "hello", Mock(), max_retries=3)
 
     assert result is False
     assert channel.send.await_count == 1

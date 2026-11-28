@@ -1,10 +1,15 @@
 """Structured logging configuration using structlog.
 
 Configures structlog with a hybrid renderer that outputs human-readable
-logs to the console (for development) and JSON-structured logs when
-environment variable ``DISCORDIANAI_LOG_JSON=1`` is set (for production
-observability). Console color output follows TTY detection by default,
-but can be forced on or off with ``DISCORDIANAI_LOG_COLOR``.
+logs to the console (for development) and JSON-structured logs for
+production observability. Console color output follows TTY detection by
+default.
+
+The ``DISCORDIANAI_LOG_JSON``, ``DISCORDIANAI_LOG_LEVEL``, and
+``DISCORDIANAI_LOG_COLOR`` environment variables are fallbacks used when a
+direct caller omits the corresponding :func:`configure_structlog` argument.
+The bot entry point always passes ``json_logs`` and ``log_level`` explicitly,
+so those two variables apply only to direct callers of the function.
 
 All existing ``logging.getLogger()`` calls are automatically enriched
 with structlog processors via the stdlib integration layer. No changes
@@ -23,6 +28,7 @@ Usage::
     logger.info("request completed", service="openai", duration_ms=340)
 """
 
+import importlib
 import logging
 import os
 import sys
@@ -42,17 +48,6 @@ def _add_logger_name(
         record = event_dict.get("record")
     if record and hasattr(record, "name"):
         event_dict["logger_name"] = record.name
-    return event_dict
-
-
-def _drop_record(
-    _logger: logging.Logger,
-    _method_name: str,
-    event_dict: dict[str, Any],
-) -> dict[str, Any]:
-    """Remove internal ``_record`` / ``record`` keys before rendering."""
-    event_dict.pop("_record", None)
-    event_dict.pop("record", None)
     return event_dict
 
 
@@ -94,6 +89,26 @@ def _resolve_colours(force_colors: bool | None, stream: Any) -> tuple[bool, str]
     return False, "disabled because the stream is not a terminal"
 
 
+def _console_exception_formatter(colors_enabled: bool) -> Any:
+    """Return a traceback formatter that works without the optional Rich package.
+
+    structlog exposes ``RichTracebackFormatter`` even when ``rich`` is not
+    installed, but instantiating it and rendering an exception then fails with
+    ``NameError: Console``. Rich is not a runtime dependency, so use the plain
+    structlog renderer unless it can actually be imported. Neither formatter
+    prints frame locals.
+    """
+    try:
+        importlib.import_module("rich")
+    except ImportError:
+        return structlog.dev.plain_traceback
+
+    return structlog.dev.RichTracebackFormatter(
+        show_locals=False,
+        color_system="truecolor" if colors_enabled else None,
+    )
+
+
 def configure_structlog(
     *,
     json_logs: bool | None = None,
@@ -106,9 +121,10 @@ def configure_structlog(
     Args:
         json_logs: Force JSON output. If ``None``, reads the
             ``DISCORDIANAI_LOG_JSON`` environment variable (defaults to
-            ``False``).
+            ``False``). The bot entry point always passes a value.
         log_level: Set the root logger level. If ``None``, reads
-            ``DISCORDIANAI_LOG_LEVEL`` (defaults to ``INFO``).
+            ``DISCORDIANAI_LOG_LEVEL`` (defaults to ``INFO``). The bot entry
+            point always passes a value.
         log_colors: Force console colors on or off. If ``None``, reads the
             ``DISCORDIANAI_LOG_COLOR`` environment variable and otherwise
             enables colors only when ``stream`` is a TTY.
@@ -129,19 +145,22 @@ def configure_structlog(
     shared_processors: list[Any] = [
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
-        _add_logger_name,
-        structlog.stdlib.ExtraAdder(),
-        _drop_record,
     ]
 
     color_reason: str | None = None
+    exception_processors: list[Any] = []
     if json_logs:
         renderer = structlog.processors.JSONRenderer()
+        exception_processors = [structlog.processors.format_exc_info]
     else:
         if stream is None:
             stream = sys.stderr
         colors_enabled, color_reason = _resolve_colours(force_colors, stream)
-        renderer = structlog.dev.ConsoleRenderer(colors=colors_enabled, pad_event_to=0)
+        renderer = structlog.dev.ConsoleRenderer(
+            colors=colors_enabled,
+            pad_event_to=0,
+            exception_formatter=_console_exception_formatter(colors_enabled),
+        )
 
     structlog.configure(
         processors=[
@@ -157,9 +176,12 @@ def configure_structlog(
     )
 
     formatter = structlog.stdlib.ProcessorFormatter(
+        foreign_pre_chain=[structlog.stdlib.ExtraAdder()],
         processors=[
+            _add_logger_name,
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             *shared_processors,
+            *exception_processors,
             renderer,
         ],
     )

@@ -1,47 +1,30 @@
 """Tests for the HTTP health endpoint server."""
 
-import asyncio
 import logging
 from unittest.mock import MagicMock, patch
 
+import aiohttp
 import pytest
 
 from src.health_server import HealthServer, _detect_mode, create_health_app
+from tests.helpers import (
+    FakeAppRunner,
+    FakeSite,
+    health_deps,
+    health_server_port,
+    request_health,
+)
 
-
-def _mock_deps(connected=True, has_openai=True, has_perplexity=True):
-    """Create a mock deps dict for health server tests."""
-    bot = MagicMock()
-    bot.is_ready.return_value = connected
-    bot.guilds = [MagicMock(), MagicMock()]
-    bot.latency = 0.05
-
-    config = {
-        "OPENAI_API_KEY": "sk-test-key" if has_openai else None,
-        "PERPLEXITY_API_KEY": "pplx-test-key" if has_perplexity else None,
-        "GPT_MODEL": "gpt-5-mini",
-        "PERPLEXITY_MODEL": "perplexity/sonar",
-        "HEALTH_ENABLED": True,
-        "HEALTH_HOST": "127.0.0.1",
-        "HEALTH_PORT": 8080,
-    }
-
-    return {
-        "bot": bot,
-        "client": MagicMock() if has_openai else None,
-        "perplexity_client": MagicMock() if has_perplexity else None,
-        "config": config,
-    }
+_mock_deps = health_deps
 
 
 def test_liveness_probe():
     """Liveness probe always returns 200 when process is alive."""
     deps = _mock_deps()
     app = create_health_app(deps)
-    from starlette.testclient import TestClient
 
-    with TestClient(app) as client:
-        response = client.get("/health/live")
+    response = request_health(app, "/health/live")
+
     assert response.status_code == 200
     assert response.json()["status"] == "alive"
 
@@ -50,10 +33,9 @@ def test_readiness_probe_ready():
     """Readiness probe returns 200 when bot is connected and has clients."""
     deps = _mock_deps(connected=True, has_openai=True)
     app = create_health_app(deps)
-    from starlette.testclient import TestClient
 
-    with TestClient(app) as client:
-        response = client.get("/health/ready")
+    response = request_health(app, "/health/ready")
+
     assert response.status_code == 200
     assert response.json()["status"] == "ready"
 
@@ -62,10 +44,9 @@ def test_readiness_probe_not_ready():
     """Readiness probe returns 503 when bot is not connected."""
     deps = _mock_deps(connected=False, has_openai=True)
     app = create_health_app(deps)
-    from starlette.testclient import TestClient
 
-    with TestClient(app) as client:
-        response = client.get("/health/ready")
+    response = request_health(app, "/health/ready")
+
     assert response.status_code == 503
     assert response.json()["status"] == "not_ready"
 
@@ -74,10 +55,9 @@ def test_health_endpoint_full():
     """Full health endpoint returns services summary."""
     deps = _mock_deps(connected=True, has_openai=True, has_perplexity=True)
     app = create_health_app(deps)
-    from starlette.testclient import TestClient
 
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(app, "/health")
+
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
@@ -87,14 +67,24 @@ def test_health_endpoint_full():
     assert data["services"]["discord"] == "connected"
 
 
+@pytest.mark.parametrize("route", ["/health", "/health/live", "/health/ready"])
+def test_trailing_slash_route_matches_the_base_route(route):
+    """Probes with a trailing slash keep the same status and body."""
+    with patch("src.health_server.time.monotonic", return_value=1000.0):
+        base = request_health(create_health_app(_mock_deps(connected=True)), route)
+        slash = request_health(create_health_app(_mock_deps(connected=True)), route + "/")
+
+    assert slash.status_code == base.status_code, slash.text
+    assert slash.json() == base.json()
+
+
 def test_health_endpoint_no_clients():
     """Health endpoint returns unhealthy when no API clients configured."""
     deps = _mock_deps(connected=True, has_openai=False, has_perplexity=False)
     app = create_health_app(deps)
-    from starlette.testclient import TestClient
 
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(app, "/health")
+
     assert response.status_code == 503
 
 
@@ -102,10 +92,9 @@ def test_health_endpoint_openai_only():
     """Health endpoint reports openai_only mode correctly."""
     deps = _mock_deps(connected=True, has_openai=True, has_perplexity=False)
     app = create_health_app(deps)
-    from starlette.testclient import TestClient
 
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(app, "/health")
+
     data = response.json()
     assert data["mode"] == "openai_only"
 
@@ -148,10 +137,9 @@ def test_health_endpoint_disconnected_bot():
     """Health endpoint reports disconnected when bot is not ready."""
     deps = _mock_deps(connected=False, has_openai=True)
     app = create_health_app(deps)
-    from starlette.testclient import TestClient
 
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(app, "/health")
+
     assert response.status_code == 503
     assert response.json()["services"]["discord"] == "disconnected"
 
@@ -164,10 +152,9 @@ def test_health_endpoint_pool_with_check_pool_health():
     deps = _mock_deps(connected=True, has_openai=True)
     deps["connection_pool_manager"] = pool_manager
     app = create_health_app(deps)
-    from starlette.testclient import TestClient
 
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(app, "/health")
+
     assert response.status_code == 200
     assert response.json()["services"]["pool"]["status"] == "healthy"
 
@@ -184,53 +171,31 @@ async def test_health_server_already_running():
     assert server._task is mock_task
 
 
-class _FakeUvicornServer:
-    """Minimal uvicorn server whose loop either returns or waits for cancellation."""
-
-    def __init__(self, _config, *, block=False):
-        self.config = object()
-        self.started = True
-        self.should_exit = False
-        self.block = block
-        self.main_loop_calls = 0
-        self.main_loop_entered = asyncio.Event()
-        self.release = asyncio.Event()
-        self.shutdown_calls = 0
-
-    async def startup(self):
-        return None
-
-    async def main_loop(self):
-        self.main_loop_calls += 1
-        self.main_loop_entered.set()
-        if self.block:
-            await self.release.wait()
-        self.should_exit = True
-
-    async def shutdown(self):
-        self.shutdown_calls += 1
-
-
 @pytest.mark.asyncio
 async def test_health_server_string_config_enabled():
     """String HEALTH_ENABLED='true' enables the server and runs its loop."""
     deps = _mock_deps()
     deps["config"]["HEALTH_ENABLED"] = "true"
-    fake_server = _FakeUvicornServer(None)
+    fake_runner = FakeAppRunner()
+    fake_site = FakeSite()
 
-    with patch("uvicorn.Server", return_value=fake_server):
+    with (
+        patch("src.health_server.web.AppRunner", return_value=fake_runner),
+        patch("src.health_server.web.TCPSite", return_value=fake_site),
+    ):
         server = HealthServer(deps, port=0)
         await server.start()
 
         task = server._task
         assert task is not None
-        await asyncio.wait_for(task, timeout=1.0)
+        assert not task.done()
+        assert fake_runner.setup_calls == 1
+        assert fake_site.start_calls == 1
 
-    assert fake_server.main_loop_calls == 1
-    assert fake_server.should_exit is True
-    assert fake_server.shutdown_calls == 1
+        await server.stop()
 
-    await server.stop()
+    assert task.cancelled()
+    assert fake_runner.cleanup_calls == 1
 
 
 @pytest.mark.asyncio
@@ -249,45 +214,46 @@ async def test_health_server_stop_no_task():
 
 @pytest.mark.asyncio
 async def test_health_server_start_stop():
-    """start() runs main_loop; stop() sets should_exit and cancels the task."""
+    """start() binds the endpoint; stop() cancels the task and releases it."""
     deps = _mock_deps()
-    fake_server = _FakeUvicornServer(None, block=True)
+    server = HealthServer(deps, host="127.0.0.1", port=0)
 
-    with patch("uvicorn.Server", return_value=fake_server):
-        server = HealthServer(deps, port=0)
-        await server.start()
-        task = server._task
+    await server.start()
+    task = server._task
+    site = server._site
 
-        assert task is not None
-        await asyncio.wait_for(fake_server.main_loop_entered.wait(), timeout=1.0)
-        assert fake_server.main_loop_calls == 1
-        assert fake_server.should_exit is False
-        assert not task.done()
+    assert task is not None
+    assert site is not None
+    assert not task.done()
+    assert server._disabled_reason is None
 
-        await server.stop()
+    async with aiohttp.ClientSession() as session:
+        port = health_server_port(server)
+        async with session.get(f"http://127.0.0.1:{port}/health/live") as response:
+            assert response.status == 200
+            assert response.content_type == "application/json"
+            body = await response.json()
+    assert body["status"] == "alive"
 
-    assert fake_server.should_exit is True
+    await server.stop()
+
     assert task.cancelled()
-    assert fake_server.shutdown_calls == 1
     assert server._task is None
     assert server._server is None
+    assert server._site is None
 
 
 @pytest.mark.asyncio
 async def test_health_server_startup_failure_disables_without_killing_bot(caplog):
     """A startup failure disables the endpoint, logs why, and leaves the bot alive."""
     deps = _mock_deps()
-    fake_server = _FakeUvicornServer(None)
-    fake_server.started = False
-
-    async def fail_startup():
-        msg = "address already in use"
-        raise OSError(msg)
-
-    fake_server.startup = fail_startup
+    fake_runner = FakeAppRunner()
+    fake_site = FakeSite()
+    fake_site.start_error = OSError("address already in use")
 
     with (
-        patch("uvicorn.Server", return_value=fake_server),
+        patch("src.health_server.web.AppRunner", return_value=fake_runner),
+        patch("src.health_server.web.TCPSite", return_value=fake_site),
         caplog.at_level(logging.ERROR, logger="src.health_server"),
     ):
         server = HealthServer(deps, port=0)
@@ -295,7 +261,9 @@ async def test_health_server_startup_failure_disables_without_killing_bot(caplog
 
     assert server._task is None
     assert server._server is None
+    assert server._site is None
     assert server._disabled_reason == "address already in use"
+    assert fake_runner.cleanup_calls == 1
     assert deps["bot"].is_ready() is True
     assert deps["bot"].close.call_count == 0
     assert any(

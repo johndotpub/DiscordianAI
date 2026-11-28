@@ -44,6 +44,6 @@ contract; this file is the short version.
   numbers in new tests.
 
 ## Secrets
-- Never commit secrets, API keys, or local configuration. `bender.ini` is local-only
-  and must never be committed or used as an example.
+- Never commit secrets, API keys, or local configuration. A deployment-specific
+  `config.ini` is local-only and must never be committed or used as an example.
 - `config.ini.example` is the shipped template; keep it free of real credentials.

@@ -35,7 +35,7 @@ If you use pyenv, ensure it is initialized before system package managers that a
 
 3. **Install development dependencies**:
    ```bash
-   pip install -e .[dev]
+   pip install -e ".[dev]"
    ```
 
 ## Development & Testing
@@ -43,7 +43,7 @@ If you use pyenv, ensure it is initialized before system package managers that a
 ### Install Dev Dependencies
 
 ```bash
-pip install -e .[dev]
+pip install -e ".[dev]"
 ```
 
 ### Run Tests
@@ -90,6 +90,9 @@ ruff check .
 pytest
 python -m sphinx -b html docs/api docs/api/_build -W
 ```
+
+For an offline documentation build, use the switch described in `AGENTS.md`
+section 8.
 
 To auto-fix formatting and linting:
 

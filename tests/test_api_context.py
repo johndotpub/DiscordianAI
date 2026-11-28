@@ -1,6 +1,5 @@
 """Tests for the API call context manager module."""
 
-import asyncio
 import logging
 from unittest.mock import MagicMock, patch
 
@@ -64,14 +63,13 @@ async def test_api_call_exception_tracked(logger):
 @pytest.mark.asyncio
 async def test_api_call_timing(logger):
     """Elapsed time is recorded in error tracker context."""
-    with pytest.raises(ValueError):
-        async with api_call("perplexity", logger):
-            await asyncio.sleep(0.05)
-            raise _TEST_TIMEOUT_ERROR
+    with patch("src.api_context.time.monotonic", side_effect=[100.0, 100.125]):
+        with pytest.raises(ValueError):
+            async with api_call("perplexity", logger):
+                raise _TEST_TIMEOUT_ERROR
 
     record = error_tracker.error_history[-1]
-    assert "elapsed_seconds" in record["context"]
-    assert record["context"]["elapsed_seconds"] >= 0.04
+    assert record["context"]["elapsed_seconds"] == 0.125
 
 
 @pytest.mark.asyncio

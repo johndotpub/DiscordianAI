@@ -3,6 +3,7 @@
 import configparser
 from pathlib import Path
 import re
+import time
 
 from src.conversation_manager import ThreadSafeConversationManager
 
@@ -30,6 +31,13 @@ def _manager(clock: FakeClock, ttl: int = 60, **kwargs) -> ThreadSafeConversatio
     )
 
 
+def test_default_conversation_clock_is_monotonic():
+    """A wall-clock step cannot change the default history TTL behaviour."""
+    manager = ThreadSafeConversationManager()
+
+    assert manager._clock is time.monotonic
+
+
 def test_idle_conversation_is_evicted_with_its_lock():
     clock = FakeClock()
     manager = _manager(clock, ttl=60)
@@ -44,34 +52,35 @@ def test_idle_conversation_is_evicted_with_its_lock():
     )
 
     assert manager.get_conversation(conversation_key=key)
-    assert key in manager._user_locks
+    assert manager.get_stats()["active_locks"] == 1
 
     clock.advance(61)
 
     assert manager.get_conversation(conversation_key=key) == []
-    assert key not in manager._conversations
-    assert key not in manager._user_locks
-    assert key not in manager._last_activity
+    stats = manager.get_stats()
+    assert stats["total_users"] == 0
+    assert stats["active_locks"] == 0
 
 
 def test_conversation_touched_inside_ttl_survives():
     clock = FakeClock()
     manager = _manager(clock, ttl=60)
     key = "dm:42"
+    original = [{"role": "user", "content": "original"}]
 
     manager.add_message(conversation_key=key, role="user", content="original")
 
     clock.advance(59)
-    assert manager.get_conversation(conversation_key=key) == [
-        {"role": "user", "content": "original"}
-    ]
+    assert manager.get_conversation(conversation_key=key) == original
 
     clock.advance(2)
-    assert manager.get_conversation(conversation_key=key) == [
-        {"role": "user", "content": "original"}
-    ]
-    assert key in manager._conversations
-    assert key in manager._user_locks
+    assert manager.get_conversation(conversation_key=key) == original
+
+    clock.advance(60)
+    assert manager.get_conversation(conversation_key=key) == []
+    stats = manager.get_stats()
+    assert stats["total_users"] == 0
+    assert stats["active_locks"] == 0
 
 
 def test_zero_lookback_disables_service_lookup():
@@ -138,15 +147,16 @@ def test_expiry_bounds_storage_after_many_distinct_conversations():
             content=f"message {index}",
         )
 
-    assert len(manager._conversations) == conversation_count
-    assert len(manager._user_locks) == conversation_count
+    stats = manager.get_stats()
+    assert stats["total_users"] == conversation_count
+    assert stats["active_locks"] == conversation_count
 
     clock.advance(61)
     manager.get_conversation(conversation_key="g:0:c:0")
 
-    assert len(manager._conversations) == 0
-    assert len(manager._user_locks) == 0
-    assert len(manager._last_activity) == 0
+    stats = manager.get_stats()
+    assert stats["total_users"] == 0
+    assert stats["active_locks"] == 0
 
 
 def test_conversation_ttl_default_agrees_across_config_example_and_docs(monkeypatch):

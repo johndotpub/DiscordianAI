@@ -13,19 +13,52 @@ MESSAGE_OVERHEAD_TOKENS = 4
 TRUNCATION_MARKER = "\n\n[truncated to fit the token budget]"
 MINIMUM_PROMPT_TOKENS = 32
 
+# Per-character token weights before the 1.1 safety margin. ASCII stays on the
+# historical four-characters-per-token estimate; non-Latin scripts need more
+# tokens per character, and the astral plane (most emoji) needs the most.
+_UTF8_ONE_BYTE_LIMIT = 0x80
+_UTF8_TWO_BYTE_LIMIT = 0x800
+_UTF8_THREE_BYTE_LIMIT = 0x10000
+_ASCII_TOKEN_WEIGHT = 0.25
+_LATIN_EXTENDED_TOKEN_WEIGHT = 0.5
+_BMP_TOKEN_WEIGHT = 0.8
+_ASTRAL_TOKEN_WEIGHT = 1.7
 
-def _estimate_text_tokens(text: Any) -> int:
-    """Estimate tokens for text using a conservative character ratio."""
-    characters = len(str(text or ""))
-    if characters == 0:
+
+def _character_token_weight(character: str) -> float:
+    """Return the pre-margin token weight for one character."""
+    code_point = ord(character)
+    if code_point < _UTF8_ONE_BYTE_LIMIT:
+        return _ASCII_TOKEN_WEIGHT
+    if code_point < _UTF8_TWO_BYTE_LIMIT:
+        return _LATIN_EXTENDED_TOKEN_WEIGHT
+    if code_point < _UTF8_THREE_BYTE_LIMIT:
+        return _BMP_TOKEN_WEIGHT
+    return _ASTRAL_TOKEN_WEIGHT
+
+
+def estimate_text_tokens(text: Any) -> int:
+    """Estimate tokens for text with a conservative script-aware ratio.
+
+    English and code stay on the historical four-characters-per-token
+    estimate. Characters from U+0080-U+07FF cost half a token, U+0800-U+FFFF
+    cost 0.8, and astral-plane characters (most emoji) cost 1.7, all before
+    the shared 1.1 safety margin. This keeps a Japanese, Korean, Hindi, or
+    emoji history from being under-counted by the old ASCII-only ratio.
+    """
+    value = str(text or "")
+    if not value:
         return 0
-    return ceil(characters * TOKEN_ESTIMATE_MARGIN / CHARS_PER_TOKEN)
+    if value.isascii():
+        return ceil(len(value) * TOKEN_ESTIMATE_MARGIN / CHARS_PER_TOKEN)
+    weighted = sum(_character_token_weight(character) for character in value)
+    return ceil(weighted * TOKEN_ESTIMATE_MARGIN)
 
 
 def _estimate_content_tokens(content: Any, vision_token_estimate: int) -> int:
     """Estimate tokens for text content or a multimodal content list."""
     if not isinstance(content, list):
-        return _estimate_text_tokens(content)
+        return estimate_text_tokens(content)
 
     total = 0
     image_tokens = max(0, int(vision_token_estimate))
@@ -33,7 +66,7 @@ def _estimate_content_tokens(content: Any, vision_token_estimate: int) -> int:
         if not isinstance(part, dict):
             continue
         if part.get("type") == "text":
-            total += _estimate_text_tokens(part.get("text"))
+            total += estimate_text_tokens(part.get("text"))
         elif part.get("type") == "image_url":
             total += image_tokens
     return total
@@ -90,22 +123,32 @@ def resolve_completion_budget(
     return min(completion_budget, max(1, window - MINIMUM_PROMPT_TOKENS))
 
 
-def resolve_prompt_budget(
+def resolve_prompt_budget(  # noqa: PLR0913 - the setting labels mirror config keys
     input_tokens: int | None,
     output_tokens: int | None,
     context_window: int | None,
     logger: Any = None,
+    *,
+    input_setting: str = "INPUT_TOKENS",
+    output_setting: str = "OUTPUT_TOKENS",
+    context_setting: str = "CONTEXT_WINDOW",
+    reserve_tokens: int = 0,
 ) -> int | None:
     """Return the prompt budget after reserving room for the completion.
 
-    The configured ``INPUT_TOKENS`` is used unless it plus the completion budget
-    exceeds ``CONTEXT_WINDOW``. In that case the context window wins and the
+    The configured prompt setting is used unless it plus the completion budget
+    exceeds the context window. In that case the context window wins and the
     prompt budget is reduced, with a warning naming the conflicting settings.
+    The callers pass their own setting names so the warning matches the
+    provider path that raised it. ``reserve_tokens`` is charged against the
+    prompt budget before the window check; the warning still prints the value
+    the named setting supplied.
     """
     if input_tokens is None:
         return None
 
-    prompt_budget = max(0, int(input_tokens))
+    configured_input = max(0, int(input_tokens))
+    prompt_budget = max(0, configured_input - max(0, int(reserve_tokens)))
     if output_tokens is None or context_window is None:
         return prompt_budget
 
@@ -114,15 +157,20 @@ def resolve_prompt_budget(
         return prompt_budget
 
     configured_output = max(0, int(output_tokens))
-    completion_budget = resolve_completion_budget(output_tokens, context_window, input_tokens) or 0
+    completion_budget = (
+        resolve_completion_budget(output_tokens, context_window, prompt_budget) or 0
+    )
     available_for_prompt = window - completion_budget
     if prompt_budget + configured_output > window:
         if logger is not None:
             logger.warning(
-                "INPUT_TOKENS (%d) + OUTPUT_TOKENS (%d) exceed CONTEXT_WINDOW (%d); "
+                "%s (%d) + %s (%d) exceed %s (%d); "
                 "limiting prompt budget to %d tokens and completion budget to %d tokens",
-                prompt_budget,
+                input_setting,
+                configured_input,
+                output_setting,
                 configured_output,
+                context_setting,
                 window,
                 max(0, available_for_prompt),
                 completion_budget,
@@ -155,22 +203,32 @@ def _trim_history(
     *,
     vision_token_estimate: int,
 ) -> list[dict[str, Any]]:
-    """Drop the oldest history units until the prompt fits the budget."""
+    """Drop the oldest history units until the prompt fits the budget.
+
+    Each message is estimated once. The running total is reduced by the
+    dropped unit's estimate, so trimming a long history stays linear instead
+    of re-estimating the whole prompt for every dropped pair.
+    """
     units = _history_units(history)
-    base_messages = [system_message, user_message]
+    if not units:
+        return []
+    base_tokens = estimate_message_tokens(
+        system_message, vision_token_estimate=vision_token_estimate
+    ) + estimate_message_tokens(user_message, vision_token_estimate=vision_token_estimate)
+    unit_tokens = [
+        sum(
+            estimate_message_tokens(message, vision_token_estimate=vision_token_estimate)
+            for message in unit
+        )
+        for unit in units
+    ]
+    total = base_tokens + sum(unit_tokens)
     while units:
-        kept = [message for unit in units for message in unit]
-        messages = [system_message, *kept, user_message]
-        if (
-            estimate_messages_tokens(messages, vision_token_estimate=vision_token_estimate)
-            <= budget
-        ):
+        if total <= budget:
             break
-        if len(units) == 1 and (
-            estimate_messages_tokens(base_messages, vision_token_estimate=vision_token_estimate)
-            <= budget
-        ):
+        if len(units) == 1 and base_tokens <= budget:
             break
+        total -= unit_tokens.pop(0)
         units.pop(0)
     return [message for unit in units for message in unit]
 
@@ -182,7 +240,7 @@ def _truncate_content_to_tokens(content: Any, max_message_tokens: int) -> str:
     if text_budget <= 0:
         return ""
 
-    marker_tokens = _estimate_text_tokens(TRUNCATION_MARKER)
+    marker_tokens = estimate_text_tokens(TRUNCATION_MARKER)
     if text_budget <= marker_tokens:
         marker_chars = int(text_budget * CHARS_PER_TOKEN / TOKEN_ESTIMATE_MARGIN)
         return TRUNCATION_MARKER[: max(0, marker_chars)]
@@ -191,7 +249,7 @@ def _truncate_content_to_tokens(content: Any, max_message_tokens: int) -> str:
     available_chars = max(0, min(len(text), available_chars))
     while (
         available_chars > 0
-        and _estimate_text_tokens(text[:available_chars] + TRUNCATION_MARKER) > text_budget
+        and estimate_text_tokens(text[:available_chars] + TRUNCATION_MARKER) > text_budget
     ):
         available_chars -= 1
 
@@ -218,7 +276,7 @@ def _fit_messages_to_budget(
         for message in messages
     ]
     total = sum(estimates)
-    minimum = MESSAGE_OVERHEAD_TOKENS + _estimate_text_tokens(TRUNCATION_MARKER)
+    minimum = MESSAGE_OVERHEAD_TOKENS + estimate_text_tokens(TRUNCATION_MARKER)
 
     while total > budget:
         truncatable = [
@@ -255,7 +313,7 @@ def _fit_messages_to_budget(
             target = estimates[index] - 1
 
         content = _truncate_content_to_tokens(messages[index].get("content"), target)
-        new_estimate = MESSAGE_OVERHEAD_TOKENS + _estimate_text_tokens(content)
+        new_estimate = MESSAGE_OVERHEAD_TOKENS + estimate_text_tokens(content)
         if new_estimate >= estimates[index]:
             break
 
@@ -277,7 +335,7 @@ def _multimodal_content(user_message: str, images: Sequence[ImagePayload]) -> li
     return content
 
 
-def build_messages(  # noqa: PLR0913
+def build_messages(  # noqa: PLR0913 - the builder mirrors the provider request shape
     system_message: str,
     user_message: str,
     history: list[dict[str, Any]] | None = None,
@@ -288,6 +346,10 @@ def build_messages(  # noqa: PLR0913
     logger: Any = None,
     images: Sequence[ImagePayload] | None = None,
     vision_token_estimate: int = DEFAULT_VISION_TOKEN_ESTIMATE,
+    input_setting: str = "INPUT_TOKENS",
+    output_setting: str = "OUTPUT_TOKENS",
+    context_setting: str = "CONTEXT_WINDOW",
+    prompt_reserve_tokens: int = 0,
 ) -> list[dict[str, Any]]:
     """Build system, prior turns, and current user message in order.
 
@@ -303,6 +365,11 @@ def build_messages(  # noqa: PLR0913
         images: Optional image payloads attached to the current turn. History
             turns stay text-only.
         vision_token_estimate: Flat prompt-token estimate charged per image.
+        input_setting: Configuration key that supplied ``input_tokens``.
+        output_setting: Configuration key that supplied ``output_tokens``.
+        context_setting: Configuration key that supplied ``context_window``.
+        prompt_reserve_tokens: Fixed prompt tokens charged before the window
+            check, such as a provider instruction suffix.
 
     Returns:
         A message list containing the system message, any prior turns, and the
@@ -320,7 +387,16 @@ def build_messages(  # noqa: PLR0913
         current_entry = {"role": "user", "content": user_message}
     history_entries = [dict(message) for message in history] if history else []
 
-    budget = resolve_prompt_budget(input_tokens, output_tokens, context_window, logger)
+    budget = resolve_prompt_budget(
+        input_tokens,
+        output_tokens,
+        context_window,
+        logger,
+        input_setting=input_setting,
+        output_setting=output_setting,
+        context_setting=context_setting,
+        reserve_tokens=prompt_reserve_tokens,
+    )
     if budget is None:
         return [system_entry, *history_entries, current_entry]
 

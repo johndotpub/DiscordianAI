@@ -11,15 +11,17 @@ license = {file = "LICENSE"}
 authors = [{name = "johndotpub", email = "github@john.pub"}]
 requires-python = ">=3.12"
 dependencies = [
-    "discord.py>=2.7.1",
+    "discord.py[voice]>=2.7.1",
     # Tested with openai 3.40.0. Keep <4: custom httpx clients rely on the
     # runtime-only legacy escape hatch on the HTTPX2 line and may vanish in 4.x.
     "openai>=2.41,<4",
     "httpx[http2]>=0.28.1",
     "h2>=4.3.0",
-    "starlette>=1.2.1",
-    "uvicorn>=0.34.0",
+    "cachetools>=8.0.2,<9",
+    "aiohttp>=3.10,<4",
     "structlog>=25.5.0",
+    "tree-sitter>=0.27",
+    "tree-sitter-markdown>=0.5.4",
 ]
 urls = {"Homepage" = "https://github.com/johndotpub/DiscordianAI"}
 classifiers = [
@@ -55,9 +57,11 @@ dev = [
     "pytest-cov>=7.1.0", 
     "pytest-timeout>=2.4.0",
     "pytest-xdist[psutil]>=3.8.0",  # For parallel test execution
+    "markdown-it-py>=4.0",  # Independent CommonMark oracle for sanitizer tests
+    "discord-markdown-ast-parser>=1.0.6",  # Test oracle for Discord markdown rules
     "coverage[toml]>=7.13.5",
     "PyYAML>=6.0",  # Parses docker-compose.yml and docs YAML in the container-asset tests
-    "httpx2>=0.2.0",  # Required by starlette.testclient ≥1.0
+    "httpx2>=0.2.0",  # Required by openai itself (declared in its package metadata)
     "tox>=4.53.0",
     "pip-audit>=2.10.0",  # Dependency vulnerability scanning
     "pre-commit>=4.6.0",  # Pre-commit hooks framework

@@ -11,6 +11,36 @@ from src.routing.contracts import ConversationContext, RouterInput, Turn
 _ENDPOINT = "https://ollama.com/v1/systemone"
 
 
+@pytest.fixture(autouse=True)
+def reset_missing_clef_key_warning():
+    """Keep the once-per-process missing-key warning isolated between tests."""
+    from src.routing import _warn_missing_clef_key_once
+
+    _warn_missing_clef_key_once.cache_clear()
+    yield
+    _warn_missing_clef_key_once.cache_clear()
+
+
+class _FakeAsyncClient:
+    def __init__(self):
+        self.calls = []
+        self.closed = 0
+
+    async def post(self, url, *, json=None, headers=None):
+        self.calls.append({"url": url, "json": json, "headers": headers})
+        return _response(0.9)
+
+    async def aclose(self):
+        self.closed += 1
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        _ = (exc_type, exc, tb)
+        return False
+
+
 def _response(probability: float) -> httpx.Response:
     return httpx.Response(
         200,
@@ -239,6 +269,8 @@ def test_override_returns_gate_decision_without_a_fallback_marker(monkeypatch) -
 def test_http_500_falls_back_to_the_deterministic_gate(monkeypatch, caplog) -> None:
     """An HTTP failure is marked as a Clef fallback and keeps the gate's route."""
     _install_sync(monkeypatch, _status_response(500))
+    ticks = iter([10.0, 10.5])
+    monkeypatch.setattr("src.routing.clef.perf_counter", lambda: next(ticks))
     request = RouterInput(text="is github down")
     expected = HeuristicRouter().decide_sync(request)
 
@@ -249,7 +281,7 @@ def test_http_500_falls_back_to_the_deterministic_gate(monkeypatch, caplog) -> N
     assert decision.reasons[0] == "clef:fallback:http_500"
     assert decision.reasons[1:] == expected.reasons
     assert decision.text == expected.text
-    assert decision.latency_ms >= 0.0
+    assert decision.latency_ms == 500.0
     assert any("Clef routing failed" in record.getMessage() for record in caplog.records)
 
 
@@ -308,13 +340,14 @@ def test_ollama_key_is_accepted_when_openai_key_is_absent(monkeypatch) -> None:
 
 
 def test_build_router_selects_clef_and_clamps_the_threshold(monkeypatch) -> None:
-    """A configured Clef mode is selected and an out-of-range threshold clamps."""
-    _install_sync(monkeypatch, _response(0.9))
+    """A threshold above one clamps to one, so certainty still routes web."""
+    _install_sync(monkeypatch, _response(1.0))
 
     router = build_router(
         {
             "ROUTER_MODE": "clef",
             "OPENAI_API_KEY": "test-key",
+            "OPENAI_API_URL": "https://ollama.com/v1/",
             "ROUTER_CLEF_THRESHOLD": 2.0,
             "ROUTER_CLEF_TIMEOUT_MS": 500,
         }
@@ -322,7 +355,8 @@ def test_build_router_selects_clef_and_clamps_the_threshold(monkeypatch) -> None
     decision = router.decide_sync(RouterInput(text="is github down"))
 
     assert isinstance(router, ClefRouter)
-    assert decision.route == "local"
+    assert decision.route == "web"
+    assert decision.reasons == ("clef:web:p=1.000",)
 
 
 def test_model_mode_raises_with_the_new_message() -> None:
@@ -339,3 +373,266 @@ def test_unknown_mode_raises() -> None:
         build_router({"ROUTER_MODE": "magic"})
 
     assert "expected 'heuristic', 'clef', or 'model'" in str(excinfo.value)
+
+
+def test_supplied_artifact_override_skips_clef(monkeypatch) -> None:
+    """A gate artifact decision is data, so Clef must not flip it to web."""
+    calls = _install_sync(monkeypatch, _response(0.99))
+    request = RouterInput(text="summarize: the api is down and the version is 2.0")
+    expected = HeuristicRouter().decide_sync(request)
+
+    decision = ClefRouter(api_key="test-key").decide_sync(request)
+
+    assert calls == []
+    assert decision.route == expected.route == "local"
+    assert decision.reasons == expected.reasons
+    assert decision.deterministic_override is True
+
+
+def test_dedicated_clef_key_wins_over_the_chat_key(monkeypatch) -> None:
+    """The dedicated key is used even when the chat provider has another key."""
+    monkeypatch.setenv("OLLAMA_API_KEY", "ollama-env-key")
+    calls = _install_sync(monkeypatch, _response(0.9))
+    router = build_router(
+        {
+            "ROUTER_MODE": "clef",
+            "ROUTER_CLEF_API_KEY": "clef-key",
+            "OPENAI_API_KEY": "sk-openai",
+            "OPENAI_API_URL": "https://api.openai.com/v1/",
+        }
+    )
+
+    router.decide_sync(RouterInput(text="tell me about monads"))
+
+    assert calls[0]["headers"]["Authorization"] == "Bearer clef-key"
+
+
+def test_dedicated_clef_key_can_come_from_the_environment(monkeypatch) -> None:
+    """The dedicated key is also accepted through its environment variable."""
+    monkeypatch.setenv("ROUTER_CLEF_API_KEY", "env-clef-key")
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+    calls = _install_sync(monkeypatch, _response(0.9))
+    router = build_router({"ROUTER_MODE": "clef", "OPENAI_API_URL": "https://api.openai.com/v1/"})
+
+    router.decide_sync(RouterInput(text="tell me about monads"))
+
+    assert calls[0]["headers"]["Authorization"] == "Bearer env-clef-key"
+
+
+def test_openai_key_is_not_sent_to_clef_for_another_host(monkeypatch) -> None:
+    """A key issued for another provider never reaches the Clef endpoint."""
+    monkeypatch.delenv("ROUTER_CLEF_API_KEY", raising=False)
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+
+    router = build_router(
+        {
+            "ROUTER_MODE": "clef",
+            "OPENAI_API_KEY": "sk-openai",
+            "OPENAI_API_URL": "https://api.openai.com/v1/",
+        }
+    )
+
+    assert isinstance(router, HeuristicRouter)
+
+
+def test_openai_key_without_a_url_is_not_sent_to_clef(monkeypatch) -> None:
+    """A direct caller that omits the URL cannot prove the key belongs to Ollama."""
+    monkeypatch.delenv("ROUTER_CLEF_API_KEY", raising=False)
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_URL", raising=False)
+
+    router = build_router({"ROUTER_MODE": "clef", "OPENAI_API_KEY": "sk-openai"})
+
+    assert isinstance(router, HeuristicRouter)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://ollama.com.evil.example/v1/",
+        "https://ollama.com@evil.example/v1/",
+        "https://evil.example/ollama.com/v1/",
+        "https://notollama.com/v1/",
+    ],
+    ids=["suffix", "userinfo", "path", "prefix"],
+)
+def test_lookalike_hosts_are_not_treated_as_ollama(monkeypatch, url) -> None:
+    """Only an exact ollama.com hostname may receive the chat key."""
+    monkeypatch.delenv("ROUTER_CLEF_API_KEY", raising=False)
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+
+    router = build_router(
+        {
+            "ROUTER_MODE": "clef",
+            "OPENAI_API_KEY": "sk-openai",
+            "OPENAI_API_URL": url,
+        }
+    )
+
+    assert isinstance(router, HeuristicRouter)
+
+
+def test_ollama_cloud_chat_key_still_builds_clef(monkeypatch) -> None:
+    """An existing Ollama Cloud deployment keeps working without a new key."""
+    monkeypatch.delenv("ROUTER_CLEF_API_KEY", raising=False)
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+    calls = _install_sync(monkeypatch, _response(0.9))
+    router = build_router(
+        {
+            "ROUTER_MODE": "clef",
+            "OPENAI_API_KEY": "ollama-cloud-key",
+            "OPENAI_API_URL": "https://ollama.com/v1/",
+        }
+    )
+
+    assert isinstance(router, ClefRouter)
+    router.decide_sync(RouterInput(text="tell me about monads"))
+    assert calls[0]["headers"]["Authorization"] == "Bearer ollama-cloud-key"
+
+
+def test_ollama_environment_key_is_eligible_for_another_chat_host(monkeypatch) -> None:
+    """An Ollama Cloud key from the environment may still reach Ollama."""
+    monkeypatch.delenv("ROUTER_CLEF_API_KEY", raising=False)
+    monkeypatch.setenv("OLLAMA_API_KEY", "ollama-env-key")
+    calls = _install_sync(monkeypatch, _response(0.9))
+    router = build_router(
+        {
+            "ROUTER_MODE": "clef",
+            "OPENAI_API_KEY": "sk-openai",
+            "OPENAI_API_URL": "https://api.openai.com/v1/",
+        }
+    )
+
+    router.decide_sync(RouterInput(text="tell me about monads"))
+
+    assert calls[0]["headers"]["Authorization"] == "Bearer ollama-env-key"
+
+
+def test_missing_key_warning_is_emitted_once(monkeypatch, caplog) -> None:
+    """Repeated factory calls do not log the missing-key warning per message."""
+    monkeypatch.delenv("ROUTER_CLEF_API_KEY", raising=False)
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    with caplog.at_level(logging.WARNING, logger="src.routing"):
+        build_router({"ROUTER_MODE": "clef"})
+        build_router({"ROUTER_MODE": "clef"})
+
+    warnings = [record for record in caplog.records if "no eligible key" in record.getMessage()]
+    assert len(warnings) == 1
+
+
+@pytest.mark.asyncio
+async def test_async_decisions_reuse_one_pooled_client(monkeypatch) -> None:
+    """One router keeps one client for every decision and closes it once."""
+    created = []
+
+    class _CountingClient(_FakeAsyncClient):
+        def __init__(self, *args, **kwargs):
+            _ = (args, kwargs)
+            super().__init__()
+            created.append(self)
+
+    monkeypatch.setattr("src.routing.clef.httpx.AsyncClient", _CountingClient)
+    router = ClefRouter(api_key="test-key")
+
+    await router.decide(RouterInput(text="tell me about monads"))
+    await router.decide(RouterInput(text="tell me about functors"))
+
+    assert len(created) == 1
+    assert len(created[0].calls) == 2
+    assert created[0].closed == 0
+    await router.aclose()
+    assert created[0].closed == 1
+    await router.aclose()
+    assert created[0].closed == 1
+
+
+@pytest.mark.asyncio
+async def test_decide_after_aclose_uses_the_gate_without_reopening(monkeypatch, caplog) -> None:
+    """A closed router never builds another client; it logs once and gates."""
+    created = []
+
+    class _CountingClient(_FakeAsyncClient):
+        def __init__(self, *args, **kwargs):
+            _ = (args, kwargs)
+            super().__init__()
+            created.append(self)
+
+    monkeypatch.setattr("src.routing.clef.httpx.AsyncClient", _CountingClient)
+    router = ClefRouter(api_key="test-key")
+    request = RouterInput(text="tell me about monads")
+
+    await router.decide(request)
+    await router.aclose()
+    assert len(created) == 1
+
+    with caplog.at_level(logging.WARNING, logger="src.routing.clef"):
+        first = await router.decide(request)
+        second = await router.decide(request)
+
+    gate = HeuristicRouter().decide_sync(request)
+    assert len(created) == 1
+    assert created[0].closed == 1
+    assert first.route == gate.route
+    assert second.route == gate.route
+    assert first.reasons[0] == "clef:fallback:closed"
+    warnings = [record for record in caplog.records if "closed" in record.getMessage()]
+    assert len(warnings) == 1
+
+
+@pytest.mark.asyncio
+async def test_decide_sync_after_aclose_uses_the_gate_without_reopening(monkeypatch) -> None:
+    """A closed router must not build a synchronous client either."""
+    created = []
+
+    class _CountingSyncClient:
+        def __init__(self, *args, **kwargs):
+            _ = (args, kwargs)
+            created.append(self)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            _ = (exc_type, exc, tb)
+            return False
+
+        def post(self, url, *, json=None, headers=None):
+            _ = (url, json, headers)
+            return _response(0.9)
+
+    monkeypatch.setattr("src.routing.clef.httpx.Client", _CountingSyncClient)
+    router = ClefRouter(api_key="test-key")
+    request = RouterInput(text="tell me about monads")
+    await router.aclose()
+
+    decision = router.decide_sync(request)
+
+    gate = HeuristicRouter().decide_sync(request)
+    assert created == []
+    assert decision.route == gate.route
+    assert decision.reasons[0] == "clef:fallback:closed"
+
+
+@pytest.mark.asyncio
+async def test_clef_deadline_wraps_the_whole_request(monkeypatch) -> None:
+    """The configured timeout is one hard deadline, not a per-phase budget."""
+    recorded = {"timeout": None}
+
+    async def fake_wait_for(awaitable, **kwargs):
+        recorded["timeout"] = kwargs["timeout"]
+        awaitable.close()
+        raise TimeoutError
+
+    monkeypatch.setattr("src.routing.clef.asyncio.wait_for", fake_wait_for)
+    router = ClefRouter(
+        api_key="test-key",
+        timeout_s=2.0,
+        http_client=_FakeAsyncClient(),
+    )
+
+    decision = await router.decide(RouterInput(text="tell me about monads"))
+
+    assert recorded["timeout"] == 2.0
+    assert decision.reasons[0] == "clef:fallback:timeout"

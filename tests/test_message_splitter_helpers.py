@@ -1,17 +1,15 @@
 """Tests for the helper functions in src.message_splitter.
 
-This suite covers split-point selection, code-block detection, content
-cleaning, link counting, embed suppression, sanitisation, and formatting
-helpers that are not already exercised by ``test_message_splitting.py``.
+This suite covers split-point selection, content cleaning, link counting,
+embed suppression, sanitisation, and formatting helpers that are not already
+exercised by ``test_message_splitting.py``.
 """
 
+from src import message_splitter
 from src.message_splitter import (
-    clean_message_content,
     count_links,
-    detect_code_blocks,
     error_message,
     find_optimal_split_point,
-    is_inside_code_block,
     sanitize_for_discord,
     should_suppress_embeds,
     truncation_notice,
@@ -43,134 +41,6 @@ class TestFindOptimalSplitPoint:
         assert split_point <= len(message)
 
 
-class TestCodeBlockDetection:
-    """Test code block detection and handling."""
-
-    def test_detect_single_code_block(self):
-        """Test detecting a single code block."""
-        text = "Some text\n```\ncode here\n```\nMore text"
-
-        blocks = detect_code_blocks(text)
-
-        assert len(blocks) == 1
-        assert blocks[0] == (10, 27)  # Actual position observed
-
-    def test_detect_multiple_code_blocks(self):
-        """Test detecting multiple code blocks."""
-        text = "Text\n```python\ncode1\n```\nMiddle\n```js\ncode2\n```\nEnd"
-
-        blocks = detect_code_blocks(text)
-
-        assert len(blocks) == 2
-        assert blocks[0][0] < blocks[1][0]  # First block comes before second
-
-    def test_detect_code_blocks_with_language(self):
-        """Test detecting code blocks with language specification."""
-        text = "```python\nprint('hello')\n```"
-
-        blocks = detect_code_blocks(text)
-
-        assert len(blocks) == 1
-        assert blocks[0] == (0, len(text))
-
-    def test_detect_no_code_blocks(self):
-        """Test text without code blocks."""
-        text = "Just regular text without any code blocks"
-
-        blocks = detect_code_blocks(text)
-
-        assert len(blocks) == 0
-
-    def test_detect_incomplete_code_blocks(self):
-        """Test text with incomplete code blocks."""
-        text = "```\nincomplete code block without closing"
-
-        blocks = detect_code_blocks(text)
-
-        # Should not detect incomplete blocks
-        assert len(blocks) == 0
-
-    def test_is_inside_code_block_true(self):
-        """Test position inside code block."""
-        code_blocks = [(10, 30), (50, 80)]
-
-        assert is_inside_code_block(15, code_blocks) is True
-        assert is_inside_code_block(60, code_blocks) is True
-        assert is_inside_code_block(10, code_blocks) is True  # At boundary
-        assert is_inside_code_block(30, code_blocks) is True  # At boundary
-
-    def test_is_inside_code_block_false(self):
-        """Test position outside code block."""
-        code_blocks = [(10, 30), (50, 80)]
-
-        assert is_inside_code_block(5, code_blocks) is False
-        assert is_inside_code_block(40, code_blocks) is False
-        assert is_inside_code_block(90, code_blocks) is False
-
-    def test_is_inside_empty_code_blocks(self):
-        """Test with empty code blocks list."""
-        assert is_inside_code_block(15, []) is False
-
-
-class TestCleanMessageContent:
-    """Test clean_message_content function."""
-
-    def test_clean_normal_text(self):
-        """Test cleaning normal text."""
-        content = "This is a normal message"
-
-        result = clean_message_content(content)
-
-        assert result == "This is a normal message"
-
-    def test_clean_with_whitespace(self):
-        """Test cleaning text with extra whitespace."""
-        content = "  This   has    extra   spaces  \n\n  and newlines  "
-
-        result = clean_message_content(content)
-
-        assert result == "This has extra spaces and newlines"
-
-    def test_clean_empty_content(self):
-        """Test cleaning empty content."""
-        result = clean_message_content("")
-        assert result == "[empty]"
-
-        result = clean_message_content(None)
-        assert result == "[empty]"
-
-        result = clean_message_content("   ")
-        assert result == ""  # Whitespace-only content gets cleaned to empty string
-
-    def test_clean_with_truncation(self):
-        """Test cleaning with truncation."""
-        content = "A" * 150  # 150 characters
-
-        result = clean_message_content(content, max_length=50)
-
-        assert len(result) == 53  # 50 + "..."
-        assert result.endswith("...")
-        assert result.startswith("A")
-
-    def test_clean_exact_length(self):
-        """Test cleaning with exact max length."""
-        content = "A" * 50
-
-        result = clean_message_content(content, max_length=50)
-
-        assert result == content  # Should not be truncated
-        assert not result.endswith("...")
-
-    def test_clean_custom_max_length(self):
-        """Test cleaning with custom max length."""
-        content = "This is a longer message for testing"
-
-        result = clean_message_content(content, max_length=10)
-
-        assert len(result) == 13  # 10 + "..."
-        assert result == "This is a ..."
-
-
 class TestCountLinks:
     """Test count_links function."""
 
@@ -180,7 +50,7 @@ class TestCountLinks:
 
         count = count_links(text)
 
-        assert count == 4  # Counts both Discord links and embedded URLs
+        assert count == 2  # One count per masked link, not its destination too
 
     def test_count_bare_urls(self):
         """Test counting bare URLs."""
@@ -196,7 +66,7 @@ class TestCountLinks:
 
         count = count_links(text)
 
-        assert count == 3  # Discord link + embedded URL + bare URL
+        assert count == 2  # One masked link plus one bare URL
 
     def test_count_no_links(self):
         """Test text without links."""
@@ -215,7 +85,7 @@ class TestCountLinks:
 
         count = count_links(text)
 
-        assert count == 3  # Discord link + embedded URL + bare URL
+        assert count == 2  # One masked link plus one bare URL
 
     def test_count_partial_links(self):
         """Test with partial/invalid link formats."""
@@ -324,3 +194,29 @@ class TestMessageFormatter:
         assert "5000" in result
         assert "truncated" in result.lower()
         assert "characters" in result.lower()
+
+
+def test_count_links_counts_one_masked_link_once():
+    """A masked link and its destination are one link, not two."""
+    assert count_links("One [masked](https://example.com) link") == 1
+    assert should_suppress_embeds("One [masked](https://example.com) link", threshold=2) is False
+
+
+def test_count_links_ignores_filenames():
+    """Python filenames are not clickable links."""
+    assert count_links("Edit main.py and utils.py before running") == 0
+
+
+def test_count_links_span_comparisons_stay_linear():
+    """Each bare match compares one indexed link span, not every span."""
+    links = " ".join(f"[label{i}](destination{i})" for i in range(3000))
+    bare = " ".join(f"https://bare{i}.example/page" for i in range(3000))
+
+    message_splitter._reset_parse_stats()
+    count = count_links(f"{links} {bare}")
+    comparisons = message_splitter._parse_stats().get("count_link_span_comparisons")
+
+    assert count == 6000
+    assert comparisons is not None, "count_links must record its span comparisons"
+    assert comparisons >= 3000, f"{comparisons} span comparisons for 3000 bare matches"
+    assert comparisons <= 2 * 3000, f"{comparisons} span comparisons for 3000 bare matches"

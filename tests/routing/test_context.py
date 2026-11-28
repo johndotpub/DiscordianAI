@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
+from src.conversation_manager import ThreadSafeConversationManager
 from src.routing.context import build_router_input
 
 FIXED_NOW = datetime(2026, 10, 30, tzinfo=UTC)
@@ -90,6 +91,23 @@ def test_string_history_returns_an_empty_context_without_raising() -> None:
     result = build_router_input(_request(), _StringHistoryManager(), 6)
 
     assert result.text == "tell me more"
+    assert result.context.turns == ()
+    assert result.context.last_route is None
+
+
+def test_zero_lookback_disables_turns_and_the_inherited_route() -> None:
+    """LOOKBACK_MESSAGES_FOR_CONSISTENCY=0 must not read prior turns or routes."""
+    manager = ThreadSafeConversationManager()
+    manager.add_message("g:1:c:2", "user", "is github down right now?")
+    manager.add_message(
+        "g:1:c:2",
+        "assistant",
+        "yes",
+        metadata={"ai_service": "perplexity"},
+    )
+
+    result = build_router_input(_request(), manager, 0)
+
     assert result.context.turns == ()
     assert result.context.last_route is None
 

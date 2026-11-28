@@ -86,6 +86,45 @@ def test_main_handles_exception(monkeypatch):
         main.main()
 
 
+def test_fatal_bot_run_error_is_logged_once(monkeypatch, caplog):
+    """A fatal error after dependency wiring propagates to one CRITICAL record."""
+    from types import SimpleNamespace
+
+    from src import bot as bot_module, main
+
+    logger = logging.getLogger("test.fatal-bot")
+    deps = SimpleNamespace(logger=logger)
+
+    class _FailingManager:
+        def __init__(self, _deps):
+            pass
+
+        def run(self):
+            msg = "boom"
+            raise RuntimeError(msg)
+
+    monkeypatch.setattr(bot_module, "initialize_bot_and_dependencies", lambda _config: deps)
+    monkeypatch.setattr(bot_module, "DiscordBotManager", _FailingManager)
+    monkeypatch.setattr(main, "parse_arguments", lambda: SimpleNamespace(conf=None, folder=None))
+    monkeypatch.setattr(main, "load_config", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(main, "setup_early_logging", lambda: logger)
+    monkeypatch.setattr(main, "setup_production_logging", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(main, "validate_critical_config", lambda *_args, **_kwargs: None)
+
+    with (
+        patch("src.api_validation.log_validation_results", return_value=True),
+        caplog.at_level(logging.CRITICAL),
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        main.main()
+
+    assert exc_info.value.code == 1
+    fatal = [
+        record.getMessage() for record in caplog.records if "Fatal error" in record.getMessage()
+    ]
+    assert len(fatal) == 1, fatal
+
+
 def test_handle_unhandled_keyboard_interrupt_is_clean(monkeypatch):
     from unittest.mock import Mock
 

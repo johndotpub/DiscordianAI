@@ -9,21 +9,22 @@ This module provides robust error handling patterns including:
 """
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from enum import Enum
 import functools
 import logging
+import math
 import re
 import secrets
+import socket
 import threading
 import time
 from typing import Any
 
 import discord
-from discord import AllowedMentions
 import httpx
 import openai
 
@@ -82,6 +83,24 @@ class ErrorDetails:
     context: dict[str, Any] | None = None
 
 
+class ProviderCallError(RuntimeError):
+    """A provider call that failed after classification.
+
+    The processing wrappers raise this only when a caller asks to see failures;
+    direct callers keep the legacy ``None`` result. ``details`` carries the one
+    fixed user notice for the classified error.
+    """
+
+    def __init__(self, details: ErrorDetails, *, provider: str | None = None):
+        """Build a typed provider failure around classified error details."""
+        self.details = details
+        self.provider = provider
+        super().__init__(details.message)
+
+
+DEFAULT_CIRCUIT_BREAKER_TIMEOUT = 60
+
+
 class CircuitBreaker:
     """Circuit breaker pattern implementation to prevent cascade failures.
 
@@ -94,7 +113,7 @@ class CircuitBreaker:
     def __init__(
         self,
         failure_threshold: int = 5,
-        timeout: int = 60,
+        timeout: int = DEFAULT_CIRCUIT_BREAKER_TIMEOUT,
         expected_exception: type[Exception] = Exception,
         name: str = "provider",
     ):
@@ -151,7 +170,7 @@ class CircuitBreaker:
         async with self._lock:
             if self.state == "HALF_OPEN":
                 self.state = "CLOSED"
-                self.failure_count = 0
+            self.failure_count = 0
             self._probe_in_flight = False
             self.last_success_time = time.monotonic()
 
@@ -166,8 +185,15 @@ class CircuitBreaker:
 
         try:
             result = await func(*args, **kwargs)
-        except self.expected_exception:
-            await self._record_failure()
+        except self.expected_exception as exc:
+            if _is_user_request_error(exc):
+                # The provider answered and rejected this request. Release a
+                # half-open probe without stamping a success or a failure.
+                await self._release_probe()
+            else:
+                # Configuration errors (401, 403, 404) and transient provider
+                # failures must surface through the breaker and /health.
+                await self._record_failure()
             raise
         except BaseException:
             await self._release_probe()
@@ -216,6 +242,14 @@ def get_circuit_breaker_states() -> dict[str, dict[str, Any]]:
     return {
         provider: breaker.snapshot() for provider, breaker in PROVIDER_CIRCUIT_BREAKERS.items()
     }
+
+
+def get_circuit_breaker_timeout(provider: str) -> float:
+    """Return the recovery timeout for a provider's shared breaker, in seconds."""
+    breaker = PROVIDER_CIRCUIT_BREAKERS.get(provider)
+    if breaker is None:
+        return float(DEFAULT_CIRCUIT_BREAKER_TIMEOUT)
+    return float(breaker.timeout)
 
 
 RetryPredicate = Callable[[ErrorDetails, Exception], bool]
@@ -296,34 +330,41 @@ async def retry_with_backoff(
             retry_if = retry_config.retry_if or _is_retryable_error
 
             if not retry_if(error_details, e):
-                logger.exception("Non-retryable error in %s", _callable_name(func))
+                logger.error(  # noqa: TRY400 - the caller logs one traceback
+                    "Non-retryable error in %s (%s)",
+                    _callable_name(func),
+                    type(e).__name__,
+                )
                 raise
 
             if attempt >= retry_config.max_attempts - 1:
-                logger.exception(
-                    "All %s attempts failed for %s",
+                logger.error(  # noqa: TRY400 - the caller logs one traceback
+                    "All %s attempts failed for %s (%s)",
                     retry_config.max_attempts,
                     _callable_name(func),
+                    type(e).__name__,
                 )
                 break
 
             remaining = _remaining_time(started_at, retry_config)
             if remaining is not None and remaining <= 0:
-                logger.exception(
-                    "Retry deadline of %.1fs exceeded for %s",
+                logger.error(  # noqa: TRY400 - the caller logs one traceback
+                    "Retry deadline of %.1fs exceeded for %s (%s)",
                     retry_config.max_elapsed,
                     _callable_name(func),
+                    type(e).__name__,
                 )
                 break
 
             delay_policy = retry_config.delay_for or _retry_delay
             delay = delay_policy(attempt, retry_config, error_details, e)
             if remaining is not None and delay >= remaining:
-                logger.exception(
-                    "Retry delay of %.1fs would exceed deadline of %.1fs for %s",
+                logger.error(  # noqa: TRY400 - the caller logs one traceback
+                    "Retry delay of %.1fs would exceed deadline of %.1fs for %s (%s)",
                     delay,
                     retry_config.max_elapsed,
                     _callable_name(func),
+                    type(e).__name__,
                 )
                 break
 
@@ -332,7 +373,7 @@ async def retry_with_backoff(
                 attempt + 1,
                 retry_config.max_attempts,
                 _callable_name(func),
-                e,
+                provider_error_summary(e),
                 delay,
             )
             await asyncio.sleep(delay)
@@ -358,21 +399,52 @@ _HTTP_STATUS_BAD_REQUEST = 400
 _HTTP_STATUS_REQUEST_TIMEOUT = 408
 HTTP_STATUS_TOO_MANY_REQUESTS = 429
 _HTTP_STATUS_SERVER_ERROR = 500
+_CONFIGURATION_ERROR_STATUSES = frozenset({401, 403, 404})
+_MODEL_CONFIGURATION_ERROR_MARKERS = frozenset({"invalid_model", "model_not_found"})
 
 _RATE_LIMIT_MAX_RETRY_AFTER = 30.0
-_HTTP_4XX_IN_MESSAGE_PATTERN = re.compile(r"(?<!\d)(4\d{2})(?!\d)")
+# Only prose that names an HTTP status may stand in for a structured status;
+# a bare number such as a port or a row count is not a status.
+_EXPLICIT_HTTP_STATUS_IN_MESSAGE_PATTERN = re.compile(
+    r"(?i)\b(?:http(?:\s+status)?|status|error\s+code)\s*[:=]?\s*(4\d{2})\b"
+)
+
+NETWORK_ERROR_USER_MESSAGE = "🌐 I couldn't reach the AI service. Please try again shortly."
+DISCORD_CONNECTION_USER_MESSAGE = (
+    "🤖 I'm having trouble connecting to Discord. Please try again shortly."
+)
+QUOTA_EXHAUSTED_USER_MESSAGE = "💳 API quota exhausted. The provider returned insufficient quota."
+_QUOTA_EXHAUSTED_MARKERS = ("insufficient_quota", "exceeded your current quota")
 
 _HTTPX_TIMEOUT_ERRORS: tuple[type[Exception], ...] = (httpx.TimeoutException,)
 _HTTPX_TRANSPORT_ERRORS: tuple[type[Exception], ...] = (httpx.TransportError,)
-_HTTPX_CONNECT_TIMEOUT_ERRORS: tuple[type[Exception], ...] = (httpx.ConnectTimeout,)
+_HTTPX_CONNECT_ERRORS: tuple[type[Exception], ...] = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+)
+_HTTPX_AFTER_REQUEST_ERRORS: tuple[type[Exception], ...] = (
+    httpx.ReadError,
+    httpx.ReadTimeout,
+    httpx.RemoteProtocolError,
+    httpx.ProtocolError,
+    httpx.WriteError,
+)
 
 if httpx2 is not None:
     _HTTPX_TIMEOUT_ERRORS += (httpx2.TimeoutException,)
     _HTTPX_TRANSPORT_ERRORS += (httpx2.TransportError,)
-    _HTTPX_CONNECT_TIMEOUT_ERRORS += (httpx2.ConnectTimeout,)
+    _HTTPX_CONNECT_ERRORS += (httpx2.ConnectError, httpx2.ConnectTimeout)
+    _HTTPX_AFTER_REQUEST_ERRORS += (
+        httpx2.ReadError,
+        httpx2.ReadTimeout,
+        httpx2.RemoteProtocolError,
+        httpx2.ProtocolError,
+        httpx2.WriteError,
+    )
 
 
-def _status_code_from_exception(exception: Exception) -> int | None:
+def _structured_status_code(exception: Exception) -> int | None:
+    """Return an HTTP status from the exception or its response, without parsing text."""
     for source in (exception, getattr(exception, "response", None)):
         if source is None:
             continue
@@ -380,9 +452,143 @@ def _status_code_from_exception(exception: Exception) -> int | None:
             value = getattr(source, attribute, None)
             if isinstance(value, int):
                 return value
+    return None
 
-    match = _HTTP_4XX_IN_MESSAGE_PATTERN.search(str(exception))
+
+def _status_code_from_exception(exception: Exception) -> int | None:
+    status_code = _structured_status_code(exception)
+    if status_code is not None:
+        return status_code
+
+    match = _EXPLICIT_HTTP_STATUS_IN_MESSAGE_PATTERN.search(str(exception))
     return int(match.group(1)) if match else None
+
+
+def _exception_chain(exception: Exception) -> list[BaseException]:
+    """Return the explicit ``raise ... from`` cause chain, nearest first."""
+    chain: list[BaseException] = []
+    seen: set[int] = set()
+    current: BaseException | None = exception
+    while current is not None and id(current) not in seen:
+        chain.append(current)
+        seen.add(id(current))
+        current = current.__cause__
+    return chain
+
+
+def _chain_matches(exception: Exception, types: tuple[type[Exception], ...]) -> bool:
+    return any(isinstance(item, types) for item in _exception_chain(exception))
+
+
+def _iter_error_body_strings(value: Any) -> Iterator[str]:
+    """Yield strings from a structured error body without assuming its shape."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield str(key)
+            yield from _iter_error_body_strings(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _iter_error_body_strings(item)
+
+
+def _message_names_an_unsupported_model(message: str) -> bool:
+    """Return True when provider prose says the model itself is the problem."""
+    lowered = message.lower()
+    if not re.search(r"\bmodel\b", lowered):
+        return False
+    return any(phrase in lowered for phrase in ("is not supported", "not found", "does not exist"))
+
+
+def _model_configuration_error(exception: Exception) -> bool:
+    """Return True when a 400 reports a retired or unknown model.
+
+    Providers put the machine-readable reason in a structured error object.
+    Both Perplexity's Agent API (``error.type: invalid_model``) and the
+    OpenAI-style ``error.code: model_not_found`` are configuration errors.
+    A 400 that names the model itself is too: ``param`` is ``"model"``, or the
+    message combines the word ``model`` with ``is not supported``, ``not
+    found``, or ``does not exist``. The real SDK exposes the inner error object
+    as ``body`` and coerces the recorded numeric ``code`` to the string
+    ``"400"``, so the markers are read from either wrapping.
+    """
+    candidates: list[str] = []
+    body = getattr(exception, "body", None)
+    structured: Mapping | None = None
+    if isinstance(body, Mapping):
+        inner = body.get("error", body)
+        if isinstance(inner, Mapping):
+            structured = inner
+            for key in ("type", "code"):
+                value = inner.get(key)
+                if isinstance(value, str):
+                    candidates.append(value)
+        for key in ("type", "code"):
+            value = body.get(key)
+            if isinstance(value, str):
+                candidates.append(value)
+    for attribute in ("type", "code"):
+        value = getattr(exception, attribute, None)
+        if isinstance(value, str):
+            candidates.append(value)
+    if any(
+        candidate.strip().lower() in _MODEL_CONFIGURATION_ERROR_MARKERS for candidate in candidates
+    ):
+        return True
+
+    if structured is not None:
+        param = structured.get("param")
+        if isinstance(param, str) and param.strip().lower() == "model":
+            return True
+        message = structured.get("message")
+        if isinstance(message, str) and _message_names_an_unsupported_model(message):
+            return True
+    return False
+
+
+def _is_quota_exhausted(exception: Exception) -> bool:
+    """Return True when the structured error body reports exhausted quota."""
+    candidates = [
+        getattr(exception, "code", None),
+        getattr(exception, "type", None),
+        getattr(exception, "body", None),
+    ]
+    for candidate in candidates:
+        for text in _iter_error_body_strings(candidate):
+            lowered = text.lower()
+            if any(marker in lowered for marker in _QUOTA_EXHAUSTED_MARKERS):
+                return True
+    return False
+
+
+def _is_user_request_error(exception: Exception) -> bool:
+    """Return True for a deterministic 4xx caused by this request.
+
+    A user-caused request error (400, 409, 413, 422, and other client errors)
+    proves the provider answered; it must neither push the breaker towards OPEN
+    nor stamp a success. Configuration errors (401, 403, 404, and a 400 whose
+    structured type or code marks the model invalid or missing) are different:
+    a revoked key or retired model fails every call and must make /health
+    report the provider degraded or unhealthy. Timeouts, 408, 429, 5xx, and
+    unclassified errors count as provider failures.
+    """
+    if isinstance(exception, CircuitBreakerOpenError):
+        return False
+
+    status_code = _structured_status_code(exception)
+    if status_code is not None:
+        if not _HTTP_STATUS_BAD_REQUEST <= status_code < _HTTP_STATUS_SERVER_ERROR:
+            return False
+        if status_code == _HTTP_STATUS_BAD_REQUEST and _model_configuration_error(exception):
+            return False
+        return status_code not in {
+            *_CONFIGURATION_ERROR_STATUSES,
+            _HTTP_STATUS_REQUEST_TIMEOUT,
+            HTTP_STATUS_TOO_MANY_REQUESTS,
+        }
+
+    return classify_error(exception).error_type == ErrorType.VALIDATION_ERROR
 
 
 def is_retryable_status(status: int | None) -> bool:
@@ -392,27 +598,44 @@ def is_retryable_status(status: int | None) -> bool:
     return status == HTTP_STATUS_TOO_MANY_REQUESTS or status >= _HTTP_STATUS_SERVER_ERROR
 
 
-def _is_retryable_error(error_details: ErrorDetails, exception: Exception) -> bool:
+def _is_retryable_error(  # noqa: PLR0911 - one branch per retry policy rule
+    error_details: ErrorDetails, exception: Exception
+) -> bool:
     if isinstance(exception, CircuitBreakerOpenError):
+        return False
+    if _is_quota_exhausted(exception):
         return False
 
     status_code = _status_code_from_exception(exception)
-
-    if (
-        status_code is not None
-        and _HTTP_STATUS_BAD_REQUEST <= status_code < _HTTP_STATUS_SERVER_ERROR
-    ):
+    if status_code is not None:
         return is_retryable_status(status_code)
-    if is_retryable_status(status_code):
+
+    if isinstance(exception, (ConnectionRefusedError, socket.gaierror)):
+        # Refused before a connection existed and DNS failure both prove the
+        # request never reached the provider.
         return True
 
-    if isinstance(exception, _HTTPX_CONNECT_TIMEOUT_ERRORS):
-        return True
+    if isinstance(exception, (ConnectionResetError, BrokenPipeError, ConnectionAbortedError)):
+        # These three can arrive after the request was sent, so a repeat is
+        # not provably safe. The bare ConnectionError keeps its historical
+        # retryable classification for callers that use it as a connect alias.
+        return False
+
+    if isinstance(exception, (openai.APITimeoutError, *_HTTPX_TIMEOUT_ERRORS)):
+        # The SDK wraps every transport timeout in APITimeoutError. Only a
+        # connect timeout proves the request was never sent and safe to retry.
+        return _chain_matches(exception, _HTTPX_CONNECT_ERRORS)
+
+    if isinstance(exception, (openai.APIConnectionError, *_HTTPX_TRANSPORT_ERRORS)):
+        # Read, write, and protocol errors can arrive after the provider
+        # already served the request; a connect error cannot.
+        return not _chain_matches(exception, _HTTPX_AFTER_REQUEST_ERRORS)
 
     return error_details.error_type not in {
         ErrorType.API_AUTH_ERROR,
         ErrorType.API_TIMEOUT,
         ErrorType.CONFIG_ERROR,
+        ErrorType.UNKNOWN,
         ErrorType.VALIDATION_ERROR,
     }
 
@@ -428,13 +651,13 @@ def _retry_delay(
         or _status_code_from_exception(exception) == HTTP_STATUS_TOO_MANY_REQUESTS
     )
     if is_rate_limit:
-        retry_after = error_details.retry_after
+        retry_after = _bounded_retry_after(error_details.retry_after)
         if retry_after is None:
             retry_after = retry_after_seconds(
                 getattr(getattr(exception, "response", None), "headers", None)
             )
         if retry_after is not None:
-            return min(max(float(retry_after), 0.0), _RATE_LIMIT_MAX_RETRY_AFTER)
+            return retry_after
 
     return calculate_backoff_delay(attempt, config)
 
@@ -484,8 +707,26 @@ def _header_value(headers: Any, name: str) -> Any:
     return None
 
 
+def _bounded_retry_after(value: Any) -> float | None:
+    """Return a finite, non-negative Retry-After bounded by the policy cap."""
+    if value is None:
+        return None
+    try:
+        delay = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(delay) or delay < 0.0:
+        return None
+    return min(delay, _RATE_LIMIT_MAX_RETRY_AFTER)
+
+
 def retry_after_seconds(headers: Any) -> float | None:
-    """Parse a Retry-After header and bound it to the retry policy maximum."""
+    """Parse a Retry-After header and bound it to the retry policy maximum.
+
+    A header that is not a finite, non-negative number of seconds and is not a
+    valid HTTP date returns ``None`` so the caller uses normal backoff instead
+    of sleeping on ``nan`` or a huge value.
+    """
     value = _header_value(headers, "Retry-After")
     if value is None:
         return None
@@ -499,7 +740,7 @@ def retry_after_seconds(headers: Any) -> float | None:
     except (TypeError, ValueError, OverflowError):
         pass
     else:
-        return min(max(delay, 0.0), _RATE_LIMIT_MAX_RETRY_AFTER)
+        return _bounded_retry_after(delay)
 
     try:
         retry_at = parsedate_to_datetime(text)
@@ -519,13 +760,30 @@ def _classify_api_status_error(exception: openai.APIStatusError) -> ErrorDetails
     status_code = exception.status_code
     retry_after = retry_after_seconds(getattr(exception.response, "headers", None))
 
+    if _is_quota_exhausted(exception):
+        return _error_details(
+            ErrorType.API_AUTH_ERROR,
+            ErrorSeverity.HIGH,
+            exception,
+            QUOTA_EXHAUSTED_USER_MESSAGE,
+            retry_after,
+        )
+
     if status_code == HTTP_STATUS_TOO_MANY_REQUESTS:
+        # A missing header keeps the historical 30-second default. A header
+        # that is present but unusable (nan, negative, absurd) leaves the delay
+        # to normal backoff instead of sleeping on a bogus value.
+        if (
+            retry_after is None
+            and _header_value(getattr(exception.response, "headers", None), "Retry-After") is None
+        ):
+            retry_after = 30
         return _error_details(
             ErrorType.API_RATE_LIMIT,
             ErrorSeverity.MEDIUM,
             exception,
             "⏱️ Service is busy. Please try again in a moment.",
-            retry_after if retry_after is not None else 30,
+            retry_after,
         )
 
     if status_code in {401, 403}:
@@ -583,12 +841,15 @@ def _classify_typed_error(exception: Exception) -> ErrorDetails | None:
             10,
         )
 
-    if isinstance(exception, (openai.APIConnectionError, *_HTTPX_TRANSPORT_ERRORS)):
+    if isinstance(
+        exception,
+        (ConnectionError, socket.gaierror, openai.APIConnectionError, *_HTTPX_TRANSPORT_ERRORS),
+    ):
         return _error_details(
             ErrorType.NETWORK_ERROR,
             ErrorSeverity.HIGH,
             exception,
-            "🌐 Connection issue. Please check your network.",
+            NETWORK_ERROR_USER_MESSAGE,
             15,
         )
 
@@ -600,7 +861,7 @@ def _classify_typed_error(exception: Exception) -> ErrorDetails | None:
             ErrorType.DISCORD_CONNECTION,
             ErrorSeverity.HIGH,
             exception,
-            "🤖 Bot connection issue. Reconnecting...",
+            DISCORD_CONNECTION_USER_MESSAGE,
             retry_after_seconds(getattr(getattr(exception, "response", None), "headers", None)),
         )
 
@@ -626,17 +887,17 @@ def classify_error(exception: Exception) -> ErrorDetails:
     user_message = "An unexpected error occurred. Please try again."
     retry_after = None
 
-    # Permanent billing/quota exhaustion — not a transient rate limit
-    if (
-        "insufficient_quota" in error_msg.lower()
-        or "exceeded your current quota" in error_msg.lower()
-    ):
+    # Permanent quota exhaustion — not a transient rate limit
+    if any(marker in error_msg.lower() for marker in _QUOTA_EXHAUSTED_MARKERS):
         error_type = ErrorType.API_AUTH_ERROR
         severity = ErrorSeverity.HIGH
-        user_message = "💳 API quota exhausted. The provider returned insufficient quota."
+        user_message = QUOTA_EXHAUSTED_USER_MESSAGE
 
     # OpenAI/API specific errors
-    elif "rate limit" in error_msg.lower() or re.search(r"\b429\b", error_msg):
+    elif (
+        "rate limit" in error_msg.lower()
+        or _status_code_from_exception(exception) == HTTP_STATUS_TOO_MANY_REQUESTS
+    ):
         error_type = ErrorType.API_RATE_LIMIT
         severity = ErrorSeverity.MEDIUM
         user_message = "⏱️ Service is busy. Please try again in a moment."
@@ -665,7 +926,7 @@ def classify_error(exception: Exception) -> ErrorDetails:
     elif any(term in error_msg.lower() for term in ["connection", "network", "dns"]):
         error_type = ErrorType.NETWORK_ERROR
         severity = ErrorSeverity.HIGH
-        user_message = "🌐 Connection issue. Please check your network."
+        user_message = NETWORK_ERROR_USER_MESSAGE
         retry_after = 15
 
     # Discord specific errors
@@ -674,7 +935,7 @@ def classify_error(exception: Exception) -> ErrorDetails:
     ):
         error_type = ErrorType.DISCORD_CONNECTION
         severity = ErrorSeverity.HIGH
-        user_message = "🤖 Bot connection issue. Reconnecting..."
+        user_message = DISCORD_CONNECTION_USER_MESSAGE
 
     # Configuration errors
     elif any(term in error_msg.lower() for term in ["config", "missing", "invalid"]):
@@ -683,6 +944,22 @@ def classify_error(exception: Exception) -> ErrorDetails:
         user_message = "⚙️ Configuration issue. Please contact administrator."
 
     return _error_details(error_type, severity, exception, user_message, retry_after)
+
+
+def provider_error_summary(exception: Exception) -> str:
+    """Describe a provider failure without its request or response body.
+
+    Args:
+        exception: The provider exception about to be logged.
+
+    Returns:
+        The exception class name, its HTTP status code when one is available,
+        and the classified error type.
+    """
+    details = classify_error(exception)
+    status_code = _status_code_from_exception(exception)
+    status = str(status_code) if status_code is not None else "none"
+    return f"{type(exception).__name__} (status={status}, type={details.error_type.value})"
 
 
 class ErrorTracker:
@@ -725,6 +1002,8 @@ def _is_retryable_discord_error(_error_details: ErrorDetails, exception: Excepti
         return False
     if isinstance(exception, discord.Forbidden):
         return False
+    if isinstance(exception, TimeoutError):
+        return False
 
     status_code = _status_code_from_exception(exception)
     if status_code is not None:
@@ -755,7 +1034,7 @@ def _discord_retry_config(max_retries: int) -> RetryConfig:
         max_delay=float("inf"),
         exponential_base=2.0,
         jitter=False,
-        max_elapsed=None,
+        max_elapsed=DEFAULT_API_RETRY_CONFIG.max_elapsed,
         retry_if=_is_retryable_discord_error,
         delay_for=_discord_retry_delay,
     )
@@ -767,7 +1046,7 @@ async def safe_discord_send(
     logger: logging.Logger,
     max_retries: int = 3,
     *,
-    allowed_mentions: AllowedMentions | None = None,
+    mention_users: Sequence[Any] | None = None,
 ) -> bool:
     """Safely send message to Discord with retry logic and error handling.
 
@@ -776,21 +1055,27 @@ async def safe_discord_send(
         content: Message content
         logger: Logger instance
         max_retries: Maximum retry attempts
-        allowed_mentions: Optional mention allowlist for the send
+        mention_users: Optional users the notice may mention. ``None`` keeps a
+            bare channel send; a sequence routes through the delivery helper,
+            which owns the ``AllowedMentions`` construction.
 
     Returns:
         bool: True if message sent successfully, False otherwise
     """
 
     async def _send_once() -> None:
-        kwargs: dict[str, Any] = {}
-        if allowed_mentions is not None:
-            kwargs["allowed_mentions"] = allowed_mentions
-        await channel.send(content, **kwargs)
+        if mention_users is None:
+            await channel.send(content)
+            return
+
+        from .message_splitter import _deliver  # noqa: PLC0415 - avoids an import cycle
+
+        await _deliver(channel, content, mention_users=mention_users)
 
     try:
         await retry_with_backoff(_send_once, _discord_retry_config(max_retries), logger)
-    except Exception as exc:  # noqa: BLE001 — safe_discord_send must never raise
+    except Exception as exc:
+        logger.exception("Failed to send Discord message after retries")
         error_tracker.record_error(classify_error(exc), {"channel": str(channel)})
         return False
     return True

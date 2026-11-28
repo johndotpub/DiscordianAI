@@ -5,7 +5,8 @@ message, then calls the selected provider, handles fallback, and records the
 successful turn in conversation history.
 """
 
-from collections.abc import Awaitable, Callable
+from collections import OrderedDict
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
 import re
 from typing import Any
@@ -15,25 +16,40 @@ from .config import (
     DISCORD_MARKUP_PATTERN,
     get_error_messages,
 )
-from .error_handling import get_circuit_breaker
+from .error_handling import ProviderCallError, get_circuit_breaker
+from .message_splitter import is_inside_rendered_code
 from .models import AIClients, AIConfig, AIRequest, RoutingMetadata
 from .openai_processing import process_openai_message
 from .perplexity_processing import process_perplexity_message
-from .routing import build_router, decision_log_fields
+from .routing import HeuristicRouter, build_router, decision_log_fields, router_config_key
 from .routing.context import build_router_input
 from .routing.contracts import RouteDecision
 from .routing.lexicon import LexiconError
+from .routing.services import ROUTE_BY_SERVICE
+from .routing.text import normalise_apostrophes
 
 # Get centralized error messages
 ERROR_MESSAGES = get_error_messages()
 
 
 async def _invoke_openai(request, client, service_config, summary):
-    return await process_openai_message(request, summary, client, service_config)
+    return await process_openai_message(
+        request,
+        summary,
+        client,
+        service_config,
+        raise_on_failure=True,
+    )
 
 
 async def _invoke_perplexity(request, client, service_config, summary):
-    return await process_perplexity_message(request, client, service_config, summary)
+    return await process_perplexity_message(
+        request,
+        client,
+        service_config,
+        summary,
+        raise_on_failure=True,
+    )
 
 
 @dataclass(frozen=True)
@@ -76,40 +92,39 @@ _ONLY_MODE_SPECS: dict[str, _OnlyModeSpec] = {
 _EARLY_WEB_INABILITY_WINDOW = 300
 _QUOTED_SPAN_PATTERN = re.compile(r'"[^"\n]*"|“[^”\n]*”|`[^`\n]*`')
 _NARRATIVE_MARKERS_PATTERN = re.compile(
-    r"\b(poem|story|verse|tale|fiction|imagine|imagined|imagination|dream|"
+    r"\b(poem|haiku|story|verse|tale|fiction|imagine|imagined|imagination|dream|"
     r"dreamed|dreamt|pretend|narrator|character|once upon a time)\b",
     re.IGNORECASE,
 )
 
-# Persona-agnostic phrases that admit an answer could not use live web data.
+# First-person admissions that the assistant could not use live web data. A
+# statement about someone else, a general explanation, or a quoted example is
+# not an admission and must not discard a good local answer.
 _OPENAI_WEB_INABILITY_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
         (
-            r"\b(can't|cannot|unable to|not able to)\s+"
-            r"(browse|search|access|look up|check)\s+"
-            r"(the\s+)?(web|internet|online|real.?time|current|live)\b"
+            r"\bi(?:'m\s+(?:unable|not able)|\s+(?:can't|cannot|can not|am unable|am not able))"
+            r"\s+(?:to\s+)?(?:browse|search|access)\s+(?:the\s+)?"
+            r"(?:web|internet|online|real.?time|current|live|website|webpage|web page)\b"
         ),
         (
-            r"\b(don't|do not|doesn't|does not)\s+have\s+"
-            r"(access to|the ability to access)\s+"
-            r"(?:the\s+)?(real.?time|current|live|external|web|internet)\b"
+            r"\bi(?:'m\s+(?:unable|not able)|\s+(?:can't|cannot|can not|am unable|am not able))"
+            r"\s+(?:to\s+)?(?:look up|check|verify|confirm|provide|retrieve|fetch)\s+"
+            r"(?:current|real.?time|up.?to.?date|live)\b"
         ),
         (
-            r"\b(no|without)\s+(access to|ability to access)\s+"
-            r"(the\s+)?(internet|web|real.?time|external|current)\b"
-        ),
-        r"\b(knowledge|training)\s+(cutoff|cut.?off)\b",
-        r"\bas of my (last|latest)\s+(update|training)\b",
-        r"\b(not equipped|not designed)\s+to\s+(browse|search|access)\b",
-        (
-            r"\b(can't|cannot|unable to)\s+(verify|confirm|check|provide)\s+"
-            r"(current|real.?time|up.?to.?date|live)\b"
+            r"\bi(?:'ve\s+no|\s+(?:don't|do not|have no|haven't got|have not got))\s+"
+            r"(?:have\s+)?(?:access to|the ability to access)\s+(?:the\s+)?"
+            r"(?:internet|web|online|real.?time|current|live|external)\b"
         ),
         (
-            r"\b(don't|do not)\s+have\s+(real.?time|current|live|up.?to.?date)\s+"
-            r"(information|data|access)\b"
+            r"\bi\s+(?:don't|do not)\s+have\s+(?:real.?time|current|live|up.?to.?date)\s+"
+            r"(?:information|data|access)\b"
         ),
+        r"\bmy\s+(?:knowledge|training)\s+(?:cutoff|cut.?off)\b",
+        r"\bas of my (?:last|latest)\s+(?:update|training)\b",
+        r"\bi\s+(?:am|'m)\s+(?:not equipped|not designed)\s+to\s+(?:browse|search|access)\b",
     )
 ]
 
@@ -158,7 +173,8 @@ def _record_conversation_turn(
 ) -> None:
     """Record the user prompt and assistant response in conversation history."""
     user_text = _history_user_text(request)
-    if not user_text or not (response_text or "").strip():
+    response_text = str(response_text or "")
+    if not user_text or not response_text.strip():
         request.logger.warning("Skipping incomplete conversation turn")
         return
 
@@ -195,7 +211,8 @@ def _sanitize_for_routing(message: str) -> str:
     history, cache keys, or log output.
     """
     cleaned = DISCORD_MARKUP_PATTERN.sub("", message)
-    return " ".join(cleaned.split()).strip()
+    lines = [" ".join(line.split()) for line in cleaned.splitlines()]
+    return "\n".join(lines).strip()
 
 
 def _is_quoted_text(response_text: str, position: int) -> bool:
@@ -211,7 +228,7 @@ def _is_quoted_text(response_text: str, position: int) -> bool:
     if response_text[line_start:line_end].lstrip().startswith(">"):
         return True
 
-    return response_text.count("```", 0, position) % 2 == 1
+    return is_inside_rendered_code(response_text, position)
 
 
 def _is_narrative_context(response_text: str, position: int) -> bool:
@@ -255,8 +272,11 @@ def _detect_openai_web_inability(response_text: str) -> bool:
     if not response_text:
         return False
 
+    # Apostrophe normalisation is one-for-one, so the match offsets remain
+    # valid positions in the original text used by the quote/narrative checks.
+    normalised_text = normalise_apostrophes(response_text)
     for pattern in _OPENAI_WEB_INABILITY_PATTERNS:
-        for match in pattern.finditer(response_text):
+        for match in pattern.finditer(normalised_text):
             if match.start() > _EARLY_WEB_INABILITY_WINDOW:
                 continue
             if _is_quoted_text(response_text, match.start()):
@@ -297,6 +317,7 @@ def _vision_decision(decision: RouteDecision) -> RouteDecision:
         decision,
         route="local",
         reasons=("images:local",),
+        deterministic_override=True,
     )
 
 
@@ -329,13 +350,61 @@ def _lookback(orchestrator_config: dict | None) -> int:
     )
 
 
+_DEFAULT_ROUTER_CACHE_SIZE = 8
+_DEFAULT_ROUTERS: OrderedDict[tuple[Any, ...], Any] = OrderedDict()
+
+
+async def _close_cached_router(router: Any) -> None:
+    """Close one cached router that owns an HTTP client, if it has one."""
+    close = getattr(router, "aclose", None)
+    if callable(close):
+        await close()
+
+
+async def _default_router(config: Mapping | None) -> Any:
+    """Return the fallback router, built once per effective configuration.
+
+    Production injects the startup router. Direct callers that do not inject
+    one still pay for at most one construction per configuration instead of
+    rebuilding the router for every message. The cache is bounded; the oldest
+    router is closed when it is evicted. The key comes from the routing package
+    so it cannot drift from what ``build_router`` reads.
+    """
+    key = (build_router, *router_config_key(config))
+    cached = _DEFAULT_ROUTERS.get(key)
+    if cached is not None:
+        _DEFAULT_ROUTERS.move_to_end(key)
+        return cached
+    router = build_router(config)
+    _DEFAULT_ROUTERS[key] = router
+    while len(_DEFAULT_ROUTERS) > _DEFAULT_ROUTER_CACHE_SIZE:
+        _old_key, evicted = _DEFAULT_ROUTERS.popitem(last=False)
+        await _close_cached_router(evicted)
+    return router
+
+
+async def close_default_routers() -> None:
+    """Close and drop every fallback router cached for direct callers."""
+    while _DEFAULT_ROUTERS:
+        _key, router = _DEFAULT_ROUTERS.popitem(last=False)
+        await _close_cached_router(router)
+
+
 async def _build_route_decision(
     request: AIRequest,
     orchestrator_config: dict | None,
+    router: Any | None = None,
 ) -> RouteDecision:
-    """Build one router input and ask the configured router for one decision."""
+    """Build one router input and ask the configured router for one decision.
+
+    A router that fails at runtime falls back to the deterministic gate with a
+    logged reason. Configuration errors for a retired or unknown mode still
+    propagate so startup and direct callers fail loudly.
+    """
     try:
-        router = build_router(orchestrator_config)
+        active_router = (
+            router if router is not None else await _default_router(orchestrator_config)
+        )
         router_input = build_router_input(
             request,
             getattr(request, "conversation_manager", None),
@@ -345,15 +414,45 @@ async def _build_route_decision(
             router_input,
             text=_sanitize_for_routing(router_input.text),
         )
-        decision = await router.decide(router_input)
     except LexiconError as exc:
+        return _lexicon_fallback_decision(request, exc)
+    except (NotImplementedError, ValueError):
+        raise
+    except Exception as exc:
         request.logger.exception(
-            "Routing lexicon failed; falling back to a deterministic local decision (%s)",
+            "Routing setup failed (%s); falling back to a deterministic local decision",
             type(exc).__name__,
         )
-        decision = _local_fallback_decision(request)
-    request.logger.info("Routing decision: %s", decision_log_fields(decision))
-    return decision
+        return _local_fallback_decision(request)
+
+    try:
+        return await active_router.decide(router_input)
+    except LexiconError as exc:
+        return _lexicon_fallback_decision(request, exc)
+    except Exception as exc:
+        request.logger.exception(
+            "Router failed (%s); falling back to the deterministic gate",
+            type(exc).__name__,
+        )
+        try:
+            gate_decision = HeuristicRouter().decide_sync(router_input)
+        except Exception:
+            request.logger.exception("Deterministic gate failed; using a local decision")
+            return _local_fallback_decision(request)
+        return replace(
+            gate_decision,
+            reasons=("fallback:router_error", *gate_decision.reasons),
+        )
+
+
+def _lexicon_fallback_decision(request: AIRequest, exc: Exception) -> RouteDecision:
+    """Log a lexicon failure once and return a local fallback decision."""
+    request.logger.error(
+        "Routing lexicon failed; falling back to a deterministic local decision (%s)",
+        type(exc).__name__,
+        exc_info=exc,
+    )
+    return _local_fallback_decision(request)
 
 
 def _routing_metadata(
@@ -444,7 +543,7 @@ async def _process_only_mode(
             router_id="direct",
             policy_version="0",
             decision_source="direct",
-            route="web" if service == "perplexity" else "local",
+            route=ROUTE_BY_SERVICE[service],
             salt=f"direct:{service}",
         ),
     )
@@ -452,13 +551,16 @@ async def _process_only_mode(
         result = await spec.invoke(routed, client, service_config, conversation_summary)
         if result:
             content, suppress, embed = spec.normalize(result)
-            _record_conversation_turn(request, content, spec.service, service_config.model)
-            request.logger.info("%s success (%d chars)", spec.label, len(content))
-            return content, suppress, embed
+            if str(content).strip():
+                _record_conversation_turn(request, content, spec.service, service_config.model)
+                request.logger.info("%s success (%d chars)", spec.label, len(content))
+                return content, suppress, embed
 
         request.logger.error("%s returned no response", spec.label)
         if spec.breaker_error is not None and get_circuit_breaker(spec.service).state == "OPEN":
             return spec.breaker_error, False, None
+    except ProviderCallError as failure:
+        return failure.details.user_message, False, None
     except Exception:
         request.logger.exception("%s processing failed", spec.label)
         return spec.exception_error, False, None
@@ -497,12 +599,14 @@ async def _process_openai_only_mode(
     )
 
 
-async def get_smart_response(  # noqa: PLR0911 - explicit failure and fallback branches
+async def get_smart_response(  # noqa: PLR0913 - the injected router
     request: AIRequest,
     conversation_summary: list[dict],
     clients: AIClients,
     config: AIConfig,
     orchestrator_config: dict | None = None,
+    *,
+    router: Any | None = None,
 ) -> tuple[str, bool, dict | None]:
     """Choose the best AI service and generate a response.
 
@@ -519,6 +623,7 @@ async def get_smart_response(  # noqa: PLR0911 - explicit failure and fallback b
         clients: `AIClients` containing available OpenAI/Perplexity clients.
         config: `AIConfig` with service-specific configuration.
         orchestrator_config: Optional routing and orchestrator tuning values.
+        router: Optional process-wide router built once at startup.
 
     Returns:
         A tuple of `(response_text, suppress_embeds, embed_metadata)` where
@@ -527,8 +632,8 @@ async def get_smart_response(  # noqa: PLR0911 - explicit failure and fallback b
         `None` when not applicable.
 
     Raises:
-        NotImplementedError: If ``ROUTER_MODE=model`` selects the unimplemented
-            model router. The message names ``docs/routing/DESIGN.md``.
+        NotImplementedError: If ``ROUTER_MODE=model`` selects the retired model
+            router. The message points at ``ROUTER_MODE=clef``.
         ValueError: If ``ROUTER_MODE`` is not a recognised mode.
     """
     try:
@@ -555,25 +660,17 @@ async def get_smart_response(  # noqa: PLR0911 - explicit failure and fallback b
         # Mode 3: Hybrid mode
         if clients.openai and clients.perplexity:
             return await _process_hybrid_mode(
-                request, conversation_summary, clients, config, orchestrator_config
+                request,
+                conversation_summary,
+                clients,
+                config,
+                orchestrator_config,
+                router=router,
             )
 
         request.logger.critical("No AI clients available")
         return ERROR_MESSAGES["configuration_error"], False, None
 
-    except LexiconError:
-        request.logger.exception(
-            "Routing lexicon unavailable; falling back to a direct local response"
-        )
-        if clients.openai is not None:
-            return await _process_only_mode(
-                request,
-                "openai",
-                clients.openai,
-                config,
-                conversation_summary,
-            )
-        return ERROR_MESSAGES["configuration_error"], False, None
     except (NotImplementedError, ValueError):
         request.logger.exception("Routing configuration error")
         raise
@@ -582,25 +679,35 @@ async def get_smart_response(  # noqa: PLR0911 - explicit failure and fallback b
         return ERROR_MESSAGES["unexpected_error"], False, None
 
 
-async def _process_hybrid_mode(  # noqa: PLR0911 - one return per fallback outcome
+async def _process_hybrid_mode(  # noqa: PLR0911, PLR0913 - one branch per fallback outcome
     request: AIRequest,
     conversation_summary: list[dict],
     clients: AIClients,
     config: AIConfig,
     orchestrator_config: dict | None = None,
+    *,
+    router: Any | None = None,
 ) -> tuple[str, bool, dict | None]:
     """Handle hybrid routing between OpenAI and Perplexity.
 
-    One decision is built before any provider call, including when a cached
-    answer is served. Each provider is attempted at most once per request.
+    An image request is decided before any router runs. Otherwise one decision
+    is built before any provider call, including when a cached answer is served.
+    Each provider is attempted at most once per request.
     """
-    decision = await _build_route_decision(request, orchestrator_config)
     ledger = AttemptLedger()
     degraded = False
 
     if getattr(request, "images", ()):
-        request.logger.info("Images present; forcing the local provider route")
-        decision = _vision_decision(decision)
+        decision = _vision_decision(
+            RouteDecision(
+                route="local",
+                reasons=("images:local",),
+                text=getattr(request, "message", "") or "",
+            )
+        )
+    else:
+        decision = await _build_route_decision(request, orchestrator_config, router)
+    request.logger.info("Routing decision: %s", decision_log_fields(decision))
 
     if decision.route == "web":
         request.logger.info("Routing to Perplexity")
@@ -648,13 +755,6 @@ async def _process_hybrid_mode(  # noqa: PLR0911 - one return per fallback outco
                 "Discarding OpenAI answer after web-inability reroute: length=%d",
                 len(res_content),
             )
-            if ledger.already_tried("perplexity"):
-                request.logger.warning(
-                    "Perplexity already failed in this request; returning the local "
-                    "answer without a second attempt"
-                )
-                _record_conversation_turn(request, res_content, "openai", config.openai.model)
-                return res_content, False, None
             request.logger.warning(
                 "OpenAI response indicates web-inability; rerouting to Perplexity"
             )

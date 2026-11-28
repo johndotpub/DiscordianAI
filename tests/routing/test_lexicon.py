@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from src.routing.features import extract_overrides, views
 from src.routing.lexicon import Lexicon, LexiconError
 
 STARTER_CLASS_COUNT = 12
@@ -39,15 +40,14 @@ def _document() -> dict[str, object]:
     }
 
 
-def test_bundled_lexicon_loads_with_class_weights() -> None:
-    """The bundled lexicon exposes every class and a class-level weight."""
+def test_bundled_lexicon_loads_every_class_and_term() -> None:
+    """The bundled lexicon exposes every class and its terms."""
     lexicon = Lexicon.load()
 
     assert lexicon.version == "1"
     assert lexicon.language == "en"
     assert len(lexicon.classes) == STARTER_CLASS_COUNT
     assert sum(len(terms) for terms in lexicon.terms.values()) == STARTER_TERM_COUNT
-    assert lexicon.class_weights["volatile_topic"] == 1.8
     assert lexicon.classes["social_only"] == "framing"
     assert lexicon.find("weather")
 
@@ -90,8 +90,8 @@ def test_unknown_evidence_class_names_the_bad_class(tmp_path: Path) -> None:
     assert "mystery" in message
 
 
-def test_weight_outside_range_names_the_class(tmp_path: Path) -> None:
-    """A weight outside [-10, 10] raises and names the offending class."""
+def test_weight_field_is_ignored_for_backward_compatibility(tmp_path: Path) -> None:
+    """A legacy weight field loads and does not affect matching."""
     document = _document()
     classes = document["classes"]
     assert isinstance(classes, dict)
@@ -100,12 +100,10 @@ def test_weight_outside_range_names_the_class(tmp_path: Path) -> None:
     topic["weight"] = 10.5
     path = _write(tmp_path, document)
 
-    with pytest.raises(LexiconError) as excinfo:
-        Lexicon.load(path)
+    lexicon = Lexicon.load(path)
 
-    message = str(excinfo.value)
-    assert "volatile_topic" in message
-    assert "weight" in message
+    assert lexicon.classes["volatile_topic"] == "bearing"
+    assert any(hit.term.text == "weather" for hit in lexicon.find("weather"))
 
 
 def test_term_in_two_classes_names_the_term_and_both_classes(tmp_path: Path) -> None:
@@ -169,3 +167,50 @@ def test_language_mismatch_names_language(tmp_path: Path) -> None:
     message = str(excinfo.value)
     assert "language" in message
     assert "'fr'" in message
+
+
+def test_invalid_utf8_lexicon_raises_lexicon_error(tmp_path: Path) -> None:
+    """A lexicon that is not valid UTF-8 is a load error, not a decode escape."""
+    path = tmp_path / "lexicon.json"
+    path.write_bytes(b'{"version": "1", "language": "en", "classes": {"\xff": {}}}')
+
+    with pytest.raises((LexiconError, UnicodeDecodeError)) as excinfo:
+        Lexicon.load(path)
+
+    assert isinstance(
+        excinfo.value, LexiconError
+    ), f"UnicodeDecodeError escaped the lexicon loader: {excinfo.value}"
+    assert "not valid UTF-8" in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["casino website", "piano webinar", "a pronoun, web search tips"],
+)
+def test_local_instruction_does_not_match_inside_a_longer_word(text: str) -> None:
+    """A local-only instruction needs whole words, not a substring."""
+    cues = extract_overrides(views(text), Lexicon.load())
+
+    assert not any(cue.signal == "override.local_instruction" for cue in cues)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["we should research the web app", "please recheck online later", "outlook it up online"],
+)
+def test_web_instruction_does_not_match_inside_a_longer_word(text: str) -> None:
+    """A web instruction needs whole words, not a substring."""
+    cues = extract_overrides(views(text), Lexicon.load())
+
+    assert not any(cue.signal == "override.web_instruction" for cue in cues)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["no web please", "do not search", "don't search", "answer from memory"],
+)
+def test_override_phrases_still_match_as_whole_phrases(text: str) -> None:
+    """Whole-word boundaries do not reword or drop an existing phrase."""
+    cues = extract_overrides(views(text), Lexicon.load())
+
+    assert any(cue.signal == "override.local_instruction" for cue in cues)

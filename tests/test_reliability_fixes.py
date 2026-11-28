@@ -96,7 +96,6 @@ async def test_raising_health_checker_is_reported_as_unhealthy():
     assert result.error == "check raised RuntimeError"
     assert result.details["error_type"] == "RuntimeError"
     assert result.response_time_ms >= 0
-    assert monitor.metrics["openai"].failed_checks == 1
 
 
 def test_api_validation_logs_redact_credentials_and_query(caplog):

@@ -33,10 +33,13 @@ Model-supplied inputs are capped before the request: `query` at 500 characters,
 `url` at 2,048 characters, and `max_results` is clamped to 1–10. An oversized
 input becomes an error tool result and is never sent to the provider.
 
-The model may request up to four rounds of tool calls. Each round is executed,
-fed back as a tool message, and followed by another completion request. If the
-model is still asking for tools after four rounds, the request stops and keeps
-any final text it produced; an empty result is treated as a failed answer.
+The model may request up to four completion rounds. The first three rounds may
+execute tool calls; the fourth request carries no tools, so the model must answer
+from what it has. At most three tool calls per round are executed, and any further
+call in that round receives an error tool result instead of a provider request.
+Total tool output across the loop is capped at 12,000 estimated tokens; a call
+that would exceed the budget receives an error tool result, and the model
+continues. An empty result after the final round is treated as a failed answer.
 
 OpenAI endpoints do not receive these tools. Ollama-specific tool endpoints
 would be rejected there, so the tools are attached only for Ollama-compatible

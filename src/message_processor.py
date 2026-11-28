@@ -4,11 +4,12 @@ import re
 from typing import Any
 
 import discord
-from discord import AllowedMentions
 
 from .config import (
     DEFAULT_CONTEXT_WINDOW,
     DEFAULT_INPUT_TOKENS,
+    DEFAULT_PERPLEXITY_CONTEXT_WINDOW,
+    DEFAULT_PERPLEXITY_INPUT_TOKENS,
     DEFAULT_PERPLEXITY_MODEL,
     DEFAULT_REASONING_EFFORT,
     DEFAULT_VISION_ENABLED,
@@ -24,10 +25,12 @@ from .conversation_manager import (
 from .error_handling import classify_error, safe_discord_send
 from .image_attachments import ImagePayload, extract_images
 from .logging_adapter import get_logger_with_context
-from .message_splitter import clean_message_content, send_formatted_message
+from .message_splitter import send_formatted_message
 from .models import AIClients, AIConfig, AIRequest, OpenAIConfig, PerplexityConfig
 from .rate_limits import check_rate_limit
 from .smart_orchestrator import get_smart_response
+
+ERROR_MESSAGES = get_error_messages()
 
 
 def _token_limits(
@@ -42,6 +45,91 @@ def _token_limits(
     return config, input_tokens, context_window
 
 
+def _shared_limit(
+    deps: dict[str, Any] | Any,
+    config: dict[str, Any],
+    key: str,
+    default: int,
+) -> tuple[Any, bool]:
+    """Return a shared limit and whether the operator changed it.
+
+    Loaded configs always carry a value, so a value different from the
+    documented default is the only signal that the operator set it. An
+    explicit value equal to the default cannot lower the Perplexity budget,
+    so it needs no separate provenance flag.
+    """
+    if key in config:
+        value = config.get(key)
+        return value, value is not None and value != default
+    value = deps.get(key)
+    if value is None:
+        return default, False
+    return value, value != default
+
+
+def _cap_to_shared(
+    own_value: Any,
+    own_setting: str,
+    shared_value: Any,
+    shared_setting: str,
+    was_set: bool,
+) -> tuple[Any, str]:
+    """Return the effective limit and the key that supplied it."""
+    if was_set and int(shared_value) < int(own_value):
+        return int(shared_value), shared_setting
+    return own_value, own_setting
+
+
+def _perplexity_token_limits(
+    deps: dict[str, Any] | Any,
+    config: dict[str, Any],
+) -> tuple[int, int, str, str]:
+    """Return the Sonar prompt budget, context window, and their setting names.
+
+    The provider-specific keys stay authoritative unless the operator
+    explicitly lowered the shared chat budget, in which case the smaller of
+    the two values applies. This keeps an existing `INPUT_TOKENS` or
+    `CONTEXT_WINDOW` limit effective for Perplexity prompts, and the returned
+    names keep a budget warning pointed at the key that actually supplied the
+    effective value.
+    """
+    input_tokens = config.get(
+        "PERPLEXITY_INPUT_TOKENS",
+        deps.get("PERPLEXITY_INPUT_TOKENS", DEFAULT_PERPLEXITY_INPUT_TOKENS),
+    )
+    context_window = config.get(
+        "PERPLEXITY_CONTEXT_WINDOW",
+        deps.get("PERPLEXITY_CONTEXT_WINDOW", DEFAULT_PERPLEXITY_CONTEXT_WINDOW),
+    )
+    shared_input, input_was_set = _shared_limit(
+        deps,
+        config,
+        "INPUT_TOKENS",
+        DEFAULT_INPUT_TOKENS,
+    )
+    shared_context, context_was_set = _shared_limit(
+        deps,
+        config,
+        "CONTEXT_WINDOW",
+        DEFAULT_CONTEXT_WINDOW,
+    )
+    effective_input, input_setting = _cap_to_shared(
+        input_tokens,
+        "PERPLEXITY_INPUT_TOKENS",
+        shared_input,
+        "INPUT_TOKENS",
+        input_was_set,
+    )
+    effective_context, context_setting = _cap_to_shared(
+        context_window,
+        "PERPLEXITY_CONTEXT_WINDOW",
+        shared_context,
+        "CONTEXT_WINDOW",
+        context_was_set,
+    )
+    return effective_input, effective_context, input_setting, context_setting
+
+
 def _perplexity_output_tokens(deps: dict[str, Any] | Any, config: dict[str, Any]) -> int:
     """Resolve the Perplexity cap without falling back to a false value."""
     output_tokens = config.get("PERPLEXITY_OUTPUT_TOKENS")
@@ -50,6 +138,26 @@ def _perplexity_output_tokens(deps: dict[str, Any] | Any, config: dict[str, Any]
     if output_tokens is None:
         output_tokens = deps["OUTPUT_TOKENS"]
     return output_tokens
+
+
+def _perplexity_service_config(
+    deps: dict[str, Any] | Any,
+    config: dict[str, Any],
+    model: str,
+) -> PerplexityConfig:
+    """Build the Perplexity config with its own Sonar budget."""
+    input_tokens, context_window, input_setting, context_setting = _perplexity_token_limits(
+        deps, config
+    )
+    return PerplexityConfig(
+        model=model,
+        system_message=deps["SYSTEM_MESSAGE"],
+        output_tokens=_perplexity_output_tokens(deps, config),
+        input_tokens=input_tokens,
+        context_window=context_window,
+        input_setting=input_setting,
+        context_setting=context_setting,
+    )
 
 
 def _vision_settings(deps: dict[str, Any] | Any) -> tuple[bool, int, int, int]:
@@ -100,26 +208,11 @@ async def _prepare_images(
 def _reply_policy(
     message: discord.Message,
     author_is_bot: bool,
-) -> tuple[str, AllowedMentions]:
-    """Return the single reply prefix and mention allowlist for this message."""
+) -> tuple[str, list[Any]]:
+    """Return the single reply prefix and the users a notice may mention."""
     prefix = "" if author_is_bot else f"{message.author.mention} "
     users = [] if author_is_bot else [message.author]
-    return prefix, AllowedMentions(
-        users=users,
-        roles=[],
-        everyone=False,
-        replied_user=False,
-    )
-
-
-def _channel_kind(message: discord.Message, is_dm: bool) -> str:
-    """Return the router channel kind for this message."""
-    if is_dm:
-        return "dm"
-    channel = getattr(message, "channel", None)
-    if getattr(channel, "type", None) == discord.ChannelType.news:
-        return "announcement"
-    return "channel"
+    return prefix, users
 
 
 def _guard_bot_turn(
@@ -153,18 +246,46 @@ def _guard_bot_turn(
 async def _send_empty_fallback(
     channel: Any,
     logger: Any,
-    allowed_mentions: AllowedMentions,
+    mention_users: list[Any],
 ) -> None:
     """Send the fixed notice for a message that has no body after cleaning."""
     logger.info("Skipping empty message after cleaning")
-    fallback = get_error_messages()["no_response_generated"]
+    fallback = ERROR_MESSAGES["no_response_generated"]
     if not await safe_discord_send(
         channel,
         fallback,
         logger,
-        allowed_mentions=allowed_mentions,
+        mention_users=mention_users,
     ):
         logger.error("Failed to send empty-message fallback")
+
+
+async def _smart_response(  # noqa: PLR0913, PLR0917 - mirrors the orchestrator entrypoint
+    deps: dict[str, Any] | Any,
+    request: AIRequest,
+    conversation_summary: list[dict],
+    clients: AIClients,
+    config: AIConfig,
+    orchestrator_config: dict[str, Any],
+) -> tuple[str, bool, dict | None]:
+    """Call the orchestrator with the process-wide router when one is wired."""
+    router = deps.get("router")
+    if router is None:
+        return await get_smart_response(
+            request,
+            conversation_summary,
+            clients,
+            config,
+            orchestrator_config,
+        )
+    return await get_smart_response(
+        request,
+        conversation_summary,
+        clients,
+        config,
+        orchestrator_config,
+        router=router,
+    )
 
 
 async def _process_message_core(
@@ -189,37 +310,22 @@ async def _process_message_core(
     ):
         return
 
-    reply_mention, allowed_mentions = _reply_policy(message, author_is_bot)
+    reply_mention, mention_users = _reply_policy(message, author_is_bot)
 
-    # Prepare context-specific strings for logging and error messages
-    if is_dm:
-        rate_limit_msg = (
-            "⏱️ Rate limit exceeded! Please wait a moment before sending another message."
-        )
-        error_msg = (
-            "🔧 Sorry, I encountered an error while processing your message. "
-            "Please try again in a moment."
-        )
-    else:
+    rate_limit_msg = ERROR_MESSAGES["rate_limit_exceeded"]
+    error_msg = ERROR_MESSAGES["processing_error"]
+    if not is_dm:
         # Clean message content for logging (remove mentions)
         clean_content = re.sub(r"<@[!&]?\d+>", "", clean_content).strip()
-        logger.info(
-            "Captured message for processing (ID: %s, length: %d)",
-            message.id,
-            len(clean_content),
-        )
-        rate_limit_msg = "⏱️ Rate limit exceeded! Please wait a moment before mentioning me again."
-        error_msg = (
-            f"{reply_mention}"
-            "🔧 Sorry, I encountered an error while processing your message. "
-            "Please try again in a moment."
-        )
+        error_msg = f"{reply_mention}{error_msg}"
 
-    display_content = clean_message_content(clean_content, 100)
+    logger.info(
+        "Processing message (ID: %s, length: %d)",
+        message.id,
+        len(clean_content),
+    )
 
     try:
-        logger.info("Processing message: %s", display_content)
-
         # Apply thread-safe rate limiting
         if not await check_rate_limit(
             message.author,
@@ -233,7 +339,7 @@ async def _process_message_core(
                 message.channel,
                 rate_msg,
                 logger,
-                allowed_mentions=allowed_mentions,
+                mention_users=mention_users,
             ):
                 logger.error("Failed to send rate limit message")
             logger.warning("Rate limit exceeded")
@@ -247,7 +353,7 @@ async def _process_message_core(
             await _send_empty_fallback(
                 message.channel,
                 logger,
-                allowed_mentions,
+                mention_users,
             )
             return
 
@@ -273,26 +379,19 @@ async def _process_message_core(
             or config.get("PERPLEXITY_MODEL")
             or DEFAULT_PERPLEXITY_MODEL
         )
-        perplexity_config = PerplexityConfig(
-            model=perplexity_model,
-            system_message=deps["SYSTEM_MESSAGE"],
-            output_tokens=_perplexity_output_tokens(deps, config),
-            input_tokens=input_tokens,
-            context_window=context_window,
-        )
+        perplexity_config = _perplexity_service_config(deps, config, perplexity_model)
         ai_config = AIConfig(openai=openai_config, perplexity=perplexity_config)
         orchestrator_config = {
             key: config[key]
             for key in (
                 "LOOKBACK_MESSAGES_FOR_CONSISTENCY",
-                "MAX_HISTORY_PER_USER",
-                "USER_LOCK_CLEANUP_INTERVAL",
-                "ENTITY_DETECTION_MIN_WORDS",
                 "ROUTER_MODE",
                 "ROUTER_CLEF_MODEL",
                 "ROUTER_CLEF_THRESHOLD",
                 "ROUTER_CLEF_TIMEOUT_MS",
+                "ROUTER_CLEF_API_KEY",
                 "OPENAI_API_KEY",
+                "OPENAI_API_URL",
             )
             if key in config
         }
@@ -305,14 +404,14 @@ async def _process_message_core(
             conversation_manager=conversation_manager,
             logger=logger,
             conversation_key=conversation_key,
-            channel_kind=_channel_kind(message, is_dm),
             images=images,
         )
 
         clients = AIClients(openai=deps.get("client"), perplexity=deps.get("perplexity_client"))
 
         # Generate AI response using smart orchestrator
-        response, suppress_embeds, embed_data = await get_smart_response(
+        response, suppress_embeds, embed_data = await _smart_response(
+            deps,
             ai_request,
             conversation_summary,
             clients,
@@ -329,6 +428,7 @@ async def _process_message_core(
             embed_data=embed_data,
             original_message=message,
             mention_prefix=reply_mention,
+            truncated=bool(getattr(response, "truncated", False)),
         )
         logger.info("Message processed and response sent")
 
@@ -346,7 +446,7 @@ async def _process_message_core(
             message.channel,
             user_friendly_msg,
             logger,
-            allowed_mentions=allowed_mentions,
+            mention_users=mention_users,
         ):
             logger.error(  # noqa: TRY400 — intentional: exception already logged above
                 "Failed to send error message"

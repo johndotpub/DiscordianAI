@@ -28,8 +28,9 @@ the previous behavior and ignores attachments completely.
 
 Images are sent to the OpenAI-compatible chat provider configured by
 `OPENAI_API_URL` and `GPT_MODEL` (Ollama Cloud by default) as an OpenAI-style
-`image_url` content part carrying a `data:` URL. The shipped default model,
-`deepseek-v4.1-flash:1017`, accepts images on Ollama Cloud.
+`image_url` content part carrying a `data:` URL. The `deepseek-v4.1-flash` model
+family supports vision on its Ollama library page, but the exact configured tag
+`deepseek-v4.1-flash:1017` is not verified; see [API-CONTRACT.md](API-CONTRACT.md).
 
 An image request is always routed to the chat provider. Perplexity never
 receives image data, and an image request is not rerouted to Perplexity even if

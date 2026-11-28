@@ -28,17 +28,20 @@ Each message is classified once by `src/routing/` before any provider is called,
    turn's route, unless a bearing cue appears or the topic shifts.
 4. **Otherwise local.** Framing — question shape, imperatives, register, proper names — never decides.
 
-Two rules keep the model honest:
+Three rules keep the model honest:
 
 - **No bearing cue means no web route.** A question mark or a proper name is not enough. *"What is the
   capital of France?"* stays local because the answer does not change.
 - **Framing cannot decide alone.** Social text such as "thanks" or "best regards" neither triggers nor
   blocks a search.
-- **Overrides are evaluated on code-masked text**, so instructions inside a fenced block (e.g. "use the
-  web API") do not fire.
+- **Bearing and override cues are evaluated on code-masked text**, so a version, price, year, instruction,
+  or URL inside a fenced block cannot route the message to the web. Text outside the fence still counts.
+  `code.shape` and traceback cues are detected from the original text so a pasted artifact still marks the
+  request as code-shaped, but those are framing cues and cannot decide a route on their own.
 
-There is no threshold, no confidence score, and no per-channel tuning: either the message carries
-live-data evidence or it does not.
+The heuristic gate has no threshold, no confidence score, and no per-channel tuning: either
+the message carries live-data evidence or it does not. The optional Clef router instead
+routes to the web at or above `ROUTER_CLEF_THRESHOLD`.
 
 The bundled English lexicon supplies topic terms; structural shapes supply status, change, release,
 version, money, time, code, and URL cues. Adding a term is a lexicon data change, not a code change.
@@ -57,7 +60,7 @@ version, money, time, code, and URL cues. Adding a term is a lexicon data change
 ### Follow-up inheritance
 
 A follow-up is a short message (at most six tokens) that is an anaphor, a bare continuation, or begins with
-a coordinator, and it must have an assistant turn at gap <= 1 in the same conversation. The previous route
+a coordinator, and it must have an assistant turn at gap <= 1 in the same conversation. The new message
 then inherits the previous route outright. A bearing cue in the new message wins, and a topic shift cancels inheritance.
 
 A word such as "also" or "more" inside a fresh question does not turn that question into an early return.
@@ -79,38 +82,48 @@ User: "Tell me more"
 
 ```mermaid
 flowchart TD
-    A[Discord Message Received] --> B{Bot Mentioned?}
-    B -->|No| Z[Ignore Message]
-    B -->|Yes| C[Rate Limit + Guardrails]
-    C -->|Failed| D[Send Rate Limit Message]
-    C -->|Passed| E[Build AIRequest]
+    A["Discord Message Received"] --> B{"Bot addressed<br/>and channel/guild allowed?"}
+    B -->|"No"| Z["Ignore Message"]
+    B -->|"Yes"| C["Rate Limit + Guardrails"]
+    C -->|"Failed"| D["Send Rate Limit Message"]
+    C -->|"Passed"| E["Build AIRequest"]
 
-    E --> F{Mode Selector}
-    F -->|OpenAI-Compatible Only| G[OpenAI-Compatible Processing\n(Ollama Cloud default)]
-    F -->|Perplexity Only| H[Perplexity Processing\n(Agent API)]
-    F -->|Hybrid| R[Build RouterInput\n+ one route decision]
+    E --> F{"Mode Selector"}
+    F -->|"Perplexity Only"| PIMG{"Image attached?"}
+    PIMG -->|"Yes"| PREF["Refuse image request<br/>(Perplexity cannot receive images)"]
+    PIMG -->|"No"| H["Perplexity Processing<br/>(Agent API)"]
 
-    R -->|web| H
-    R -->|local| G
+    F -->|"OpenAI-Compatible Only"| G["OpenAI-Compatible Processing<br/>(Ollama Cloud default)"]
+    F -->|"Hybrid"| IMG{"Image attached?"}
+    IMG -->|"Yes"| ITERM["Chat answer with images<br/>(images:local; no Perplexity reroute;<br/>empty answer is an error, not a fallback)"]
+    IMG -->|"No"| R["Build RouterInput<br/>+ one route decision"]
 
-    G --> OW[Chat Provider Response]
-    OW --> WI{Indicates web-inability?}
-    WI -->|Yes, Perplexity not tried| H
-    WI -->|Yes, Perplexity already failed| U[Return local answer]
-    WI -->|No| U
-    H --> PR[Agent API Response + Citations]
+    R -->|"web"| H
+    R -->|"local"| G
 
-    U --> W[send_formatted_message]
-    PR --> V[Citation Embed Formatter]
+    G --> OW["Chat Provider Response"]
+    OW --> EMPTY{"Empty answer?"}
+    EMPTY -->|"Yes, hybrid and no image"| H
+    EMPTY -->|"Yes, image request"| IERR["No-answer notice<br/>(hybrid: ai_service_unavailable;<br/>OpenAI-only: no_response_generated;<br/>image requests are never rerouted)"]
+    EMPTY -->|"No"| WI{"Hybrid local answer indicates<br/>web-inability?"}
+    WI -->|"Yes, Perplexity not tried"| H
+    WI -->|"No or already tried"| U["Return local answer"]
+    H --> PR["Agent API Response + Citations"]
+
+    PREF --> W["send_formatted_message"]
+    ITERM --> W
+    IERR --> W
+    U --> W
+    PR --> V["Citation Embed Formatter"]
     V --> W
 
-    W --> X{Contains Embeds?}
-    X -->|Yes| Y{Embed > Limits?}
-    X -->|No| Z1{Message > 2000 chars?}
+    W --> X{"Contains Embeds?"}
+    X -->|"Yes"| Y{"Embed > Limits?"}
+    X -->|"No"| Z1{"Message > 2000 chars?"}
 
-    Y --> CC[Split Embed + Citations]
-    Z1 --> DD[Split Plain Message]
-    CC --> BB[✅ Response Complete]
+    Y --> CC["Split Embed + Citations"]
+    Z1 --> DD["Split Plain Message"]
+    CC --> BB["✅ Response Complete"]
     DD --> BB
 ```
 
@@ -139,6 +152,8 @@ flowchart TD
 ROUTER_MODE=heuristic
 
 # Clef settings; ignored unless ROUTER_MODE=clef
+# Prefer the environment variable for this secret.
+ROUTER_CLEF_API_KEY=
 ROUTER_CLEF_MODEL=clef
 ROUTER_CLEF_THRESHOLD=0.5
 ROUTER_CLEF_TIMEOUT_MS=2000
@@ -150,12 +165,18 @@ LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
 | Setting | Default | Description |
 |---|---|---|
 | `ROUTER_MODE` | `heuristic` | Selects the router implementation. `clef` uses Ollama Cloud's decision model and falls back to the deterministic gate; `model` is retired and raises. |
+| `ROUTER_CLEF_API_KEY` | unset | Dedicated Clef key. Prefer the environment variable. Without it, `OLLAMA_API_KEY` is used, and `OPENAI_API_KEY` is used only when `OPENAI_API_URL` is an Ollama Cloud URL. |
 | `ROUTER_CLEF_MODEL` | `clef` | Decision model used when `ROUTER_MODE=clef`. |
 | `ROUTER_CLEF_THRESHOLD` | 0.5 | Probability at or above which Clef routes to the web. |
 | `ROUTER_CLEF_TIMEOUT_MS` | 2000 | Clef request timeout before falling back to the deterministic gate. |
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | 6 | How many recent messages a follow-up may inspect; `0` disables the lookup. |
-| `MAX_HISTORY_PER_USER` | 100 | Maximum conversation entries stored per user. |
+| `MAX_HISTORY_PER_USER` | 100 | Maximum conversation entries stored per conversation key. The name is legacy: the cap is not per user. |
 | `USER_LOCK_CLEANUP_INTERVAL` | 3600 | How often to clean up inactive user locks, in seconds. |
+
+The Clef key is scoped to the Clef endpoint. A key issued by another chat provider is never sent to
+`https://ollama.com/v1/systemone`; if no eligible key exists, startup warns once and uses the deterministic
+gate. A Clef router opens one pooled HTTP client for its lifetime and enforces `ROUTER_CLEF_TIMEOUT_MS` as a
+hard total deadline for one decision. The router is built once at startup and closed on shutdown.
 
 `ENTITY_DETECTION_MIN_WORDS=10` is parsed into config but is not consulted by the current router; changing
 it has no runtime effect.
@@ -206,35 +227,41 @@ secrets out of the file system.
 
 The hybrid orchestrator (`smart_orchestrator.py`) provides bounded fallback between services:
 
-- **Chat provider failure -> Perplexity**: When the local answer is empty, the orchestrator may try Perplexity
-  once for a web-enabled fallback.
+- **Chat provider failure -> Perplexity**: In hybrid mode, when a non-image local answer is empty, the
+  orchestrator may try Perplexity once for a web-enabled fallback.
 - **Perplexity failure -> chat provider**: When the web answer fails, the orchestrator falls back to the
   OpenAI-compatible provider for a standard completion and marks the answer degraded.
-- **Web-inability reroute**: If the chat provider says it cannot browse the web and Perplexity has not been
-  tried in this request, the orchestrator reroutes once. If Perplexity already failed, the local answer is
-  returned with a warning instead of a second Perplexity call.
+- **Images have no Perplexity fallback.** Perplexity-only mode refuses an image request, and an image
+  answer is never rerouted. If the chat provider returns no answer for an image request, hybrid mode sends
+  the `ai_service_unavailable` notice and OpenAI-only mode sends `no_response_generated`; neither calls
+  Perplexity without the image.
+- **Web-inability reroute**: If the chat provider makes a first-person admission that it cannot browse the
+  web, and Perplexity has not been tried in this request, the orchestrator reroutes once. General statements,
+  quoted text, and creative or narrative output do not trigger this reroute. If Perplexity already failed,
+  the local answer is returned and the skipped reroute is logged at INFO instead of making a second
+  Perplexity call.
 - **Both unavailable**: Returns the `both_services_unavailable` message
   (`"🔧 All AI services are temporarily unavailable. Please try again later."`).
 
 Both services share the same retry policy via `retry_with_backoff`:
 
-- 2 attempts max (1 initial + 1 retry) for transient errors (network/connection errors, connect timeouts,
-  429, 5xx)
+- 2 attempts max (1 initial + 1 retry) for transient errors (connection errors where no request
+  was established, connect timeouts, 429, 5xx)
 - `insufficient_quota`, authentication errors, and read timeouts bail immediately
 - The single retry waits a random 0-1s (full jitter over the base delay); a 429 can instead honour
   `Retry-After` up to 30s
 - A 90s `max_elapsed` deadline stops retries even when an attempt remains
 - SDK-level `max_retries=0` prevents nested retry multiplication
 
-## Cost Considerations
+## Usage Considerations
 
-**Routing has no cost cap.** The router decides whether a message needs live data on the strength of the
-message itself — there is no budget, no per-hour search allowance and no price model in the decision. Search
-volume therefore follows what people ask, not how much you are willing to spend. If you need a ceiling, it
-belongs at the Discord or provider level, not in the router, because a router that stops searching when a
-counter runs out answers live questions from stale weights and cannot tell you it did so.
+**Routing has no usage cap.** The router decides whether a message needs live data on the strength of the
+message itself — there is no budget and no per-hour search limit in the decision. Search volume therefore
+follows what people ask, not a configured usage limit. If you need a ceiling, it belongs at the Discord or
+provider level, not in the router, because a router that stops searching when a counter runs out answers live
+questions from stale weights and cannot tell you it did so.
 
-- **Chat provider**: Higher cost per token but strong reasoning on stable knowledge and code.
+- **Chat provider**: Higher token use per request but strong reasoning on stable knowledge and code.
 - **Perplexity**: Includes citations and live web data but is reserved for messages that carry bearing
   evidence.
 - The bot chooses local answers for stable knowledge and creative work, and web answers for live facts.
@@ -243,28 +270,30 @@ counter runs out answers live questions from stale weights and cannot tell you i
 
 ### Routing decision logs
 
-Each hybrid decision logs one content-free line:
+Each hybrid decision logs one content-free line. The console format is
+`<iso timestamp> [level    ] <event> [<logger>] [channel_id=... guild_id=... user_id=...]`;
+the context fields appear when the logger adapter supplied them. Grep for the event text.
 
 ```
-INFO Routing decision route=web reasons=bearing:topic.volatile,bearing:time.deixis latency_ms=0.14 service=perplexity
+2026-11-23T17:04:06Z [info     ] Routing decision: {'route': 'web', 'service': 'perplexity', 'router_id': 'gate', 'reasons': 'bearing:topic.volatile,bearing:time.deixis', 'latency_ms': 0.14} [discordianai.bot]
 ```
 
-Message text and matched entity text are not logged.
+Message text and matched entity text are not logged. An image request is decided as `images:local` before
+the router runs, so that line is the decision actually used and no Clef call is made for it.
 
 ### Provider logs
 
 ```
-INFO Routing to Perplexity
-INFO Perplexity response generated successfully (245 chars)
+2026-11-23T17:04:06Z [info     ] Routing to Perplexity [discordianai.bot]
 ```
 
 ```
-INFO Routing to OpenAI
-WARNING Perplexity failed, falling back to OpenAI
+2026-11-23T17:04:06Z [warning  ] Perplexity failed, falling back to OpenAI [discordianai.bot]
+2026-11-23T17:04:06Z [info     ] Routing to OpenAI [discordianai.bot]
 ```
 
 ```
-WARNING Perplexity already failed in this request; returning the local answer without a second attempt
+2026-11-23T17:04:06Z [error    ] Both services failed or returned no response [discordianai.bot]
 ```
 
 ## Thread-Safe Architecture

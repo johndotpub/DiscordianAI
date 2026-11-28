@@ -1,8 +1,15 @@
 # Tests for api_validation.py functionality
 
+import logging
+
+import pytest
+
 from src.api_validation import (
     VALID_OPENAI_URL_PATTERN,
     VALID_PERPLEXITY_URL_PATTERN,
+    log_validation_results,
+    validate_connection_pool_config,
+    validate_conversation_lifecycle_config,
     validate_full_config,
     validate_openai_api_key_format,
     validate_openai_config,
@@ -98,20 +105,17 @@ class TestAPIKeyFormatValidation:
 class TestOpenAIConfigValidation:
     """Test OpenAI configuration validation."""
 
-    def test_validate_openai_config_valid(self):
-        """Test validation of valid Ollama Cloud configuration."""
+    def test_validate_openai_config_accepts_ollama_style_key(self):
+        """A non-sk key from the configured provider produces no issues."""
         config = {
-            "OPENAI_API_KEY": "ollama-" + "a" * 32,
+            "OPENAI_API_KEY": "a" * 32,
             "OPENAI_API_URL": "https://ollama.com/v1/",
             "GPT_MODEL": "deepseek-v4.1-flash:1017",
             "OUTPUT_TOKENS": 16384,
             "INPUT_TOKENS": 250000,
         }
 
-        issues = validate_openai_config(config)
-        # Should have no errors; the non-sk key is a warning.
-        errors = [issue for issue in issues if issue.startswith("ERROR:")]
-        assert len(errors) == 0
+        assert validate_openai_config(config) == []
 
     def test_validate_openai_config_invalid_url(self):
         """Test validation with invalid OpenAI API URL."""
@@ -132,16 +136,74 @@ class TestOpenAIConfigValidation:
         issues = validate_openai_config(config)
         assert not any("model" in issue.lower() for issue in issues)
 
-    def test_validate_openai_config_invalid_api_key(self):
-        """A non-sk key is a warning, never a fatal error."""
+    @pytest.mark.parametrize(
+        "api_key",
+        [
+            "sk-proj-" + "a" * 32,
+            "sk-" + "a" * 32,
+        ],
+    )
+    def test_validate_openai_config_accepts_sk_shaped_keys(self, api_key):
+        """OpenAI-shaped keys are accepted without a shape warning."""
         config = {
-            "OPENAI_API_KEY": "invalid-key-format",
+            "OPENAI_API_KEY": api_key,
+            "OPENAI_API_URL": "https://api.openai.com/v1/",
+        }
+
+        assert validate_openai_config(config) == []
+
+    def test_startup_validation_accepts_non_sk_key_without_warning(self, caplog):
+        """A startup run logs no key-shape warning for an Ollama-style key."""
+        config = {
+            "DISCORD_TOKEN": "test_token",
+            "OPENAI_API_KEY": "a" * 32,
+            "OPENAI_API_URL": "https://ollama.com/v1/",
+            "GPT_MODEL": "deepseek-v4.1-flash:1017",
+            "ALLOWED_CHANNELS": ["general"],
+        }
+        logger = logging.getLogger("test.api-validation.startup")
+
+        with caplog.at_level(logging.INFO, logger=logger.name):
+            passed = log_validation_results(config, logger)
+
+        assert passed is True
+        warnings = [
+            record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING
+        ]
+        assert warnings == []
+
+    @pytest.mark.parametrize("api_key", ["", " ", "   \n\t"])
+    def test_blank_openai_key_still_fails(self, api_key):
+        """Empty and whitespace-only keys keep their existing error text."""
+        is_valid, error_msg = validate_openai_api_key_format(api_key)
+        assert is_valid is False
+        assert error_msg is not None
+        assert error_msg.startswith("OPENAI_API_KEY must not be empty.")
+
+        config = {
+            "OPENAI_API_KEY": api_key,
+            "OPENAI_API_URL": "https://ollama.com/v1/",
         }
 
         issues = validate_openai_config(config)
-        errors = [issue for issue in issues if issue.startswith("ERROR:")]
-        assert not errors
-        assert any("does not match OpenAI's 'sk-' key format" in issue for issue in issues)
+
+        assert any(
+            issue.startswith("ERROR:") and "OPENAI_API_KEY" in issue for issue in issues
+        ), issues
+
+    def test_missing_openai_key_with_openai_configured_still_fails(self):
+        """A missing key for a configured provider is still a startup error."""
+        config = {
+            "OPENAI_API_URL": "https://ollama.com/v1/",
+            "GPT_MODEL": "deepseek-v4.1-flash:1017",
+        }
+
+        issues = validate_openai_config(config)
+
+        assert any(
+            issue.startswith("ERROR:") and "OPENAI_API_KEY is required" in issue
+            for issue in issues
+        ), issues
 
     def test_validate_openai_config_high_token_limits(self):
         """Test validation with very high token limits."""
@@ -208,6 +270,42 @@ class TestPerplexityConfigValidation:
         errors = [issue for issue in issues if issue.startswith("ERROR:")]
         assert len(errors) == 0
 
+    @pytest.mark.parametrize("key", ["PERPLEXITY_INPUT_TOKENS", "PERPLEXITY_CONTEXT_WINDOW"])
+    @pytest.mark.parametrize("value", [0, -1, "not-a-number"])
+    def test_validate_perplexity_prompt_limits(self, key, value):
+        """A non-positive or malformed Sonar budget is a startup error."""
+        issues = validate_perplexity_config({key: value})
+
+        assert any(issue.startswith("ERROR:") and key in issue for issue in issues)
+
+
+@pytest.mark.parametrize("key", ["INPUT_TOKENS", "PERPLEXITY_INPUT_TOKENS"])
+def test_prompt_budget_below_the_shared_minimum_is_a_startup_error(key):
+    """A 50-token budget would cut a real question down to a fragment."""
+    validate = validate_openai_config if key == "INPUT_TOKENS" else validate_perplexity_config
+
+    issues = validate({key: 50})
+
+    assert any(
+        issue.startswith("ERROR:") and key in issue and "below the minimum of 1000" in issue
+        for issue in issues
+    )
+    accepted = validate({key: 1000})
+    assert not any(issue.startswith("ERROR:") and key in issue for issue in accepted)
+
+
+@pytest.mark.parametrize("key", ["INPUT_TOKENS", "PERPLEXITY_INPUT_TOKENS"])
+def test_prompt_budget_of_zero_still_reports_the_positive_rule(key):
+    """The minimum does not hide the clearer message for a zero budget."""
+    validate = validate_openai_config if key == "INPUT_TOKENS" else validate_perplexity_config
+
+    issues = validate({key: 0})
+
+    assert any(
+        issue.startswith("ERROR:") and key in issue and "must be positive" in issue
+        for issue in issues
+    )
+
 
 class TestFullConfigValidation:
     """Test full configuration validation."""
@@ -272,6 +370,7 @@ class TestFullConfigValidation:
             "DISCORD_TOKEN": "test_token",
             "OPENAI_API_KEY": "sk-" + "a" * 32,
             "OUTPUT_TOKENS": 60000,  # Very high (warning)
+            "PERPLEXITY_OUTPUT_TOKENS": 100,
             "RATE_LIMIT": 150,  # Very high (warning)
             "ALLOWED_CHANNELS": [],  # Empty (warning)
         }
@@ -279,6 +378,71 @@ class TestFullConfigValidation:
         warnings, errors = validate_full_config(config)
         assert len(errors) == 0
         assert len(warnings) > 0
+
+
+@pytest.mark.parametrize("key", ["OPENAI_MAX_CONNECTIONS", "PERPLEXITY_MAX_CONNECTIONS"])
+@pytest.mark.parametrize("value", [0, -1])
+def test_non_positive_connection_limit_is_a_startup_error(key, value):
+    """A pool with no connections waits out every request and then fails."""
+    issues = validate_connection_pool_config({key: value})
+
+    assert any(
+        issue.startswith("ERROR:") and key in issue and "positive" in issue for issue in issues
+    )
+
+
+def test_non_positive_connection_limit_reaches_full_validation():
+    """The pool check is part of the startup gate, not just a unit helper."""
+    config = {
+        "DISCORD_TOKEN": "test_token",
+        "OPENAI_API_KEY": "sk-" + "a" * 32,
+        "ALLOWED_CHANNELS": ["general"],
+        "OPENAI_MAX_CONNECTIONS": 0,
+    }
+
+    _, errors = validate_full_config(config)
+
+    assert any("OPENAI_MAX_CONNECTIONS" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("key", "effect"),
+    [
+        ("MAX_HISTORY_PER_USER", "0 keeps all history"),
+        ("CONVERSATION_TTL_SECONDS", "disables expiry"),
+        ("USER_LOCK_CLEANUP_INTERVAL", "every call"),
+    ],
+)
+@pytest.mark.parametrize("value", [0, -1])
+def test_non_positive_conversation_limits_warn_without_stopping(key, effect, value):
+    """These already accept non-positive values, so they warn instead of aborting."""
+    config = {
+        "DISCORD_TOKEN": "test_token",
+        "OPENAI_API_KEY": "sk-" + "a" * 32,
+        "ALLOWED_CHANNELS": ["general"],
+        key: value,
+    }
+
+    warnings, errors = validate_full_config(config)
+
+    assert not any(key in error for error in errors)
+    matching = [warning for warning in warnings if key in warning]
+    assert len(matching) == 1
+    assert matching[0].startswith("WARNING:")
+    assert effect in matching[0]
+
+
+def test_conversation_lifecycle_helper_reports_positive_values_as_clean():
+    """The warning helper stays silent for the documented defaults."""
+    issues = validate_conversation_lifecycle_config(
+        {
+            "MAX_HISTORY_PER_USER": 100,
+            "CONVERSATION_TTL_SECONDS": 7200,
+            "USER_LOCK_CLEANUP_INTERVAL": 3600,
+        }
+    )
+
+    assert issues == []
 
 
 class TestURLPatternValidation:
@@ -337,3 +501,74 @@ class TestURLPatternValidation:
 
         for url in invalid_urls:
             assert not VALID_PERPLEXITY_URL_PATTERN.match(url), f"URL {url} should be invalid"
+
+
+def test_chat_input_plus_output_must_fit_the_context_window():
+    """A small CONTEXT_WINDOW cannot leave a 250K prompt budget in place."""
+    issues = validate_openai_config(
+        {
+            "INPUT_TOKENS": 250000,
+            "OUTPUT_TOKENS": 16384,
+            "CONTEXT_WINDOW": 2000,
+        }
+    )
+
+    assert any(
+        issue.startswith("ERROR:")
+        and "INPUT_TOKENS (250000)" in issue
+        and "OUTPUT_TOKENS (16384)" in issue
+        and "CONTEXT_WINDOW (2000)" in issue
+        for issue in issues
+    )
+    assert not any(issue.startswith("ERROR:") for issue in validate_openai_config({}))
+
+
+def test_perplexity_input_plus_output_must_fit_the_context_window():
+    """The same relation is enforced for the Sonar budget."""
+    issues = validate_perplexity_config(
+        {
+            "PERPLEXITY_INPUT_TOKENS": 111000,
+            "PERPLEXITY_OUTPUT_TOKENS": 16384,
+            "PERPLEXITY_CONTEXT_WINDOW": 2000,
+        }
+    )
+
+    assert any(
+        issue.startswith("ERROR:")
+        and "PERPLEXITY_INPUT_TOKENS (111000)" in issue
+        and "PERPLEXITY_OUTPUT_TOKENS (16384)" in issue
+        and "PERPLEXITY_CONTEXT_WINDOW (2000)" in issue
+        for issue in issues
+    )
+
+
+def test_perplexity_relation_uses_the_lowered_shared_values():
+    """A lowered shared budget is the effective one, so the error names it."""
+    issues = validate_perplexity_config(
+        {
+            "INPUT_TOKENS": 500,
+            "CONTEXT_WINDOW": 4000,
+            "PERPLEXITY_INPUT_TOKENS": 111000,
+            "PERPLEXITY_CONTEXT_WINDOW": 128000,
+            "PERPLEXITY_OUTPUT_TOKENS": 5000,
+        }
+    )
+
+    assert any(
+        issue.startswith("ERROR:")
+        and "INPUT_TOKENS (500)" in issue
+        and "CONTEXT_WINDOW (4000)" in issue
+        and "PERPLEXITY_INPUT_TOKENS" not in issue
+        for issue in issues
+    )
+
+    accepted = validate_perplexity_config(
+        {
+            "INPUT_TOKENS": 500,
+            "CONTEXT_WINDOW": 4000,
+            "PERPLEXITY_INPUT_TOKENS": 111000,
+            "PERPLEXITY_CONTEXT_WINDOW": 128000,
+            "PERPLEXITY_OUTPUT_TOKENS": 100,
+        }
+    )
+    assert not any(issue.startswith("ERROR:") for issue in accepted)

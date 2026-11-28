@@ -18,74 +18,23 @@ from src.smart_orchestrator import (
     _process_hybrid_mode,
     _routing_metadata,
 )
+from tests.helpers import (
+    FakeChannel,
+    FakeDMChannel,
+    FakeGroupChannel,
+    FakeGuild,
+    FakeThread,
+    FakeUser,
+    make_router_message,
+)
 
-
-class DummyContextManager:
-    async def __aenter__(self):
-        return None
-
-    async def __aexit__(self, exc_type, exc, tb):
-        return False
-
-
-class DummyUser:
-    def __init__(self, user_id: int, *, bot: bool = False):
-        self.id = user_id
-        self.bot = bot
-
-    def __eq__(self, other):
-        return getattr(other, "id", None) == self.id
-
-    def __hash__(self):
-        return hash(self.id)
-
-
-class DummyChannel:
-    def __init__(self, channel_id: int, name: str, guild=None):
-        self.id = channel_id
-        self.name = name
-        self.guild = guild
-        self.sent_messages: list[str] = []
-
-    def typing(self):
-        return DummyContextManager()
-
-    async def send(self, content: str):
-        self.sent_messages.append(content)
-
-
-class DummyDMChannel(DummyChannel):
-    def __init__(self, channel_id: int = 1):
-        super().__init__(channel_id=channel_id, name="dm")
-
-
-class DummyGroupChannel(DummyChannel):
-    def __init__(self, channel_id: int = 9):
-        super().__init__(channel_id=channel_id, name="group")
-
-
-class DummyThread(DummyChannel):
-    def __init__(self, channel_id: int, parent: DummyChannel):
-        super().__init__(channel_id=channel_id, name="thread", guild=parent.guild)
-        self.parent = parent
-        self.parent_id = parent.id
-
-
-class DummyGuild:
-    def __init__(self, guild_id: int, name: str, channels: list[DummyChannel]):
-        self.id = guild_id
-        self.name = name
-        self.text_channels = channels
-        self.forums = []
-        self.channels = channels
-
-
-@pytest.fixture(autouse=True)
-def patch_discord_channel_types(monkeypatch):
-    monkeypatch.setattr(message_router.discord, "DMChannel", DummyDMChannel)
-    monkeypatch.setattr(message_router.discord, "TextChannel", DummyChannel)
-    monkeypatch.setattr(message_router.discord, "GroupChannel", DummyGroupChannel)
-    monkeypatch.setattr(message_router.discord, "Thread", DummyThread)
+pytestmark = pytest.mark.usefixtures("fake_discord_types")
+DummyChannel = FakeChannel
+DummyDMChannel = FakeDMChannel
+DummyGroupChannel = FakeGroupChannel
+DummyThread = FakeThread
+DummyGuild = FakeGuild
+DummyUser = FakeUser
 
 
 @pytest.fixture
@@ -100,15 +49,7 @@ def deps(logger):
     return {"logger": logger}
 
 
-def _message(channel, author=None, mentions=None, guild=None):
-    return SimpleNamespace(
-        id=100,
-        author=author or DummyUser(456),
-        channel=channel,
-        mentions=[] if mentions is None else mentions,
-        guild=guild,
-        content="hello",
-    )
+_message = make_router_message
 
 
 def _ignored_reasons(caplog):
@@ -434,11 +375,25 @@ async def test_knowledge_cutoff_question_keeps_its_local_answer(caplog):
     assert any("decision holds" in record.getMessage() for record in caplog.records)
 
 
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "A knowledge cutoff is the date when a model's training data ends.",
+        "If you can't access the internet, try another network.",
+        "you cannot access the web page directly without permission.",
+        "Here is a haiku about a robot that cannot browse the web.",
+    ],
+)
+def test_general_statements_are_not_web_inability_admissions(answer: str) -> None:
+    """Only a first-person admission should trigger the safety-net reroute."""
+    assert not _detect_openai_web_inability(answer)
+
+
 @pytest.mark.asyncio
-async def test_haiku_mentioning_browsing_reroutes_under_the_local_gate() -> None:
+async def test_haiku_mentioning_browsing_keeps_its_local_answer() -> None:
     query = "Write a haiku about a robot"
-    answer = "Here is a haiku about a robot that cannot browse the web."
-    assert _detect_openai_web_inability(answer)
+    answer = "Here is a haiku about a robot:\nI cannot browse the web,\nyet I dream of stars."
+    assert not _detect_openai_web_inability(answer)
 
     request = AIRequest(
         query,
@@ -466,8 +421,8 @@ async def test_haiku_mentioning_browsing_reroutes_under_the_local_gate() -> None
             AIConfig(),
         )
 
-    assert response == "replacement"
-    perplexity.assert_awaited_once()
+    assert response == answer
+    perplexity.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -492,6 +447,51 @@ async def test_local_answer_admitting_web_inability_still_reroutes_to_perplexity
         ) as perplexity,
     ):
         response, _suppress_embeds, _embed_data = await _process_hybrid_mode(
+            request,
+            [],
+            clients,
+            AIConfig(),
+        )
+
+    assert response == "replacement"
+    perplexity.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "I\u2019m unable to browse the internet, sorry.",
+        "I can\u2019t access the web right now.",
+        "I don\u2019t have access to the internet for this.",
+    ],
+)
+def test_typographic_apostrophes_do_not_hide_web_inability(answer: str) -> None:
+    """U+2019 must be normalised before the first-person patterns run."""
+    assert _detect_openai_web_inability(answer)
+
+
+@pytest.mark.asyncio
+async def test_typographic_apostrophe_admission_still_reroutes_to_perplexity() -> None:
+    request = AIRequest(
+        "what is a monad",
+        SimpleNamespace(id=793),
+        MagicMock(),
+        logging.getLogger("curly-routing-test"),
+        conversation_key="dm:793",
+    )
+    clients = AIClients(openai=object(), perplexity=object())
+
+    with (
+        patch(
+            "src.smart_orchestrator.process_openai_message",
+            new=AsyncMock(return_value="I\u2019m unable to browse the internet to check."),
+        ),
+        patch(
+            "src.smart_orchestrator.process_perplexity_message",
+            new=AsyncMock(return_value=("replacement", False, None)),
+        ) as perplexity,
+    ):
+        response, _suppress, _embed = await _process_hybrid_mode(
             request,
             [],
             clients,

@@ -8,6 +8,13 @@ Complete setup guide for DiscordianAI with advanced AI orchestration and convers
 - **Discord bot token** from Discord Developer Portal
 - **At least one AI service API key** (an OpenAI-compatible chat provider and/or Perplexity)
 
+## Get the Code
+
+```bash
+git clone https://github.com/johndotpub/DiscordianAI.git
+cd DiscordianAI
+```
+
 ## Step 1: Discord Bot Creation
 
 Create and configure your Discord bot:
@@ -29,11 +36,11 @@ Create and configure your Discord bot:
    - Go to the "OAuth2" > "URL Generator" section
    - Select `bot` scope
    - Select required permissions:
+     - View Channel
      - Send Messages
+     - Send Messages in Threads
      - Read Message History
-     - Use Slash Commands (optional)
-     - Embed Links
-     - Attach Files (for file responses)
+     - Embed Links (for citation embeds)
 
 4. **Invite Bot to Server**
    - Copy the generated OAuth2 URL
@@ -48,7 +55,7 @@ Get both API keys for intelligent automatic service selection:
 **Ollama Cloud API Key** (default OpenAI-compatible chat provider):
 - Sign in at [Ollama](https://ollama.com)
 - Create an API key in your account settings
-- Copy the key for `OPENAI_API_KEY`; it does not use OpenAI's `sk-` prefix, which is accepted
+- Copy the key for `OPENAI_API_KEY`; it does not use OpenAI's `sk-` prefix. Any non-empty key is accepted for the configured provider, which rejects a wrong key at request time.
 
 **OpenAI API Key** (alternative chat provider):
 - Go to [OpenAI Platform](https://platform.openai.com/api-keys)
@@ -94,7 +101,8 @@ Choose **either** the OpenAI-compatible chat provider only **or** Perplexity onl
    # How many recent messages to check for AI service consistency
    LOOKBACK_MESSAGES_FOR_CONSISTENCY=6
    
-   # Maximum conversation entries per user before pruning
+   # Maximum conversation entries per conversation before pruning
+   # (the key name is legacy; the cap is not per user)
    MAX_HISTORY_PER_USER=100
    
    # Memory cleanup interval in seconds (default: 1 hour)
@@ -103,17 +111,25 @@ Choose **either** the OpenAI-compatible chat provider only **or** Perplexity onl
 
 ## Step 4: Install Dependencies
 
+Create and activate a virtual environment, then install the runtime dependencies:
+
 ```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-**Note**: This includes `httpx[http2]` for HTTP/2 connection pooling support. If HTTP/2 dependencies fail to install, the bot will gracefully fall back to HTTP/1.1.
+The `discordian.sh` launcher also creates and populates `.venv/` on first run when no
+usable virtual environment exists, so this manual step is optional if you start the bot
+through the launcher.
+
+**Note**: This includes `httpx[http2]` for HTTP/2 connection pooling support. If HTTP/2 dependencies fail to install, the bot will gracefully fall back to HTTP/1.1. It also installs `tree-sitter` and `tree-sitter-markdown` for the shared output-sanitisation parser. `discord.py[voice]` installs PyNaCl and davey so a later voice feature can use them and the startup warning stays quiet; the bot does not use voice today. `tree-sitter` 0.27.0 ships CPython 3.12 wheels for manylinux x86_64 and aarch64 and for musllinux x86_64, but not musllinux aarch64; `tree-sitter-markdown` 0.5.4 ships wheels for all four. The manylinux-based `python:3.12-slim-bookworm` image needs no compiler; a musllinux aarch64 image would need one for `tree-sitter`.
 
 ## Step 5: Running the Bot
 
 ### Basic Usage
 ```bash
-python -m src.main
+python -m src.main --conf config.ini
 ```
 
 ### Advanced Usage
@@ -141,13 +157,15 @@ The included `discordian.sh` script provides additional process management:
 ## Step 6: Testing Your Setup
 
 ### Test Basic Functionality
-Send these messages to your bot to verify it's working:
+In a server channel, mention the bot in every test message (`@YourBot Hello!`); guild
+messages without a mention are ignored. Direct messages need no mention. Send these
+messages to verify the bot is working:
 
-1. **General Response**: `Hello!` (should use the chat provider/conversational AI)
-2. **Web Search**: `What's the latest AI news?` (should use Perplexity if available)
-3. **Follow-up Consistency**: 
-   - First: `What's the weather today?` (→ Perplexity)
-   - Then: `Tell me more` (→ Should stay with Perplexity)
+1. **General Response**: `@YourBot Hello!` (should use the chat provider/conversational AI)
+2. **Web Search**: `@YourBot What's the latest AI news?` (should use Perplexity if available)
+3. **Follow-up Consistency**:
+   - First: `@YourBot What's the weather today?` (→ Perplexity)
+   - Then: `@YourBot Tell me more` (→ Should stay with Perplexity)
 
 ### Check Logs
 
@@ -155,18 +173,23 @@ The bot writes logs to stderr. Where they end up depends on how you started it:
 
 - `./discordian.sh -d ...` redirects both stdout and stderr to `bot.log` in the project directory (`>> bot.log 2>&1`).
 - The systemd unit redirects stdout and stderr to `bot.log` (see [Daemon.md](Daemon.md)).
-- Running `python -m src.main` directly prints to the terminal. To keep a file, redirect both streams; redirecting stdout alone produces an empty file:
+- Running `python -m src.main --conf config.ini` directly prints to the terminal. To keep a file, redirect both streams; redirecting stdout alone produces an empty file:
 
   ```bash
   python -m src.main --conf config.ini >> bot.log 2>&1
   ```
 
-When `bot.log` is being written by the supervisor or your redirect, monitor it for these messages:
+When `bot.log` is being written by the supervisor or your redirect, grep for the event
+text rather than a bare level prefix. The console format is
+`<iso timestamp> [level    ] <event> [<logger>] [field=value ...]`; the trailing
+fields include `channel_id`, `guild_id`, and `user_id` when the message logger
+supplied that context. For example:
+
 ```
-INFO: Bot logged in successfully as YourBotName
-INFO: Running in HYBRID mode (OpenAI + Perplexity) - Smart AI orchestration enabled
-INFO: Smart orchestrator processing message from user...
-INFO: Message analysis suggests web search would be beneficial - trying Perplexity first
+2026-11-23T17:04:06Z [info     ] Running in hybrid mode (OpenAI + Perplexity); smart orchestration enabled [discordianai.bot]
+2026-11-23T17:04:06Z [info     ] Bot logged in as YourBotName (ID: 123456789012345678) [discordianai.bot]
+2026-11-23T17:04:06Z [info     ] Processing message (ID: 123456789012345678, length: 42) [discordianai.bot] channel_id=123456789012345678 guild_id=123456789012345679 user_id=987654321098765432
+2026-11-23T17:04:06Z [info     ] Routing decision: {'route': 'web', 'service': 'perplexity', ...} [discordianai.bot]
 ```
 
 ## Production Deployment
@@ -188,8 +211,8 @@ INFO: Message analysis suggests web search would be beneficial - trying Perplexi
 - **Consider Docker deployment** for isolation and scalability
 
 ### Monitoring & Maintenance
-- **Log rotation**: Ensure supervisor-managed or redirected log files don't grow too large
-- **API usage tracking**: Monitor token consumption and costs
+- **Log rotation**: The bot writes to stderr and never opens `bot.log`; the launcher or supervisor owns the file. Install the shipped `contrib/logrotate/discordianai` fragment and replace its log path plus the `USER GROUP` placeholders on the `su` line as described in [Daemon.md](Daemon.md). The fragment rotates at 100 MB with `copytruncate`, keeps fifty generations, and leaves the newest rotation uncompressed (`delaycompress`). Container deployments use the compose file's bounded `json-file` driver (three files of 10 MB each) instead.
+- **API usage tracking**: Monitor token consumption
 - **Error monitoring**: Set up alerts for critical errors
 - **Regular updates**: Keep dependencies updated for security
 
@@ -204,7 +227,7 @@ INFO: Message analysis suggests web search would be beneficial - trying Perplexi
 
 **AI service not working**:
 - Verify API keys are correct and active
-- Check API usage limits/billing
+- Check API usage limits
 - Review logs for specific error messages
 
 **Memory issues**:
@@ -216,7 +239,7 @@ INFO: Message analysis suggests web search would be beneficial - trying Perplexi
 - Adjust `LOOKBACK_MESSAGES_FOR_CONSISTENCY` based on usage patterns
 
 ### Getting Help
-- Check the logs first. If output is redirected to `bot.log`, use `tail -f bot.log`; under systemd, use `journalctl --user -u discordian-bot@bot -f`
+- Check the logs first. The shipped systemd unit appends bot output to `bot.log`, so use `tail -f /path/to/DiscordianAI/bot.log`; `journalctl --user -u discordian-bot@bot` shows unit start/stop events, not the bot's log lines
 - Review configuration examples in `config.ini.example`
 - Consult the [Configuration Guide](Configuration.md) for detailed parameter explanations
 - See [HybridMode.md](HybridMode.md) for advanced AI orchestration features

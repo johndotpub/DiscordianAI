@@ -9,6 +9,14 @@ services:
     container_name: discordianai
     restart: unless-stopped
 
+    # Bound Docker's default json-file driver so the log cannot grow without
+    # limit. Three files of at most 10 MB each keep the recent history.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
     # Inject the secrets and settings documented in .env.example. Compose's own
     # .env is only used for variable substitution, so it must be loaded here.
     env_file:

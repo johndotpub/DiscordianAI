@@ -68,6 +68,14 @@ if len(message) > EMBED_SAFE_LIMIT:
     split_point = find_optimal_split_point(message, EMBED_SAFE_LIMIT)
 ```
 
+### Citation- and Fence-Safe Split
+
+The head of a citation embed is measured on the rendered description and then
+snapped so the split never cuts a `[n]` citation marker or leaves a closed
+fenced block open. The same `split_fence_aware()` helper used by regular messages
+closes and reopens a long fence with its original language tag, so continuation
+embeds keep valid code and every line.
+
 ### Overflow Detection
 ```python
 # src/discord_embeds.py

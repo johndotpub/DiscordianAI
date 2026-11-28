@@ -1,10 +1,17 @@
 """Pytest configuration helpers and shared fixtures for DiscordianAI tests."""
 
 from copy import deepcopy
+import logging
+import os
 from unittest.mock import AsyncMock, MagicMock
 import warnings
 
 import pytest
+
+# Provider and router settings may leak in from the host environment. Every
+# test starts from a clean slate; a test that needs one sets it with
+# monkeypatch. This keeps the suite identical under ``env -i``.
+_HOST_PROVIDER_PREFIXES = ("OLLAMA_", "OPENAI_", "PERPLEXITY_", "ROUTER_")
 
 # Discord.py still imports the stdlib audioop module, which raises a global
 # DeprecationWarning on Python 3.12+ when tests enable ``-W error``. Keep the
@@ -39,6 +46,54 @@ def _reset_provider_circuit_breakers() -> None:
         for attribute, value in list(vars(module).items()):
             if id(value) in old_to_new:
                 setattr(module, attribute, old_to_new[id(value)])
+
+
+@pytest.fixture
+def seeded_environment():
+    """Extension point for a test that must seed variables before the scrub."""
+    return
+
+
+@pytest.fixture(autouse=True)
+def hermetic_provider_environment(monkeypatch, seeded_environment):
+    """Remove every variable the config loader or provider routing reads."""
+    from tests.helpers import config_env_keys
+
+    del seeded_environment
+    config_keys = config_env_keys()
+    for name in list(os.environ):
+        if name.startswith(_HOST_PROVIDER_PREFIXES) or name in config_keys:
+            monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def restore_root_logger():
+    """Keep a test that configures production logging from leaking its handlers."""
+    root = logging.getLogger()
+    original_handlers = list(root.handlers)
+    original_level = root.level
+    try:
+        yield
+    finally:
+        root.handlers[:] = original_handlers
+        root.setLevel(original_level)
+
+
+@pytest.fixture
+def fake_discord_types(monkeypatch):
+    """Patch the router's Discord type checks with shared test doubles."""
+    from src import message_router
+    from tests.helpers import (
+        FakeChannel,
+        FakeDMChannel,
+        FakeGroupChannel,
+        FakeThread,
+    )
+
+    monkeypatch.setattr(message_router.discord, "DMChannel", FakeDMChannel)
+    monkeypatch.setattr(message_router.discord, "TextChannel", FakeChannel)
+    monkeypatch.setattr(message_router.discord, "GroupChannel", FakeGroupChannel)
+    monkeypatch.setattr(message_router.discord, "Thread", FakeThread)
 
 
 @pytest.fixture(autouse=True)
@@ -137,7 +192,6 @@ def deps_factory():
         from src.dependencies import BotDependencies
 
         conversation_manager = MagicMock()
-        conversation_manager.get_conversation_summary.return_value = []
         conversation_manager.get_conversation_summary_formatted.return_value = []
 
         dependencies = BotDependencies(
@@ -231,5 +285,38 @@ def mock_conversation_manager():
     cm = MagicMock()
     cm.add_message = MagicMock()
     cm.get_conversation = MagicMock(return_value=[])
-    cm.get_conversation_summary = MagicMock(return_value=[])
     return cm
+
+
+@pytest.fixture
+def e2e_scene():
+    """Return a factory for the guild/channel/message scene used end to end."""
+    from types import SimpleNamespace
+
+    from tests.helpers import FakeChannel, FakeGuild, FakeMessage, FakeUser
+
+    def _build(text: str):
+        guild = FakeGuild(1)
+        channel = FakeChannel(555, "general", guild)
+        guild.text_channels.append(channel)
+        guild.channels = guild.text_channels
+        bot_user = FakeUser(1, bot=True)
+        author = FakeUser(42)
+        bot = SimpleNamespace(user=bot_user, guilds=[guild])
+        message = FakeMessage(
+            author=author,
+            channel=channel,
+            guild=guild,
+            mentions=[bot_user],
+            content=f"{bot_user.mention} {text}",
+        )
+        return SimpleNamespace(
+            guild=guild,
+            channel=channel,
+            bot=bot,
+            bot_user=bot_user,
+            author=author,
+            message=message,
+        )
+
+    return _build

@@ -1,13 +1,12 @@
 """Edge coverage for health checks: missing data, bounds, and isolation."""
 
-from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
 from src.config import DEFAULT_PERPLEXITY_MODEL
-from src.health_checks import APIHealthMonitor, HealthCheckResult
+from src.health_checks import APIHealthMonitor
 
 
 @pytest.mark.asyncio
@@ -35,7 +34,7 @@ async def test_empty_model_listing_is_unhealthy():
     result = await monitor.check_openai_health(client, {})
 
     assert result.status == "unhealthy"
-    assert "Invalid response structure from OpenAI" in result.error
+    assert "provider returned no models" in result.error
 
 
 def test_unknown_dynamic_health_check_name_raises_attribute_error():
@@ -44,25 +43,6 @@ def test_unknown_dynamic_health_check_name_raises_attribute_error():
 
     with pytest.raises(AttributeError, match="check_missing_health"):
         _ = monitor.check_missing_health
-
-
-def test_recent_health_results_are_bounded_to_the_newest_entries():
-    """The in-memory result history keeps only the newest entries."""
-    monitor = APIHealthMonitor()
-    monitor.max_recent_results = 2
-    timestamp = datetime.now(UTC)
-
-    for status in ("healthy", "unhealthy", "healthy"):
-        monitor.record_health_check(
-            HealthCheckResult(
-                service="openai",
-                status=status,
-                response_time_ms=10.0,
-                timestamp=timestamp,
-            )
-        )
-
-    assert [result.status for result in monitor.recent_results] == ["unhealthy", "healthy"]
 
 
 class _ExplodingOpenAIMonitor(APIHealthMonitor):

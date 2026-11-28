@@ -5,11 +5,9 @@ the bounded client-side web-tool loop, and response parsing. The public
 processing function remains the cache and lifecycle wrapper around it.
 """
 
-import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 import json
 import logging
-import time
 from typing import Any
 from urllib.parse import urlparse
 
@@ -25,25 +23,34 @@ from src.error_handling import (
     retry_with_backoff,
 )
 from src.image_attachments import ImagePayload
-from src.message_builder import build_messages, resolve_completion_budget
+from src.message_builder import (
+    build_messages,
+    estimate_text_tokens,
+    resolve_completion_budget,
+)
 from src.models import OpenAIConfig
 from src.web_tools import WEB_TOOLS, should_offer_web_tools
 
-from .base import CompletionRequest, ProbeResult, ProviderResult
+from .base import (
+    CompletionRequest,
+    ProbeResult,
+    ProviderResult,
+    object_field,
+    probe_models,
+)
 
 openai_circuit_breaker = get_circuit_breaker("openai")
 
 MAX_WEB_TOOL_ROUNDS = 4
+MAX_TOOL_CALLS_PER_ROUND = 3
+MAX_TOOL_OUTPUT_TOKENS = 12000
+_TOOL_CALL_LIMIT_RESULT = '{"error":"tool-call limit reached"}'
+_TOOL_BUDGET_REACHED_RESULT = '{"error":"tool-output budget reached"}'
 _DEFAULT_PROBE_TIMEOUT = 10.0
 
 ToolExecutor = Callable[..., Awaitable[str]]
 
-
-def _object_field(value: Any, name: str, default: Any = None) -> Any:
-    """Read a field from an SDK object or a plain mapping."""
-    if isinstance(value, dict):
-        return value.get(name, default)
-    return getattr(value, name, default)
+_object_field = object_field
 
 
 def _tool_call_payload(tool_call: Any) -> dict[str, Any]:
@@ -83,7 +90,7 @@ def _output_cap_key(base_url: str) -> str:
     return "max_tokens" if _provider_family(base_url) == "ollama" else "max_completion_tokens"
 
 
-def _build_openai_api_params(  # noqa: PLR0913
+def _completion_request(  # noqa: PLR0913 - one builder carries every request option
     model: str,
     system: str,
     user_msg: str,
@@ -93,17 +100,17 @@ def _build_openai_api_params(  # noqa: PLR0913
     input_tokens: int = DEFAULT_INPUT_TOKENS,
     output_tokens: int | None = None,
     context_window: int = DEFAULT_CONTEXT_WINDOW,
-    reasoning_effort: str = DEFAULT_REASONING_EFFORT,
-    base_url: str = "",
+    reasoning_effort: str | None = DEFAULT_REASONING_EFFORT,
     logger=None,
     images: Sequence[ImagePayload] | None = None,
     vision_token_estimate: int = DEFAULT_VISION_TOKEN_ESTIMATE,
-) -> dict:
-    """Prepare OpenAI-compatible chat-completion parameters."""
+    supports_web_tools: bool = False,
+) -> CompletionRequest:
+    """Build one normalised request for this adapter."""
     completion_tokens = tokens if output_tokens is None else output_tokens
-    params = {
-        "model": model,
-        "messages": build_messages(
+    return CompletionRequest(
+        model=model,
+        messages=build_messages(
             system,
             user_msg,
             history,
@@ -114,12 +121,66 @@ def _build_openai_api_params(  # noqa: PLR0913
             images=images,
             vision_token_estimate=vision_token_estimate,
         ),
+        max_output_tokens=resolve_completion_budget(
+            completion_tokens, context_window, input_tokens
+        ),
+        reasoning_effort=reasoning_effort or None,
+        tools=tuple(WEB_TOOLS) if supports_web_tools else (),
+    )
+
+
+def _api_params_for(
+    req: CompletionRequest,
+    *,
+    base_url: str,
+    supports_web_tools: bool,
+) -> dict[str, Any]:
+    """Convert a normalised request into SDK call parameters."""
+    token_key = _output_cap_key(base_url)
+    params: dict[str, Any] = {
+        "model": req.model,
+        "messages": list(req.messages),
+        token_key: req.max_output_tokens,
     }
-    budget = resolve_completion_budget(completion_tokens, context_window, input_tokens)
-    params[_output_cap_key(base_url)] = budget
-    if reasoning_effort:
-        params["reasoning_effort"] = reasoning_effort
+    if req.reasoning_effort:
+        params["reasoning_effort"] = req.reasoning_effort
+    if req.tools and supports_web_tools:
+        params["tools"] = list(req.tools)
     return params
+
+
+def _build_openai_api_params(  # noqa: PLR0913 - mirrors _completion_request's options
+    model: str,
+    system: str,
+    user_msg: str,
+    tokens: int,
+    history: list[dict] | None = None,
+    *,
+    input_tokens: int = DEFAULT_INPUT_TOKENS,
+    output_tokens: int | None = None,
+    context_window: int = DEFAULT_CONTEXT_WINDOW,
+    reasoning_effort: str | None = DEFAULT_REASONING_EFFORT,
+    base_url: str = "",
+    logger=None,
+    images: Sequence[ImagePayload] | None = None,
+    vision_token_estimate: int = DEFAULT_VISION_TOKEN_ESTIMATE,
+) -> dict:
+    """Prepare OpenAI-compatible chat-completion parameters."""
+    request = _completion_request(
+        model,
+        system,
+        user_msg,
+        tokens,
+        history,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        context_window=context_window,
+        reasoning_effort=reasoning_effort,
+        logger=logger,
+        images=images,
+        vision_token_estimate=vision_token_estimate,
+    )
+    return _api_params_for(request, base_url=base_url, supports_web_tools=False)
 
 
 class ChatCompletionsProvider:
@@ -183,7 +244,7 @@ class ChatCompletionsProvider:
     ) -> CompletionRequest:
         """Build one normalised request using the adapter's provider policy."""
         config = self._config
-        params = _build_openai_api_params(
+        return _completion_request(
             config.model,
             system,
             user_msg,
@@ -195,33 +256,19 @@ class ChatCompletionsProvider:
             reasoning_effort=(
                 config.reasoning_effort if reasoning_effort is None else reasoning_effort
             ),
-            base_url=self._base_url,
             logger=logger or self._logger,
             images=images,
             vision_token_estimate=config.vision_token_estimate,
-        )
-        token_key = _output_cap_key(self._base_url)
-        return CompletionRequest(
-            model=params["model"],
-            messages=params["messages"],
-            max_output_tokens=int(params[token_key]),
-            reasoning_effort=params.get("reasoning_effort"),
-            tools=tuple(WEB_TOOLS) if self.supports_web_tools else (),
+            supports_web_tools=self.supports_web_tools,
         )
 
     def _api_params(self, req: CompletionRequest) -> dict[str, Any]:
         """Convert a normalised request back into SDK call parameters."""
-        token_key = _output_cap_key(self._base_url)
-        params: dict[str, Any] = {
-            "model": req.model,
-            "messages": list(req.messages),
-            token_key: req.max_output_tokens,
-        }
-        if req.reasoning_effort:
-            params["reasoning_effort"] = req.reasoning_effort
-        if req.tools and self.supports_web_tools:
-            params["tools"] = list(req.tools)
-        return params
+        return _api_params_for(
+            req,
+            base_url=self._base_url,
+            supports_web_tools=self.supports_web_tools,
+        )
 
     async def _execute_tool(self, call: dict[str, Any]) -> str:
         """Run one tool call through the injected or legacy executor."""
@@ -237,6 +284,24 @@ class ChatCompletionsProvider:
             logger=self._logger,
         )
 
+    async def _tool_result(
+        self,
+        call: dict[str, Any],
+        index: int,
+        tool_output_tokens: int,
+    ) -> tuple[str, int]:
+        """Execute one tool call within the per-round and total output caps."""
+        if index >= MAX_TOOL_CALLS_PER_ROUND:
+            return _TOOL_CALL_LIMIT_RESULT, tool_output_tokens
+        if tool_output_tokens >= MAX_TOOL_OUTPUT_TOKENS:
+            return _TOOL_BUDGET_REACHED_RESULT, tool_output_tokens
+
+        result = await self._execute_tool(call)
+        result_tokens = estimate_text_tokens(result)
+        if tool_output_tokens + result_tokens > MAX_TOOL_OUTPUT_TOKENS:
+            return _TOOL_BUDGET_REACHED_RESULT, tool_output_tokens
+        return result, tool_output_tokens + result_tokens
+
     async def complete(self, req: CompletionRequest) -> ProviderResult:
         """Return one parsed chat answer, resolving the bounded tool loop.
 
@@ -246,21 +311,32 @@ class ChatCompletionsProvider:
         api_params = self._api_params(req)
         messages = api_params["messages"]
         tools_enabled = bool(req.tools) and self.supports_web_tools
+        final_round = MAX_WEB_TOOL_ROUNDS - 1
+        tool_output_tokens = 0
 
         self._logger.debug("Making OpenAI API call with %d messages", len(messages))
 
         final_response = None
         response = None
-        for _round in range(MAX_WEB_TOOL_ROUNDS):
+        for round_index in range(MAX_WEB_TOOL_ROUNDS):
+            round_params = api_params
+            if round_index == final_round and "tools" in api_params:
+                # The last round must answer; offering tools again would let
+                # the model ask for results this loop can no longer use.
+                round_params = {key: value for key, value in api_params.items() if key != "tools"}
             response = await openai_circuit_breaker.call(
                 retry_with_backoff,
-                lambda: self._client.chat.completions.create(**api_params),
+                lambda params=round_params: self._client.chat.completions.create(**params),
                 DEFAULT_API_RETRY_CONFIG,
                 self._logger,
             )
 
             if not (response and hasattr(response, "choices") and response.choices):
-                self._logger.error("OpenAI API returned invalid response structure: %s", response)
+                self._logger.error(
+                    "OpenAI API returned invalid response structure: type=%s id=%s",
+                    type(response).__name__,
+                    getattr(response, "id", None),
+                )
                 msg = "OpenAI response contained no choices"
                 raise ValueError(msg)
 
@@ -268,6 +344,7 @@ class ChatCompletionsProvider:
             tool_calls = getattr(choice.message, "tool_calls", None)
             wants_tools = (
                 tools_enabled
+                and round_index < final_round
                 and getattr(choice, "finish_reason", None) == "tool_calls"
                 and bool(tool_calls)
             )
@@ -283,8 +360,12 @@ class ChatCompletionsProvider:
                     "tool_calls": calls,
                 }
             )
-            for call in calls:
-                result = await self._execute_tool(call)
+            for index, call in enumerate(calls):
+                result, tool_output_tokens = await self._tool_result(
+                    call,
+                    index,
+                    tool_output_tokens,
+                )
                 messages.append(
                     {
                         "role": "tool",
@@ -297,7 +378,9 @@ class ChatCompletionsProvider:
 
         if not (final_response and hasattr(final_response, "choices") and final_response.choices):
             self._logger.error(
-                "OpenAI API returned invalid response structure: %s", final_response
+                "OpenAI API returned invalid response structure: type=%s id=%s",
+                type(final_response).__name__,
+                getattr(final_response, "id", None),
             )
             msg = "OpenAI response contained no choices"
             raise ValueError(msg)
@@ -322,34 +405,4 @@ class ChatCompletionsProvider:
 
     async def probe(self) -> ProbeResult:
         """List models with a bounded timeout and report reachability."""
-        started_at = time.monotonic()
-        try:
-            response = await asyncio.wait_for(
-                self._client.models.list(),
-                timeout=self._probe_timeout,
-            )
-        except Exception as exc:  # noqa: BLE001 - probes report, never raise
-            latency_ms = (time.monotonic() - started_at) * 1000
-            return ProbeResult(
-                ok=False,
-                detail=f"{type(exc).__name__}: {exc}",
-                latency_ms=round(latency_ms, 1),
-            )
-
-        latency_ms = (time.monotonic() - started_at) * 1000
-        model_ids = [
-            model_id
-            for item in getattr(response, "data", [])
-            if (model_id := getattr(item, "id", None))
-        ]
-        if not model_ids:
-            return ProbeResult(
-                ok=False,
-                detail="provider returned no models",
-                latency_ms=round(latency_ms, 1),
-            )
-        return ProbeResult(
-            ok=True,
-            detail=f"{len(model_ids)} models available",
-            latency_ms=round(latency_ms, 1),
-        )
+        return await probe_models(self._client, self._probe_timeout)

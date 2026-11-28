@@ -18,6 +18,7 @@ from .features import (
 )
 from .gate import decide
 from .lexicon import Lexicon
+from .text import TOKEN_PATTERN
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -30,8 +31,6 @@ if TYPE_CHECKING:
     )
 
 _FOLLOW_UP_MAX_TOKENS = 6
-_INHERIT_WEIGHT = 2.0
-_TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 _TITLE_CASE_PATTERN = re.compile(r"\b[A-Z][a-z]+")
 _ANAPHORS = frozenset(
     {
@@ -144,7 +143,7 @@ def _inheritance_cue(
     text_views: TextViews,
     cues: list[Cue],
 ) -> Cue | None:
-    tokens = _TOKEN_PATTERN.findall(text_views.folded)
+    tokens = TOKEN_PATTERN.findall(text_views.folded)
     if len(tokens) > _FOLLOW_UP_MAX_TOKENS:
         return None
     if not _is_follow_up(tokens, text_views.folded):
@@ -158,14 +157,12 @@ def _inheritance_cue(
         return None
 
     klass: EvidenceClass = "override" if last_route == "web" else "local"
-    weight = _INHERIT_WEIGHT if last_route == "web" else -_INHERIT_WEIGHT
     return Cue(
         signal=f"inherit.{last_route}",
         klass=klass,
         span=None,
         detail=last_route,
         source="inherited",
-        weight=weight,
     )
 
 
@@ -197,7 +194,7 @@ def _topic_shift(
         token
         for turn in context.turns
         if turn.role == "user"
-        for token in _TOKEN_PATTERN.findall(turn.text.lower())
+        for token in TOKEN_PATTERN.findall(turn.text.lower())
     }
     if any(
         match.group().lower() not in prior_terms

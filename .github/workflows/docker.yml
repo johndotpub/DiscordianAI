@@ -21,10 +21,10 @@ on:
       - '.github/codeql/**'
       - 'LICENSE'
 
-# Cancel in-progress runs on same branch
+# Cancel superseded pull-request builds, but never a publish run mid-way.
 concurrency:
   group: docker-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   REGISTRY: ghcr.io
@@ -32,6 +32,62 @@ env:
   DOCKERHUB_IMAGE: johndotpub/discordianai
 
 jobs:
+  # Publishing must not start until CI has passed for the same commit.
+  wait-for-ci:
+    name: Wait for CI
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    permissions:
+      actions: read
+      contents: read
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+
+    steps:
+    - name: Wait for a successful CI run on this commit
+      run: |
+        no_run_deadline=$((SECONDS + 600))
+        while true; do
+          runs="[]"
+          if ! runs=$(gh run list \
+            --workflow ci.yml \
+            --commit "$GITHUB_SHA" \
+            --json status,conclusion \
+            --limit 5); then
+            echo "::warning::gh run list failed for $GITHUB_SHA; treating the run list as empty"
+            runs="[]"
+          fi
+          run=""
+          if ! run=$(jq -c '.[0] // empty' <<< "$runs" 2>/dev/null); then
+            echo "::warning::Could not parse the CI run list for $GITHUB_SHA; treating it as empty"
+            run=""
+          fi
+          status=""
+          conclusion=""
+          if [[ -n "$run" ]]; then
+            status=$(jq -r '.status // ""' <<< "$run")
+            conclusion=$(jq -r '.conclusion // ""' <<< "$run")
+          fi
+          if [[ -z "$run" ]]; then
+            if (( SECONDS >= no_run_deadline )); then
+              echo "::error::No CI run for $GITHUB_SHA within 10 minutes"
+              exit 1
+            fi
+          elif [[ "$status" != "completed" ]]; then
+            echo "::notice::CI run for $GITHUB_SHA is still '$status'; waiting"
+          elif [[ "$conclusion" == "success" ]]; then
+            exit 0
+          else
+            echo "::error::CI concluded with '$conclusion' for $GITHUB_SHA"
+            exit 1
+          fi
+          sleep 30
+        done
+
   # Build the same multi-platform image on pull requests without publishing it.
   build-pr:
     name: Build (pull request)
@@ -65,6 +121,7 @@ jobs:
 
   publish:
     name: Publish images
+    needs: wait-for-ci
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -105,7 +162,7 @@ jobs:
       with:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_LOWER }}
         tags: |
-          type=raw,value=latest
+          type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}
           type=ref,event=tag
           type=raw,value=${{ github.ref_name }},enable=${{ github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/') }}
         labels: |
@@ -141,7 +198,7 @@ jobs:
       with:
         images: ${{ env.DOCKERHUB_IMAGE }}
         tags: |
-          type=raw,value=latest
+          type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}
           type=ref,event=tag
           type=raw,value=${{ github.ref_name }},enable=${{ github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/') }}
 

@@ -7,29 +7,57 @@ This module provides comprehensive message utilities, including:
 - User context and mention extraction
 """
 
+from bisect import bisect_left, bisect_right
+from collections.abc import Sequence
+from dataclasses import dataclass
+import logging
 import re
+import threading
 from typing import Any
 
 import discord
+from tree_sitter import Language, Parser, Range
+import tree_sitter_markdown
 
 from .citation_formatting import renderable_citations
 from .config import (
     BARE_URL_PATTERN,
+    CITATION_PATTERN,
     EMBED_SAFE_LIMIT,
+    ERROR_MESSAGES,
     LINK_PATTERN,
     MAX_SPLIT_CHUNKS,
     MESSAGE_BUFFER,
     MESSAGE_LIMIT,
 )
-from .discord_embeds import citation_embed_formatter
-from .truncation import truncate_with_notice
+from .discord_embeds import citation_embed_formatter, clamp_embed_description
 
 _RAW_MENTION_PATTERN = re.compile(r"<(@[!&]?|#)(\d+)>")
-_MARKDOWN_LINK_PATTERN = re.compile(r"!?\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)]+)\)")
-_AUTOLINK_PATTERN = re.compile(r"<(https?://[^>\s]+)>", re.IGNORECASE)
-_BARE_HTTP_URL_PATTERN = re.compile(r"https?://(?!\u200b)[^\s<>]+", re.IGNORECASE)
+_HTTP_SCHEME_PATTERN = re.compile(r"https?://", re.IGNORECASE)
 _URL_TRAILING_PUNCTUATION = ".,;:!?)]}'\""
 _CONTINUED_FOOTER = "🌐 Web search results (continued)"
+TRUNCATION_NOTICE = "✂️ The answer was cut off at the length limit."
+_ZERO_WIDTH_SPACE = "\u200b"
+_FULL_BYTE_RANGE = Range((0, 0), (0xFFFFFFFF, 0xFFFFFFFF), 0, 0xFFFFFFFF)
+_UTF8_ONE_BYTE_LIMIT = 0x80
+_UTF8_TWO_BYTE_LIMIT = 0x800
+_UTF8_THREE_BYTE_LIMIT = 0x10000
+_UTF8_SURROGATE_FIRST = 0xD800
+_UTF8_SURROGATE_LAST = 0xDFFF
+_UTF8_REPLACEMENT_SIZE = 1
+_CLOSING_DELIMITER_COUNT = 2
+_EMPHASIS_MARKERS = frozenset("*_~|")
+# The inline grammar slows sharply on delimiter-dense text. Above this many
+# emphasis-marker characters the sanitiser skips inline parsing entirely and
+# applies the catch-all passes instead, keeping delivery bounded.
+_MAX_EMPHASIS_DELIMITERS = 2048
+# Nested link labels are rendered recursively. Past this depth the remaining
+# label is ordinary text, so adversarial nesting cannot exhaust the stack.
+_MAX_INLINE_RENDER_DEPTH = 100
+_TRUNCATION_PREFIX = "\n\n[Message truncated: the original answer was "
+_TRUNCATION_SUFFIX = " characters; the bot's delivery limit was reached]"
+
+logger = logging.getLogger(__name__)
 
 
 class CitationMap(dict[str, str]):
@@ -70,7 +98,673 @@ def _sanitize_embed_description(
     """Sanitise an embed description in place when it is a real string."""
     description = getattr(embed, "description", None)
     if isinstance(description, str) and description:
-        embed.description = sanitize_for_discord(description, citations)
+        embed.description = clamp_embed_description(sanitize_for_discord(description, citations))
+
+
+@dataclass(frozen=True)
+class _FenceInfo:
+    """One fenced block reported by the block grammar."""
+
+    start: int
+    end: int
+    content_start: int
+    marker: str
+    language: str
+    closed: bool
+
+
+@dataclass(frozen=True)
+class _InlineInfo:
+    """One inline code span, link, image, or autolink reported by the parser."""
+
+    start: int
+    end: int
+    kind: str
+    destination: str = ""
+    label_start: int = 0
+    label_end: int = 0
+
+
+@dataclass(frozen=True)
+class _MarkdownParse:
+    """Block and inline spans from one parse of a text."""
+
+    text: str
+    raw: bytes
+    offsets: tuple[int, ...]
+    fences: tuple[_FenceInfo, ...]
+    inline: tuple[_InlineInfo, ...]
+
+
+@dataclass(frozen=True)
+class _CodeRegion:
+    """A code region Discord renders, with enough detail to close a fence."""
+
+    start: int
+    end: int
+    kind: str
+    content_start: int = 0
+    marker: str = "```"
+    language: str = ""
+
+
+@dataclass(frozen=True)
+class _LinkSpan:
+    """A parser-reported link or autolink that may need rewriting."""
+
+    start: int
+    end: int
+    kind: str
+    destination: str = ""
+    label_start: int = 0
+    label_end: int = 0
+    allowed: bool = False
+
+
+_thread_state = threading.local()
+_PARSE_STATS = {
+    "calls": 0,
+    "bytes": 0,
+    "count_link_span_comparisons": 0,
+    "markdown_angle_scan_chars": 0,
+    "bare_scheme_skip_chars": 0,
+}
+
+
+def _reset_parse_stats() -> None:
+    """Reset the parser work counters used by the delivery complexity test."""
+    _PARSE_STATS["calls"] = 0
+    _PARSE_STATS["bytes"] = 0
+    _PARSE_STATS["count_link_span_comparisons"] = 0
+    _PARSE_STATS["markdown_angle_scan_chars"] = 0
+    _PARSE_STATS["bare_scheme_skip_chars"] = 0
+
+
+def _parse_stats() -> dict[str, int]:
+    """Return a snapshot of the parser work counters."""
+    return dict(_PARSE_STATS)
+
+
+def _parsers() -> tuple[Parser, Parser]:
+    """Return one block parser and one inline parser for this thread."""
+    if not hasattr(_thread_state, "block_parser"):
+        _thread_state.block_parser = Parser(Language(tree_sitter_markdown.language()))
+        _thread_state.inline_parser = Parser(Language(tree_sitter_markdown.inline_language()))
+    return _thread_state.block_parser, _thread_state.inline_parser
+
+
+def _replace_surrogate_characters(text: str) -> str:
+    """Replace lone UTF-16 surrogates so UTF-8 encoding cannot abort delivery."""
+    if not any(
+        _UTF8_SURROGATE_FIRST <= ord(character) <= _UTF8_SURROGATE_LAST for character in text
+    ):
+        return text
+    return text.encode("utf-8", errors="replace").decode("utf-8")
+
+
+def _emphasis_delimiter_count(text: str) -> int:
+    """Return how many emphasis, strikethrough, or spoiler markers ``text`` holds."""
+    return sum(text.count(marker) for marker in _EMPHASIS_MARKERS)
+
+
+def _byte_offsets(raw: bytes, text: str) -> tuple[int, ...]:
+    """Map every byte boundary in ``raw`` to a character index in ``text``."""
+    offsets = [0] * (len(raw) + 1)
+    byte_index = 0
+    for character_index, character in enumerate(text):
+        code_point = ord(character)
+        if _UTF8_SURROGATE_FIRST <= code_point <= _UTF8_SURROGATE_LAST:
+            # Encoding with errors="replace" writes a one-byte "?" for a
+            # surrogate, so the offset table must use the same width.
+            size = _UTF8_REPLACEMENT_SIZE
+        elif code_point < _UTF8_ONE_BYTE_LIMIT:
+            size = 1
+        elif code_point < _UTF8_TWO_BYTE_LIMIT:
+            size = 2
+        elif code_point < _UTF8_THREE_BYTE_LIMIT:
+            size = 3
+        else:
+            size = 4
+        for offset in range(size):
+            offsets[byte_index + offset] = character_index
+        byte_index += size
+    offsets[len(raw)] = len(text)
+    return tuple(offsets)
+
+
+def _destination_text(text: str, offsets: tuple[int, ...], node: Any) -> str:
+    """Return a link destination with optional angle brackets removed."""
+    destination = text[offsets[node.start_byte] : offsets[node.end_byte]].strip()
+    if destination.startswith("<") and destination.endswith(">"):
+        destination = destination[1:-1].strip()
+    return destination
+
+
+def _inline_link_info(
+    text: str,
+    offsets: tuple[int, ...],
+    node: Any,
+) -> _InlineInfo | None:
+    """Build an inline link or image span from one parser node."""
+    destination_node = None
+    label_node = None
+    for child in node.children:
+        if child.type in {"link_destination", "uri_autolink"} and destination_node is None:
+            destination_node = child
+        elif child.type in {"link_text", "image_description"} and label_node is None:
+            label_node = child
+    if destination_node is None:
+        return None
+    start = offsets[node.start_byte]
+    end = offsets[node.end_byte]
+    if label_node is None:
+        label_start = label_end = start + 1
+    else:
+        label_start = offsets[label_node.start_byte]
+        label_end = offsets[label_node.end_byte]
+    return _InlineInfo(
+        start=start,
+        end=end,
+        kind=node.type,
+        destination=_destination_text(text, offsets, destination_node),
+        label_start=label_start,
+        label_end=label_end,
+    )
+
+
+def _fence_info_from_node(
+    node: Any,
+    raw: bytes,
+    text: str,
+    offsets: tuple[int, ...],
+) -> _FenceInfo:
+    """Build one fenced-block span from a block-grammar node."""
+    delimiters = [child for child in node.children if child.type == "fenced_code_block_delimiter"]
+    info = next((child for child in node.children if child.type == "info_string"), None)
+    marker = ""
+    if delimiters:
+        marker = raw[delimiters[0].start_byte : delimiters[0].end_byte].decode("utf-8")
+    closed = False
+    if len(delimiters) >= _CLOSING_DELIMITER_COUNT:
+        closing = raw[delimiters[-1].start_byte : delimiters[-1].end_byte].decode("utf-8")
+        closed = closing == marker
+    content_start = offsets[delimiters[0].end_byte] if delimiters else offsets[node.start_byte]
+    newline = text.find("\n", content_start)
+    node_end = offsets[node.end_byte]
+    if newline != -1 and newline < node_end:
+        content_start = newline + 1
+    language = ""
+    if info is not None:
+        language = text[offsets[info.start_byte] : offsets[info.end_byte]].strip()
+    return _FenceInfo(
+        start=offsets[node.start_byte],
+        end=node_end,
+        content_start=content_start,
+        marker=marker,
+        language=language,
+        closed=closed,
+    )
+
+
+def _inline_infos_from_node(
+    node: Any,
+    raw: bytes,
+    text: str,
+    offsets: tuple[int, ...],
+    inline_parser: Parser,
+) -> list[_InlineInfo]:
+    """Reparse one inline node and return its code, link, and autolink spans."""
+    inline_parser.included_ranges = [
+        Range(node.start_point, node.end_point, node.start_byte, node.end_byte)
+    ]
+    spans: list[_InlineInfo] = []
+    try:
+        inline_tree = inline_parser.parse(raw)
+        _PARSE_STATS["calls"] += 1
+        _PARSE_STATS["bytes"] += len(raw)
+        inline_stack = [inline_tree.root_node]
+        while inline_stack:
+            child = inline_stack.pop()
+            if child.type == "code_span":
+                spans.append(
+                    _InlineInfo(
+                        start=offsets[child.start_byte],
+                        end=offsets[child.end_byte],
+                        kind="code",
+                    )
+                )
+            elif child.type in {"inline_link", "image"}:
+                info_span = _inline_link_info(text, offsets, child)
+                if info_span is not None:
+                    spans.append(info_span)
+            elif child.type in {"uri_autolink", "email_autolink"}:
+                spans.append(
+                    _InlineInfo(
+                        start=offsets[child.start_byte],
+                        end=offsets[child.end_byte],
+                        kind=child.type,
+                        destination=_destination_text(text, offsets, child),
+                    )
+                )
+            inline_stack.extend(reversed(child.children))
+    finally:
+        inline_parser.included_ranges = [_FULL_BYTE_RANGE]
+    return spans
+
+
+def _parse_markdown(text: str, *, include_inline: bool = True) -> _MarkdownParse:
+    """Parse one text with the block grammar and, unless disabled, inline spans.
+
+    Delimiter-dense text skips the inline grammar: the catch-all passes still
+    neutralise links, and the block grammar still finds fenced code.
+    """
+    raw = text.encode("utf-8", errors="replace")
+    offsets = _byte_offsets(raw, text)
+    parse_inline = include_inline and (_emphasis_delimiter_count(text) <= _MAX_EMPHASIS_DELIMITERS)
+    block_parser, inline_parser = _parsers()
+    tree = block_parser.parse(raw)
+    _PARSE_STATS["calls"] += 1
+    _PARSE_STATS["bytes"] += len(raw)
+    fences: list[_FenceInfo] = []
+    inline: list[_InlineInfo] = []
+    stack = [tree.root_node]
+
+    while stack:
+        node = stack.pop()
+        if node.type == "fenced_code_block":
+            fences.append(_fence_info_from_node(node, raw, text, offsets))
+        elif parse_inline and node.type == "inline":
+            inline.extend(_inline_infos_from_node(node, raw, text, offsets, inline_parser))
+        stack.extend(reversed(node.children))
+
+    return _MarkdownParse(
+        text=text,
+        raw=raw,
+        offsets=offsets,
+        fences=tuple(sorted(fences, key=lambda fence: fence.start)),
+        inline=tuple(sorted(inline, key=lambda span: span.start)),
+    )
+
+
+def _backtick_runs(text: str) -> list[tuple[int, int]]:
+    """Return every maximal backtick run as a ``(start, end)`` pair.
+
+    The runs are collected in one forward pass. The protection filter and the
+    split-only Discord pairing share this scan, so neither has to search the
+    text again for each fence or span.
+    """
+    runs: list[tuple[int, int]] = []
+    position = text.find("`")
+    while position >= 0:
+        start = position
+        while position < len(text) and text[position] == "`":
+            position += 1
+        runs.append((start, position))
+        position = text.find("`", position)
+    return runs
+
+
+def _inline_span_content_is_ambiguous(content: str) -> bool:
+    """Return True when an inline span's content can change delimiter pairing.
+
+    An emphasis, strikethrough, or spoiler marker before the closing backtick
+    changes which backtick Discord pairs with the opener, so CommonMark's span
+    is not necessarily a Discord code span. A scheme-qualified markdown link
+    inside the span is also treated as untrusted: the conservative rule keeps
+    a span verbatim only when nothing inside it can turn into live markup.
+    """
+    if any(marker in content for marker in _EMPHASIS_MARKERS):
+        return True
+    return "](" in content and "://" in content
+
+
+def _protected_inline_span(
+    parse: _MarkdownParse,
+    span: _InlineInfo,
+    runs: list[tuple[int, int]],
+    run_index_by_start: dict[int, int],
+    run_index_by_end: dict[int, int],
+) -> _CodeRegion | None:
+    """Return the protected region for one inline span, or None when uncertain."""
+    if span.kind != "code":
+        return None
+    opener_index = run_index_by_start.get(span.start)
+    closer_index = run_index_by_end.get(span.end)
+    # A backslash-escaped closer does not close the span Discord renders, so
+    # the parsed end is not trustworthy and the span protects nothing.
+    if (
+        opener_index is None
+        or closer_index is None
+        or opener_index % 2
+        or closer_index != opener_index + 1
+        or _is_escaped(parse.text, span.start)
+        or _is_escaped(parse.text, span.end - 1)
+    ):
+        return None
+    content = parse.text[runs[opener_index][1] : runs[closer_index][0]]
+    if _inline_span_content_is_ambiguous(content):
+        return None
+    return _CodeRegion(start=span.start, end=span.end, kind="inline")
+
+
+def _filtered_code_regions(parse: _MarkdownParse) -> list[_CodeRegion]:
+    """Return the code regions the conservative protection rule accepts.
+
+    A fenced block is protected only when it uses exactly three backticks, is
+    closed by a three-backtick closer, and the sequential pairing Discord
+    applies to triple-backtick runs pairs that fence's opener with its closer.
+    A triple-backtick run inside the content, or any other run outside the
+    accepted blocks, makes the pairing uncertain, so the whole text protects
+    nothing. Indented blocks are never protected because Discord has no
+    indented code. Inline spans are skipped when the text mixes backtick run
+    lengths; otherwise a span is protected only when neither the opener nor
+    the closer is backslash-escaped, its markers are the next sequential pair,
+    and its content carries no emphasis or link syntax that could change the
+    pairing, because Discord would then end the code elsewhere.
+    """
+    runs = _backtick_runs(parse.text)
+    accepted = [fence for fence in parse.fences if fence.marker == "```" and fence.closed]
+    accepted.sort(key=lambda fence: fence.start)
+
+    fence_runs = [(start, end) for start, end in runs if end - start >= len("```")]
+    run_index = 0
+    for fence in accepted:
+        if run_index >= len(fence_runs) or fence_runs[run_index][0] != fence.start:
+            return []
+        opener_index = run_index
+        run_index += 1
+        while run_index < len(fence_runs) and fence_runs[run_index][1] <= fence.end:
+            run_index += 1
+        closer_index = run_index - 1
+        if closer_index != opener_index + 1 or opener_index % 2:
+            return []
+    if run_index != len(fence_runs):
+        return []
+
+    regions = [
+        _CodeRegion(
+            start=fence.start,
+            end=fence.end,
+            kind="fence",
+            content_start=fence.content_start,
+            marker=fence.marker,
+            language=fence.language,
+        )
+        for fence in accepted
+    ]
+    run_lengths = {end - start for start, end in runs}
+    if len(run_lengths) <= 1:
+        run_index_by_start = {start: index for index, (start, _end) in enumerate(runs)}
+        run_index_by_end = {end: index for index, (_start, end) in enumerate(runs)}
+        for span in parse.inline:
+            region = _protected_inline_span(
+                parse,
+                span,
+                runs,
+                run_index_by_start,
+                run_index_by_end,
+            )
+            if region is not None:
+                regions.append(region)
+    regions.sort(key=lambda region: region.start)
+    return regions
+
+
+def protected_code_regions(text: str) -> list[_CodeRegion]:
+    """Return the code regions that Discord renders for ``text``.
+
+    The tree-sitter-markdown grammars supply the spans, but only a conservative
+    subset is protected: an exactly-three-backtick closed fence with no other
+    triple-backtick run outside it, or a closed inline code span whose opener
+    and closer are not backslash-escaped when the text uses one backtick run
+    length. A block that fails any condition protects nothing, so protection
+    can only ever be smaller than the parser reports.
+
+    Args:
+        text: Text that will be delivered to Discord.
+
+    Returns:
+        Sorted code regions, with byte offsets converted to character indices.
+    """
+    if not text:
+        return []
+    return _filtered_code_regions(_parse_markdown(text))
+
+
+def _link_spans(parse: _MarkdownParse, allowed_urls: set[str]) -> list[_LinkSpan]:
+    """Return parser-reported links and autolinks that sanitising may rewrite."""
+    spans: list[_LinkSpan] = []
+    for span in parse.inline:
+        if span.kind == "uri_autolink":
+            destination = span.destination
+            spans.append(
+                _LinkSpan(
+                    start=span.start,
+                    end=span.end,
+                    kind="uri_autolink",
+                    destination=destination,
+                    allowed=destination in allowed_urls,
+                )
+            )
+        elif span.kind == "email_autolink":
+            spans.append(
+                _LinkSpan(
+                    start=span.start,
+                    end=span.end,
+                    kind="email_autolink",
+                    destination=span.destination,
+                )
+            )
+        elif span.kind in {"inline_link", "image"}:
+            spans.append(
+                _LinkSpan(
+                    start=span.start,
+                    end=span.end,
+                    kind=span.kind,
+                    destination=span.destination,
+                    label_start=span.label_start,
+                    label_end=span.label_end,
+                    allowed=span.destination in allowed_urls,
+                )
+            )
+    return spans
+
+
+def _allowed_bare_url_spans(text: str, allowed_urls: set[str]) -> list[_LinkSpan]:
+    """Return occurrences of an exact trusted URL so the catch-all skips them."""
+    if not allowed_urls:
+        return []
+    spans: list[_LinkSpan] = []
+    position = 0
+    while True:
+        scheme_match = _HTTP_SCHEME_PATTERN.search(text, position)
+        if scheme_match is None:
+            _PARSE_STATS["bare_scheme_skip_chars"] += max(0, len(text) - position)
+            return spans
+        start = scheme_match.start()
+        _PARSE_STATS["bare_scheme_skip_chars"] += max(0, start - position)
+        end = start
+        while end < len(text) and not text[end].isspace() and text[end] not in "<>":
+            end += 1
+        core, _trailing = _split_url_trailing_punctuation(text[start:end])
+        core_end = start + len(core)
+        if core in allowed_urls and text.startswith(core, start):
+            after = text[core_end : core_end + 1]
+            if not after or not (after.isalnum() or after in "-._~:/?#[]@!$&'()*+,;=%"):
+                spans.append(_LinkSpan(start=start, end=core_end, kind="bare"))
+        position = end
+
+
+def _allowed_markdown_link_spans(text: str, allowed_urls: set[str]) -> list[_LinkSpan]:
+    """Return trusted link spans the CommonMark parser may not accept.
+
+    Discord embed citation links use a doubled bracket (``[[1]](url)``).
+    CommonMark treats the inner brackets as a nested link and does not report
+    the outer span, so the allowlist is checked directly for an exact
+    destination. Only that citation's own ``](`` and destination are exempt;
+    the label before it, any title text after the destination, and the closing
+    parenthesis stay ordinary text for the catch-all passes, so an injected
+    ``](`` cannot hide inside the citation.
+    """
+    if not allowed_urls:
+        return []
+    spans: list[_LinkSpan] = []
+    position = 0
+    next_close = -1
+    have_next_close = False
+    while True:
+        marker = text.find("](", position)
+        if marker < 0:
+            return spans
+        destination_start = marker + 2
+        while destination_start < len(text) and text[destination_start] in " \t":
+            destination_start += 1
+        if destination_start < len(text) and text[destination_start] == "<":
+            search_start = destination_start + 1
+            if not have_next_close:
+                next_close = text.find(">", search_start)
+                have_next_close = True
+                scanned_end = next_close if next_close >= 0 else len(text)
+                _PARSE_STATS["markdown_angle_scan_chars"] += max(0, scanned_end - search_start)
+            elif next_close >= 0 and next_close < search_start:
+                next_close = text.find(">", search_start)
+                scanned_end = next_close if next_close >= 0 else len(text)
+                _PARSE_STATS["markdown_angle_scan_chars"] += max(0, scanned_end - search_start)
+            destination_end = next_close
+            if destination_end < 0:
+                position = marker + 2
+                continue
+            destination = text[destination_start + 1 : destination_end]
+            span_end = destination_end + 1
+        else:
+            destination_end = destination_start
+            while (
+                destination_end < len(text)
+                and not text[destination_end].isspace()
+                and text[destination_end] not in ")]"
+            ):
+                destination_end += 1
+            destination = text[destination_start:destination_end]
+            span_end = destination_end
+        if destination in allowed_urls:
+            spans.append(_LinkSpan(start=marker, end=span_end, kind="trusted_link"))
+            position = span_end
+        else:
+            position = marker + 2
+
+
+def _break_reference_definitions(text: str) -> str:
+    """Break definition syntax with an invisible separator, never a deletion.
+
+    Discord has no reference-style links, so a line such as
+    ``[label]: destination`` is ordinary text. The URL in it is neutralised by
+    the catch-all pass; this pass additionally stops a CommonMark renderer from
+    resolving the label against the same line.
+    """
+    pieces: list[str] = []
+    position = 0
+    while True:
+        marker = text.find("]:", position)
+        if marker < 0:
+            pieces.append(text[position:])
+            return "".join(pieces)
+        cursor = marker + 2
+        while cursor < len(text) and text[cursor] in " \t":
+            cursor += 1
+        destination = False
+        if cursor < len(text):
+            if text[cursor] in "</":
+                destination = True
+            else:
+                end = cursor
+                while end < len(text) and not text[end].isspace() and text[end] not in "()[]<>":
+                    end += 1
+                token = text[cursor:end]
+                destination = any(character in token for character in ":/.")
+        pieces.append(text[position : marker + 2])
+        if destination and not text.startswith(_ZERO_WIDTH_SPACE, marker + 2):
+            pieces.append(_ZERO_WIDTH_SPACE)
+        pieces.append(text[marker + 2 : cursor])
+        position = cursor
+
+
+def _neutralize_www(text: str) -> str:
+    """Break a bare ``www.`` web address while leaving longer words intact.
+
+    The break is added only when ``www.`` starts a web address: the preceding
+    character is not a letter, digit, dot, hyphen, or an existing zero-width
+    break, and a letter or digit follows the dot.
+    """
+    pieces: list[str] = []
+    position = 0
+    lowered = text.lower()
+    while True:
+        start = lowered.find("www.", position)
+        if start < 0:
+            pieces.append(text[position:])
+            return "".join(pieces)
+        host_start = start + len("www.")
+        previous = text[start - 1 : start]
+        begins_address = not (previous.isalnum() or previous in {".", "-", _ZERO_WIDTH_SPACE})
+        has_host = host_start < len(text) and text[host_start].isalnum()
+        pieces.append(text[position:host_start])
+        if begins_address and has_host:
+            pieces.append(_ZERO_WIDTH_SPACE)
+        position = host_start
+
+
+def _neutralize_plain(text: str) -> str:
+    """Apply the parse-independent catch-all passes to ordinary text."""
+    text = text.replace("](", f"]{_ZERO_WIDTH_SPACE}(")
+    text = _break_reference_definitions(text)
+
+    pieces: list[str] = []
+    position = 0
+    while True:
+        scheme = text.find("://", position)
+        if scheme < 0:
+            pieces.append(text[position:])
+            break
+        scheme_end = scheme + 3
+        pieces.append(text[position:scheme_end])
+        if not text.startswith(_ZERO_WIDTH_SPACE, scheme_end):
+            pieces.append(_ZERO_WIDTH_SPACE)
+        position = scheme_end
+    text = "".join(pieces)
+    text = _neutralize_www(text)
+
+    pieces = []
+    last = 0
+    position = 0
+    while True:
+        angle = text.find("<", position)
+        if angle < 0:
+            break
+        cursor = angle + 1
+        scheme_end = cursor
+        while scheme_end < len(text) and (text[scheme_end].isalnum() or text[scheme_end] in "+.-"):
+            scheme_end += 1
+        if (
+            scheme_end > cursor
+            and text.startswith("://", scheme_end)
+            and not text.startswith(_ZERO_WIDTH_SPACE, cursor)
+        ):
+            pieces.append(text[last:cursor])
+            pieces.append(_ZERO_WIDTH_SPACE)
+            last = cursor
+            position = cursor + 1
+        else:
+            position = angle + 1
+    pieces.append(text[last:])
+    return "".join(pieces)
+
+
+def _neutralize_address(address: str) -> str:
+    """Make an email autolink non-clickable while keeping it readable."""
+    at_sign = address.find("@")
+    if at_sign >= 0 and not address.startswith(_ZERO_WIDTH_SPACE, at_sign + 1):
+        return f"{address[: at_sign + 1]}{_ZERO_WIDTH_SPACE}{address[at_sign + 1:]}"
+    return address
 
 
 # ============================================================================
@@ -78,46 +772,125 @@ def _sanitize_embed_description(
 # ============================================================================
 
 
-async def _deliver(
+async def _deliver(  # noqa: PLR0913 - one helper carries every delivery option
     channel: discord.TextChannel | discord.DMChannel,
     content: str,
     *,
     original_message: discord.Message | None = None,
     embed: discord.Embed | None = None,
     suppress_embeds: bool = False,
+    mention_users: Sequence[Any] | None = None,
 ) -> None:
-    """Reply to the invoking message or send to the channel under one policy."""
+    """Send content under the one mention policy owned by this helper.
+
+    A reply to ``original_message`` allows only that human author to be
+    mentioned. A plain channel send with ``mention_users`` allows exactly the
+    supplied users. Everyone, roles, and replied-user pings are always denied.
+
+    The reply reference is built with ``fail_if_not_exists=False`` so Discord
+    delivers the answer as a normal message when the question was deleted,
+    instead of rejecting the request with an unknown-message error.
+    """
     kwargs: dict[str, Any] = {}
     if embed is not None:
         kwargs["embed"] = embed
     if embed is None or suppress_embeds:
         kwargs["suppress_embeds"] = suppress_embeds
-    mentioned_users: list[discord.abc.User] = []
+    mentioned_users: list[Any] = []
     if original_message is not None:
         author = original_message.author
         if getattr(author, "bot", False) is not True:
             mentioned_users = [author]
         kwargs["mention_author"] = False
+        kwargs["reference"] = original_message.to_reference(fail_if_not_exists=False)
+    elif mention_users is not None:
+        mentioned_users = list(mention_users)
     kwargs["allowed_mentions"] = discord.AllowedMentions(
         users=mentioned_users,
         everyone=False,
         roles=[],
         replied_user=False,
     )
-    if original_message is not None:
-        await original_message.reply(content, **kwargs)
-    else:
-        await channel.send(content, **kwargs)
+    await channel.send(content, **kwargs)
 
 
-def _truncate_to_limit(text: str, limit: int) -> str:
+def append_truncation_notice(text: str) -> str:
+    """Append the fixed length-limit notice to an answer exactly once."""
+    if text.endswith(TRUNCATION_NOTICE):
+        return text
+    if not text:
+        return TRUNCATION_NOTICE
+    return f"{text.rstrip()}\n\n{TRUNCATION_NOTICE}"
+
+
+def _close_open_fence(text: str, available: int) -> str:
+    """Return at most ``available`` characters with an open fence closed.
+
+    A cut inside a fenced block appends the opening marker so the delivered
+    chunk renders as code. When the shorter cut falls outside the fence, the
+    original prefix is safe and is returned unchanged.
+    """
+    prefix = text[:available]
+    marker = _open_fence_marker(prefix)
+    if marker is None:
+        return prefix
+
+    shorter = text[: max(0, available - len(marker) - 1)]
+    shorter_marker = _open_fence_marker(shorter)
+    if shorter_marker is None:
+        return prefix
+    return f"{shorter}\n{shorter_marker}"
+
+
+def _truncate_to_limit(text: str, limit: int, original_length: int | None = None) -> str:
     """Truncate text to ``limit`` characters with the visible Discord notice."""
-    notice = truncation_notice(len(text))
+    notice = truncation_notice(len(text) if original_length is None else original_length)
     available = limit - len(notice)
     if available <= 0:
         return text[:limit]
-    truncated, _ = truncate_with_notice(text, available, notice)
-    return truncated
+    if len(text) <= available:
+        return text
+    return f"{_close_open_fence(text, available)}{notice}"
+
+
+def _trailing_truncation_notice(text: str) -> str | None:
+    """Return the chunk-cap notice at the end of ``text``, if there is one."""
+    start = text.rfind(_TRUNCATION_PREFIX)
+    if start < 0:
+        return None
+    suffix = text[start:]
+    if not suffix.endswith(_TRUNCATION_SUFFIX):
+        return None
+    number = suffix[len(_TRUNCATION_PREFIX) : -len(_TRUNCATION_SUFFIX)]
+    if not number.isdigit():
+        return None
+    return suffix
+
+
+def _cap_delivery_work(message: str, logger: Any) -> str:
+    """Bound one delivery to the maximum deliverable size before any parsing.
+
+    The cap is the same 50-chunk ceiling the splitter already enforces, so an
+    oversized answer is truncated with the existing notice and log line
+    instead of being scanned in full.
+    """
+    maximum_length = MAX_SPLIT_CHUNKS * MESSAGE_LIMIT
+    if len(message) <= maximum_length:
+        return message
+    notice = _trailing_truncation_notice(message)
+    if notice is not None:
+        available = maximum_length - len(notice)
+        if available <= 0:
+            return message[:maximum_length]
+        if len(message) <= available:
+            return message
+        return f"{_close_open_fence(message, available)}{notice}"
+    logger.error(
+        "Message split reached chunk cap (%d) for message length %d",
+        MAX_SPLIT_CHUNKS,
+        len(message),
+    )
+    return _truncate_to_limit(message, maximum_length, len(message))
 
 
 def _split_message_chunks(
@@ -131,58 +904,72 @@ def _split_message_chunks(
     Each piece except the first is bounded by ``MESSAGE_LIMIT``; the first is
     bounded by ``first_limit`` so a mention prefix still fits.  The existing
     natural-boundary and code-block-aware adjustments decide every split point.
+    Fence spans are computed once for the whole message and every later split
+    walks an offset into it, so delivery is linear in the input size.
     """
     chunks: list[str] = []
-    remaining = message
+    plan = _build_fence_plan(message)
+    cursor = _SplitCursor()
+    total_length = len(message)
     limit = first_limit
 
     while True:
-        if len(remaining) <= limit:
-            chunks.append(remaining)
+        virtual_length = len(cursor.prefix) + total_length - cursor.start
+        if virtual_length <= limit:
+            chunks.append(cursor.prefix + message[cursor.start :])
             return chunks
 
         if len(chunks) >= max_chunks - 1:
-            logger.error(
-                "Message split reached chunk cap (%d) for message length %d",
-                max_chunks,
-                len(message),
-            )
-            chunks.append(_truncate_to_limit(remaining, limit))
+            remaining = cursor.prefix + message[cursor.start :]
+            notice = _trailing_truncation_notice(message)
+            if notice is None:
+                logger.error(
+                    "Message split reached chunk cap (%d) for message length %d",
+                    max_chunks,
+                    len(message),
+                )
+                chunks.append(_truncate_to_limit(remaining, limit, len(message)))
+            else:
+                available = limit - len(notice)
+                if available <= 0:
+                    chunks.append(remaining[:limit])
+                elif len(remaining) <= available:
+                    chunks.append(remaining)
+                else:
+                    chunks.append(f"{_close_open_fence(remaining, available)}{notice}")
             return chunks
 
         safe_target = max(1, limit - MESSAGE_BUFFER)
-        safe_split_point = min(safe_target, len(remaining) - 1)
-        split_index = find_optimal_split_point(remaining, safe_split_point)
+        safe_split_point = min(safe_target, virtual_length - 1)
+        split_index = _find_split_point_near(message, cursor, safe_split_point, virtual_length)
 
         if split_index >= limit:
             split_index = max(1, limit - 1)
 
-        before_split, after_split = adjust_split_for_code_blocks(remaining, split_index)
+        before_split, next_cursor = _split_window(message, plan, cursor, limit, split_index)
+        next_length = len(next_cursor.prefix) + total_length - next_cursor.start
 
-        if len(before_split) > limit:
-            overflow = before_split[limit:]
-            before_split = before_split[:limit]
-            after_split = overflow + after_split
-
-        if not before_split or len(after_split) >= len(remaining):
+        if not before_split or next_length >= virtual_length:
             if not chunks and limit < MESSAGE_LIMIT:
                 # The mention prefix consumed the whole head.  Send that prefix-only
                 # chunk, then retry the same text with a full-size chunk, matching
                 # the old recursion's next step without recursing.
                 chunks.append("")
-                remaining = after_split or remaining
+                if next_length > 0:
+                    cursor = next_cursor
                 limit = MESSAGE_LIMIT
                 continue
             logger.warning(
                 "Cannot split indivisible content of length %d within %d characters",
-                len(remaining),
+                len(cursor.prefix) + total_length - cursor.start,
                 limit,
             )
-            chunks.append(_truncate_to_limit(remaining, limit))
+            remaining = cursor.prefix + message[cursor.start :]
+            chunks.append(_truncate_to_limit(remaining, limit, len(message)))
             return chunks
 
         chunks.append(before_split)
-        remaining = after_split
+        cursor = next_cursor
         limit = MESSAGE_LIMIT
 
 
@@ -206,7 +993,9 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
     is the allowlist of trusted citation URLs for link sanitisation.
     """
     logger = deps["logger"]
+    message = _cap_delivery_work(message, logger)
     message = sanitize_for_discord(message, citations)
+    message_has_content = bool(message.strip())
     prefix_text = mention_prefix or ""
     prefix_length = len(prefix_text)
 
@@ -228,9 +1017,18 @@ async def send_split_message(  # noqa: PLR0913, PLR0917
     chunks = _split_message_chunks(message, max_first_chunk, logger, max_chunks)
 
     for index, chunk in enumerate(chunks):
-        content = f"{prefix_text}{chunk}" if index == 0 and prefix_text else chunk
+        chunk_text = sanitize_for_discord(chunk, citations)
+        content = f"{prefix_text}{chunk_text}" if index == 0 and prefix_text else chunk_text
+        if not content.strip() and message_has_content:
+            continue
         if len(content) > MESSAGE_LIMIT:
-            content, _ = truncate_with_notice(content, MESSAGE_LIMIT - 3, "...")
+            logger.warning(
+                "Hard-truncated a chunk of length %d to the %d-character limit",
+                len(content),
+                MESSAGE_LIMIT,
+            )
+            available = MESSAGE_LIMIT - 3
+            content = f"{_close_open_fence(content, available)}..."
         await _deliver(
             channel,
             content,
@@ -248,15 +1046,14 @@ def _rendered_embed_length(message: str, citations: dict[str, str] | None) -> in
 
 def _rendered_embed_split_point(message: str, citations: dict[str, str]) -> int:
     """Find the longest prefix whose rendered description fits the safe limit."""
-    low = 0
-    high = len(message)
-    while low < high:
-        middle = (low + high + 1) // 2
-        if _rendered_embed_length(message[:middle], citations) <= EMBED_SAFE_LIMIT:
-            low = middle
-        else:
-            high = middle - 1
-    return low
+    first_over_limit = bisect_right(
+        range(len(message) + 1),
+        False,
+        key=lambda boundary: (
+            _rendered_embed_length(message[:boundary], citations) > EMBED_SAFE_LIMIT
+        ),
+    )
+    return first_over_limit - 1
 
 
 def _split_embed_head(
@@ -272,7 +1069,8 @@ def _split_embed_head(
         if len(message) <= EMBED_SAFE_LIMIT:
             return message, ""
         split_index = find_optimal_split_point(message, EMBED_SAFE_LIMIT)
-        return adjust_split_for_code_blocks(message, split_index)
+        split_index = _snap_citation_marker(message, split_index)
+        return split_fence_aware(message, EMBED_SAFE_LIMIT, split_index)
 
     if _rendered_embed_length(message, citations) <= EMBED_SAFE_LIMIT:
         return message, ""
@@ -280,12 +1078,16 @@ def _split_embed_head(
     max_prefix = _rendered_embed_split_point(message, citations)
     if max_prefix <= 0:
         split_index = min(len(message), EMBED_SAFE_LIMIT) or len(message)
-        return message[:split_index], message[split_index:]
+        split_index = _snap_citation_marker(message, split_index)
+        return split_fence_aware(message, max(1, split_index), split_index)
 
     split_index = min(max_prefix, find_optimal_split_point(message, max_prefix))
     if split_index <= 0:
         split_index = max_prefix
-    return message[:split_index], message[split_index:]
+    split_index = _snap_citation_marker(message, split_index)
+    if split_index <= 0:
+        split_index = max_prefix
+    return split_fence_aware(message, max_prefix, split_index)
 
 
 def _rebuild_embed_head(
@@ -308,6 +1110,28 @@ def _rebuild_embed_head(
         embed.set_footer(text=rebuilt_head.footer.text)
 
 
+async def _deliver_continuation_embed(
+    channel: discord.TextChannel | discord.DMChannel,
+    content: str,
+    citations: dict[str, str],
+    original_message: discord.Message | None,
+) -> None:
+    """Build, sanitise, and deliver one continued-answer embed."""
+    continuation_citations = _citations_for_text(content, citations)
+    continuation_embed, _ = citation_embed_formatter.create_citation_embed(
+        content,
+        continuation_citations,
+        footer_text=_CONTINUED_FOOTER,
+    )
+    _sanitize_embed_description(continuation_embed, citations)
+    await _deliver(
+        channel,
+        "",
+        original_message=original_message,
+        embed=continuation_embed,
+    )
+
+
 async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
     channel: discord.TextChannel | discord.DMChannel,
     message: str,
@@ -315,6 +1139,7 @@ async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
     citations: dict[str, str],
     original_message: discord.Message | None,
     sent_messages: int,
+    original_length: int | None = None,
 ) -> None:
     """Send the continuation embeds and text for an already-delivered head.
 
@@ -322,6 +1147,7 @@ async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
     """
     logger = deps["logger"]
     remaining = message
+    full_length = len(message) if original_length is None else original_length
 
     while True:
         head_text, after_split = _split_embed_head(remaining, citations)
@@ -344,23 +1170,16 @@ async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
             )
             await _deliver(
                 channel,
-                _truncate_to_limit(remaining, MESSAGE_LIMIT),
+                _truncate_to_limit(remaining, MESSAGE_LIMIT, full_length),
                 original_message=original_message,
             )
             return
 
-        head_citations = _citations_for_text(head_text, citations)
-        cont_embed, _ = citation_embed_formatter.create_citation_embed(
-            head_text,
-            head_citations,
-            footer_text=_CONTINUED_FOOTER,
-        )
-        _sanitize_embed_description(cont_embed, citations)
-        await _deliver(
+        await _deliver_continuation_embed(
             channel,
-            "",
-            original_message=original_message,
-            embed=cont_embed,
+            head_text,
+            citations,
+            original_message,
         )
         sent_messages += 1
 
@@ -388,17 +1207,11 @@ async def _send_embed_continuations(  # noqa: PLR0913, PLR0917
                     len(message),
                 )
                 return
-            final_embed, _ = citation_embed_formatter.create_citation_embed(
-                message_part2,
-                remaining_citations,
-                footer_text=_CONTINUED_FOOTER,
-            )
-            _sanitize_embed_description(final_embed, citations)
-            await _deliver(
+            await _deliver_continuation_embed(
                 channel,
-                "",
-                original_message=original_message,
-                embed=final_embed,
+                message_part2,
+                citations,
+                original_message,
             )
             return
 
@@ -415,23 +1228,42 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
     original_message: discord.Message | None = None,
     mention_prefix: str | None = None,
     _recursion_depth: int = 0,
+    *,
+    suppress_embeds: bool = False,
 ) -> None:
     """Send a long message with citation embeds, maintaining citations across parts.
 
     The provided embed is modified in place so the head chunk stays aligned with
     the adjusted text.  ``_recursion_depth`` is accepted for backwards
     compatibility and ignored; continuations are sent iteratively.
+    ``suppress_embeds`` applies to the text fallback when the head embed is
+    rejected.
     """
+    message = _cap_delivery_work(message, deps["logger"])
     message = sanitize_for_discord(message, citations)
 
     head_text, after_split = _split_embed_head(message, citations)
     _rebuild_embed_head(embed, head_text, citations)
-    await _deliver(
-        channel,
-        mention_prefix or "",
-        original_message=original_message,
-        embed=embed,
-    )
+    try:
+        await _deliver(
+            channel,
+            mention_prefix or "",
+            original_message=original_message,
+            embed=embed,
+        )
+    except discord.HTTPException:
+        logger = deps["logger"]
+        logger.exception("Failed to send embed head, falling back to split text")
+        await send_split_message(
+            channel,
+            message,
+            deps,
+            suppress_embeds=suppress_embeds,
+            original_message=original_message,
+            mention_prefix=mention_prefix,
+            citations=citations,
+        )
+        return
 
     if after_split.strip():
         message_part2 = after_split.strip()
@@ -445,19 +1277,14 @@ async def send_split_message_with_embed(  # noqa: PLR0913, PLR0917
                     citations,
                     original_message,
                     sent_messages=1,
+                    original_length=len(message),
                 )
             else:
-                cont_embed, _ = citation_embed_formatter.create_citation_embed(
-                    message_part2,
-                    remaining_citations,
-                    footer_text=_CONTINUED_FOOTER,
-                )
-                _sanitize_embed_description(cont_embed, citations)
-                await _deliver(
+                await _deliver_continuation_embed(
                     channel,
-                    "",
-                    original_message=original_message,
-                    embed=cont_embed,
+                    message_part2,
+                    citations,
+                    original_message,
                 )
         else:
             await send_split_message(
@@ -481,25 +1308,44 @@ async def send_formatted_message(  # noqa: PLR0913, PLR0917
     original_message: discord.Message | None = None,
     mention_prefix: str | None = None,
     citations: dict[str, str] | None = None,
+    truncated: bool = False,
 ) -> None:
     """Send formatted message to Discord, using extracted splitter logic.
 
     The citation allowlist is taken from ``citations`` or, when omitted, from
     ``embed_data["citations"]`` so trusted source links survive delivery.
+    ``truncated`` appends the one fixed length-limit notice after the partial
+    answer; the notice is delivery-only and never enters conversation history.
     """
     logger = deps["logger"]
     citation_map = citations
     if citation_map is None and embed_data:
         citation_map = embed_data.get("citations") or {}
+    message = _cap_delivery_work(message, logger)
     message = sanitize_for_discord(message, citation_map)
+    has_embed = bool(embed_data and "embed" in embed_data)
+    if not message.strip() and not has_embed:
+        logger.info("Skipping empty model answer")
+        await _deliver(
+            channel,
+            f"{mention_prefix or ''}{ERROR_MESSAGES['no_response_generated']}",
+            original_message=original_message,
+        )
+        return
+    if truncated:
+        message = append_truncation_notice(message)
 
     if embed_data and "embed" in embed_data:
         embed = embed_data["embed"]
         clean_text = embed_data.get("clean_text", message)
+        if truncated:
+            if not clean_text:
+                clean_text = getattr(embed, "description", "") or ""
+            clean_text = append_truncation_notice(clean_text)
         metadata = embed_data.get("embed_metadata") or embed_data.get("meta") or {}
         was_truncated = metadata.get("was_truncated", False)
 
-        if was_truncated:
+        if was_truncated or truncated:
             await send_split_message_with_embed(
                 channel,
                 clean_text,
@@ -508,6 +1354,7 @@ async def send_formatted_message(  # noqa: PLR0913, PLR0917
                 citation_map,
                 original_message,
                 mention_prefix,
+                suppress_embeds=suppress_embeds,
             )
             return
 
@@ -582,36 +1429,369 @@ def find_optimal_split_point(message: str, target_index: int) -> int:
     return target_index
 
 
-def detect_code_blocks(text: str) -> list[tuple[int, int]]:
-    """Detect code block boundaries in text."""
-    pattern = re.compile(r"```[\s\S]*?```", re.MULTILINE)
-    return [(match.start(), match.end()) for match in pattern.finditer(text)]
+@dataclass(frozen=True)
+class _FenceSpan:
+    """One protected fenced code block, including its opening and closing lines."""
+
+    start: int
+    content_start: int
+    end: int
+    marker: str
+    language: str
 
 
-def is_inside_code_block(position: int, code_blocks: list[tuple[int, int]]) -> bool:
-    """Check if a position is inside a code block."""
-    return any(start <= position <= end for start, end in code_blocks)
+def _make_fence_span(text: str, start: int, marker: str, end: int) -> _FenceSpan:
+    """Build a split-time fence span and extend its end through a newline."""
+    cursor = end
+    while cursor < len(text) and text[cursor] in " \t":
+        cursor += 1
+    if text.startswith("\r\n", cursor):
+        end = cursor + 2
+    elif cursor < len(text) and text[cursor] in "\r\n":
+        end = cursor + 1
+    content_start = text.find("\n", start + len(marker))
+    if content_start == -1 or content_start >= end:
+        content_start = min(start + len(marker), end)
+    else:
+        content_start += 1
+    marker_end = start + len(marker)
+    newline = text.find("\n", marker_end)
+    if newline == -1 or newline > end:
+        language_end = max(marker_end, end - len(marker))
+    else:
+        language_end = newline
+    language = text[marker_end:language_end].strip()
+    return _FenceSpan(
+        start=start,
+        content_start=content_start,
+        end=end,
+        marker=marker,
+        language=language,
+    )
 
 
-def adjust_split_for_code_blocks(message: str, split_point: int) -> tuple[str, str]:
-    """Adjust message split to avoid breaking code blocks."""
-    code_blocks = detect_code_blocks(message)
+def _discord_fence_spans(text: str) -> list[_FenceSpan]:
+    """Pair backtick runs the way Discord does, for chunk boundaries only.
 
-    # If split point is not inside a code block, use it as-is
-    if not is_inside_code_block(split_point, code_blocks):
-        return message[:split_point], message[split_point:]
+    The sanitiser never uses these spans. Discord opens and closes a code
+    block at a run of at least three backticks anywhere in a line, while
+    CommonMark requires a line start. A split that follows the CommonMark
+    span would cut a block Discord still renders, so the historical pairing
+    (equal-length runs, outermost first) decides only where a chunk ends.
+    This fallback keeps the frozen boundaries in the golden
+    ``a-fence-nested-looking`` case; the runs, the pairing, and each span are
+    built in one forward pass.
+    """
+    runs: list[tuple[int, int]] = []
+    for start, end in _backtick_runs(text):
+        if end - start >= len("```") and not _is_escaped(text, start):
+            runs.append((start, end))
 
-    # Find the code block containing our split point
-    for start, end in code_blocks:
-        if start <= split_point <= end:
-            # If we're closer to the start, split before the code block
-            if split_point - start < end - split_point:
-                return message[:start], message[start:]
-            # Otherwise, split after the code block
-            return message[:end], message[end:]
+    pending: dict[int, int] = {}
+    pending_order: list[int] = []
+    pairs: list[tuple[int, int]] = []
+    for start, end in runs:
+        length = end - start
+        if length not in pending:
+            pending[length] = start
+            pending_order.append(length)
+            continue
+        opening = pending.pop(length)
+        pairs.append((opening, end))
+        while pending_order and pending.get(pending_order[-1], -1) > opening:
+            pending.pop(pending_order.pop(), None)
+        if pending_order and pending_order[-1] == length:
+            pending_order.pop()
 
-    # Fallback (shouldn't reach here)
-    return message[:split_point], message[split_point:]
+    pairs.sort(key=lambda pair: (pair[0], -pair[1]))
+    spans: list[_FenceSpan] = []
+    last_end = -1
+    for start, end in pairs:
+        if start < last_end:
+            continue
+        opening_end = start
+        while opening_end < len(text) and text[opening_end] == "`":
+            opening_end += 1
+        spans.append(_make_fence_span(text, start, text[start:opening_end], end))
+        last_end = end
+    return spans
+
+
+def _has_fence_pair_candidate(text: str) -> bool:
+    """Return True when at least two backtick runs of length three exist."""
+    runs = 0
+    position = text.find("```")
+    while position >= 0:
+        runs += 1
+        if runs >= _CLOSING_DELIMITER_COUNT:
+            return True
+        while position < len(text) and text[position] == "`":
+            position += 1
+        position = text.find("```", position)
+    return False
+
+
+def _fence_spans(text: str) -> list[_FenceSpan]:
+    """Return fenced spans for split placement.
+
+    The shared code-region filter supplies protected fences from the block
+    grammar; inline code spans do not affect a split. When no fence is
+    protected, a Discord-style pairing keeps the historical chunk boundaries
+    for blocks CommonMark does not recognise. Those extra spans never
+    suppress sanitisation.
+    """
+    if not _has_fence_pair_candidate(text):
+        return []
+    protected = [
+        _FenceSpan(
+            start=region.start,
+            content_start=region.content_start,
+            end=region.end,
+            marker=region.marker,
+            language=region.language,
+        )
+        for region in _filtered_code_regions(_parse_markdown(text, include_inline=False))
+        if region.kind == "fence"
+    ]
+    if protected:
+        return protected
+    return _discord_fence_spans(text)
+
+
+def _open_fence_marker(text: str) -> str | None:
+    """Return the opening marker of the last unclosed backtick fence, if any."""
+    if not text or "```" not in text:
+        return None
+    parse = _parse_markdown(text, include_inline=False)
+    for fence in reversed(parse.fences):
+        if fence.closed:
+            continue
+        if fence.marker.startswith("```"):
+            return fence.marker
+        return None
+    return None
+
+
+def _snap_citation_marker(message: str, split_index: int) -> int:
+    """Move a split index before a citation marker it would cut in half."""
+    for match in CITATION_PATTERN.finditer(message):
+        if match.start() < split_index < match.end():
+            return match.start()
+    return split_index
+
+
+@dataclass(frozen=True)
+class _FencePlan:
+    """Fence spans and their starts, computed once for one delivery."""
+
+    spans: tuple[_FenceSpan, ...] = ()
+    starts: tuple[int, ...] = ()
+    fence_free: bool = True
+
+
+@dataclass(frozen=True)
+class _SplitCursor:
+    """Offset into the original text plus any fence marker already injected."""
+
+    start: int = 0
+    prefix: str = ""
+
+
+def _build_fence_plan(text: str) -> _FencePlan:
+    """Return the split fence spans for one text without reparsing a tail."""
+    if not _has_fence_pair_candidate(text):
+        return _FencePlan()
+    spans = tuple(_fence_spans(text))
+    return _FencePlan(
+        spans=spans,
+        starts=tuple(span.start for span in spans),
+        fence_free=False,
+    )
+
+
+def _virtual_slice(
+    message: str,
+    cursor: _SplitCursor,
+    start: int,
+    end: int,
+) -> str:
+    """Slice a logical chunk without materialising the whole remainder."""
+    if end <= start:
+        return ""
+    prefix = cursor.prefix
+    prefix_length = len(prefix)
+    if end <= prefix_length:
+        return prefix[start:end]
+    if start >= prefix_length:
+        return message[cursor.start + start - prefix_length : cursor.start + end - prefix_length]
+    return prefix[start:] + message[cursor.start : cursor.start + end - prefix_length]
+
+
+def _advance_cursor(
+    cursor: _SplitCursor,
+    consumed: int,
+    inserted: str = "",
+) -> _SplitCursor:
+    """Return the cursor after ``consumed`` logical characters are delivered."""
+    prefix_length = len(cursor.prefix)
+    if consumed <= prefix_length:
+        return _SplitCursor(cursor.start, inserted + cursor.prefix[consumed:])
+    return _SplitCursor(cursor.start + consumed - prefix_length, inserted)
+
+
+def _find_split_point_near(
+    message: str,
+    cursor: _SplitCursor,
+    target: int,
+    virtual_length: int,
+) -> int:
+    """Find a natural split point using only the same 200-character window."""
+    window_start = max(0, target - 100)
+    window_end = min(virtual_length, target + 100)
+    window = _virtual_slice(message, cursor, window_start, window_end)
+    return window_start + find_optimal_split_point(window, target - window_start)
+
+
+def _virtual_rfind_newline(
+    message: str,
+    cursor: _SplitCursor,
+    start: int,
+    end: int,
+) -> int:
+    """Return the last newline position in a short logical window."""
+    window = _virtual_slice(message, cursor, start, end)
+    position = window.rfind("\n")
+    if position < 0:
+        return start - 1
+    return start + position
+
+
+def _virtual_fence_at(
+    plan: _FencePlan,
+    cursor: _SplitCursor,
+    preferred: int,
+) -> tuple[int, int, int, str, str] | None:
+    """Return the planned fence containing ``preferred`` in chunk coordinates."""
+    if not plan.spans:
+        return None
+    start = cursor.start
+    prefix_length = len(cursor.prefix)
+    index = bisect_right(plan.starts, start) - 1
+    if index >= 0:
+        span = plan.spans[index]
+        if span.start <= start < span.end:
+            active = span.start < start
+            fence_start = 0 if active else prefix_length
+            content_start = prefix_length if active else span.content_start - start + prefix_length
+            fence_end = span.end - start + prefix_length
+            if fence_start < preferred < fence_end:
+                return fence_start, content_start, fence_end, span.marker, span.language
+    if preferred < prefix_length:
+        return None
+    target = start + preferred - prefix_length
+    index = bisect_right(plan.starts, target) - 1
+    if index < 0:
+        return None
+    span = plan.spans[index]
+    if not span.start < target < span.end:
+        return None
+    return (
+        span.start - start + prefix_length,
+        span.content_start - start + prefix_length,
+        span.end - start + prefix_length,
+        span.marker,
+        span.language,
+    )
+
+
+def _split_at(
+    message: str,
+    cursor: _SplitCursor,
+    split_index: int,
+) -> tuple[str, _SplitCursor]:
+    """Split a logical chunk at one virtual index."""
+    head = _virtual_slice(message, cursor, 0, split_index)
+    return head, _advance_cursor(cursor, split_index)
+
+
+def _split_window(
+    message: str,
+    plan: _FencePlan,
+    cursor: _SplitCursor,
+    limit: int,
+    preferred: int | None,
+) -> tuple[str, _SplitCursor]:
+    """Split the logical chunk at ``cursor`` using the planned fence spans."""
+    total_length = len(message)
+    virtual_length = len(cursor.prefix) + total_length - cursor.start
+    if virtual_length <= limit:
+        return cursor.prefix + message[cursor.start :], _SplitCursor(total_length, "")
+
+    if preferred is None:
+        preferred = max(1, limit - MESSAGE_BUFFER)
+    preferred = min(max(1, preferred), limit, virtual_length - 1)
+
+    fence = None if plan.fence_free else _virtual_fence_at(plan, cursor, preferred)
+    if fence is None:
+        return _split_at(message, cursor, preferred)
+
+    fence_start, fence_content_start, fence_end, marker, language = fence
+    if fence_end <= limit:
+        return _split_at(message, cursor, fence_end)
+
+    if fence_start > 0:
+        return _split_at(message, cursor, fence_start)
+
+    reopen = f"{marker}{language}\n"
+    max_content = limit - len(marker) - 1
+    line_end = _virtual_rfind_newline(message, cursor, fence_content_start, max_content + 1)
+
+    if line_end >= fence_content_start:
+        cut = line_end + 1
+        head = f"{_virtual_slice(message, cursor, 0, cut)}{marker}"
+    else:
+        cut = max(1, min(max_content, virtual_length - 1))
+        head_text = _virtual_slice(message, cursor, 0, cut)
+        separator = "" if head_text.endswith("\n") else "\n"
+        head = f"{head_text}{separator}{marker}"
+
+    return head, _advance_cursor(cursor, cut, reopen)
+
+
+def split_fence_aware(
+    message: str,
+    limit: int,
+    preferred: int | None = None,
+    *,
+    fence_free: bool = False,
+) -> tuple[str, str]:
+    """Split a message at a fence-safe boundary no later than ``limit``.
+
+    When the preferred split falls inside a fenced code block, the split moves
+    to before the block if it can, or to a line boundary inside it.  An inside
+    split closes the fence at the end of the head and reopens it with the same
+    marker and language tag at the start of the tail, so both halves render as
+    code.  A single line wider than the available space is hard-wrapped rather
+    than dropped.  The tail is always shorter than the input.
+
+    Args:
+        message: Text to split.
+        limit: Maximum length of the returned head.
+        preferred: Preferred raw split index; defaults to the natural boundary
+            just before ``limit``.
+        fence_free: Set when the whole message has fewer than two backtick
+            runs of fence length, so no suffix can contain a fence.
+
+    Returns:
+        The head and tail; the concatenation of both contains every line of
+        ``message`` plus any fence markers needed to keep the code balanced.
+    """
+    if len(message) <= limit:
+        return message, ""
+
+    plan = _FencePlan() if fence_free else _build_fence_plan(message)
+    head, next_cursor = _split_window(message, plan, _SplitCursor(), limit, preferred)
+    return head, next_cursor.prefix + message[next_cursor.start :]
 
 
 # ============================================================================
@@ -619,41 +1799,37 @@ def adjust_split_for_code_blocks(message: str, split_point: int) -> tuple[str, s
 # ============================================================================
 
 
-def clean_message_content(content: str, max_length: int = 100) -> str:
-    """Clean and truncate message content for logging."""
-    if not content:
-        return "[empty]"
-
-    # Remove extra whitespace and newlines
-    cleaned = re.sub(r"\s+", " ", content.strip())
-
-    cleaned, _ = truncate_with_notice(cleaned, max_length, "...")
-
-    return cleaned
-
-
 def count_links(text: str) -> int:
-    """Count the number of links in text for embed suppression decisions."""
-    # Count Discord hyperlinks [title](url)
-    discord_links = len(LINK_PATTERN.findall(text))
+    """Count distinct clickable links for embed suppression decisions.
 
-    # Count bare URLs
-    bare_urls = len(BARE_URL_PATTERN.findall(text))
-
-    return discord_links + bare_urls
+    A masked link (``[title](url)``) counts once, not again through its
+    destination. A bare match only counts when it is scheme-qualified or starts
+    with ``www.``, so a filename such as ``main.py`` is not a link.
+    """
+    link_spans = [match.span() for match in LINK_PATTERN.finditer(text)]
+    link_starts = [span_start for span_start, _span_end in link_spans]
+    count = len(link_spans)
+    for match in BARE_URL_PATTERN.finditer(text):
+        start = match.start()
+        span_index = bisect_right(link_starts, start) - 1
+        if span_index >= 0:
+            link_start, link_end = link_spans[span_index]
+            _PARSE_STATS["count_link_span_comparisons"] += 1
+            if link_start <= start < link_end:
+                continue
+        token = match.group(0)
+        separator_length = len("://")
+        preceded_by_scheme = (
+            start >= separator_length and text[start - separator_length : start] == "://"
+        )
+        if "://" in token or token.lower().startswith("www.") or preceded_by_scheme:
+            count += 1
+    return count
 
 
 def should_suppress_embeds(text: str, threshold: int = 2) -> bool:
     """Determine if embeds should be suppressed to reduce visual clutter."""
     return count_links(text) >= threshold
-
-
-def _normalize_link_target(target: str) -> str:
-    """Strip whitespace and optional angle brackets from a link target."""
-    target = target.strip()
-    if target.startswith("<") and target.endswith(">"):
-        target = target[1:-1].strip()
-    return target
 
 
 def _split_url_trailing_punctuation(url: str) -> tuple[str, str]:
@@ -668,25 +1844,178 @@ def _split_url_trailing_punctuation(url: str) -> tuple[str, str]:
 def _neutralize_url(url: str) -> str:
     """Make a URL non-clickable while keeping it readable.
 
-    Discord autolinks bare ``http(s)://`` text. Inserting a zero-width space
-    after the scheme terminator keeps the URL legible but stops Discord from
-    recognising it as a link.
+    Discord autolinks bare scheme-qualified text. Inserting a zero-width space
+    after the first scheme terminator keeps the URL legible but stops Discord
+    from recognising it as a link, whatever the scheme is.
     """
-    lower = url.lower()
-    for scheme in ("https://", "http://"):
-        if lower.startswith(scheme):
-            return f"{url[: len(scheme)]}\u200b{url[len(scheme) :]}"
-    return url
+    separator = url.find("://")
+    if separator < 0:
+        return url
+    insert_at = separator + len("://")
+    if url.startswith(_ZERO_WIDTH_SPACE, insert_at):
+        return url
+    return f"{url[:insert_at]}{_ZERO_WIDTH_SPACE}{url[insert_at:]}"
+
+
+def _is_escaped(text: str, position: int) -> bool:
+    """Return True when a backslash escapes the character at ``position``."""
+    backslashes = 0
+    position -= 1
+    while position >= 0 and text[position] == "\\":
+        backslashes += 1
+        position -= 1
+    return backslashes % 2 == 1
+
+
+def is_inside_rendered_code(text: str, position: int) -> bool:
+    """Return True when ``position`` falls inside code Discord renders."""
+    return any(
+        start <= position < end
+        for start, end in ((r.start, r.end) for r in protected_code_regions(text))
+    )
+
+
+def _links_outside_regions(
+    regions: list[_CodeRegion],
+    links: list[_LinkSpan],
+) -> list[_LinkSpan]:
+    """Drop links that fall inside a protected region and sort the rest."""
+    region_starts = [region.start for region in regions]
+    filtered: list[_LinkSpan] = []
+    for link in links:
+        index = bisect_left(region_starts, link.start)
+        if index > 0:
+            region = regions[index - 1]
+            if region.start <= link.start < region.end:
+                continue
+        filtered.append(link)
+    filtered.sort(key=lambda link: link.start)
+    return filtered
+
+
+def _link_output(text: str, link: _LinkSpan, render: Any, depth: int) -> str:
+    """Return the sanitised replacement for one parser-reported link span."""
+    if link.allowed or link.kind in {"bare", "trusted_link"}:
+        return text[link.start : link.end]
+    if link.kind == "email_autolink":
+        return _neutralize_address(link.destination)
+    if link.kind == "uri_autolink":
+        return _neutralize_url(link.destination)
+    return render(link.label_start, link.label_end, depth + 1)
+
+
+@dataclass(frozen=True)
+class _RenderIndex:
+    """Sorted spans and their start offsets for one render pass."""
+
+    regions: list[_CodeRegion]
+    region_starts: list[int]
+    links: list[_LinkSpan]
+    link_starts: list[int]
+
+
+def _next_event(
+    position: int,
+    end: int,
+    index: _RenderIndex,
+) -> tuple[int, int, int | None, bool]:
+    """Return the next region or link boundary at or after ``position``."""
+    region_index = bisect_left(index.region_starts, position)
+    while region_index < len(index.regions) and index.regions[region_index].start < position:
+        region_index += 1
+    link_index = bisect_left(index.link_starts, position)
+    while link_index < len(index.links) and index.links[link_index].start < position:
+        link_index += 1
+    next_region = (
+        index.regions[region_index].start
+        if region_index < len(index.regions) and index.regions[region_index].start < end
+        else None
+    )
+    next_link = (
+        index.links[link_index].start
+        if link_index < len(index.links) and index.links[link_index].start < end
+        else None
+    )
+    if next_link is not None and (next_region is None or next_link <= next_region):
+        return region_index, link_index, next_link, True
+    return region_index, link_index, next_region, False
+
+
+def _render_sanitized(
+    text: str,
+    regions: list[_CodeRegion],
+    links: list[_LinkSpan],
+) -> str:
+    """Rewrite parser spans and apply the catch-all passes outside code."""
+    region_starts = [region.start for region in regions]
+    filtered_links = _links_outside_regions(regions, links)
+    index = _RenderIndex(
+        regions=regions,
+        region_starts=region_starts,
+        links=filtered_links,
+        link_starts=[link.start for link in filtered_links],
+    )
+
+    def render(start: int, end: int, depth: int = 0) -> str:
+        if depth >= _MAX_INLINE_RENDER_DEPTH:
+            return _neutralize_plain(text[start:end])
+        pieces: list[str] = []
+        position = start
+        while position < end:
+            region_index = bisect_left(region_starts, position)
+            if region_index > 0:
+                region = regions[region_index - 1]
+                if region.start <= position < region.end:
+                    stop = min(end, region.end)
+                    pieces.append(text[position:stop])
+                    position = stop
+                    continue
+            region_index, link_index, next_start, is_link = _next_event(
+                position,
+                end,
+                index,
+            )
+            if next_start is None:
+                pieces.append(_neutralize_plain(text[position:end]))
+                break
+            if next_start > position:
+                pieces.append(_neutralize_plain(text[position:next_start]))
+                position = next_start
+                continue
+            if is_link:
+                link = filtered_links[link_index]
+                pieces.append(_link_output(text, link, render, depth))
+                position = link.end
+                continue
+            region = regions[region_index]
+            stop = min(end, region.end)
+            pieces.append(text[position:stop])
+            position = stop
+        return "".join(pieces)
+
+    return render(0, len(text))
 
 
 def sanitize_model_output(text: str, citations: dict[str, str] | None = None) -> str:
     """Neutralise mentions and untrusted links in model output.
 
-    Markdown links survive only when their target is a trusted, safely
-    renderable citation URL. Bare ``http(s)://`` URLs and ``<...>`` autolinks
-    are made non-clickable by inserting a zero-width space after the scheme
-    terminator, which keeps the text readable without Discord autolinking it.
-    A bare URL that exactly matches a trusted citation URL is left intact.
+    tree-sitter-markdown supplies the code regions and the links it can
+    recognise. Code protection is conservative: only an exactly-three-backtick
+    closed fence with no other triple-backtick run outside it, or a closed
+    inline code span whose opener and closer are not backslash-escaped, keeps
+    its content.
+    Inside those regions nothing is rewritten. Everywhere else the parser's
+    inline links, images, and autolinks are replaced with their label text,
+    and three catch-all passes then break ``](``, add a zero-width space after
+    every ``://``, and separate ``<`` from a following URL scheme. The passes
+    are linear, need no fixed-point loop, and do not depend on a parse, so
+    nesting or a construct the parser misses cannot leave a live link.
+
+    A link or bare URL that exactly matches a trusted citation URL is left
+    clickable. Definition-shaped lines such as ``[label]: destination`` stay
+    in the text; their URL is neutralised and an invisible separator stops a
+    CommonMark renderer from resolving them as reference links. Mention
+    neutralisation applies everywhere, including inside code.
 
     Args:
         text: Model-generated text bound for Discord.
@@ -698,49 +2027,29 @@ def sanitize_model_output(text: str, citations: dict[str, str] | None = None) ->
     """
     if not text:
         return ""
+    text = _replace_surrogate_characters(text)
+    if not any(marker in text for marker in ("](", "://", "<", "@")) and (
+        "www." not in text.lower()
+    ):
+        return text
 
     allowed_urls = {
         str(url).strip() for url in renderable_citations(citations).values() if str(url).strip()
     }
-    protected: list[str] = []
+    parse = _parse_markdown(text)
+    regions = _filtered_code_regions(parse)
+    links = _link_spans(parse, allowed_urls)
+    links.extend(_allowed_bare_url_spans(text, allowed_urls))
+    links.extend(_allowed_markdown_link_spans(text, allowed_urls))
+    sanitized = _render_sanitized(text, regions, links)
 
-    def protect(rendered: str) -> str:
-        token = f"\x00LINK{len(protected)}\x00"
-        protected.append(rendered)
-        return token
-
-    def replace_link(match: re.Match[str]) -> str:
-        label = match.group(1)
-        target = _normalize_link_target(match.group(2))
-        if target in allowed_urls:
-            return protect(match.group(0))
-        return label
-
-    text = _MARKDOWN_LINK_PATTERN.sub(replace_link, text)
-
-    def replace_autolink(match: re.Match[str]) -> str:
-        target = _normalize_link_target(match.group(1))
-        if target in allowed_urls:
-            return protect(match.group(0))
-        return _neutralize_url(match.group(1))
-
-    text = _AUTOLINK_PATTERN.sub(replace_autolink, text)
-
-    def replace_bare_url(match: re.Match[str]) -> str:
-        raw = match.group(0)
-        core, trailing = _split_url_trailing_punctuation(raw)
-        if _normalize_link_target(core) in allowed_urls:
-            return raw
-        return f"{_neutralize_url(core)}{trailing}"
-
-    text = _BARE_HTTP_URL_PATTERN.sub(replace_bare_url, text)
-    for index, rendered in enumerate(protected):
-        text = text.replace(f"\x00LINK{index}\x00", rendered)
-    text = _RAW_MENTION_PATTERN.sub(
-        lambda match: f"<{match.group(1)}\u200b{match.group(2)}>",
-        text,
+    sanitized = _RAW_MENTION_PATTERN.sub(
+        lambda match: f"<{match.group(1)}{_ZERO_WIDTH_SPACE}{match.group(2)}>",
+        sanitized,
     )
-    return text.replace("@everyone", "@\u200beveryone").replace("@here", "@\u200bhere")
+    return sanitized.replace("@everyone", f"@{_ZERO_WIDTH_SPACE}everyone").replace(
+        "@here", f"@{_ZERO_WIDTH_SPACE}here"
+    )
 
 
 def sanitize_for_discord(text: str, citations: dict[str, str] | None = None) -> str:
@@ -755,4 +2064,4 @@ def error_message(user_mention: str, error_text: str) -> str:
 
 def truncation_notice(original_length: int) -> str:
     """Format message truncation notice."""
-    return f"\n\n[Message truncated from {original_length} characters for Discord limits]"
+    return f"{_TRUNCATION_PREFIX}{original_length}{_TRUNCATION_SUFFIX}"

@@ -65,6 +65,7 @@ pytest.*
 
 # Django stuff:
 *.log
+*.log-*
 
 # Sphinx documentation
 docs/_build/
@@ -74,9 +75,22 @@ docs/api/_build/
 target/
 
 # Virtual environment
-.env
 .venv/
 venv/
+
+# Environment files can contain local secrets; keep only the shipped template.
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.schema.json
+.env.*.json
+.env.*
+*.env
+*.env.docker
+*.dockerenv
+!.env.example
 
 # PyCharm
 .idea
@@ -97,9 +111,12 @@ venv/
 !config.ini.example
 !tox.ini
 config.ini
+*.ini.bak
+*.ini.bak-*
 
 # Local runtime and tool caches
 .bot.pid
+.bot-*.pid
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/

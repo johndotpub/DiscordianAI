@@ -12,8 +12,15 @@ from typing import Any
 from .api_context import api_call
 from .caching import cached_response, deduplicated_request
 from .config import DEFAULT_CACHE_TTL
-from .error_handling import retry_with_backoff
+from .error_handling import (
+    ProviderCallError,
+    classify_error,
+    provider_error_summary,
+    retry_with_backoff,
+)
+from .message_splitter import sanitize_model_output
 from .models import AIRequest, OpenAIConfig
+from .providers.base import AssistantText
 from .providers.openai_chat import (
     MAX_WEB_TOOL_ROUNDS,
     ChatCompletionsProvider,
@@ -81,6 +88,8 @@ async def _fetch_openai_response(
     conversation_summary: list[dict],
     openai_client,
     config: OpenAIConfig,
+    *,
+    raise_on_failure: bool = False,
 ) -> str | None:
     """Fetch an OpenAI response (cached/deduped) without side effects."""
     try:
@@ -106,9 +115,16 @@ async def _fetch_openai_response(
             result = await provider.complete(completion_request)
             ctx.set_result(result.raw)
 
-            if not result.text:
+            if not result.text or not result.text.strip():
                 request.logger.warning(
                     "OpenAI returned empty response content (finish_reason=%s)",
+                    result.finish_reason if result.finish_reason is not None else "unknown",
+                )
+                return None
+            if not sanitize_model_output(result.text).strip():
+                request.logger.warning(
+                    "OpenAI returned no visible response content after sanitising "
+                    "(finish_reason=%s)",
                     result.finish_reason if result.finish_reason is not None else "unknown",
                 )
                 return None
@@ -118,10 +134,21 @@ async def _fetch_openai_response(
                 len(result.text),
                 result.finish_reason if result.finish_reason is not None else "unknown",
             )
+            truncated = result.finish_reason == "length"
+            if truncated:
+                request.logger.warning(
+                    "OpenAI response hit the output-token limit; delivering a partial answer"
+                )
 
-            return result.text
-    except Exception:
-        request.logger.exception("OpenAI API call failed after retries")
+            return AssistantText(result.text, truncated=truncated)
+    except Exception as exc:
+        error_details = classify_error(exc)
+        request.logger.error(  # noqa: TRY400 - a traceback would print the provider body
+            "OpenAI API call failed after retries: %s",
+            provider_error_summary(exc),
+        )
+        if raise_on_failure:
+            raise ProviderCallError(error_details, provider="openai") from exc
         return None
 
 
@@ -130,10 +157,28 @@ async def process_openai_message(
     conversation_summary: list[dict],
     openai_client,
     config: OpenAIConfig,
+    *,
+    raise_on_failure: bool = False,
 ) -> str | None:
-    """Process message using OpenAI API."""
+    """Process message using OpenAI API.
+
+    Args:
+        request: The normalised request.
+        conversation_summary: Prior turns for context.
+        openai_client: The chat-provider client.
+        config: Chat-provider configuration.
+        raise_on_failure: Raise a typed ``ProviderCallError`` instead of
+            returning ``None`` when the provider call fails.
+
+    Returns:
+        The answer text, or ``None`` when the provider produced no content.
+    """
     response_content = await _fetch_openai_response(
-        request, conversation_summary, openai_client, config
+        request,
+        conversation_summary,
+        openai_client,
+        config,
+        raise_on_failure=raise_on_failure,
     )
 
     if not response_content:

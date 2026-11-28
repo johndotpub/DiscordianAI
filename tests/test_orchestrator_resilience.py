@@ -7,8 +7,13 @@ import pytest
 
 from src.conversation_manager import ThreadSafeConversationManager
 from src.models import AIClients, AIConfig, AIRequest
+from src.routing.contracts import RouteDecision
 from src.routing.lexicon import LexiconError
-from src.smart_orchestrator import _process_hybrid_mode, get_smart_response
+from src.smart_orchestrator import (
+    _build_route_decision,
+    _process_hybrid_mode,
+    get_smart_response,
+)
 
 
 def _request(message, manager):
@@ -172,7 +177,7 @@ async def test_lexicon_failure_falls_back_to_a_local_answer(caplog):
     clients = AIClients(openai=object(), perplexity=object())
     captured = {}
 
-    async def fake_openai(routed_request, _summary, _client, _config):
+    async def fake_openai(routed_request, _summary, _client, _config, **_kwargs):
         captured["routing"] = routed_request.routing
         return "A successful local answer"
 
@@ -194,3 +199,323 @@ async def test_lexicon_failure_falls_back_to_a_local_answer(caplog):
         if record.levelno == logging.ERROR and "lexicon" in record.getMessage()
     ]
     assert len(errors) == 1
+
+
+class _RaisingRouter:
+    """A router that fails after startup, as an unexpected implementation bug would."""
+
+    router_id = "broken"
+    policy_version = "1"
+
+    async def decide(self, request):
+        _ = request
+        msg = "router backend unavailable"
+        raise RuntimeError(msg)
+
+    def decide_sync(self, request):
+        _ = request
+        msg = "router backend unavailable"
+        raise RuntimeError(msg)
+
+
+@pytest.mark.asyncio
+async def test_unexpected_router_failure_falls_back_to_the_gate(caplog):
+    """A router fault reaches the deterministic gate instead of an error reply."""
+    caplog.set_level(logging.ERROR, logger="src.smart_orchestrator")
+    manager = MagicMock(spec=ThreadSafeConversationManager)
+    manager.get_recent_ai_service.return_value = None
+    manager.get_conversation.return_value = []
+    request = _request("is github down", manager)
+    captured = {}
+
+    async def fake_perplexity(routed_request, _client, _config, _summary=None):
+        captured["routing"] = routed_request.routing
+        return "web answer", False, None
+
+    clients = AIClients(openai=object(), perplexity=object())
+    with (
+        patch("src.smart_orchestrator.process_openai_message", new=AsyncMock()),
+        patch("src.smart_orchestrator.process_perplexity_message", new=fake_perplexity),
+    ):
+        response, _suppress, _embed = await get_smart_response(
+            request,
+            [],
+            clients,
+            AIConfig(),
+            {"ROUTER_MODE": "heuristic"},
+            router=_RaisingRouter(),
+        )
+
+    assert response == "web answer"
+    assert captured["routing"].route == "web"
+    assert captured["routing"].decision_source == "fallback:router_error"
+    assert any("Router failed" in record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_injected_router_is_reused_instead_of_rebuilt():
+    """The process-wide router is not reconstructed for each message."""
+    manager = MagicMock(spec=ThreadSafeConversationManager)
+    manager.get_recent_ai_service.return_value = None
+    manager.get_conversation.return_value = []
+    request = _request("Tell me something interesting", manager)
+    router = MagicMock()
+    router.router_id = "gate"
+    router.policy_version = "1"
+    router.decide = AsyncMock(
+        return_value=RouteDecision(
+            route="local",
+            reasons=("local:default",),
+            text="Tell me something interesting",
+        )
+    )
+
+    with (
+        patch("src.smart_orchestrator.build_router", return_value=router) as builder,
+        patch(
+            "src.smart_orchestrator.process_openai_message",
+            new=AsyncMock(return_value="A successful local answer"),
+        ),
+        patch("src.smart_orchestrator.process_perplexity_message", new=AsyncMock()),
+    ):
+        response, _suppress, _embed = await get_smart_response(
+            request,
+            [],
+            AIClients(openai=object(), perplexity=object()),
+            AIConfig(),
+            {"ROUTER_MODE": "heuristic"},
+            router=router,
+        )
+
+    assert response == "A successful local answer"
+    builder.assert_not_called()
+    router.decide.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_default_router_is_built_once_per_configuration():
+    """Without an injected router, the fallback construction is cached."""
+    manager = MagicMock(spec=ThreadSafeConversationManager)
+    manager.get_recent_ai_service.return_value = None
+    manager.get_conversation.return_value = []
+    request = _request("Tell me something interesting", manager)
+    router = MagicMock()
+    router.decide = AsyncMock(
+        return_value=RouteDecision(
+            route="local",
+            reasons=("local:default",),
+            text="Tell me something interesting",
+        )
+    )
+    config = {"ROUTER_MODE": "heuristic"}
+
+    with patch("src.smart_orchestrator.build_router", return_value=router) as builder:
+        await _build_route_decision(request, config)
+        await _build_route_decision(request, config)
+
+    builder.assert_called_once()
+    assert router.decide.await_count == 2
+
+
+def _failing_chat_client(error):
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=error)
+    return client
+
+
+def _failing_responses_client(error):
+    client = MagicMock()
+    client.responses.create = AsyncMock(side_effect=error)
+    return client
+
+
+@pytest.mark.asyncio
+async def test_openai_only_mode_reports_the_classified_outage_not_a_rephrase_hint():
+    """A provider outage shows the outage notice, not 'try rephrasing'."""
+    import openai
+
+    from src.config import get_error_messages
+    from src.error_handling import classify_error
+    from src.models import OpenAIConfig
+
+    error = openai.InternalServerError(
+        "provider down",
+        response=MagicMock(status_code=500, headers={}),
+        body=None,
+    )
+    manager = MagicMock()
+    request = _request("Tell me something interesting", manager)
+    clients = AIClients(
+        openai=_failing_chat_client(error),
+        perplexity=None,
+    )
+
+    retry_sleep = AsyncMock()
+    with patch("src.error_handling.asyncio.sleep", new=retry_sleep):
+        response, suppress, embed = await get_smart_response(
+            request,
+            [],
+            clients,
+            AIConfig(openai=OpenAIConfig()),
+        )
+
+    assert retry_sleep.await_count == 1
+    assert response == classify_error(error).user_message
+    assert response != get_error_messages()["no_response_generated"]
+    assert suppress is False
+    assert embed is None
+    manager.add_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_single_provider_outage_logs_no_traceback(caplog):
+    """A provider outage is logged by class, status, and type without a traceback."""
+    import openai
+
+    from src.error_handling import classify_error
+    from src.models import OpenAIConfig
+
+    caplog.set_level(logging.DEBUG)
+    error = openai.InternalServerError(
+        "provider down",
+        response=MagicMock(status_code=500, headers={}),
+        body=None,
+    )
+    request = _request("Tell me something interesting", MagicMock())
+    clients = AIClients(
+        openai=_failing_chat_client(error),
+        perplexity=None,
+    )
+
+    with patch("src.error_handling.asyncio.sleep", new=AsyncMock()):
+        response, _suppress, _embed = await get_smart_response(
+            request,
+            [],
+            clients,
+            AIConfig(openai=OpenAIConfig()),
+        )
+
+    assert response == classify_error(error).user_message
+    tracebacks = [record for record in caplog.records if record.exc_info]
+    assert tracebacks == []
+    assert any(
+        "InternalServerError" in record.getMessage() and "status=500" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_perplexity_only_mode_reports_the_classified_outage_not_a_rephrase_hint():
+    """The Perplexity-only wrapper exposes its classified failure too."""
+    import openai
+
+    from src.config import get_error_messages
+    from src.error_handling import classify_error
+    from src.models import PerplexityConfig
+
+    error = openai.InternalServerError(
+        "provider down",
+        response=MagicMock(status_code=500, headers={}),
+        body=None,
+    )
+    manager = MagicMock()
+    request = _request("Tell me something interesting", manager)
+    clients = AIClients(
+        openai=None,
+        perplexity=_failing_responses_client(error),
+    )
+
+    retry_sleep = AsyncMock()
+    with patch("src.error_handling.asyncio.sleep", new=retry_sleep):
+        response, suppress, embed = await get_smart_response(
+            request,
+            [],
+            clients,
+            AIConfig(perplexity=PerplexityConfig()),
+        )
+
+    assert retry_sleep.await_count == 1
+    assert response == classify_error(error).user_message
+    assert response != get_error_messages()["no_response_generated"]
+    assert suppress is False
+    assert embed is None
+    manager.add_message.assert_not_called()
+
+
+class _ClosableRouter:
+    """Minimal cached router that records its close."""
+
+    def __init__(self, name):
+        self.name = name
+        self.closed = False
+
+    async def aclose(self):
+        self.closed = True
+
+    async def decide(self, request):
+        return RouteDecision(route="local", reasons=("fake",), text=request.text)
+
+
+@pytest.fixture
+def empty_default_router_cache():
+    """Keep the process-wide fallback router cache isolated per test."""
+    from src import smart_orchestrator
+
+    smart_orchestrator._DEFAULT_ROUTERS.clear()
+    yield
+    smart_orchestrator._DEFAULT_ROUTERS.clear()
+
+
+@pytest.mark.asyncio
+async def test_default_router_cache_is_bounded_and_closes_the_oldest(
+    empty_default_router_cache,
+):
+    """A long-lived direct caller must not accumulate HTTP clients."""
+    from src import smart_orchestrator
+
+    created = []
+
+    def build(_config):
+        router = _ClosableRouter(f"router-{len(created)}")
+        created.append(router)
+        return router
+
+    request = _request("Tell me something interesting", None)
+    with patch("src.smart_orchestrator.build_router", side_effect=build):
+        for index in range(9):
+            await _build_route_decision(
+                request, {"ROUTER_MODE": "heuristic", "ROUTER_CLEF_MODEL": f"model-{index}"}
+            )
+
+    assert len(smart_orchestrator._DEFAULT_ROUTERS) == 8
+    assert created[0].closed is True
+    assert created[-1].closed is False
+
+
+@pytest.mark.asyncio
+async def test_close_default_routers_closes_every_cached_router(empty_default_router_cache):
+    """Shutdown closes fallback routers alongside the injected one."""
+    from src import smart_orchestrator
+
+    first = _ClosableRouter("first")
+    second = _ClosableRouter("second")
+    with patch("src.smart_orchestrator.build_router", side_effect=[first, second]):
+        await smart_orchestrator._default_router({"ROUTER_CLEF_MODEL": "one"})
+        await smart_orchestrator._default_router({"ROUTER_CLEF_MODEL": "two"})
+
+    await smart_orchestrator.close_default_routers()
+
+    assert first.closed is True
+    assert second.closed is True
+    assert smart_orchestrator._DEFAULT_ROUTERS == {}
+
+
+def test_router_config_key_includes_the_clef_key():
+    """Changing the Clef key must produce a different cached-router key."""
+    from src.routing import router_config_key
+
+    base = {"ROUTER_MODE": "clef"}
+    first = router_config_key({**base, "ROUTER_CLEF_API_KEY": "key-one"})
+    second = router_config_key({**base, "ROUTER_CLEF_API_KEY": "key-two"})
+
+    assert first != second

@@ -70,7 +70,10 @@ the gate.
 
 ## Invariants tests enforce
 
-- URL or masked-vs-unmasked handling: instructions inside code fences do not fire overrides.
+- Masked-vs-unmasked handling: overrides and bearing cues read the code-masked view, so a version shape,
+  year, money/commerce term, instruction, or URL inside a fence cannot decide a route. `code.shape` and
+  traceback cues still read the original text so a pasted artifact is marked as code-shaped, but they are
+  framing cues and cannot decide a route alone.
 - Inheritance only from a real previous assistant turn, at most one turn back, suppressed on topic shift.
 - Corpus fixture: current behaviour matches the blessed confusion counts (any silent change fails CI).
 - Determinism: same input, same route, every run, no clock/network/model dependence.
@@ -79,8 +82,8 @@ the gate.
 
 `ROUTER_MODE=heuristic` (default) is the deterministic gate. `ROUTER_MODE=clef` selects the optional
 Clef decision-model router described below; `ROUTER_MODE=model` is retired and raises. All
-`ROUTER_WEB_THRESHOLD_*` keys are gone; any lingering reference in an old config file is ignored
-harmlessly (warned once at startup).
+`ROUTER_WEB_THRESHOLD_*` keys are gone; any lingering reference in an old config file is
+ignored without a warning because the loader no longer reads those keys.
 
 ## The Clef decision-model router (optional)
 
@@ -88,12 +91,28 @@ harmlessly (warned once at startup).
 request to Ollama Cloud at `/v1/systemone` with the last two prior turns (each capped at 600 characters)
 and the current message as `state`. The single `needs_live_web` question is a `noul` probability;
 `>= ROUTER_CLEF_THRESHOLD` routes web, otherwise local. A live probe measured roughly 0.35–0.43 s per
-decision, billed per token; the request timeout defaults to 2 s.
+decision, consuming tokens; `ROUTER_CLEF_TIMEOUT_MS` defaults to 2 s and is enforced as a hard total
+deadline for the asynchronous decision, not as a per-phase timeout.
+
+A deterministic gate override is carried as data on the decision, and Clef returns that decision without a
+network call. That includes a supplied artifact (`local:supplied_artifact`), so asking to summarize pasted
+text cannot be flipped to web by Clef.
+
+The Clef key is scoped to the Clef endpoint. Resolution order is `ROUTER_CLEF_API_KEY`, then
+`OLLAMA_API_KEY` from the environment, then `OPENAI_API_KEY` only when `OPENAI_API_URL`'s host is
+`ollama.com`. A missing `OPENAI_API_URL` is not treated as the default URL, so a caller that supplies
+only a chat key cannot send it to Clef. A key issued for any other chat provider is never sent to
+Ollama Cloud. When no eligible key exists, startup warns once and selects the deterministic gate.
+
+The router is built once at startup and reuses one pooled HTTP client for the process; the client is closed
+with the other connection pools during shutdown. A direct caller that does not inject the startup router
+builds one fallback router per effective routing configuration and reuses it, rather than rebuilding it for
+every message. An image request is decided as `images:local` before any
+router runs, so Clef is not consulted and the one routing log line is the decision actually used.
 
 Any network error, timeout, HTTP status of 400 or above, or missing/malformed response logs a warning and
-returns the deterministic gate's decision with a `clef:fallback:<kind>` reason. A missing API key selects
-the gate at startup instead of raising. The gate therefore remains both the default and the fallback;
-Clef never widens the routing surface or changes the prompt.
+returns the deterministic gate's decision with a `clef:fallback:<kind>` reason. The gate therefore remains
+both the default and the fallback; Clef never widens the routing surface or changes the prompt.
 
 ## Cache and identity
 
@@ -106,9 +125,15 @@ local-with-bearing-cue", expressed at the call site — there is no router-emitt
 
 ## Failure modes
 
-- Lexicon missing/corrupt at load → `LexiconError`; orchestrator falls back to a deterministic local
-  decision with `reasons=("fallback:lexicon_error",)` and logs at CRITICAL. Bot keeps answering local.
-- Router itself raising unexpectedly → caught at the decision site, local route, ERROR log.
+- Lexicon missing/corrupt at load → `build_router` catches the `LexiconError`, logs it at CRITICAL, and
+  injects a local-only fallback router whose decisions use `reasons=("fallback:lexicon_error",)`. The
+  bot keeps answering on the local route and startup does not abort. If a lexicon error still reaches a
+  decision at runtime, the orchestrator uses the same local fallback and logs at ERROR.
+- Router itself raising unexpectedly → caught at the decision site, deterministic gate with a
+  `fallback:router_error` reason and an ERROR log. If the gate cannot run either, the answer uses the local
+  fallback.
+- Unknown `ROUTER_MODE` → rejected by startup configuration validation with a clear message. The retired
+  `model` value keeps its explicit error pointing at `ROUTER_MODE=clef`.
 - Empty/whitespace message → local, never an exception.
 
 ## Change log for this design
@@ -121,3 +146,8 @@ local-with-bearing-cue", expressed at the call site — there is no router-emitt
 - 2026-11-15: optional Clef decision-model router added behind `ROUTER_MODE=clef`; the deterministic gate
   stays the default and the fallback on any Clef failure. `ROUTER_MODE=model` is retired and rejected at
   startup; use `heuristic` or `clef`.
+- 2026-11-23: bearing and override cue extraction runs on code-masked text; code-shape and traceback
+  framing cues still read the original text; gate overrides are exposed as decision data so Clef honours
+  supplied artifacts; Clef uses a dedicated credential resolved per endpoint, one pooled client, and a
+  hard total deadline; image requests bypass the router; any router fault falls back to the gate; the
+  web-inability reroute requires a first-person admission.

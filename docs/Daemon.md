@@ -4,13 +4,13 @@
 
 ## Features
 
-- **Automatic Python resolution**: Finds the right Python interpreter via pyenv → project venv → shell venv → system path (pyenv preferred for version pinning)
+- **Automatic Python resolution**: Finds the right Python interpreter via project venv → shell venv → pyenv → system path (the project venv is preferred when its dependencies are present)
 - **Venv bootstrapping**: Creates and populates a project-local `.venv/` if one doesn't exist
-- **Correct working directory**: Always changes to the project root, so `python -m src.main` works regardless of where the script is invoked from (including cron's `$HOME`)
+- **Correct working directory**: Always changes to the project root, so `python -m src.main --conf <file>` works regardless of where the script is invoked from (including cron's `$HOME`)
 - **Process management**: Stops previous instances before starting, with graceful shutdown and forced kill fallback
 - **Daemon and foreground modes**: Background mode for cron, foreground mode for systemd
 - **Startup health check**: In daemon mode, waits 3 seconds and confirms the process survived
-- **systemd installation**: `--install-systemd bot.ini` generates a ready-to-run user service unit with all paths auto-detected
+- **systemd installation**: `--install-systemd bot.ini` generates a ready-to-run user service unit, installs it, enables it, and starts it, with all paths auto-detected
 
 ## Requirements
 
@@ -22,14 +22,14 @@
 
 The launcher resolves the Python interpreter in this priority:
 
-1. **pyenv** — Whatever `pyenv which python3` resolves for the project directory
-2. **Project-local venv** — `.venv/bin/python3` in the project directory
-3. **Shell-activated venv** — `$VIRTUAL_ENV/bin/python3` if a venv is active
+1. **Project-local venv** — `.venv/bin/python3` in the project directory, used when its core dependencies are importable
+2. **Shell-activated venv** — `$VIRTUAL_ENV/bin/python3` if a venv is active
+3. **pyenv** — Whatever `pyenv which python3` resolves for the project directory
 4. **System python3** — First `python3` on `PATH`
 
 If no venv exists, the launcher creates one automatically using the resolved Python interpreter and installs dependencies from `requirements.txt` (or `pyproject.toml` if no requirements file exists).
 
-> **Tip**: pyenv resolution is preferred because it's version-pinned and reproducible. If you use pyenv, set a project Python with `pyenv local 3.12.x` and the launcher will pick it up automatically. You can also create a project venv with `pyenv exec python -m venv .venv` to pin the interpreter.
+> **Tip**: The project venv is preferred because it is the environment this checkout was bootstrapped with. If you use pyenv, set a project Python with `pyenv local 3.12.x`; the launcher uses it when no usable project venv exists. You can also create a project venv with `pyenv exec python -m venv .venv` to pin the interpreter.
 
 ## Usage
 
@@ -43,7 +43,7 @@ If no venv exists, the launcher creates one automatically using the resolved Pyt
 # Specify project directory explicitly
 ./discordian.sh -d -c production.ini -f /opt/discordianai
 
-# Install and enable a systemd user service
+# Install, enable, and start a systemd user service
 ./discordian.sh --install-systemd bot.ini
 ```
 
@@ -54,7 +54,7 @@ If no venv exists, the launcher creates one automatically using the resolved Pyt
 | `-d` | `--daemon` | Run in background, redirect output to `bot.log` |
 | `-c` | `--config` | Configuration file (default: `bot.ini`) |
 | `-f` | `--folder` | Project directory (default: script location) |
-| | `--install-systemd` | Generate and install a systemd user service for the given config file, then exit |
+| | `--install-systemd` | Generate, install, enable, and start a systemd user service for the given config file, then exit |
 | `-h` | `--help` | Show usage information |
 
 ## Running with Cron
@@ -86,10 +86,18 @@ This command:
 2. Auto-detects paths from the script's location
 3. Builds a `PATH` that includes pyenv and Homebrew (detects `brew --prefix` automatically)
 4. Writes the unit file to `~/.config/systemd/user/`
-5. Runs `daemon-reload` and enables the service
+5. Runs `daemon-reload`, enables the service, and starts it
 6. Prints management commands
 
 The config file name (without `.ini`) becomes the systemd instance name. `--install-systemd bot.ini` creates `discordian-bot@bot.service`, `--install-systemd production.ini` creates `discordian-bot@production.service`.
+
+A systemd **user** service stops when your last session ends and does not start at boot unless lingering is enabled. Enable it once for the account that owns the service:
+
+```bash
+loginctl enable-linger "$USER"
+```
+
+Use `loginctl disable-linger "$USER"` to undo it.
 
 ### Manual setup
 
@@ -115,7 +123,7 @@ A template unit file is included in `contrib/systemd/discordian-bot@.service`. T
 |---------|------|---------|
 | Auto-restart on crash | ❌ | ✅ (`Restart=on-failure`) |
 | Restart delay | ✗ | ✅ (`RestartSec=15`) |
-| Proper logging | File only | `journalctl` + file |
+| Proper logging | File only | File (`StandardOutput=append:`); journald only if you change the unit |
 | Service management | `crontab -e` | `systemctl --user` |
 | Startup ordering | ✗ | ✅ (`After=network-online.target`) |
 
@@ -129,7 +137,7 @@ Both methods can coexist, but that would start two instances. Pick one.
 
 ## Log rotation
 
-The bot never writes its own log file; `discordian.sh -d` and the systemd unit redirect stdout and stderr to `bot.log`. Because that file stays open for the lifetime of the process, logrotate must use `copytruncate` instead of asking the bot to reopen it. The shipped fragment in `contrib/logrotate/discordianai` does this.
+The bot never writes its own log file; `discordian.sh -d` and the systemd unit redirect stdout and stderr to `bot.log`. Because that file stays open for the lifetime of the process, logrotate must use `copytruncate` instead of asking the bot to reopen it. The shipped fragment in `contrib/logrotate/discordianai` does this. Container deployments do not use logrotate for container output: the compose file bounds Docker's `json-file` driver at three 10 MB files instead, as described in [Docker.md](Docker.md).
 
 Install it system-wide:
 
@@ -137,9 +145,9 @@ Install it system-wide:
 sudo cp contrib/logrotate/discordianai /etc/logrotate.d/discordianai
 ```
 
-Then edit `/etc/logrotate.d/discordianai` and replace `/path/to/DiscordianAI/bot.log` with the actual log path. The fragment rotates at 100 MB, keeps fifty compressed generations, stamps each rotated file with its date (`bot.log-2026-10-30.gz`), and enables `copytruncate`.
+Then edit `/etc/logrotate.d/discordianai`: replace `/path/to/DiscordianAI/bot.log` with the actual log path, and replace `USER` and `GROUP` in the `su` line with the account and group that own the log directory. The `su` directive is required when the log's parent directory is world-writable or group-writable by a group other than root; without it logrotate refuses with "parent directory has insecure permissions". The fragment rotates at 100 MB, keeps fifty generations, stamps each rotated file with its date (`bot.log-2026-10-30.gz`), enables `copytruncate`, and uses `delaycompress` so the newest rotation stays uncompressed.
 
-**Retention:** fifty generations of up to 100 MB is roughly 5 GB of compressed history, which at this bot's volume is years. Rotation archives; it does not expire. The only setting that deletes anything is `rotate`, so lower that number deliberately if you ever want a hard ceiling. Compressed rotations are written beside the live file.
+**Retention:** `rotate 50` keeps fifty rotated files, each about 100 MB when it is rotated. `size` is checked only when logrotate runs, so the live file is roughly 100 MB plus the growth since the previous check (with a daily check, about one day's growth). The pre-compression ceiling is therefore about 5 GB of archives plus the live file; compressed rotations are smaller, and `delaycompress` leaves the newest rotation uncompressed. At this bot's volume that is years of history. Rotation archives; it does not expire. The only setting that deletes anything is `rotate`, so lower that number deliberately if you ever want a hard ceiling. Compressed rotations are written beside the live file.
 
 > **`copytruncate` caveat**: logrotate copies `bot.log` and then truncates the original so the running process can keep writing to the same file descriptor. Any log lines written between the copy and the truncate can be lost. This is the only option here because the supervisor owns the open file and the bot cannot be signalled to reopen it. Keep the log and its rotated copies on the same filesystem so the copy window is as short as possible.
 
@@ -159,13 +167,32 @@ Point the fragment at that `bot.log`, install it as above, and logrotate will ro
 
 ## Process Management
 
-The launcher tracks the bot's PID in `.bot.pid` (in the project directory) and uses it for clean shutdown:
+The launcher tracks each config's bot PID in `.bot-<stem>-<hash>.pid`, where the
+short hash comes from the resolved absolute config path. Two configs that share a
+basename in different directories therefore keep separate files. The launcher uses
+the file for clean shutdown:
 
-1. If a `.bot.pid` file exists, it sends `SIGTERM` and waits up to 10 seconds
+1. If the instance's PID file exists and its process still runs the same config, it
+   sends `SIGTERM` and waits up to 10 seconds (override with
+   `DISCORDIANAI_STOP_TIMEOUT`). A PID file whose process now runs a different config
+   is removed without a signal.
 2. If the process doesn't stop, it sends `SIGKILL`
-3. It also scans for stray processes matching `src.main --conf`
+3. It removes the PID file, including when the recorded process had already exited
+4. It scans for stray processes started with the same resolved config file
 
-This ensures clean restarts whether triggered by cron, systemd, or manual invocation.
+The straggler scan resolves each process's `--conf` argument against that process's
+working directory and compares it with this instance's absolute config path. Another
+config in the same checkout is a separate managed instance and is left alone, and a
+second checkout that also uses `bot.ini` is not mistaken for this one. On upgrade, a
+legacy `.bot.pid` is honoured only when its process runs the same config; a legacy PID
+belonging to another config is left in place.
+
+The launcher prevents two launches of the same config file, but it does not compare tokens,
+so two configs that carry the same `DISCORD_TOKEN` are both started. Each token must appear in
+at most one running config; that is the operator's responsibility. Containers, systemd, or
+other supervisors that bypass the launcher must enforce the same rule externally. The Python
+process does not lock the token. Running two configs that use the same token would give it
+two gateway sessions and duplicate replies.
 
 ## Venv Details
 
@@ -181,11 +208,11 @@ rm -rf .venv
 To force a specific Python version for the venv:
 
 ```bash
-# With pyenv (preferred — version-pinned, reproducible)
+# With pyenv (optional — version-pinned, reproducible)
 pyenv install 3.12.12
 pyenv local 3.12.12
 rm -rf .venv
-./discordian.sh -c config.ini   # Will use pyenv's Python automatically
+./discordian.sh -c config.ini   # Will bootstrap the venv with pyenv's Python
 
 # Without pyenv — create venv manually
 /usr/bin/python3.12 -m venv .venv
@@ -222,10 +249,10 @@ rm -rf .venv
 
 **Wrong Python being used**
 - The launcher prints which Python it resolved at startup
-- Check the resolution order (pyenv → venv → system) and ensure your preferred Python is first
+- Check the resolution order (project venv → shell venv → pyenv → system) and ensure your preferred Python is first
 
 **systemd service won't start**
 - Check status: `systemctl --user status discordian-bot@bot`
-- Check logs: `journalctl --user -u discordian-bot@bot -f`
+- Check the bot's own output in `bot.log` (`tail -f /path/to/DiscordianAI/bot.log`); `journalctl --user -u discordian-bot@bot` shows unit lifecycle messages because the shipped unit appends stdout/stderr to that file
 - Verify paths in the unit file match your installation
 - Re-generate with `./discordian.sh --install-systemd bot.ini` to auto-detect paths

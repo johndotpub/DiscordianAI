@@ -1,14 +1,22 @@
 # DiscordianAI log rotation fragment.
 #
-# Install it as /etc/logrotate.d/discordianai and replace the placeholder
-# path below with the bot.log location used by your installation.
+# Install it as /etc/logrotate.d/discordianai and replace the placeholders
+# below: the bot.log path, and USER/GROUP with the account and group that own
+# the log directory. The su directive is required when the log's parent
+# directory is world-writable or group-writable by a group other than root,
+# because logrotate otherwise refuses with "parent directory has insecure
+# permissions"; it tells logrotate which account to rotate as.
 #
-# Rotation keeps history rather than trimming it. Each rotated file is
-# date-stamped and compressed, and the generation count is high enough that
-# the archive is effectively unbounded at this bot's volume: at roughly 50 MB
-# every few months, 50 generations of up to 100 MB compressed is years of
-# logs. If you ever need a hard limit, lower `rotate` — that is the only knob
-# that deletes anything.
+# Rotation keeps history rather than trimming it. Rotated files are
+# date-stamped, `delaycompress` leaves the newest one uncompressed, and older
+# generations are compressed. The generation count is high enough that the
+# archive is effectively unbounded at this bot's volume: at roughly 50 MB
+# every few months, 50 rotated files of at least 100 MB each is about 5 GB of
+# archives, plus the live file, which is at least 100 MB plus the growth since
+# the previous check (about one day's growth with a daily check). The size is
+# only checked when logrotate runs, so both figures are lower bounds. That is
+# years of logs. Compressed files are smaller. If you ever need a hard limit, lower
+# `rotate` — that is the only knob that deletes anything.
 #
 # copytruncate is required because the bot holds bot.log open through the
 # supervisor's append redirection and cannot be asked to reopen it. It copies
@@ -18,6 +26,7 @@
 # moves the logs out of bot.log entirely.
 
 /path/to/DiscordianAI/bot.log {
+    su USER GROUP
     size 100M
     rotate 50
     compress

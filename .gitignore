@@ -1,8 +1,10 @@
 # Test Bot Files
 nohup.out
 bot.log
+*.log-*
 test.log
 .bot.pid
+.bot-*.pid
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -145,8 +147,13 @@ cython_debug/
 *.ini
 !config.ini.example
 !tox.ini
+*.ini.bak
+*.ini.bak-*
 *.db
 *.sqlite3
+
+# Local agent state
+.hermes/
 
 # Pre-commit secrets baseline
 .secrets.baseline

@@ -27,59 +27,6 @@ RESPONSE = " ".join(
 )
 
 
-class FakeTyping:
-    async def __aenter__(self):
-        return None
-
-    async def __aexit__(self, exc_type, exc, tb):
-        return False
-
-
-class FakeUser:
-    def __init__(self, user_id: int, *, bot: bool = False):
-        self.id = user_id
-        self.bot = bot
-        self.name = f"user-{user_id}"
-        self.mention = f"<@{user_id}>"
-
-
-class FakeGuild:
-    def __init__(self, guild_id: int, name: str = "Guild"):
-        self.id = guild_id
-        self.name = name
-        self.text_channels = []
-        self.forums = []
-        self.channels = self.text_channels
-
-
-class FakeChannel:
-    def __init__(self, channel_id: int, name: str, guild: FakeGuild):
-        self.id = channel_id
-        self.name = name
-        self.guild = guild
-        self.sent_messages: list[tuple[str, dict]] = []
-
-    def typing(self):
-        return FakeTyping()
-
-    async def send(self, content: str, **kwargs):
-        self.sent_messages.append((content, kwargs))
-
-
-class FakeMessage:
-    def __init__(self, *, author, channel, guild, mentions, content):
-        self.id = 7001
-        self.author = author
-        self.channel = channel
-        self.guild = guild
-        self.mentions = mentions
-        self.content = content
-        self.replies: list[tuple[str, dict]] = []
-
-    async def reply(self, content: str, **kwargs):
-        self.replies.append((content, kwargs))
-
-
 def _build_dependencies(bot, channel, openai_client):
     config = {
         "GPT_MODEL": "gpt-5-mini",
@@ -139,21 +86,11 @@ def _build_dependencies(bot, channel, openai_client):
     ],
 )
 @pytest.mark.asyncio
-async def test_guild_mention_travels_the_real_pipeline(base_url: str, cap_param: str):
-    guild = FakeGuild(1)
-    channel = FakeChannel(555, "general", guild)
-    guild.text_channels.append(channel)
-    guild.channels = guild.text_channels
-    bot_user = FakeUser(1, bot=True)
-    author = FakeUser(42)
-    bot = SimpleNamespace(user=bot_user, guilds=[guild])
-    message = FakeMessage(
-        author=author,
-        channel=channel,
-        guild=guild,
-        mentions=[bot_user],
-        content=f"{bot_user.mention} {USER_TEXT}",
-    )
+async def test_guild_mention_travels_the_real_pipeline(base_url: str, cap_param: str, e2e_scene):
+    scene = e2e_scene(USER_TEXT)
+    channel = scene.channel
+    message = scene.message
+    bot = scene.bot
 
     response = SimpleNamespace(
         choices=[
@@ -195,9 +132,8 @@ async def test_guild_mention_travels_the_real_pipeline(base_url: str, cap_param:
     assert conversation[1]["content"] == RESPONSE
 
     assert len(RESPONSE) > MESSAGE_LIMIT
-    assert len(message.replies) >= 2
-    assert channel.sent_messages == []
-    for content, kwargs in message.replies:
+    assert len(channel.sent_messages) >= 2
+    for content, kwargs in channel.sent_messages:
         assert len(content) <= MESSAGE_LIMIT
         assert kwargs["mention_author"] is False
         allowed_mentions = kwargs["allowed_mentions"]
@@ -205,6 +141,86 @@ async def test_guild_mention_travels_the_real_pipeline(base_url: str, cap_param:
         assert allowed_mentions.users == [message.author]
         assert allowed_mentions.replied_user is False
 
-    assert message.replies[0][0].startswith(f"{message.author.mention} ")
-    delivered_text = "".join(content for content, _kwargs in message.replies)
+    assert channel.sent_messages[0][0].startswith(f"{message.author.mention} ")
+    delivered_text = "".join(content for content, _kwargs in channel.sent_messages)
     assert delivered_text == f"{message.author.mention} {RESPONSE}"
+
+
+@pytest.mark.asyncio
+async def test_length_finish_reason_delivers_partial_answer_with_one_notice(e2e_scene):
+    scene = e2e_scene(USER_TEXT)
+    channel = scene.channel
+    message = scene.message
+    bot = scene.bot
+    author = scene.author
+    partial = "A partial answer that stops mid-sentence"
+
+    response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content=partial),
+                finish_reason="length",
+            )
+        ]
+    )
+    create = AsyncMock(return_value=response)
+    openai_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
+        base_url="https://ollama.com/v1/",
+    )
+    deps = _build_dependencies(bot, channel, openai_client)
+
+    await message_router.handle_incoming_message(message, deps, bot)
+
+    assert len(channel.sent_messages) == 1
+    content = channel.sent_messages[0][0]
+    assert content.startswith(f"{author.mention} {partial}")
+    assert content.count("cut off at the length limit") == 1
+    assert not content.endswith(partial)
+
+    conversation_key = conversation_key_for_message(message, is_dm=False)
+    conversation = deps.conversation_manager.get_conversation(conversation_key=conversation_key)
+    assert conversation[1]["content"] == partial
+    assert "cut off at the length limit" not in conversation[1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_model_output_mentions_are_neutralised_in_delivery(e2e_scene):
+    scene = e2e_scene(USER_TEXT)
+    channel = scene.channel
+    message = scene.message
+    bot = scene.bot
+    author = scene.author
+    hostile = "Hello @everyone @here <@123> <@&456> <#789>"
+
+    response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content=hostile),
+                finish_reason="stop",
+            )
+        ]
+    )
+    create = AsyncMock(return_value=response)
+    openai_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
+        base_url="https://ollama.com/v1/",
+    )
+    deps = _build_dependencies(bot, channel, openai_client)
+
+    await message_router.handle_incoming_message(message, deps, bot)
+
+    assert len(channel.sent_messages) == 1
+    content, kwargs = channel.sent_messages[0]
+    for raw in ("@everyone", "@here", "<@123>", "<@&456>", "<#789>"):
+        assert raw not in content
+    assert "@\u200beveryone" in content
+    assert "@\u200bhere" in content
+    assert "<@\u200b123>" in content
+    assert "<@&\u200b456>" in content
+    assert "<#\u200b789>" in content
+    allowed_mentions = kwargs["allowed_mentions"]
+    assert isinstance(allowed_mentions, discord.AllowedMentions)
+    assert allowed_mentions.everyone is False
+    assert allowed_mentions.roles == []
+    assert allowed_mentions.users == [author]

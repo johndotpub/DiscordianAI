@@ -7,14 +7,16 @@ import socket
 import subprocess
 import sys
 import time
-from unittest.mock import MagicMock
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
-from starlette.testclient import TestClient
 
+from src.bot_manager import DiscordBotManager
 from src.connection_pool import ConnectionPoolManager
 from src.error_handling import get_circuit_breaker
 from src.health_server import create_health_app
+from tests.helpers import health_deps, request_health
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -74,37 +76,7 @@ class _FakePoolManager:
         }
 
 
-def _deps(
-    *,
-    connected=True,
-    has_openai=True,
-    has_perplexity=True,
-    latency=0.05,
-    pool_manager=None,
-):
-    """Create dependency data for the health app."""
-    bot = MagicMock()
-    bot.is_ready.return_value = connected
-    bot.guilds = [MagicMock(), MagicMock()]
-    bot.latency = latency
-
-    config = {
-        "OPENAI_API_KEY": "sk-test-key" if has_openai else None,
-        "PERPLEXITY_API_KEY": "pplx-test-key" if has_perplexity else None,
-        "GPT_MODEL": "gpt-5-mini",
-        "PERPLEXITY_MODEL": "perplexity/sonar",
-        "HEALTH_ENABLED": True,
-    }
-
-    deps = {
-        "bot": bot,
-        "client": MagicMock() if has_openai else None,
-        "perplexity_client": MagicMock() if has_perplexity else None,
-        "config": config,
-    }
-    if pool_manager is not None:
-        deps["connection_pool_manager"] = pool_manager
-    return deps
+_deps = health_deps
 
 
 def _set_breaker(
@@ -137,10 +109,7 @@ def _open_provider_breakers():
 def test_health_reports_failing_providers_instead_of_healthy():
     """/health must not claim healthy while provider breakers are open."""
     _open_provider_breakers()
-    app = create_health_app(_deps())
-
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(_deps()), "/health")
 
     body = response.json()
     assert response.status_code == 503, body
@@ -153,10 +122,7 @@ def test_health_reports_failing_providers_instead_of_healthy():
 def test_readiness_reports_not_ready_when_providers_are_failing():
     """/health/ready must reflect provider failures, not just client identity."""
     _open_provider_breakers()
-    app = create_health_app(_deps())
-
-    with TestClient(app) as client:
-        response = client.get("/health/ready")
+    response = request_health(create_health_app(_deps()), "/health/ready")
 
     body = response.json()
     assert response.status_code == 503, body
@@ -174,10 +140,7 @@ def test_readiness_reports_not_ready_when_providers_are_failing():
 def test_old_success_without_failures_is_healthy():
     """A closed breaker with an old success and no failures is healthy."""
     _set_breaker("openai", last_success_time=time.monotonic() - 3600)
-    app = create_health_app(_deps())
-
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(_deps()), "/health")
 
     body = response.json()
     assert response.status_code == 200, body
@@ -200,10 +163,7 @@ def test_failure_after_success_is_degraded():
         last_success_time=now - 3600,
         last_failure_time=now,
     )
-    app = create_health_app(_deps())
-
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(_deps()), "/health")
 
     body = response.json()
     assert response.status_code == 503, body
@@ -215,10 +175,7 @@ def test_failure_after_success_is_degraded():
 def test_never_called_provider_is_healthy_and_not_failing():
     """A provider that has never been called is idle, not broken."""
     _set_breaker("openai")
-    app = create_health_app(_deps())
-
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(_deps()), "/health")
 
     body = response.json()
     assert response.status_code == 200, body
@@ -242,16 +199,39 @@ def test_open_and_half_open_breakers_still_fail_health(breaker_state, provider_s
         failures=5,
         last_failure_time=time.monotonic(),
     )
-    app = create_health_app(_deps())
-
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(_deps()), "/health")
 
     body = response.json()
     assert response.status_code == 503, body
     assert body["status"] != "healthy", body
     assert body["failing_providers"] == ["openai"], body
     assert body["providers"]["openai"]["status"] == provider_status, body
+
+
+@pytest.mark.parametrize(
+    ("failure_age", "expected_code", "expected_provider_status"),
+    [(59.0, 503, "unhealthy"), (61.0, 200, "healthy")],
+)
+def test_open_breaker_past_its_timeout_is_recovering(
+    failure_age,
+    expected_code,
+    expected_provider_status,
+):
+    """An idle open breaker is not unhealthy once its timeout has elapsed."""
+    _set_breaker(
+        "openai",
+        state="OPEN",
+        failures=5,
+        last_failure_time=100.0,
+    )
+    with patch("src.health_server.time.monotonic", return_value=100.0 + failure_age):
+        response = request_health(create_health_app(_deps()), "/health")
+
+    body = response.json()
+    assert response.status_code == expected_code, body
+    assert body["providers"]["openai"]["status"] == expected_provider_status, body
+    if expected_code == 200:
+        assert "openai" not in body["failing_providers"], body
 
 
 def test_bind_failure_disables_health_server_without_killing_bot():
@@ -286,9 +266,7 @@ def test_http2_enabled_reflects_the_client_configuration():
     manager = ConnectionPoolManager()
     manager.create_http_client("openai")
     try:
-        app = create_health_app(_deps(pool_manager=manager))
-        with TestClient(app) as client:
-            response = client.get("/health")
+        response = request_health(create_health_app(_deps(pool_manager=manager)), "/health")
 
         body = response.json()
         assert body["services"]["pool"]["openai"]["http2_enabled"] is True, body
@@ -299,10 +277,7 @@ def test_http2_enabled_reflects_the_client_configuration():
 @pytest.mark.parametrize("latency", [float("nan"), float("inf"), 0.0])
 def test_non_finite_or_zero_latency_does_not_cause_500(latency):
     """Invalid latency values are reported as null rather than crashing JSON."""
-    app = create_health_app(_deps(latency=latency))
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(_deps(latency=latency)), "/health")
 
     assert response.status_code != 500, response.text
     body = response.json()
@@ -311,10 +286,7 @@ def test_non_finite_or_zero_latency_does_not_cause_500(latency):
 
 def test_health_json_keeps_every_documented_key():
     """New truthfulness fields must not remove the existing contract."""
-    app = create_health_app(_deps(pool_manager=_FakePoolManager()))
-
-    with TestClient(app) as client:
-        response = client.get("/health")
+    response = request_health(create_health_app(_deps(pool_manager=_FakePoolManager())), "/health")
 
     body = response.json()
     assert {
@@ -336,3 +308,145 @@ def test_health_json_keeps_every_documented_key():
     } <= set(body["services"])
     assert body["services"]["openai"] in {"configured", "not_configured"}
     assert body["services"]["perplexity"] in {"configured", "not_configured"}
+
+
+def test_client_errors_keep_provider_health_healthy():
+    """A user-caused 400 must not degrade the provider or make /health 503."""
+    import openai
+
+    from src.error_handling import get_circuit_breaker
+
+    async def exercise_breaker():
+        breaker = get_circuit_breaker("openai")
+        error = openai.BadRequestError(
+            "invalid request",
+            response=SimpleNamespace(status_code=400, headers={}, request=SimpleNamespace()),
+            body=None,
+        )
+
+        async def rejected():
+            raise error
+
+        for _ in range(5):
+            with pytest.raises(openai.BadRequestError):
+                await breaker.call(rejected)
+
+    asyncio.run(exercise_breaker())
+    response = request_health(create_health_app(_deps()), "/health")
+
+    body = response.json()
+    assert response.status_code == 200, body
+    assert body["status"] == "healthy", body
+    assert body["providers"]["openai"]["status"] == "healthy", body
+    assert body["providers"]["openai"]["consecutive_failures"] == 0, body
+
+
+def test_invalid_model_400_makes_provider_health_degraded():
+    """A retired Perplexity model must show on /health instead of looking neutral."""
+    import httpx
+    import openai
+
+    from src.error_handling import get_circuit_breaker
+
+    async def exercise_breaker():
+        breaker = get_circuit_breaker("perplexity")
+        request = httpx.Request("POST", "https://api.perplexity.ai/v1/responses")
+        response = httpx.Response(
+            400,
+            request=request,
+            json={"error": {"message": "model is not supported", "type": "invalid_model"}},
+        )
+        error = openai.BadRequestError(
+            "model is not supported",
+            response=response,
+            body=response.json(),
+        )
+
+        async def rejected():
+            raise error
+
+        with pytest.raises(openai.BadRequestError):
+            await breaker.call(rejected)
+
+    asyncio.run(exercise_breaker())
+    response = request_health(create_health_app(_deps()), "/health")
+
+    body = response.json()
+    assert response.status_code == 503, body
+    assert body["failing_providers"] == ["perplexity"], body
+    assert body["providers"]["perplexity"]["status"] == "degraded", body
+    assert body["providers"]["perplexity"]["consecutive_failures"] == 1, body
+
+
+@pytest.mark.parametrize(
+    ("error_type", "status_code"),
+    [
+        ("AuthenticationError", 401),
+        ("PermissionDeniedError", 403),
+        ("NotFoundError", 404),
+    ],
+)
+def test_configuration_errors_make_provider_health_degraded(error_type, status_code):
+    """A revoked key or retired model must not keep /health green."""
+    import httpx
+    import openai
+
+    from src.error_handling import get_circuit_breaker
+
+    async def exercise_breaker():
+        breaker = get_circuit_breaker("openai")
+        request = httpx.Request("POST", "https://api.example/v1/chat/completions")
+        response = httpx.Response(
+            status_code,
+            request=request,
+            json={"error": {"message": "request rejected", "type": "invalid_request_error"}},
+        )
+        error_class = getattr(openai, error_type)
+        error = error_class("request rejected", response=response, body=response.json())
+
+        async def rejected():
+            raise error
+
+        with pytest.raises(error_class):
+            await breaker.call(rejected)
+
+    asyncio.run(exercise_breaker())
+    response = request_health(create_health_app(_deps()), "/health")
+
+    body = response.json()
+    assert response.status_code == 503, body
+    assert body["failing_providers"] == ["openai"], body
+    assert body["providers"]["openai"]["status"] == "degraded", body
+    assert body["providers"]["openai"]["consecutive_failures"] == 1, body
+
+
+def test_readiness_is_not_ready_before_on_ready_even_when_is_ready_is_true():
+    """discord.py sets is_ready before on_ready; readiness must still wait."""
+    deps = _deps(connected=True)
+    deps["logger"] = MagicMock()
+    DiscordBotManager(deps)
+
+    assert deps["bot"].discordian_gateway_connected is False
+
+    response = request_health(create_health_app(deps), "/health/ready")
+
+    body = response.json()
+    assert response.status_code == 503, body
+    assert body["status"] == "not_ready", body
+
+
+def test_gateway_disconnect_is_not_ready_even_when_is_ready_stays_true():
+    """A gateway outage must be reported even though discord.py is_ready sticks."""
+    deps = _deps(connected=True)
+    deps["bot"].discordian_gateway_connected = False
+    health = request_health(create_health_app(deps), "/health")
+    ready = request_health(create_health_app(deps), "/health/ready")
+
+    health_body = health.json()
+    assert health.status_code == 503, health_body
+    assert health_body["status"] == "unhealthy", health_body
+    assert health_body["services"]["discord"] == "disconnected", health_body
+
+    ready_body = ready.json()
+    assert ready.status_code == 503, ready_body
+    assert ready_body["status"] == "not_ready", ready_body

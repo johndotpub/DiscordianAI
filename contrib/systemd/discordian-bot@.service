@@ -7,8 +7,8 @@
 #   ./discordian.sh --install-systemd bot.ini
 #
 # That command creates ~/.config/systemd/user/discordian-bot@bot.service
-# with all paths filled in from the script's actual location, enables
-# it, and prints management commands.
+# with all paths filled in from the script's actual location, enables and
+# starts it, and prints management commands.
 #
 # MANUAL SETUP: If you prefer to install by hand:
 #
@@ -33,6 +33,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# If the installation path contains spaces, quote each ExecStart word and
+# each ReadWritePaths path. Do not quote WorkingDirectory, StandardOutput,
+# or StandardError: they take the rest of the line as one value.
 ExecStart=/path/to/DiscordianAI/discordian.sh -c %i.ini -f /path/to/DiscordianAI
 WorkingDirectory=/path/to/DiscordianAI
 Restart=on-failure

@@ -24,8 +24,8 @@ DiscordianAI is a Discord bot that routes each message to an OpenAI-compatible c
 
 ## What Makes It Different
 
-- **Deterministic hybrid routing**: a gate decides each message from explicit overrides and bearing cues (things whose value can change); there are no scores, weights, or thresholds. The OpenAI-compatible provider (Ollama Cloud by default) handles stable knowledge, reasoning, and creative prompts; Perplexity's Agent API handles live facts and returns citations. See [docs/routing/DESIGN.md](docs/routing/DESIGN.md).
-- **Conversation history**: History is keyed by guild channel (`g:<guild>:c:<channel>`) or DM (`dm:<user>`) and is sent to both providers. A thread keeps its own history, separate from its parent. A follow-up is routed to the provider that answered the previous turn when one is recorded.
+- **Deterministic hybrid routing**: the default heuristic gate decides each message from explicit overrides and bearing cues (things whose value can change); it uses no scores, weights, or thresholds. The OpenAI-compatible provider (Ollama Cloud by default) handles stable knowledge, reasoning, and creative prompts; Perplexity's Agent API handles live facts and returns citations. See [docs/routing/DESIGN.md](docs/routing/DESIGN.md).
+- **Conversation history**: History is keyed by guild channel (`g:<guild>:c:<channel>`) or DM (`dm:<user>`) and is sent to both providers. A thread keeps its own history, separate from its parent. A short anaphoric or continuation follow-up inherits the previous turn's provider when one is recorded; other messages are decided from their own cues.
 - **Discord-native output**: Citation embeds, message splitting at Discord's 2000-character limit, and Perplexity link-preview suppression when a response contains two or more links. The OpenAI-compatible path does not suppress previews.
 - **Operations**: Per-provider HTTP/2 connection pooling with HTTP/1.1 fallback, per-provider circuit breakers, and health checks after login plus HTTP endpoints that report observed provider and breaker state.
 - **Single-source configuration**: `config.ini` or environment variables drive every mode. Startup validation stops on missing credentials, malformed URLs, and invalid limits; provider model ids are not gated.
@@ -40,12 +40,32 @@ DiscordianAI is a Discord bot that routes each message to an OpenAI-compatible c
 
 ## Quick Start
 
-1. **Install Python 3.12 or newer** and create a virtual environment.
-2. **Clone & install**: `pip install -e ".[dev]"`
+1. **Install Python 3.12 or newer.**
+2. **Clone & install**:
+   ```bash
+   git clone https://github.com/johndotpub/DiscordianAI.git
+   cd DiscordianAI
+   python3.12 -m venv .venv
+   source .venv/bin/activate
+   pip install -e ".[dev]"
+   ```
+   The `discordian.sh` launcher creates and populates `.venv/` on first run if you
+   prefer not to do this manually.
 3. **Copy config**: `cp config.ini.example config.ini`
 4. **Set tokens** in `config.ini` (Discord, chat provider, Perplexity as needed).
-5. **Run the bot**: `python -m src.main --conf config.ini` (or the installed console script: `discordianai --conf config.ini`).
+5. **Run the bot**: `python -m src.main --conf config.ini` (or the installed console script: `discordianai --conf config.ini`). In a server channel, mention the bot; guild messages without a mention are ignored. DMs need no mention.
 6. **Run tests** before shipping: `pytest` (coverage gate: 84% via tox/Codecov)
+
+Runtime dependencies are `discord.py[voice]`, `openai`, `httpx[http2]`, `h2`, `cachetools`,
+`aiohttp`, `structlog`, `tree-sitter`, and `tree-sitter-markdown`; `pip install -r
+requirements.txt` or `pip install -e ".[dev]"` installs them. The `voice` extra installs
+PyNaCl and davey so a later voice feature can use them and the two startup warnings stay
+quiet; the bot does not use voice today. `tree-sitter` 0.27.0 and
+`tree-sitter-markdown` 0.5.4 ship prebuilt CPython 3.12-compatible wheels for manylinux
+x86_64 and aarch64; `tree-sitter-markdown` also ships musllinux x86_64 and aarch64, while
+`tree-sitter` has only a musllinux x86_64 wheel. The manylinux-based
+`python:3.12-slim-bookworm` image therefore needs no compiler; a musllinux aarch64 image
+would need one for `tree-sitter`.
 
 Logs go to stderr. The bot does not open `bot.log`; the deprecated `LOG_FILE` setting is ignored. `bot.log` exists only when `discordian.sh` in daemon mode or a process supervisor captures stderr. Redirect stderr, or both streams with `>> bot.log 2>&1`; redirecting stdout alone produces an empty file.
 
@@ -80,9 +100,9 @@ The included [discordian.sh](discordian.sh) script handles Python environment re
 ./discordian.sh --install-systemd bot.ini
 ```
 
-The launcher resolves Python in this order: pyenv → project-local `.venv` → shell venv → system `python3`. It creates a `.venv/` automatically if none exists. It also ensures the working directory is correct — no more `ModuleNotFoundError: No module named 'src'` when running from cron. In daemon mode it redirects both stdout and stderr to `bot.log` (`>> bot.log 2>&1`) and records the process ID in `.bot.pid`.
+The launcher resolves Python in this order: project-local `.venv` (when its dependencies are present) → shell venv → pyenv → system `python3`. It creates a `.venv/` automatically if none exists. It also ensures the working directory is correct — no more `ModuleNotFoundError: No module named 'src'` when running from cron. In daemon mode it redirects both stdout and stderr to `bot.log` (`>> bot.log 2>&1`) and records each config's process ID in `.bot-<stem>-<hash>.pid`, where the hash comes from the resolved absolute config path so two configs with the same basename stay separate.
 
-`--install-systemd` generates a complete systemd user unit from the config file name (e.g., `bot.ini` → `discordian-bot@bot.service`), writes it to `~/.config/systemd/user/`, enables it, and prints management commands. See [docs/Daemon.md](docs/Daemon.md) for both cron and systemd setup. The shipped logrotate fragment is [contrib/logrotate/discordianai](contrib/logrotate/discordianai); it uses `copytruncate` because the bot never reopens a log file it did not open.
+`--install-systemd` generates a complete systemd user unit from the config file name (e.g., `bot.ini` → `discordian-bot@bot.service`), writes it to `~/.config/systemd/user/`, enables and starts it, and prints management commands. See [docs/Daemon.md](docs/Daemon.md) for both cron and systemd setup. The shipped logrotate fragment is [contrib/logrotate/discordianai](contrib/logrotate/discordianai); it uses `copytruncate` because the bot never reopens a log file it did not open.
 
 ## Configuration Essentials
 
@@ -91,14 +111,21 @@ The launcher resolves Python in this order: pyenv → project-local `.venv` → 
 | `DISCORD_TOKEN` | Bot authentication token from the Discord Developer Portal.
 | `GPT_MODEL` | OpenAI-compatible model name sent as configured. Default `deepseek-v4.1-flash:1017`; any non-empty model identifier is accepted.
 | `PERPLEXITY_MODEL` | Perplexity model name. Default `perplexity/sonar`, the current Agent API Sonar model. Legacy Sonar names still answer on Chat Completions but are not used by this bot.
-| `INPUT_TOKENS` / `OUTPUT_TOKENS` | Prompt budget and chat completion cap. `OUTPUT_TOKENS` is sent as `max_tokens` and includes reasoning tokens.
+| `INPUT_TOKENS` / `OUTPUT_TOKENS` | Prompt budget and chat completion cap. `OUTPUT_TOKENS` is sent as `max_tokens` on Ollama-compatible hosts (`ollama.com`, `*.ollama.com`, `localhost`, `127.0.0.1`) and as `max_completion_tokens` on every other OpenAI-compatible host, including `api.openai.com`; the cap includes reasoning tokens.
 | `PERPLEXITY_OUTPUT_TOKENS` | Perplexity completion cap, sent as `max_output_tokens` to the Agent API (output only). Defaults to `OUTPUT_TOKENS`.
-| `CONTEXT_WINDOW` | Shared context window (default 1000000). The default chat model's window is 1,000,000 tokens; the value feeds the prompt budget and truncation, not billing.
+| `PERPLEXITY_INPUT_TOKENS` | Prompt budget for the Perplexity web path (default 111000). History is trimmed to it after the fixed `fetch_url` instructions are reserved.
+| `CONTEXT_WINDOW` | Chat-provider context window (default 1000000). The default chat model's window is 1,000,000 tokens; the value feeds the prompt budget and truncation, not an API usage limit.
+| `PERPLEXITY_CONTEXT_WINDOW` | Perplexity web-path context window (default 128000). The figure comes from the former Sonar model page; the Agent API models page publishes none, so 128K is unverified there.
 | `LOOKBACK_MESSAGES_FOR_CONSISTENCY` | How many recent messages to inspect when a follow-up inherits the previous provider.
-| `ROUTER_MODE` | Router implementation, `heuristic` by default (deterministic, no network). `clef` uses Ollama Cloud's decision model (~0.4 s per message, billed per token) and falls back to the heuristic on failure; `model` is retired and raises.
+| `ROUTER_MODE` | Router implementation, `heuristic` by default (deterministic, no network). `clef` uses Ollama Cloud's decision model (~0.4 s per message, consuming tokens) and falls back to the heuristic on failure; `model` is retired and raises.
 | `CONVERSATION_TTL_SECONDS` | Idle seconds before a conversation and its lock are evicted (default 7200).
 | `WEB_TOOLS` | Offer native web search and page fetch to Ollama-compatible chat providers (default true); OpenAI endpoints never receive these tools.
 | `OPENAI_MAX_CONNECTIONS` / `PERPLEXITY_MAX_CONNECTIONS` | HTTP/2 pool connection limits for each API client.
+
+`CONTEXT_WINDOW` is the chat-provider window, not a value shared with Perplexity. Perplexity
+uses `PERPLEXITY_INPUT_TOKENS` and `PERPLEXITY_CONTEXT_WINDOW`; if an operator explicitly
+lowers `INPUT_TOKENS` or `CONTEXT_WINDOW`, the smaller chat value also caps the Perplexity
+prompt.
 
 ### Channel Targeting
 
@@ -136,17 +163,17 @@ RATE_LIMIT_PER=60
 ### AI Orchestration
 - [src/smart_orchestrator.py](src/smart_orchestrator.py) asks `src/routing/` for one evidence-based decision per message, owns provider selection and fallback, and writes the successful turn to history.
 - [src/message_processor.py](src/message_processor.py) builds the per-conversation history snapshot and request, calls the orchestrator, and sends the reply.
-- [src/openai_processing.py](src/openai_processing.py) sends the model, messages, an output cap (`max_tokens` to Ollama-compatible providers, `max_completion_tokens` to `api.openai.com`), and `reasoning_effort` when non-empty to the configured OpenAI-compatible provider. [src/perplexity_processing.py](src/perplexity_processing.py) sends the model, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool to the Agent API; neither sends sampling parameters. Perplexity processing also requests native page fetching and handles citation extraction.
+- [src/openai_processing.py](src/openai_processing.py) sends the model, messages, an output cap (`max_tokens` to Ollama-compatible providers, `max_completion_tokens` to every other OpenAI-compatible host), and `reasoning_effort` when non-empty to the configured OpenAI-compatible provider. [src/perplexity_processing.py](src/perplexity_processing.py) sends the model, `instructions`, `input`, `max_output_tokens`, and the `web_search` tool to the Agent API; neither sends sampling parameters. Perplexity processing also requests native page fetching and handles citation extraction.
 
 ### Discord User Experience
 - [src/discord_embeds.py](src/discord_embeds.py) formats Perplexity citations into embed descriptions and truncates descriptions above the 4096-character hard limit to the 3840-character safe limit.
-- [src/message_splitter.py](src/message_splitter.py) splits at 2000 characters, uses 3840 as the safe embed split target and 4096 as the hard embed limit, avoids splitting code blocks, and provides the link-count check that the Perplexity path uses to suppress previews at two or more links. The OpenAI-compatible path always returns `False`.
+- [src/message_splitter.py](src/message_splitter.py) splits at 2000 characters, uses 3840 as the safe embed split target and 4096 as the hard embed limit, keeps long code fences balanced across chunks, and provides the link-count check that the Perplexity path uses to suppress previews at two or more links. The OpenAI-compatible path always returns `False`.
 - [src/message_router.py](src/message_router.py) handles mentions, DMs, channel and thread allowlists, bot-authored senders, and dispatch to the DM/channel processors.
 
 ### Reliability & Ops
 - [src/connection_pool.py](src/connection_pool.py) creates HTTP/2 clients with 100/20 connections for the chat provider and 40/10 for Perplexity, falling back to HTTP/1.1 when `h2` is unavailable.
 - [src/health_checks.py](src/health_checks.py) checks each configured provider after login; any non-empty model identifier is accepted. [src/health_server.py](src/health_server.py) serves liveness/readiness and reports observed provider and breaker state.
-- [src/api_validation.py](src/api_validation.py) rejects missing credentials, malformed URLs, and invalid limits, and warns when an `OPENAI_API_KEY` does not match OpenAI's `sk-` shape (other compatible providers are supported). [src/error_handling.py](src/error_handling.py) classifies errors and owns the retry and circuit-breaker policy.
+- [src/api_validation.py](src/api_validation.py) rejects missing credentials, malformed URLs, and invalid limits. Any non-empty `OPENAI_API_KEY` is accepted for the configured provider, which rejects a wrong key at request time. [src/error_handling.py](src/error_handling.py) classifies errors and owns the retry and circuit-breaker policy.
 
 ## Documentation Map
 
@@ -186,13 +213,17 @@ pytest tests/test_smart_orchestrator_coverage.py
 
 Run the full local gate with [scripts/preflight.sh](scripts/preflight.sh): `bash scripts/preflight.sh`. It runs Black, Ruff, pytest, the Sphinx build, and a wheel build.
 
-Use `tox` for the CI matrix (`tox`, `tox -e py312`, `tox --parallel auto`, `tox -e audit`). CI runs Ruff, Black, pytest with coverage, pip-audit, and a wheel install smoke test; locally run `tox -e audit` to scan runtime + dev deps.
+Use `tox -e py312` for the canonical test run. Plain `tox` runs the whole environment
+list (`py312`, `py313`, `lint`, `format`, `audit`, `docs`); `py313` needs a Python 3.13
+interpreter, and the `format` environment rewrites files with `black .` and
+`ruff check --fix .`. CI runs `tox -e py312` plus separate lint, audit, and wheel-install
+jobs; locally run `tox -e audit` to scan runtime + dev deps.
 
 ## Security Checklist
 
 - Keep `config.ini` out of version control; copy from `config.ini.example` and set `chmod 600 config.ini` on servers.
 - Prefer environment variables in production (`export DISCORD_TOKEN=...`).
-- Rotate chat-provider and Perplexity (`pplx-...`) keys regularly. An `OPENAI_API_KEY` that is not `sk-`-shaped is accepted with a warning because non-OpenAI-compatible providers are supported.
+- Rotate chat-provider and Perplexity (`pplx-...`) keys regularly. Any non-empty `OPENAI_API_KEY` is accepted for the configured provider; a wrong key is reported by the provider when the first request is made.
 - Limit Discord bot permissions to the channels where it operates.
 - Prefer `ALLOWED_CHANNEL_IDS` for precise channel targeting in shared or multi-server deployments.
 - Native web tools return text the model must treat as untrusted reference material; tool instructions cannot make a model obey them. See [docs/Security.md](docs/Security.md).

@@ -1,5 +1,6 @@
 """Tests for the single outbound delivery helper."""
 
+import ast
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -30,15 +31,44 @@ def _original_message() -> MagicMock:
     author = MagicMock()
     author.mention = "<@123>"
     original_message = MagicMock(spec=discord.Message)
+    original_message.id = 456
+    original_message.channel = MagicMock(id=99)
     original_message.author = author
-    original_message.reply = AsyncMock()
+
+    def to_reference(*, fail_if_not_exists: bool = True, **_kwargs) -> discord.MessageReference:
+        return discord.MessageReference(
+            message_id=original_message.id,
+            channel_id=original_message.channel.id,
+            fail_if_not_exists=fail_if_not_exists,
+        )
+
+    original_message.to_reference = MagicMock(side_effect=to_reference)
     return original_message
 
 
-def _assert_reply_policy(original_message: MagicMock) -> None:
-    for call in original_message.reply.call_args_list:
+def _http_exception(status: int, code: int = 0) -> discord.HTTPException:
+    response = MagicMock()
+    response.status = status
+    response.reason = "Bad Request"
+    return discord.HTTPException(
+        response=response,
+        message={"code": code, "message": "Unknown Message"},
+    )
+
+
+def _reply_calls(channel: MagicMock) -> list:
+    return [call for call in channel.send.call_args_list if "reference" in call.kwargs]
+
+
+def _assert_reply_policy(channel: MagicMock, original_message: MagicMock) -> None:
+    calls = _reply_calls(channel)
+    assert calls
+    for call in calls:
         kwargs = call.kwargs
         assert kwargs["mention_author"] is False
+        reference = kwargs["reference"]
+        assert isinstance(reference, discord.MessageReference)
+        assert reference.fail_if_not_exists is False
         allowed_mentions = kwargs["allowed_mentions"]
         assert isinstance(allowed_mentions, discord.AllowedMentions)
         assert allowed_mentions.users == [original_message.author]
@@ -57,10 +87,109 @@ def _assert_deny_all_mentions(kwargs: dict) -> None:
     assert "roles" not in parse
 
 
+def _allowed_mentions_call(
+    func: ast.expr, discord_names: set[str], allowed_names: set[str]
+) -> bool:
+    """Return True when a call expression constructs AllowedMentions."""
+    if isinstance(func, ast.Name) and func.id in allowed_names:
+        return True
+    return (
+        isinstance(func, ast.Attribute)
+        and func.attr == "AllowedMentions"
+        and isinstance(func.value, ast.Name)
+        and func.value.id in discord_names
+    )
+
+
+def _enclosing_scope(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> str:
+    """Return the nearest function, lambda, or module scope label."""
+    current = parents.get(node)
+    while current is not None:
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return current.name
+        if isinstance(current, ast.Lambda):
+            return "<lambda>"
+        current = parents.get(current)
+    return "<module>"
+
+
+def _allowed_mentions_constructions(directory: Path = SRC_DIR) -> list[tuple[str, str]]:
+    """Return every module and function that constructs AllowedMentions.
+
+    Every ``ast.Call`` is inspected, including calls inside comprehensions,
+    lambdas, default arguments, and decorators, so a new construction cannot
+    hide in an expression context the old visitor did not enter.
+    """
+    constructions: list[tuple[str, str]] = []
+
+    for path in directory.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        discord_names = {"discord"}
+        allowed_names = {"AllowedMentions"}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "discord":
+                        discord_names.add(alias.asname or alias.name)
+            elif isinstance(node, ast.ImportFrom) and node.module == "discord":
+                for alias in node.names:
+                    if alias.name == "AllowedMentions":
+                        allowed_names.add(alias.asname or alias.name)
+
+        parents = {
+            child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)
+        }
+        constructions.extend(
+            (str(path.relative_to(directory)), _enclosing_scope(node, parents))
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and _allowed_mentions_call(node.func, discord_names, allowed_names)
+        )
+
+    return constructions
+
+
 def test_only_one_allowed_mentions_construction() -> None:
     """All outbound mention policy must come from the single delivery helper."""
-    source = "\n".join(path.read_text(encoding="utf-8") for path in SRC_DIR.rglob("*.py"))
-    assert source.count("discord.AllowedMentions") == 1
+    assert _allowed_mentions_constructions() == [("message_splitter.py", "_deliver")]
+
+
+@pytest.mark.asyncio
+async def test_deleted_question_reference_does_not_fail() -> None:
+    """A reply reference lets Discord fall back to a normal send when it is gone."""
+    channel = _channel()
+    original_message = _original_message()
+
+    await send_formatted_message(
+        channel,
+        "The answer",
+        _deps(),
+        original_message=original_message,
+        mention_prefix=f"{original_message.author.mention} ",
+    )
+
+    channel.send.assert_awaited_once()
+    reference = channel.send.call_args.kwargs["reference"]
+    assert reference.fail_if_not_exists is False
+    assert channel.send.call_args.args[0] == f"{original_message.author.mention} The answer"
+    _assert_reply_policy(channel, original_message)
+
+
+@pytest.mark.asyncio
+async def test_reply_failure_for_another_reason_is_not_replaced() -> None:
+    channel = _channel()
+    channel.send = AsyncMock(side_effect=_http_exception(403, 50013))
+    original_message = _original_message()
+
+    with pytest.raises(discord.HTTPException):
+        await send_formatted_message(
+            channel,
+            "The answer",
+            _deps(),
+            original_message=original_message,
+        )
+
+    channel.send.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -76,9 +205,9 @@ async def test_send_split_message_applies_reply_policy() -> None:
         suppress_embeds=True,
     )
 
-    assert original_message.reply.call_count >= 2
-    _assert_reply_policy(original_message)
-    for call in original_message.reply.call_args_list:
+    assert len(_reply_calls(channel)) >= 2
+    _assert_reply_policy(channel, original_message)
+    for call in _reply_calls(channel):
         assert call.kwargs["suppress_embeds"] is True
 
 
@@ -100,13 +229,38 @@ async def test_send_split_message_with_embed_applies_reply_policy() -> None:
         mention_prefix=f"{original_message.author.mention} ",
     )
 
-    assert original_message.reply.call_count >= 2
-    _assert_reply_policy(original_message)
-    first_call = original_message.reply.call_args_list[0]
+    assert len(_reply_calls(channel)) >= 2
+    _assert_reply_policy(channel, original_message)
+    first_call = _reply_calls(channel)[0]
     assert first_call.args[0].startswith(f"{original_message.author.mention} ")
     assert first_call.kwargs["embed"] is embed
-    continuation = original_message.reply.call_args_list[-1].kwargs["embed"]
+    continuation = _reply_calls(channel)[-1].kwargs["embed"]
     assert continuation.footer.text == "🌐 Web search results (continued)"
+
+
+@pytest.mark.asyncio
+async def test_truncated_embed_delivery_appends_one_notice() -> None:
+    channel = _channel()
+    embed = discord.Embed(description="Partial answer [1]")
+    embed_data = {
+        "embed": embed,
+        "clean_text": "Partial answer [1]",
+        "embed_metadata": {},
+    }
+    citations = {"1": "https://example.com/one"}
+
+    await send_formatted_message(
+        channel,
+        "Partial answer [1]",
+        _deps(),
+        embed_data=embed_data,
+        citations=citations,
+        truncated=True,
+    )
+
+    channel.send.assert_called_once()
+    sent_embed = channel.send.call_args.kwargs["embed"]
+    assert sent_embed.description.count("cut off at the length limit") == 1
 
 
 @pytest.mark.asyncio
@@ -129,9 +283,9 @@ async def test_send_formatted_message_applies_reply_policy() -> None:
         mention_prefix=f"{original_message.author.mention} ",
     )
 
-    original_message.reply.assert_called_once()
-    _assert_reply_policy(original_message)
-    assert original_message.reply.call_args.kwargs["embed"] is embed
+    channel.send.assert_called_once()
+    _assert_reply_policy(channel, original_message)
+    assert channel.send.call_args.kwargs["embed"] is embed
 
 
 @pytest.mark.asyncio
@@ -197,3 +351,14 @@ async def test_embed_fallback_text_parts_honour_suppress_embeds() -> None:
     fallback = channel.send.call_args_list[1]
     assert fallback.args[0] == "Fallback text"
     assert fallback.kwargs["suppress_embeds"] is True
+
+
+def test_allowed_mentions_guard_sees_a_call_in_a_comprehension(tmp_path):
+    """A construction inside a comprehension is not invisible to the guard."""
+    module = tmp_path / "sample.py"
+    module.write_text(
+        "import discord\nVALUES = [discord.AllowedMentions() for _ in range(1)]\n",
+        encoding="utf-8",
+    )
+
+    assert _allowed_mentions_constructions(tmp_path) == [("sample.py", "<module>")]

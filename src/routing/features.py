@@ -11,27 +11,20 @@ from urllib.parse import urlsplit
 
 from .contracts import EvidenceClass, Source
 from .lexicon import Lexicon, TermHit
+from .text import APOSTROPHES, TOKEN_PATTERN
 
-STRUCTURAL_WEIGHTS: dict[str, float] = {
-    "pred.event": 2.2,
-    "pred.error_code": 2.0,
-    "shape.version": 2.0,
-    "shape.money": 1.8,
-    "time.year": 2.0,
-    "time.deixis": 1.4,
-    "time.deixis.framing": 1.0,
-    "frame.question": 1.0,
-    "frame.imperative": 0.8,
-    "frame.opinion": 0.4,
-    "frame.creative": 0.4,
-    "frame.procedural": 0.5,
-    "cue.lookup": 0.6,
-    "ref.entity": 0.8,
-    "neg.narrative": -2.0,
-    "neg.supplied_artifact": -4.0,
-    "code.shape": -3.0,
-}
-"""Base weight for every structural signal emitted by ``features``."""
+_DECISION_STATS = {"clauses": 0}
+
+
+def _reset_decision_stats() -> None:
+    """Reset the cue-work counters used by the routing performance test."""
+    _DECISION_STATS["clauses"] = 0
+
+
+def _decision_stats() -> dict[str, int]:
+    """Return a snapshot of the cue-work counters."""
+    return dict(_DECISION_STATS)
+
 
 SOURCE_EXTENSIONS = frozenset(
     {
@@ -192,15 +185,6 @@ _KNOWN_SUFFIXES = frozenset(
         "za",
     }
 )
-_APOSTROPHES = str.maketrans(
-    {
-        "\u2018": "'",
-        "\u2019": "'",
-        "\u201b": "'",
-        "\u02bc": "'",
-        "\u2032": "'",
-    }
-)
 _CONTRACTIONS = {
     "what's": "what is",
     "who's": "who is",
@@ -252,8 +236,10 @@ def _joined(*parts: str) -> str:
     return "".join(parts)
 
 
-_TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 _URL_CANDIDATE_PATTERN = re.compile(r"(?<!\S)\S*\.\S*")
+# Routing deliberately masks an unclosed fence through the end of the text:
+# a cue inside pasted or dangling code must not decide a route. Delivery uses
+# a different contract because only code Discord renders may hide a link.
 _FENCE_PATTERN = re.compile(r"```(?:.*?```|.*\Z)", re.DOTALL)
 _DOT_LETTER_PATTERN = re.compile(r"\.[A-Za-z]")
 _FILENAME_PATTERN = re.compile(
@@ -605,14 +591,13 @@ class TextViews:
 
 @dataclass(frozen=True, slots=True)
 class Cue:
-    """A routing cue carrying its family base weight before saturation."""
+    """A routing cue identified by its signal, class, and source."""
 
     signal: str
     klass: EvidenceClass
     span: tuple[int, int] | None
     detail: str
     source: Source = "structural"
-    weight: float = 0.0
 
 
 def views(text: str) -> TextViews:
@@ -635,7 +620,7 @@ def views(text: str) -> TextViews:
             while end < len(text) and unicodedata.combining(text[end]):
                 end += 1
             folded_cluster = unicodedata.normalize(
-                "NFKC", text[index:end].translate(_APOSTROPHES)
+                "NFKC", text[index:end].translate(APOSTROPHES)
             ).lower()
             for output in folded_cluster:
                 preliminary.append(output)
@@ -713,18 +698,20 @@ def extract_overrides(text_views: TextViews, lexicon: Lexicon) -> tuple[Cue, ...
     cues: list[Cue] = []
     for kind in sorted(lexicon.overrides):
         for pattern in lexicon.overrides[kind]:
-            cues.extend(
-                Cue(
-                    signal=f"override.{kind}",
-                    klass="override",
-                    span=text_views.surface_span(match.start(), match.end()),
-                    detail=match.group(),
-                    source="override",
+            for match in pattern.finditer(text_views.folded):
+                _DECISION_STATS["clauses"] += 1
+                cues.append(
+                    Cue(
+                        signal=f"override.{kind}",
+                        klass="override",
+                        span=text_views.surface_span(match.start(), match.end()),
+                        detail=match.group(),
+                        source="override",
+                    )
                 )
-                for match in pattern.finditer(text_views.folded)
-            )
 
     for match in _URL_CANDIDATE_PATTERN.finditer(text_views.surface):
+        _DECISION_STATS["clauses"] += 1
         token = match.group().strip(".,;:!?)]}>'\"")
         if token and is_url(token):
             cues.append(
@@ -740,17 +727,18 @@ def extract_overrides(text_views: TextViews, lexicon: Lexicon) -> tuple[Cue, ...
 
 
 def extract_cues(
-    views: TextViews,
+    text_views: TextViews,
     lexicon: Lexicon,
     *,
     clock: Callable[[], date] | None = None,
 ) -> tuple[Cue, ...]:
-    """Return the unweighted bearing and framing cues in ``views``."""
+    """Return the unweighted bearing and framing cues in ``text_views``."""
+    original = text_views
+    code_regions = _code_regions(original.surface)
+    cue_views = views(_mask_regions(original.surface, code_regions)) if code_regions else original
     cues: list[Cue] = []
-    folded = views.folded
-    surface = views.surface
-    code_regions = _code_regions(surface)
-    masked = _mask_regions(surface, code_regions) if code_regions else surface
+    folded = cue_views.folded
+    surface = cue_views.surface
     tokens = _tokens(folded)
 
     def add(
@@ -758,28 +746,27 @@ def extract_cues(
         klass: EvidenceClass,
         span: tuple[int, int],
         detail: str,
-        weight: float | None = None,
     ) -> None:
         cues.append(
             Cue(
                 signal=signal,
                 klass=klass,
-                span=views.surface_span(span[0], span[1]),
+                span=text_views.surface_span(span[0], span[1]),
                 detail=detail,
-                source="lexicon" if weight is not None else "structural",
-                weight=STRUCTURAL_WEIGHTS.get(signal, 0.0) if weight is None else weight,
             )
         )
 
-    _add_pattern(cues, views, _EVENT_PATTERN, ("pred.event", "bearing"))
-    _add_pattern(cues, views, _VERSION_PATTERN, ("shape.version", "bearing"))
-    _add_pattern(cues, views, _MONEY_PATTERN, ("shape.money", "bearing"))
-    _add_pattern(cues, views, _DEIXIS_PATTERN, ("time.deixis", "bearing"))
-    cues.extend(_error_code_cues(views, tokens))
+    _add_pattern(cues, cue_views, _EVENT_PATTERN, ("pred.event", "bearing"))
+    _add_pattern(cues, cue_views, _VERSION_PATTERN, ("shape.version", "bearing"))
+    _add_pattern(cues, cue_views, _MONEY_PATTERN, ("shape.money", "bearing"))
+    _add_pattern(cues, cue_views, _DEIXIS_PATTERN, ("time.deixis", "bearing"))
+    cues.extend(_error_code_cues(cue_views, tokens))
 
     current_year = (clock or date.today)().year
     for match in _YEAR_PATTERN.finditer(folded):
-        if int(match.group()) >= current_year - 1:
+        _DECISION_STATS["clauses"] += 1
+        number = int(match.group())
+        if current_year - 1 <= number <= current_year + 1:
             add("time.year", "bearing", match.span(), match.group())
 
     if tokens and (tokens[0][0] in _QUESTION_WORDS or tokens[0][0] in _AUXILIARIES):
@@ -801,12 +788,13 @@ def extract_cues(
             tokens[verb_index][0],
         )
 
-    _add_pattern(cues, views, _OPINION_PATTERN, ("frame.opinion", "framing"))
-    _add_pattern(cues, views, _CREATIVE_PATTERN, ("frame.creative", "framing"))
-    _add_pattern(cues, views, _NARRATIVE_PATTERN, ("neg.narrative", "framing"))
-    _add_pattern(cues, views, _LOOKUP_PATTERN, ("cue.lookup", "framing"))
+    _add_pattern(cues, cue_views, _OPINION_PATTERN, ("frame.opinion", "framing"))
+    _add_pattern(cues, cue_views, _CREATIVE_PATTERN, ("frame.creative", "framing"))
+    _add_pattern(cues, cue_views, _NARRATIVE_PATTERN, ("neg.narrative", "framing"))
+    _add_pattern(cues, cue_views, _LOOKUP_PATTERN, ("cue.lookup", "framing"))
 
-    for match in _ENTITY_PATTERN.finditer(masked):
+    for match in _ENTITY_PATTERN.finditer(surface):
+        _DECISION_STATS["clauses"] += 1
         first_word = match.group().split()[0].lower()
         if first_word in _ENTITY_STOPWORDS or is_url(match.group()):
             continue
@@ -814,13 +802,14 @@ def extract_cues(
 
     for start, end, kind in code_regions:
         add("code.shape", "framing", (start, end), kind)
-    for match in _TRACEBACK_PATTERN.finditer(surface):
+    for match in _TRACEBACK_PATTERN.finditer(original.surface):
+        _DECISION_STATS["clauses"] += 1
         add("code.shape", "framing", match.span(), "traceback")
 
     cues.extend(
         _lexicon_cues(
             lexicon,
-            views,
+            cue_views,
             tokens,
             structural_bearing=any(cue.klass == "bearing" for cue in cues),
         )
@@ -832,16 +821,7 @@ def extract_cues(
     question_present = any(cue.signal == "frame.question" for cue in cues)
     if not has_other_bearing and not question_present:
         cues = [
-            (
-                replace(
-                    cue,
-                    klass="framing",
-                    weight=STRUCTURAL_WEIGHTS["time.deixis.framing"],
-                )
-                if cue.signal == "time.deixis"
-                else cue
-            )
-            for cue in cues
+            (replace(cue, klass="framing") if cue.signal == "time.deixis" else cue) for cue in cues
         ]
 
     return _sorted_cues(cues)
@@ -860,6 +840,7 @@ def _lexicon_cues(
     duration_spans = _duration_spans(folded) if "hour" in folded else ()
     entries: list[tuple[TermHit, bool]] = []
     for hit in lexicon.find(folded):
+        _DECISION_STATS["clauses"] += 1
         if supplied_spans and hit.term.class_name in _SUPPLIED_CANCELLED_CLASSES:
             continue
         if hit.term.class_name == "volatile_topic" and _overlaps(hit.span, duration_spans):
@@ -885,7 +866,6 @@ def _lexicon_cues(
                 span=views.surface_span(hit.span[0], hit.span[1]),
                 detail=hit.term.text,
                 source="lexicon",
-                weight=lexicon.class_weights[hit.term.class_name],
             )
         )
     cues.extend(
@@ -895,7 +875,6 @@ def _lexicon_cues(
             span=views.surface_span(span[0], span[1]),
             detail="artifact",
             source="structural",
-            weight=STRUCTURAL_WEIGHTS["neg.supplied_artifact"],
         )
         for span in supplied_spans
     )
@@ -922,7 +901,6 @@ def _error_code_cues(
                 span=views.surface_span(start, end),
                 detail=token,
                 source="structural",
-                weight=STRUCTURAL_WEIGHTS["pred.error_code"],
             )
         )
     return cues
@@ -1016,16 +994,25 @@ def _term_token_indexes(
 def _supplied_artefact_spans(views: TextViews) -> tuple[tuple[int, int], ...]:
     if not any(marker in views.folded for marker in _SUPPLIED_MARKERS):
         return ()
-    spans = {match.span() for match in _SUPPLIED_ARTEFACT_PATTERN.finditer(views.folded)}
+    spans: set[tuple[int, int]] = set()
+    for match in _SUPPLIED_ARTEFACT_PATTERN.finditer(views.folded):
+        _DECISION_STATS["clauses"] += 1
+        spans.add(match.span())
     if _IN_PLAIN_ENGLISH_PATTERN.search(views.folded) and _QUOTED_BLOCK_PATTERN.search(
         views.surface
     ):
-        spans.update(match.span() for match in _IN_PLAIN_ENGLISH_PATTERN.finditer(views.folded))
+        for match in _IN_PLAIN_ENGLISH_PATTERN.finditer(views.folded):
+            _DECISION_STATS["clauses"] += 1
+            spans.add(match.span())
     return tuple(sorted(spans))
 
 
 def _duration_spans(folded: str) -> tuple[tuple[int, int], ...]:
-    return tuple(match.span() for match in _DURATION_PATTERN.finditer(folded))
+    spans: list[tuple[int, int]] = []
+    for match in _DURATION_PATTERN.finditer(folded):
+        _DECISION_STATS["clauses"] += 1
+        spans.append(match.span())
+    return tuple(spans)
 
 
 def _overlaps(span: tuple[int, int], regions: tuple[tuple[int, int], ...]) -> bool:
@@ -1053,17 +1040,17 @@ def _add_pattern(
     source: Source = "structural",
 ) -> None:
     signal, klass = signal_klass
-    cues.extend(
-        Cue(
-            signal=signal,
-            klass=klass,
-            span=text_views.surface_span(match.start(), match.end()),
-            detail=match.group(),
-            source=source,
-            weight=STRUCTURAL_WEIGHTS[signal],
+    for match in pattern.finditer(text_views.folded):
+        _DECISION_STATS["clauses"] += 1
+        cues.append(
+            Cue(
+                signal=signal,
+                klass=klass,
+                span=text_views.surface_span(match.start(), match.end()),
+                detail=match.group(),
+                source=source,
+            )
         )
-        for match in pattern.finditer(text_views.folded)
-    )
 
 
 def _sorted_cues(cues: list[Cue]) -> tuple[Cue, ...]:
@@ -1081,9 +1068,11 @@ def _sorted_cues(cues: list[Cue]) -> tuple[Cue, ...]:
 
 
 def _tokens(folded: str) -> tuple[tuple[str, int, int], ...]:
-    return tuple(
-        (match.group(), match.start(), match.end()) for match in _TOKEN_PATTERN.finditer(folded)
-    )
+    tokens: list[tuple[str, int, int]] = []
+    for match in TOKEN_PATTERN.finditer(folded):
+        _DECISION_STATS["clauses"] += 1
+        tokens.append((match.group(), match.start(), match.end()))
+    return tuple(tokens)
 
 
 def _has_copula_near(
@@ -1115,13 +1104,16 @@ def _valid_host(host: str, *, require_known_suffix: bool) -> bool:
 def _code_regions(text: str) -> tuple[tuple[int, int, str], ...]:
     if "```" not in text and _DOT_LETTER_PATTERN.search(text) is None:
         return ()
-    fences = _merge_adjacent_regions(
-        [(match.start(), match.end(), "fence") for match in _FENCE_PATTERN.finditer(text)]
-    )
+    fences: list[tuple[int, int, str]] = []
+    for match in _FENCE_PATTERN.finditer(text):
+        _DECISION_STATS["clauses"] += 1
+        fences.append((match.start(), match.end(), "fence"))
+    fences = _merge_adjacent_regions(fences)
     masked = _mask_regions(text, fences)
-    filenames = [
-        (match.start(), match.end(), "filename") for match in _FILENAME_PATTERN.finditer(masked)
-    ]
+    filenames: list[tuple[int, int, str]] = []
+    for match in _FILENAME_PATTERN.finditer(masked):
+        _DECISION_STATS["clauses"] += 1
+        filenames.append((match.start(), match.end(), "filename"))
     return tuple(_merge_adjacent_regions([*fences, *filenames]))
 
 
