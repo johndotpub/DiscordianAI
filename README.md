@@ -56,9 +56,11 @@ DiscordianAI is a Discord bot that routes each message to an OpenAI-compatible c
 5. **Run the bot**: `python -m src.main --conf config.ini` (or the installed console script: `discordianai --conf config.ini`). In a server channel, mention the bot; guild messages without a mention are ignored. DMs need no mention.
 6. **Run tests** before shipping: `pytest` (coverage gate: 84% via tox/Codecov)
 
-Runtime dependencies are `discord.py`, `openai`, `httpx[http2]`, `h2`, `cachetools`,
+Runtime dependencies are `discord.py[voice]`, `openai`, `httpx[http2]`, `h2`, `cachetools`,
 `aiohttp`, `structlog`, `tree-sitter`, and `tree-sitter-markdown`; `pip install -r
-requirements.txt` or `pip install -e ".[dev]"` installs them. `tree-sitter` 0.27.0 and
+requirements.txt` or `pip install -e ".[dev]"` installs them. The `voice` extra installs
+PyNaCl and davey so a later voice feature can use them and the two startup warnings stay
+quiet; the bot does not use voice today. `tree-sitter` 0.27.0 and
 `tree-sitter-markdown` 0.5.4 ship prebuilt CPython 3.12-compatible wheels for manylinux
 x86_64 and aarch64; `tree-sitter-markdown` also ships musllinux x86_64 and aarch64, while
 `tree-sitter` has only a musllinux x86_64 wheel. The manylinux-based

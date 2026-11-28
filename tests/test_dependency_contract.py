@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 from importlib import metadata
+import logging
 from pathlib import Path
 import tomllib
 
@@ -63,6 +64,37 @@ def test_requirements_and_pyproject_declare_the_same_runtime_dependencies() -> N
         if _requirement_contract(requirements[name]) != _requirement_contract(pyproject[name])
     }
     assert not mismatches, f"runtime dependency constraints differ: {mismatches}"
+
+
+def test_discord_requests_the_voice_extra_in_requirements_and_pyproject() -> None:
+    """Both runtime dependency declarations install discord.py's voice libraries."""
+    declarations = (
+        ("requirements.txt", _read_requirements()),
+        ("pyproject.toml", _read_pyproject_dependencies()),
+    )
+    for label, declared in declarations:
+        requirement = declared["discord-py"]
+        assert "voice" in requirement.extras, f"{label} does not request the voice extra"
+
+
+def test_building_a_client_logs_no_voice_dependency_warnings(caplog) -> None:
+    """A fresh Client logs no missing PyNaCl or davey warning when the extra is installed."""
+    import discord
+    from discord.voice_client import VoiceClient, has_nacl
+    from discord.voice_state import has_dave
+
+    VoiceClient.warn_nacl = not has_nacl
+    VoiceClient.warn_dave = not has_dave
+
+    with caplog.at_level(logging.WARNING, logger="discord.client"):
+        discord.Client(intents=discord.Intents.default())
+
+    voice_warnings = [
+        record.getMessage()
+        for record in caplog.records
+        if "voice will NOT be supported" in record.getMessage()
+    ]
+    assert not voice_warnings, "\n".join(voice_warnings)
 
 
 def test_every_declared_runtime_dependency_is_installed_and_compatible() -> None:

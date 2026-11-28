@@ -77,7 +77,7 @@ the `format` environment rewrites files with `black .` and `ruff check --fix .`.
 
 All project dependencies are verified to work with Python 3.12:
 
-- **discord.py**: ✅
+- **discord.py[voice]**: ✅
 - **openai** (OpenAI-compatible client): ✅
 - **pytest**: ✅
 - **ruff**: ✅

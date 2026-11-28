@@ -250,6 +250,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed 🔁
 
+- **The two discord.py voice warnings are gone.** `discord.py[voice]` is now the runtime
+  dependency, so `pip install -r requirements.txt` also installs PyNaCl and davey and the
+  "PyNaCl is not installed" and "davey is not installed" warnings no longer appear at
+  startup. The bot does not use voice today; the libraries are present so a later voice
+  feature can use them.
 - **The launcher prefers the project venv.** `.venv/bin/python3` is tried first when its
   core dependencies are importable, then the shell-activated venv, then pyenv, then the
   system interpreter. The docs match the new order.
