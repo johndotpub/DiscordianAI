@@ -478,7 +478,7 @@ def validate_openai_config(config: dict) -> list[str]:
     """
     issues = []
 
-    # Validate API key presence and format
+    # Validate API key presence
     api_key = config.get("OPENAI_API_KEY")
     if not api_key and _provider_configured(config, "OPENAI"):
         issues.append(

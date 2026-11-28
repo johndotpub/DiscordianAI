@@ -47,14 +47,14 @@ This document outlines security considerations and best practices for deploying 
    secret-file mechanism. Credentials come only from `config.ini` and environment
    variables.
 
-### Key Format Validation
+### API Key Validation
 
-DiscordianAI validates API key formats before use:
+DiscordianAI checks that each configured provider has a key. The Perplexity key also has a format check:
 
-| Service | Expected Format | Example |
-|---------|-----------------|---------|
-| OpenAI-compatible | Any non-empty key is accepted; the shape is not checked and the provider rejects a wrong key at request time | `sk-abc123...` or an Ollama Cloud key |
-| Perplexity | `pplx-` + at least 20 letters, digits, `-` or `_` | `pplx-xyz789...` |
+| Service | Check | Example |
+|---------|-------|---------|
+| OpenAI-compatible | Presence only: any non-empty key is accepted, the shape is not checked, and the provider rejects a wrong key at request time | `sk-abc123...` or an Ollama Cloud key |
+| Perplexity | `pplx-` followed by at least 20 letters, digits, `-` or `_` | `pplx-xyz789...` |
 
 A blank key disables that provider, and a whitespace-only value counts as blank in both the config file and the environment. A provider counts as configured when its key is non-empty, or when its base URL or model is set in the file or environment. A configured provider without a key stops startup even when the other provider has a key; to run only one provider, leave the other provider at its defaults or set its key blank. Any non-empty OpenAI-compatible key is accepted because the configured provider decides what a valid key looks like; a wrong key is rejected by the provider at request time.
 
