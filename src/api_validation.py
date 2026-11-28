@@ -38,7 +38,6 @@ from .config import (
 # Re-export for backward compatibility
 __all__ = [
     "DISCORD_ACTIVITY_TYPES",
-    "OPENAI_API_KEY_PATTERN",
     "OPENAI_VALID_MODELS",
     "PERPLEXITY_API_KEY_PATTERN",
     "PERPLEXITY_MODELS",
@@ -56,20 +55,17 @@ __all__ = [
     "validate_perplexity_config",
 ]
 
-# API key format patterns
-# OpenAI keys can be: sk-xxx, sk-proj-xxx, sk-svcacct-xxx, etc.
-OPENAI_API_KEY_PATTERN = re.compile(r"^sk-[a-zA-Z0-9\-_]{20,}$")
-# Perplexity keys: pplx-xxx
+# Perplexity API key format: pplx-xxx
 PERPLEXITY_API_KEY_PATTERN = re.compile(r"^pplx-[a-zA-Z0-9\-_]{20,}$")
 
 
 def validate_openai_api_key_format(api_key: str | None) -> tuple[bool, str | None]:
     """Validate that an OpenAI-compatible API key is present.
 
-    The ``sk-`` shape is OpenAI-specific. Other OpenAI-compatible providers
-    (Ollama Cloud, local gateways) use their own key formats, so a non-empty
-    key that does not match ``OPENAI_API_KEY_PATTERN`` is accepted here and
-    reported as a warning by :func:`validate_openai_config`.
+    Any non-empty key is accepted because the configured provider decides what
+    a valid key looks like. A wrong key is reported by the provider at request
+    time, where the existing error classification handles it. Only an empty or
+    whitespace-only key is rejected here.
 
     Args:
         api_key: API key to validate (can be None if not provided)
@@ -498,12 +494,6 @@ def validate_openai_config(config: dict) -> list[str]:
                 error_msg.replace(api_key, "[REDACTED]") if api_key in error_msg else error_msg
             )
             issues.append(f"ERROR: OPENAI_API_KEY is invalid: {safe_msg}")
-        elif not OPENAI_API_KEY_PATTERN.match(api_key.strip()):
-            issues.append(
-                "WARNING: OPENAI_API_KEY does not match OpenAI's 'sk-' key format. "
-                "Non-OpenAI-compatible providers are supported; verify the key "
-                "matches the configured OPENAI_API_URL.",
-            )
 
     issues.extend(
         _validate_api_url(
@@ -793,7 +783,7 @@ def _log_validation_messages(
     """Log validation messages with sensitive data redacted.
 
     Note: The validation messages themselves do NOT contain actual API key values.
-    They only contain format requirements like "should start with 'sk-'".
+    They name the failing configuration key and the accepted value or range.
     The _sanitize_log_message function provides additional protection.
 
     Args:

@@ -27,7 +27,7 @@ is not a contract.
 | Cloud-model features | structured outputs, log probabilities, and `tool_choice` are not supported by cloud models and the bot does not send them | provider reference; not re-probed on Ollama Cloud |
 | Web tools | `tools` carries `web_search` and `web_fetch` function schemas only when the base URL is Ollama-compatible and `WEB_TOOLS` is true; the loop allows four rounds, offers no tools on the fourth so the model must answer, executes at most three calls per round, and caps total tool output | `src/providers/openai_chat.py`, `src/web_tools.py` |
 | Image content | When a message carries images, the current user message becomes a content list of one `text` part followed by one `image_url` part per image, with the part's `url` field set to `data:<mime>;base64,<payload>`. History turns remain text-only | `src/message_builder.py`, `src/image_attachments.py` |
-| OpenAI alternative | change `OPENAI_API_URL` to `https://api.openai.com/v1/`, set an `sk-` key, and choose a model; chat requests then send `max_completion_tokens` and `reasoning_effort`, not `max_tokens` | OpenAI Chat reference |
+| OpenAI alternative | change `OPENAI_API_URL` to `https://api.openai.com/v1/`, set a non-empty key (OpenAI keys usually start with `sk-`), and choose a model; chat requests then send `max_completion_tokens` and `reasoning_effort`, not `max_tokens` | OpenAI Chat reference |
 | Maximum completion tokens | 128,000 provider-reported for the probed OpenAI model; the bot enforces the same fixed 128,000 validation ceiling for both providers, independent of `CONTEXT_WINDOW` | OpenAI-measured (error text); Ollama Cloud value UNVERIFIED |
 | Oversized output cap | HTTP 400, `error.type: invalid_request_error`, `error.code: invalid_value`, message `max_tokens is too large: … This model supports at most 128000 completion tokens` | OpenAI-measured (2026-10-28) |
 | Prompt-too-long | code `context_length_exceeded` is the documented family, **not verified here** — probing it means paying to send a 128k-token prompt. Treat as `UNVERIFIED` until someone does | unverified |
@@ -62,6 +62,9 @@ facts are verified for it:
    faults: retrying them wastes an attempt and 2–4 seconds of the user's time.
 5. Image requests are local-only: they force the chat route, keep the native tools, and are
    never sent to Perplexity. A chat-provider failure on an image request has no web fallback.
+6. Any non-empty API key is accepted for the configured provider. The bot does not check the
+   key shape; a wrong key is rejected by the provider with HTTP 401, which
+   `classify_error()` reports as an authentication error.
 
 ---
 

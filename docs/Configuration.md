@@ -23,7 +23,7 @@ Bot-authored messages are accepted like human messages, but replies never includ
 Configure the OpenAI-compatible chat provider (Ollama Cloud by default) and the Perplexity Agent API for intelligent hybrid operation.
 
 #### OpenAI-Compatible Settings
-- **`OPENAI_API_KEY`**: Key for the configured OpenAI-compatible provider *(leave empty to disable)*. OpenAI keys start with `sk-`; other compatible providers use their own formats, which are accepted with a warning.
+- **`OPENAI_API_KEY`**: Key for the configured OpenAI-compatible provider *(leave empty to disable)*. Any non-empty key is accepted; OpenAI keys usually start with `sk-`, but the shape is not checked and the provider rejects a wrong key at request time.
 - **`OPENAI_API_URL`**: Chat provider base URL. Accepted: `https://api.openai.com/v1/`, `https://ollama.com/v1/`, and `http(s)://localhost:11434/v1/` or `http(s)://127.0.0.1:11434/v1/` *(default: "https://ollama.com/v1/")*
 - **`GPT_MODEL`**: Model identifier sent as configured. Any non-empty identifier is accepted; the provider decides which names are valid *(default: "deepseek-v4.1-flash:1017")*
 - **`REASONING_EFFORT`**: Reasoning effort sent with chat requests only when non-empty. It is a reasoning-model parameter; valid values are model-defined, `low`, `high`, and `max` are supported by the shipped model, and `none` disables thinking. Leave it blank to omit the parameter entirely. Reasoning tokens count toward the output cap *(default: "high")*
@@ -427,7 +427,7 @@ model does not select that provider. Three settings keep an explicit empty meani
 ### Startup Validation
 - **Required Fields**: Ensures DISCORD_TOKEN and the credentials for every configured provider are present
 - **Errors Abort Startup**: Missing credentials, malformed base URLs, non-positive rate and token limits, non-positive `OPENAI_MAX_CONNECTIONS` or `PERPLEXITY_MAX_CONNECTIONS`, prompt budgets below 1,000, a prompt budget that does not fit its context window (`INPUT_TOKENS + OUTPUT_TOKENS > CONTEXT_WINDOW`, or the Perplexity trio), output caps above 128,000, and an unknown `ROUTER_MODE` stop the process
-- **Warnings Continue**: Non-standard provider base URLs, small chat-provider output caps, non-`sk-` OpenAI-compatible keys, non-positive `MAX_HISTORY_PER_USER`, `CONVERSATION_TTL_SECONDS`, or `USER_LOCK_CLEANUP_INTERVAL` (0 keeps all history, a non-positive TTL disables expiry, and a non-positive cleanup interval sweeps on every call), and other provider-tolerated settings are logged without blocking startup
+- **Warnings Continue**: Non-standard provider base URLs, small chat-provider output caps, non-positive `MAX_HISTORY_PER_USER`, `CONVERSATION_TTL_SECONDS`, or `USER_LOCK_CLEANUP_INTERVAL` (0 keeps all history, a non-positive TTL disables expiry, and a non-positive cleanup interval sweeps on every call), and other provider-tolerated settings are logged without blocking startup
 - **Value Validation**: Checks integer fields, validates rate limits, and ensures proper data types
 
 ### Runtime Error Handling

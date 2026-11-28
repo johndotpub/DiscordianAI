@@ -173,7 +173,7 @@ RATE_LIMIT_PER=60
 ### Reliability & Ops
 - [src/connection_pool.py](src/connection_pool.py) creates HTTP/2 clients with 100/20 connections for the chat provider and 40/10 for Perplexity, falling back to HTTP/1.1 when `h2` is unavailable.
 - [src/health_checks.py](src/health_checks.py) checks each configured provider after login; any non-empty model identifier is accepted. [src/health_server.py](src/health_server.py) serves liveness/readiness and reports observed provider and breaker state.
-- [src/api_validation.py](src/api_validation.py) rejects missing credentials, malformed URLs, and invalid limits, and warns when an `OPENAI_API_KEY` does not match OpenAI's `sk-` shape (other compatible providers are supported). [src/error_handling.py](src/error_handling.py) classifies errors and owns the retry and circuit-breaker policy.
+- [src/api_validation.py](src/api_validation.py) rejects missing credentials, malformed URLs, and invalid limits. Any non-empty `OPENAI_API_KEY` is accepted for the configured provider, which rejects a wrong key at request time. [src/error_handling.py](src/error_handling.py) classifies errors and owns the retry and circuit-breaker policy.
 
 ## Documentation Map
 
@@ -223,7 +223,7 @@ jobs; locally run `tox -e audit` to scan runtime + dev deps.
 
 - Keep `config.ini` out of version control; copy from `config.ini.example` and set `chmod 600 config.ini` on servers.
 - Prefer environment variables in production (`export DISCORD_TOKEN=...`).
-- Rotate chat-provider and Perplexity (`pplx-...`) keys regularly. An `OPENAI_API_KEY` that is not `sk-`-shaped is accepted with a warning because non-OpenAI-compatible providers are supported.
+- Rotate chat-provider and Perplexity (`pplx-...`) keys regularly. Any non-empty `OPENAI_API_KEY` is accepted for the configured provider; a wrong key is reported by the provider when the first request is made.
 - Limit Discord bot permissions to the channels where it operates.
 - Prefer `ALLOWED_CHANNEL_IDS` for precise channel targeting in shared or multi-server deployments.
 - Native web tools return text the model must treat as untrusted reference material; tool instructions cannot make a model obey them. See [docs/Security.md](docs/Security.md).

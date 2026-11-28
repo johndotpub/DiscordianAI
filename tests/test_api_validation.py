@@ -1,10 +1,13 @@
 # Tests for api_validation.py functionality
 
+import logging
+
 import pytest
 
 from src.api_validation import (
     VALID_OPENAI_URL_PATTERN,
     VALID_PERPLEXITY_URL_PATTERN,
+    log_validation_results,
     validate_connection_pool_config,
     validate_conversation_lifecycle_config,
     validate_full_config,
@@ -102,20 +105,17 @@ class TestAPIKeyFormatValidation:
 class TestOpenAIConfigValidation:
     """Test OpenAI configuration validation."""
 
-    def test_validate_openai_config_valid(self):
-        """Test validation of valid Ollama Cloud configuration."""
+    def test_validate_openai_config_accepts_ollama_style_key(self):
+        """A non-sk key from the configured provider produces no issues."""
         config = {
-            "OPENAI_API_KEY": "ollama-" + "a" * 32,
+            "OPENAI_API_KEY": "a" * 32,
             "OPENAI_API_URL": "https://ollama.com/v1/",
             "GPT_MODEL": "deepseek-v4.1-flash:1017",
             "OUTPUT_TOKENS": 16384,
             "INPUT_TOKENS": 250000,
         }
 
-        issues = validate_openai_config(config)
-        # Should have no errors; the non-sk key is a warning.
-        errors = [issue for issue in issues if issue.startswith("ERROR:")]
-        assert len(errors) == 0
+        assert validate_openai_config(config) == []
 
     def test_validate_openai_config_invalid_url(self):
         """Test validation with invalid OpenAI API URL."""
@@ -136,16 +136,74 @@ class TestOpenAIConfigValidation:
         issues = validate_openai_config(config)
         assert not any("model" in issue.lower() for issue in issues)
 
-    def test_validate_openai_config_invalid_api_key(self):
-        """A non-sk key is a warning, never a fatal error."""
+    @pytest.mark.parametrize(
+        "api_key",
+        [
+            "sk-proj-" + "a" * 32,
+            "sk-" + "a" * 32,
+        ],
+    )
+    def test_validate_openai_config_accepts_sk_shaped_keys(self, api_key):
+        """OpenAI-shaped keys are accepted without a shape warning."""
         config = {
-            "OPENAI_API_KEY": "invalid-key-format",
+            "OPENAI_API_KEY": api_key,
+            "OPENAI_API_URL": "https://api.openai.com/v1/",
+        }
+
+        assert validate_openai_config(config) == []
+
+    def test_startup_validation_accepts_non_sk_key_without_warning(self, caplog):
+        """A startup run logs no key-shape warning for an Ollama-style key."""
+        config = {
+            "DISCORD_TOKEN": "test_token",
+            "OPENAI_API_KEY": "a" * 32,
+            "OPENAI_API_URL": "https://ollama.com/v1/",
+            "GPT_MODEL": "deepseek-v4.1-flash:1017",
+            "ALLOWED_CHANNELS": ["general"],
+        }
+        logger = logging.getLogger("test.api-validation.startup")
+
+        with caplog.at_level(logging.INFO, logger=logger.name):
+            passed = log_validation_results(config, logger)
+
+        assert passed is True
+        warnings = [
+            record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING
+        ]
+        assert warnings == []
+
+    @pytest.mark.parametrize("api_key", ["", " ", "   \n\t"])
+    def test_blank_openai_key_still_fails(self, api_key):
+        """Empty and whitespace-only keys keep their existing error text."""
+        is_valid, error_msg = validate_openai_api_key_format(api_key)
+        assert is_valid is False
+        assert error_msg is not None
+        assert error_msg.startswith("OPENAI_API_KEY must not be empty.")
+
+        config = {
+            "OPENAI_API_KEY": api_key,
+            "OPENAI_API_URL": "https://ollama.com/v1/",
         }
 
         issues = validate_openai_config(config)
-        errors = [issue for issue in issues if issue.startswith("ERROR:")]
-        assert not errors
-        assert any("does not match OpenAI's 'sk-' key format" in issue for issue in issues)
+
+        assert any(
+            issue.startswith("ERROR:") and "OPENAI_API_KEY" in issue for issue in issues
+        ), issues
+
+    def test_missing_openai_key_with_openai_configured_still_fails(self):
+        """A missing key for a configured provider is still a startup error."""
+        config = {
+            "OPENAI_API_URL": "https://ollama.com/v1/",
+            "GPT_MODEL": "deepseek-v4.1-flash:1017",
+        }
+
+        issues = validate_openai_config(config)
+
+        assert any(
+            issue.startswith("ERROR:") and "OPENAI_API_KEY is required" in issue
+            for issue in issues
+        ), issues
 
     def test_validate_openai_config_high_token_limits(self):
         """Test validation with very high token limits."""

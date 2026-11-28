@@ -53,10 +53,10 @@ DiscordianAI validates API key formats before use:
 
 | Service | Expected Format | Example |
 |---------|-----------------|---------|
-| OpenAI-compatible | `sk-` is OpenAI's shape; any non-empty key is accepted, and a non-`sk-` key logs a warning | `sk-abc123...` or an Ollama Cloud key |
+| OpenAI-compatible | Any non-empty key is accepted; the shape is not checked and the provider rejects a wrong key at request time | `sk-abc123...` or an Ollama Cloud key |
 | Perplexity | `pplx-` + at least 20 letters, digits, `-` or `_` | `pplx-xyz789...` |
 
-A blank key disables that provider, and a whitespace-only value counts as blank in both the config file and the environment. A provider counts as configured when its key is non-empty, or when its base URL or model is set in the file or environment. A configured provider without a key stops startup even when the other provider has a key; to run only one provider, leave the other provider at its defaults or set its key blank. A non-empty OpenAI-compatible key that is not `sk-`-shaped is accepted because Ollama Cloud and local gateways use their own formats.
+A blank key disables that provider, and a whitespace-only value counts as blank in both the config file and the environment. A provider counts as configured when its key is non-empty, or when its base URL or model is set in the file or environment. A configured provider without a key stops startup even when the other provider has a key; to run only one provider, leave the other provider at its defaults or set its key blank. Any non-empty OpenAI-compatible key is accepted because the configured provider decides what a valid key looks like; a wrong key is rejected by the provider at request time.
 
 ### Key Rotation
 
@@ -174,7 +174,7 @@ These instructions do not compel a model to obey them. An injected page can stil
 
 On startup, DiscordianAI validates:
 
-- API key presence and format for every configured provider
+- API key presence for every configured provider and the Perplexity key format
 - Provider base URLs (malformed or non-absolute URLs are fatal; well-formed
   non-standard URLs are warnings)
 - Numeric ranges (rate limits and input, output, and context token caps)
@@ -192,9 +192,9 @@ or the Perplexity trio), output-token caps outside
 `ROUTER_MODE` (only `heuristic` and `clef` are accepted), and invalid presence or
 activity values. A malformed integer in the file or environment is reported with
 a warning and its default applies.
-Warnings are logged and startup continues: non-`sk-` OpenAI-compatible key
-formats, well-formed non-standard provider URLs, unusually small or large token
-values, high rate limits, and a missing channel allowlist.
+Warnings are logged and startup continues: well-formed non-standard provider
+URLs, unusually small or large token values, high rate limits, and a missing
+channel allowlist.
 
 ## 🌐 Network Security
 

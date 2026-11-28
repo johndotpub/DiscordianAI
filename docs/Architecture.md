@@ -94,7 +94,7 @@ This document provides a comprehensive overview of the DiscordianAI system archi
 | **Truncation** | `truncation.py` | Generic character-limit helper that appends the caller's own notice |
 | **Message Processor** | `message_processor.py` | Normalizes Discord events, delegates to orchestrator, records metadata |
 | **Message Splitter** | `message_splitter.py` | Message splitting, formatting, sanitization, and the shared parser-backed code regions |
-| **API Validation** | `api_validation.py` | Configuration validation, API key format checks |
+| **API Validation** | `api_validation.py` | Configuration validation, key presence, and provider URL checks |
 
 ## ⚙️ Operational Features
 
@@ -331,7 +331,7 @@ because its contract is to remove code-shaped cues before a route decision.
 
 ### API Key Handling
 - Keys loaded from config files or environment variables
-- Blank keys disable their provider; OpenAI key shape is advisory (`sk-` is OpenAI-specific), Perplexity uses `pplx-*`
+- Blank keys disable their provider; any non-empty OpenAI-compatible key is accepted and the provider rejects a wrong key at request time, Perplexity uses `pplx-*`
 - Never logged or exposed in error messages
 
 ### Input Validation

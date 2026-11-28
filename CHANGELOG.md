@@ -128,8 +128,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `max_completion_tokens`. The cap still includes reasoning tokens as well as visible output.
 - **Provider model ids are no longer gated.** Any non-empty `GPT_MODEL` is accepted, and the health
   check no longer reports a non-empty model as deprecated or unsupported.
-- **An `OPENAI_API_KEY` that is not `sk-`-shaped is no longer fatal.** Empty keys still fail; a
-  non-OpenAI-compatible key shape logs a warning so Ollama Cloud and local gateways work.
+- **Any non-empty `OPENAI_API_KEY` is accepted.** The startup warning about OpenAI's `sk-` key
+  shape is gone, so an Ollama Cloud or local-gateway key starts cleanly. An empty key still
+  stops startup, and a wrong key is reported by the provider when the first request is made.
 - **Empty chat responses log the finish reason.** The client warns with `finish_reason` and returns
   no content, so the orchestrator's existing fallback handles it instead of delivering empty text.
 - **Routing is a deterministic gate; the scoring layer is gone.** A message routes to the web when an

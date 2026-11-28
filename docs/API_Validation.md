@@ -9,8 +9,7 @@ findings as either **errors** or **warnings**:
   non-positive limits, prompt budgets below 1,000, and output caps above the
   documented maximum.
 - **Warnings are logged and startup continues.** They cover values a provider
-  may still accept, such as a non-`sk-` OpenAI-compatible key or a non-standard
-  gateway URL.
+  may still accept, such as a non-standard gateway URL.
 
 Every error names the failing key and the accepted value or range. The module
 does not certify a configuration beyond the constraints it can actually verify.
@@ -46,9 +45,6 @@ The live provider behaviour behind these checks is recorded in
   set, currently `perplexity/sonar`. The provider may add models before this
   list is updated, so the name is not fatal; legacy Sonar names still answer on
   Chat Completions but warn here.
-- An `OPENAI_API_KEY` that is non-empty but does not match OpenAI's `sk-`
-  shape. Ollama Cloud and local gateways use their own formats, so this is a
-  warning, never a fatal error.
 - A well-formed base URL that is not one of the accepted endpoints (OpenAI,
   Ollama Cloud, or a local Ollama daemon). A compatible gateway may still work.
 - A chat-provider `OUTPUT_TOKENS` value below **512**. `max_tokens` covers
@@ -72,6 +68,9 @@ The live provider behaviour behind these checks is recorded in
 - Chat-generation-specific parameter validation does **not** exist in this codebase. The
   old check was removed, and this document no longer claims otherwise.
 - Model names are not gated at all: any non-empty identifier is accepted.
+- Any non-empty `OPENAI_API_KEY` is accepted because the configured provider decides what a
+  valid key looks like. The key shape is not checked; the provider rejects a wrong key at
+  request time, where the existing error classification reports it.
 
 ## Perplexity
 

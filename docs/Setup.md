@@ -55,7 +55,7 @@ Get both API keys for intelligent automatic service selection:
 **Ollama Cloud API Key** (default OpenAI-compatible chat provider):
 - Sign in at [Ollama](https://ollama.com)
 - Create an API key in your account settings
-- Copy the key for `OPENAI_API_KEY`; it does not use OpenAI's `sk-` prefix, which is accepted
+- Copy the key for `OPENAI_API_KEY`; it does not use OpenAI's `sk-` prefix. Any non-empty key is accepted for the configured provider, which rejects a wrong key at request time.
 
 **OpenAI API Key** (alternative chat provider):
 - Go to [OpenAI Platform](https://platform.openai.com/api-keys)

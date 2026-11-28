@@ -20,8 +20,9 @@ configured; the provider decides whether the name exists.
 - **Endpoint**: `https://api.openai.com/v1/`
 - **Models**: any model the account can use, including current GPT names. The old
   family allowlist is gone; the provider decides which names are valid.
-- **Key shape**: OpenAI keys start with `sk-`. Other compatible providers use their own
-  formats and are accepted with a warning.
+- **Key shape**: OpenAI keys usually start with `sk-`; that prefix is a hint, not a
+  startup check. Any non-empty key is accepted for the configured provider, which rejects a
+  wrong key at request time.
 
 ### Local Ollama
 - **Endpoint**: `http(s)://localhost:11434/v1/` or `http(s)://127.0.0.1:11434/v1/`
@@ -191,7 +192,7 @@ MAX_HISTORY_PER_USER=30  # Reduce to save tokens on context
 
 **"No API key provided"**:
 - Ensure `OPENAI_API_KEY` is set in config.ini or environment variables
-- A non-`sk-` key is accepted for non-OpenAI providers; a warning notes the shape mismatch
+- Any non-empty key is accepted; a wrong key is reported by the provider when the first request is made
 
 **"Rate limit exceeded"**:
 - Check the provider's usage limits
